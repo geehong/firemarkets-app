@@ -1,0 +1,405 @@
+"""
+Stock data collector for fetching and storing company information, financials, and estimates.
+"""
+import logging
+import asyncio
+from datetime import datetime, timedelta
+from typing import List, Dict, Optional, Any
+
+import httpx
+import backoff
+from sqlalchemy.orm import Session
+
+from .base_collector import BaseCollector
+from ..core.config import GLOBAL_APP_CONFIGS
+from ..models.asset import Asset
+
+from ..crud.asset import crud_stock_financial, crud_stock_profile, crud_stock_estimate, crud_asset
+
+logger = logging.getLogger(__name__)
+
+
+class StockCollector(BaseCollector):
+    """Collects stock data including company info, financials, and estimates"""
+    
+    def __init__(self, db: Session = None):
+        super().__init__(db)
+        from ..core.config import GLOBAL_APP_CONFIGS
+        self.api_timeout = GLOBAL_APP_CONFIGS.get("API_REQUEST_TIMEOUT_SECONDS", 30)
+        self.max_retries = GLOBAL_APP_CONFIGS.get("MAX_API_RETRY_ATTEMPTS", 3)
+    
+    async def collect_with_settings(self) -> Dict[str, Any]:
+        """Collect stock data with individual asset settings"""
+        try:
+            # Get assets that have stock collection enabled in their settings
+            # 하이브리드 방식: True/False와 true/false 모두 지원
+            from sqlalchemy import or_, text
+            
+            db = self.get_db_session()
+            condition1 = Asset.collection_settings.contains({"collect_company_info": True})
+            condition2 = text("JSON_EXTRACT(collection_settings, '$.collect_company_info') = true")
+            
+            assets = db.query(Asset).filter(
+                Asset.is_active == True,
+                or_(condition1, condition2)
+            ).all()
+            
+            if not assets:
+                await self.safe_emit('scheduler_log', {
+                    'message': "주식 데이터 수집이 활성화된 자산이 없습니다.", 
+                    'type': 'warning'
+                })
+                return {"message": "No assets with stock collection enabled", "processed": 0}
+            
+            await self.safe_emit('scheduler_log', {
+                'message': f"주식 데이터 수집 시작: {len(assets)}개 자산 (설정 기반)", 
+                'type': 'info'
+            })
+            
+            return await self._collect_data()
+            
+        except Exception as e:
+            self.log_progress(f"Stock collection with settings failed: {e}", "error")
+            raise
+        finally:
+            db.close()
+    
+    async def _collect_data(self) -> Dict[str, Any]:
+        """Collect stock data for all stock assets"""
+        db = self.get_db_session()
+        
+        try:
+            # Get all stock assets
+            from ..models import AssetType
+            stock_assets = db.query(Asset).join(AssetType).filter(
+                Asset.is_active == True,
+                AssetType.type_name.in_(['Stock', 'stock', 'stocks'])
+            ).all()
+            
+            if not stock_assets:
+                return {"message": "No active stock assets found", "processed": 0}
+            
+            self.log_progress(f"Starting stock data collection for {len(stock_assets)} stocks")
+            
+            # Process stocks in batches
+            batch_size = 3
+            total_processed = 0
+            total_updated = 0
+            
+            for i in range(0, len(stock_assets), batch_size):
+                batch = stock_assets[i:i + batch_size]
+                
+                # Process batch concurrently
+                tasks = [self._fetch_and_store_stock_data_for_asset(asset) for asset in batch]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                for result in results:
+                    if isinstance(result, Exception):
+                        self.log_progress(f"Stock processing error: {result}", "error")
+                    else:
+                        total_processed += 1
+                        if result.get("success", False):
+                            total_updated += 1
+                
+                # Rate limiting between batches
+                if i + batch_size < len(stock_assets):
+                    await asyncio.sleep(2)
+            
+            return {
+                "processed_stocks": total_processed,
+                "updated_stocks": total_updated,
+                "message": f"Successfully processed {total_processed} stocks, updated {total_updated}"
+            }
+            
+        except Exception as e:
+            self.log_progress(f"Stock collection failed: {e}", "error")
+            raise
+    
+    @backoff.on_exception(
+        backoff.expo,
+        (httpx.RequestError, httpx.HTTPStatusError),
+        max_tries=3,
+        max_time=60
+    )
+    async def _fetch_async(self, client: httpx.AsyncClient, url: str, api_name: str, ticker: str):
+        """Fetch data from API with retry logic"""
+        await self.safe_emit('scheduler_log', {
+            'message': f"[{ticker}] {api_name} API 호출 시도: {url}", 
+            'type': 'info'
+        })
+        
+        response = await client.get(url, timeout=self.api_timeout)
+        
+        if response.status_code == 429:  # Too Many Requests
+            await self.safe_emit('scheduler_log', {
+                'message': f"[{ticker}] {api_name} API 호출 제한 도달. 재시도합니다.", 
+                'type': 'warning'
+            })
+            response.raise_for_status()
+        
+        response.raise_for_status()
+        return response.json()
+    
+    async def _fetch_fmp_profile(self, client: httpx.AsyncClient, ticker: str, api_key: str) -> Optional[dict]:
+        """Fetch company profile from FMP"""
+        try:
+            url = f"https://financialmodelingprep.com/api/v3/profile/{ticker}?apikey={api_key}"
+            data = await self._fetch_async(client, url, "FMP Profile", ticker)
+            
+            if isinstance(data, list) and len(data) > 0:
+                return data[0]
+            elif isinstance(data, dict) and data.get('success', False):
+                return data.get('data', [{}])[0] if data.get('data') else None
+            return None
+        except Exception as e:
+            self.log_progress(f"FMP profile fetch failed for {ticker}: {e}", "error")
+            return None
+    
+    async def _fetch_alpha_vantage_overview(self, client: httpx.AsyncClient, ticker: str, api_key: str) -> Optional[dict]:
+        """Fetch company overview from Alpha Vantage"""
+        try:
+            url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={ticker}&apikey={api_key}"
+            data = await self._fetch_async(client, url, "Alpha Vantage Overview", ticker)
+            
+            if isinstance(data, dict) and data.get('Symbol'):
+                return data
+            return None
+        except Exception as e:
+            self.log_progress(f"Alpha Vantage overview fetch failed for {ticker}: {e}", "error")
+            return None
+    
+    async def _fetch_fmp_estimates(self, client: httpx.AsyncClient, ticker: str, api_key: str) -> Optional[list]:
+        """Fetch analyst estimates from FMP"""
+        try:
+            url = f"https://financialmodelingprep.com/stable/analyst-estimates?symbol={ticker}&period=annual&page=0&limit=10&apikey={api_key}"
+            data = await self._fetch_async(client, url, "FMP Estimates", ticker)
+            
+            if isinstance(data, list):
+                return data
+            elif isinstance(data, dict) and data.get('success', False):
+                return data.get('data', [])
+            return None
+        except Exception as e:
+            self.log_progress(f"FMP estimates fetch failed for {ticker}: {e}", "error")
+            return None
+    
+    async def _fetch_fmp_quote(self, client: httpx.AsyncClient, ticker: str, api_key: str) -> Optional[dict]:
+        """Fetch real-time quote from FMP"""
+        try:
+            url = f"https://financialmodelingprep.com/api/v3/quote/{ticker}?apikey={api_key}"
+            data = await self._fetch_async(client, url, "FMP Quote", ticker)
+            
+            if isinstance(data, list) and len(data) > 0:
+                return data[0]
+            elif isinstance(data, dict) and data.get('success', False):
+                return data.get('data', [{}])[0] if data.get('data') else None
+            return None
+        except Exception as e:
+            self.log_progress(f"FMP quote fetch failed for {ticker}: {e}", "error")
+            return None
+    
+    async def _fetch_and_store_stock_data_for_asset(self, asset: Asset) -> Dict[str, Any]:
+        """Fetch and store comprehensive stock data for a single asset"""
+        try:
+            self.log_progress(f"[{asset.ticker}] Starting comprehensive stock data collection")
+            
+            # Get API keys
+            from ..core.config import GLOBAL_APP_CONFIGS
+            fmp_api_key = GLOBAL_APP_CONFIGS.get("FMP_API_KEY")
+            av_api_key = GLOBAL_APP_CONFIGS.get("ALPHA_VANTAGE_API_KEY_1")
+            
+            if not fmp_api_key and not av_api_key:
+                self.log_progress(f"[{asset.ticker}] No API keys configured", "error")
+                return {"success": False, "error": "No API keys configured"}
+            
+            # Fetch data from all sources concurrently
+            tasks = []
+            
+            if fmp_api_key:
+                tasks.extend([
+                    self._fetch_fmp_profile(httpx.AsyncClient(), asset.ticker, fmp_api_key),
+                    self._fetch_fmp_estimates(httpx.AsyncClient(), asset.ticker, fmp_api_key),
+                    self._fetch_fmp_quote(httpx.AsyncClient(), asset.ticker, fmp_api_key)
+                ])
+            
+            if av_api_key:
+                tasks.append(self._fetch_alpha_vantage_overview(httpx.AsyncClient(), asset.ticker, av_api_key))
+            
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Process results
+            fmp_profile = None
+            fmp_estimates = None
+            fmp_quote = None
+            av_overview = None
+            
+            result_index = 0
+            if fmp_api_key:
+                fmp_profile = results[result_index] if not isinstance(results[result_index], Exception) else None
+                result_index += 1
+                fmp_estimates = results[result_index] if not isinstance(results[result_index], Exception) else None
+                result_index += 1
+                fmp_quote = results[result_index] if not isinstance(results[result_index], Exception) else None
+                result_index += 1
+            
+            if av_api_key:
+                av_overview = results[result_index] if not isinstance(results[result_index], Exception) else None
+            
+            # Consolidate and store data
+            success = await self._consolidate_and_store_stock_data(asset, fmp_profile, fmp_estimates, fmp_quote, av_overview)
+            
+            if success:
+                self.log_progress(f"[{asset.ticker}] Stock data collection completed successfully")
+                return {"success": True, "message": "Stock data collected and stored"}
+            else:
+                return {"success": False, "error": "Failed to store stock data"}
+                
+        except Exception as e:
+            self.log_progress(f"[{asset.ticker}] Stock data collection failed: {e}", "error")
+            return {"success": False, "error": str(e)}
+    
+    async def _consolidate_and_store_stock_data(self, asset: Asset, fmp_profile: dict, fmp_estimates: list, fmp_quote: dict, av_overview: dict) -> bool:
+        """Consolidate data from multiple sources and store in database"""
+        db = self.get_db_session()
+        
+        try:
+            # 1. Profile data consolidation (FMP priority, Alpha Vantage fallback)
+            profile_data = {'asset_id': asset.asset_id}
+            
+            if isinstance(fmp_profile, dict):
+                profile_data.update({
+                    'company_name': fmp_profile.get('companyName'),
+                    'description': fmp_profile.get('description'),
+                    'sector': fmp_profile.get('sector'),
+                    'industry': fmp_profile.get('industry'),
+                    'country': fmp_profile.get('country'),
+                    'city': fmp_profile.get('city'),
+                    'address': fmp_profile.get('address'),
+                    'phone': fmp_profile.get('phone'),
+                    'website': fmp_profile.get('website'),
+                    'ceo': fmp_profile.get('ceo'),
+                    'employees_count': self._safe_int(fmp_profile.get('fullTimeEmployees')),
+                    'ipo_date': self._safe_date_parse(fmp_profile.get('ipoDate')),
+                    'logo_image_url': fmp_profile.get('image')
+                })
+            
+            if isinstance(av_overview, dict):
+                # Fill missing values with Alpha Vantage data
+                profile_data.setdefault('company_name', av_overview.get('Name'))
+                profile_data.setdefault('description', av_overview.get('Description'))
+                profile_data.setdefault('sector', av_overview.get('Sector'))
+                profile_data.setdefault('industry', av_overview.get('Industry'))
+                profile_data.setdefault('country', av_overview.get('Country'))
+                profile_data.setdefault('address', av_overview.get('Address'))
+                profile_data.setdefault('website', av_overview.get('OfficialSite'))
+            
+            # 2. Financials data consolidation (Alpha Vantage priority, FMP fallback)
+            financials_data = {
+                'asset_id': asset.asset_id,
+                'snapshot_date': datetime.now().date()
+            }
+            
+            if isinstance(av_overview, dict):
+                financials_data.update({
+                    'currency': av_overview.get('Currency'),
+                    'market_cap': self._safe_int(av_overview.get('MarketCapitalization')),
+                    'pe_ratio': self._safe_float(av_overview.get('PERatio')),
+                    'peg_ratio': self._safe_float(av_overview.get('PEGRatio')),
+                    'beta': self._safe_float(av_overview.get('Beta')),
+                    'eps': self._safe_float(av_overview.get('EPS')),
+                    'dividend_yield': self._safe_float(av_overview.get('DividendYield')),
+                    'dividend_per_share': self._safe_float(av_overview.get('DividendPerShare')),
+                    'profit_margin_ttm': self._safe_float(av_overview.get('ProfitMargin')),
+                    'return_on_equity_ttm': self._safe_float(av_overview.get('ReturnOnEquityTTM')),
+                    'revenue_ttm': self._safe_int(av_overview.get('RevenueTTM')),
+                    'price_to_book_ratio': self._safe_float(av_overview.get('PriceToBookRatio')),
+                    '_52_week_high': self._safe_float(av_overview.get('52WeekHigh')),
+                    '_52_week_low': self._safe_float(av_overview.get('52WeekLow')),
+                    '_50_day_moving_avg': self._safe_float(av_overview.get('50DayMovingAverage')),
+                    '_200_day_moving_avg': self._safe_float(av_overview.get('200DayMovingAverage')),
+                    'shares_outstanding': self._safe_int(av_overview.get('SharesOutstanding'))
+                })
+            
+            if isinstance(fmp_profile, dict):
+                financials_data.setdefault('market_cap', self._safe_int(fmp_profile.get('marketCap')))
+                financials_data.setdefault('beta', self._safe_float(fmp_profile.get('beta')))
+                financials_data.setdefault('pe_ratio', self._safe_float(fmp_profile.get('pe')))
+                financials_data.setdefault('eps', self._safe_float(fmp_profile.get('eps')))
+                financials_data.setdefault('dividend_yield', self._safe_float(fmp_profile.get('dividendYield')))
+                financials_data.setdefault('dividend_per_share', self._safe_float(fmp_profile.get('lastDiv')))
+                financials_data.setdefault('shares_outstanding', self._safe_int(fmp_profile.get('sharesOutstanding')))
+            
+            if isinstance(fmp_quote, dict):
+                financials_data.setdefault('_52_week_high', self._safe_float(fmp_quote.get('yearHigh')))
+                financials_data.setdefault('_52_week_low', self._safe_float(fmp_quote.get('yearLow')))
+                financials_data.setdefault('_50_day_moving_avg', self._safe_float(fmp_quote.get('priceAvg50')))
+                financials_data.setdefault('_200_day_moving_avg', self._safe_float(fmp_quote.get('priceAvg200')))
+            
+            # 3. Estimates data (FMP only)
+            estimates_data_list = []
+            if isinstance(fmp_estimates, list):
+                for est in fmp_estimates:
+                    estimates_data_list.append({
+                        'asset_id': asset.asset_id,
+                        'fiscal_date': self._safe_date_parse(est.get('date')),
+                        'revenue_avg': self._safe_int(est.get('revenueAvg')),
+                        'revenue_low': self._safe_int(est.get('revenueLow')),
+                        'revenue_high': self._safe_int(est.get('revenueHigh')),
+                        'revenue_analysts_count': self._safe_int(est.get('numAnalystsRevenue')),
+                        'eps_avg': self._safe_float(est.get('epsAvg')),
+                        'eps_low': self._safe_float(est.get('epsLow')),
+                        'eps_high': self._safe_float(est.get('epsHigh')),
+                        'eps_analysts_count': self._safe_int(est.get('numAnalystsEps')),
+                        'ebitda_avg': self._safe_int(est.get('ebitdaAvg'))
+                    })
+            
+            # Store data in database
+            success = True
+            
+            if profile_data:
+                success &= crud_stock_profile.upsert_stock_profile(db, profile_data)
+            
+            if financials_data:
+                success &= crud_stock_financial.upsert_stock_financials(db, financials_data)
+            
+            if estimates_data_list:
+                for est_data in estimates_data_list:
+                    if est_data.get('fiscal_date'):
+                        success &= crud_stock_estimate.upsert_stock_estimate(db, est_data)
+            
+            # Update last collection time
+            crud_asset.update_ticker_settings(db, asset.asset_id, {'last_company_info_collection': datetime.now()})
+            
+            return success
+            
+        except Exception as e:
+            db.rollback()
+            self.log_progress(f"Error consolidating stock data: {e}", "error")
+            return False
+    
+    def _safe_int(self, value: Any) -> Optional[int]:
+        """Safely convert value to integer"""
+        if value is None or value == "None" or value == "N/A" or value == "":
+            return None
+        try:
+            return int(float(value))
+        except (ValueError, TypeError):
+            return None
+    
+    def _safe_float(self, value: Any) -> Optional[float]:
+        """Safely convert value to float"""
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return None
+    
+    def _safe_date_parse(self, date_str: str) -> Optional[datetime]:
+        """Safely parse date string"""
+        if not date_str:
+            return None
+        try:
+            return datetime.strptime(date_str, '%Y-%m-%d')
+        except ValueError:
+            return None 

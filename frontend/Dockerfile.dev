@@ -1,0 +1,31 @@
+# frontend/Dockerfile.dev
+FROM node:20-alpine
+
+WORKDIR /app
+
+# 호스트 사용자 ID를 사용하도록 설정
+ARG USER_ID=1000
+ARG GROUP_ID=1000
+
+# 호스트와 동일한 UID/GID로 사용자 생성
+RUN addgroup -g $GROUP_ID -S nodejs && \
+    adduser -S nextjs -u $USER_ID -G nodejs
+
+# package.json 복사
+COPY package.json ./
+
+# npm install 사용 (package-lock.json 없이도 작동)
+RUN npm install 
+
+COPY . .
+
+# 소유권 변경
+RUN chown -R nextjs:nodejs /app
+
+# 사용자 전환
+USER nextjs
+
+EXPOSE 3000
+
+# package.json의 start 스크립트 사용
+CMD ["npm", "start"]

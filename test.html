@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>실시간 자산 순위 스크래퍼 (상위 5개)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* 로딩 스피너 스타일 */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 4px solid #3498db;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <div class="max-w-4xl mx-auto bg-white dark:bg-gray-800 rounded-2xl shadow-lg overflow-hidden">
+            <div class="p-6 sm:p-8">
+                <h1 class="text-2xl sm:text-3xl font-bold text-center text-gray-800 dark:text-white mb-4">실시간 자산 순위 스크래퍼</h1>
+                <p class="text-center text-gray-600 dark:text-gray-400 mb-6">상위 5개 자산의 순위, 시가총액, 가격 정보를 JSON 형식으로 표시합니다.</p>
+                
+                <div class="flex justify-center mb-6">
+                    <button id="scrape-button" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-transform transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-blue-300 dark:focus:ring-blue-800">
+                        데이터 스크래핑 시작
+                    </button>
+                </div>
+
+                <div id="status-container" class="text-center my-4">
+                    <div id="loader" class="loader mx-auto hidden"></div>
+                    <p id="status-message" class="text-gray-500 dark:text-gray-400 mt-2"></p>
+                </div>
+
+                <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 min-h-[300px]">
+                    <h2 class="text-lg font-semibold mb-2 text-gray-700 dark:text-gray-300">JSON 결과</h2>
+                    <pre id="json-output" class="text-sm sm:text-base whitespace-pre-wrap break-all text-gray-800 dark:text-gray-200"></pre>
+                </div>
+                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-4 text-center">
+                    참고: 이 도구는 companiesmarketcap.com의 데이터를 스크래핑합니다. CORS 정책으로 인해 브라우저에서 직접 요청이 실패할 수 있으며, 이는 CORS 프록시를 통해 우회됩니다.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const scrapeButton = document.getElementById('scrape-button');
+        const jsonOutput = document.getElementById('json-output');
+        const loader = document.getElementById('loader');
+        const statusMessage = document.getElementById('status-message');
+
+        scrapeButton.addEventListener('click', scrapeAssets);
+
+        async function scrapeAssets() {
+            // UI 초기화
+            loader.classList.remove('hidden');
+            statusMessage.textContent = '데이터를 스크래핑하는 중입니다...';
+            jsonOutput.textContent = '';
+            scrapeButton.disabled = true;
+            scrapeButton.classList.add('opacity-50', 'cursor-not-allowed');
+
+            // CORS 문제를 우회하기 위해 프록시 사용
+            const proxyUrl = 'https://api.allorigins.win/raw?url=';
+            const targetUrl = encodeURIComponent('https://companiesmarketcap.com/assets-by-market-cap/');
+
+            try {
+                const response = await fetch(proxyUrl + targetUrl);
+                if (!response.ok) {
+                    throw new Error(`네트워크 응답이 올바르지 않습니다: ${response.statusText}`);
+                }
+                const html = await response.text();
+
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+
+                const table = doc.querySelector('table.marketcap-table');
+                if (!table) {
+                    throw new Error("데이터 테이블을 찾을 수 없습니다. (class='marketcap-table')");
+                }
+
+                const rows = table.querySelector('tbody').querySelectorAll('tr');
+                const assetsData = [];
+
+                // 상위 5개 자산만 처리
+                for (let i = 0; i < 5 && i < rows.length; i++) {
+                    const row = rows[i];
+                    const cells = row.querySelectorAll('td');
+                    if (cells.length < 7) continue;
+
+                    const nameDiv = cells[1].querySelector('div.company-name');
+                    const tickerDiv = cells[1].querySelector('div.company-code');
+                    const countrySpan = cells[6].querySelector('span.responsive-hidden');
+                    
+                    const name = nameDiv ? nameDiv.innerText.trim() : null;
+                    if (!name) continue; // 이름이 없으면 건너뛰기
+
+                    const asset = {
+                        rank: i + 1,
+                        name: name,
+                        ticker: tickerDiv ? tickerDiv.innerText.trim() : null,
+                        market_cap: parseMarketCap(cells[2].getAttribute('data-sort') || cells[2].innerText),
+                        price: parsePrice(cells[3].getAttribute('data-sort') || cells[3].innerText),
+                        country: countrySpan ? countrySpan.innerText.trim() : 'N/A'
+                    };
+                    assetsData.push(asset);
+                }
+
+                if (assetsData.length === 0) {
+                     throw new Error("파싱할 수 있는 데이터가 없습니다. 웹사이트 구조가 변경되었을 수 있습니다.");
+                }
+
+                // JSON 형식으로 변환하여 출력
+                jsonOutput.textContent = JSON.stringify(assetsData, null, 2);
+                statusMessage.textContent = '스크래핑 완료!';
+
+            } catch (error) {
+                console.error('스크래핑 오류:', error);
+                statusMessage.textContent = `오류 발생: ${error.message}`;
+                jsonOutput.textContent = '데이터를 불러오는 데 실패했습니다. 콘솔 로그를 확인해주세요.';
+            } finally {
+                // UI 상태 복원
+                loader.classList.add('hidden');
+                scrapeButton.disabled = false;
+                scrapeButton.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
+
+        function parseMarketCap(marketCapStr) {
+            if (!marketCapStr) return null;
+            const str = String(marketCapStr).trim().replace(/[\$,]/g, '');
+            const value = parseFloat(str.replace(/[TBM]$/, ''));
+            if (isNaN(value)) return null;
+
+            if (str.endsWith('T')) return value * 1e12;
+            if (str.endsWith('B')) return value * 1e9;
+            if (str.endsWith('M')) return value * 1e6;
+            return value;
+        }
+
+        function parsePrice(priceStr) {
+            if (!priceStr) return null;
+            const str = String(priceStr).trim().replace(/[\$,]/g, '');
+            if (str.includes('%')) return null;
+            const value = parseFloat(str);
+            return isNaN(value) ? null : value;
+        }
+    </script>
+</body>
+</html>

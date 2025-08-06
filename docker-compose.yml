@@ -1,0 +1,177 @@
+# market-analyzer/docker-compose.yml (서버 환경용으로 수정된 버전)
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: fire_markets_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - app_network
+      - shared-network
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${DB_USERNAME}", "-p${DB_PASSWORD}" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: fire_markets_redis
+    restart: unless-stopped
+    networks:
+      - app_network
+      - shared-network
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fire_markets_backend
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: mysql+mysqlconnector://${DB_USERNAME}:${DB_PASSWORD}@db:3306/${DB_DATABASE}
+      SECRET_KEY: ${SECRET_KEY}
+      ALPHA_VANTAGE_API_KEY_1: ${ALPHA_VANTAGE_API_KEY_1}
+      FMP_API_KEY: ${FMP_API_KEY}
+      BINANCE_API_KEY: ${BINANCE_API_KEY}
+      BINANCE_SECRET_KEY: ${BINANCE_SECRET_KEY}
+      COINBASE_API_KEY: ${COINBASE_API_KEY}
+      COINBASE_SECRET_KEY: ${COINBASE_SECRET_KEY}
+      COINMARKETCAP_API_KEY: ${COINMARKETCAP_API_KEY}
+      COIN_GECKO_API_KEY: ${COIN_GECKO_API_KEY}
+      PORT: 8000
+      HOST: 0.0.0.0
+      RELOAD: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app:delegated
+      - ./.env:/app/.env:ro
+      #healthcheck:
+      #test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      #interval: 10s
+      #timeout: 5s
+      #retries: 5
+      #start_period: 30s
+    networks:
+      - app_network
+      - shared-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev # <-- 운영용 Dockerfile이 있다면 그것으로 변경 (예: Dockerfile)
+      args:
+        USER_ID: 1000
+        GROUP_ID: 1000
+    container_name: fire_markets_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_URL: /api
+    depends_on:
+      - backend
+    user: "1000:1000"
+    volumes:
+      - ./frontend:/app:delegated
+      - frontend_node_modules:/app/node_modules
+    networks:
+      - app_network
+      - shared-network
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: fire_markets_phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: db
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./phpmyadmin/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini
+    networks:
+      - app_network
+      - shared-network
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+      - "9443:9443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - shared-network
+
+  nginx-proxy-manager:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: nginx-proxy-manager
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "81:81"
+      - "443:443"
+    volumes:
+      - npm_data:/data
+      - npm_letsencrypt:/etc/letsencrypt
+    networks:
+      - shared-network
+
+  filebrowser:
+    image: filebrowser/filebrowser:latest
+    container_name: fire_markets_filebrowser
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: Asia/Seoul
+    volumes:
+      - /home/geehong/firemarkets-app:/srv
+      - filebrowser_data:/database
+    networks:
+      - shared-network
+
+
+
+volumes:
+  db_data:
+  portainer_data:
+  npm_data:
+  npm_letsencrypt:
+  frontend_node_modules:
+  filebrowser_data:
+
+networks:
+  app_network:
+    driver: bridge
+  shared-network:
+    external: true
