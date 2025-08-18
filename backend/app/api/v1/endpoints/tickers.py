@@ -50,8 +50,8 @@ async def execute_data_collection(
     collectable_items = []
     if settings.get('collect_price', True):
         collectable_items.append("price data")
-    if settings.get('collect_company_info', True):
-        collectable_items.append("company info")
+    if settings.get('collect_assets_info', True):
+        collectable_items.append("assets info")
     if settings.get('collect_technical_indicators', False):
         collectable_items.append("technical indicators")
     if settings.get('collect_onchain', False):
@@ -303,18 +303,18 @@ async def run_individual_collection(asset_id: int, db: Session):
                 collection_tasks[asset_id]['message'] = f'Price collection failed: {str(e)}'
                 # 가격 수집 실패는 전체 작업을 중단하지 않음
         
-        # 2. 기업 정보 수집 (주식, ETF, 지수 등)
-        if settings.get('collect_company_info', True):
+        # 2. 자산 정보 수집 (주식, ETF, 지수 등)
+        if settings.get('collect_assets_info', True):
             collection_tasks[asset_id]['progress'] = 50
-            collection_tasks[asset_id]['message'] = f'Collecting company info for {asset.ticker}'
+            collection_tasks[asset_id]['message'] = f'Collecting assets info for {asset.ticker}'
             
             try:
-                # 여기에 실제 기업 정보 수집 로직 구현
-                logger.info(f"Company info collection completed for {asset.ticker}")
+                # 여기에 실제 자산 정보 수집 로직 구현
+                logger.info(f"Assets info collection completed for {asset.ticker}")
                 collection_tasks[asset_id]['progress'] = 70
             except Exception as e:
-                logger.error(f"Company info collection failed for {asset.ticker}: {str(e)}", exc_info=True)
-                collection_tasks[asset_id]['message'] = f'Company info collection failed: {str(e)}'
+                logger.error(f"Assets info collection failed for {asset.ticker}: {str(e)}", exc_info=True)
+                collection_tasks[asset_id]['message'] = f'Assets info collection failed: {str(e)}'
         
         # 3. 기술적 지표 수집
         if settings.get('collect_technical_indicators', False):

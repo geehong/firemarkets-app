@@ -11,12 +11,12 @@ import 'highcharts/modules/accessibility';
 import 'highcharts/modules/stock';
 import 'highcharts/modules/drag-panes';
 import 'highcharts/modules/navigator';
-import 'highcharts/modules/export-data';
-import 'highcharts/modules/stock-tools';
-import 'highcharts/modules/full-screen';
-import 'highcharts/modules/annotations-advanced';
-import 'highcharts/modules/price-indicator';
-import 'highcharts/indicators/indicators-all';
+// import 'highcharts/modules/export-data'; // 문제가 있는 모듈 제거
+// import 'highcharts/modules/stock-tools'; // 문제가 있는 모듈 제거
+// import 'highcharts/modules/full-screen'; // 문제가 있는 모듈 제거
+// import 'highcharts/modules/annotations-advanced'; // 문제가 있는 모듈 제거
+// import 'highcharts/modules/price-indicator'; // 문제가 있는 모듈 제거
+//import 'highcharts/indicators/indicators-all';
 
 const OnChainChart = ({ 
   assetId = 'BTCUSDT',

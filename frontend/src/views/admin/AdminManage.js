@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useAuth } from '../../contexts/AuthContext'
 import {
   CContainer,
   CRow,
@@ -68,6 +69,7 @@ import TickerTableReactTable from '../../components/admin/ticker/TickerTableReac
 import useAssetTypes from '../../hooks/useAssetTypes'
 
 const AdminManage = () => {
+  const { user, isAdmin, hasPermission } = useAuth()
   const [activeTab, setActiveTab] = useState('scheduler')
   const [tickerActiveTab, setTickerActiveTab] = useState('Stocks')
   const [alert, setAlert] = useState(null)
@@ -264,11 +266,19 @@ const AdminManage = () => {
 
 
 
+  // 권한 확인
+  if (!isAdmin) {
+    // 로그인 페이지로 리다이렉트
+    window.location.href = '/admin/login';
+    return null;
+  }
+
   return (
     <CContainer fluid>
       <CRow>
         <CCol xs={12}>
           <h2 className="mb-4">System Administration</h2>
+          <p className="text-muted">관리자: {user?.username} ({user?.role})</p>
 
           {/* 알림 */}
           {alert && (

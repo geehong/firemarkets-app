@@ -2,41 +2,28 @@
 import React from 'react' // JSX를 사용하므로 React 임포트 유지
 import CIcon from '@coreui/icons-react' // CIcon 컴포넌트 사용하므로 임포트 유지
 
-// 필요한 CoreUI 아이콘 데이터 객체를 모두 임포트합니다.
+// 실제로 사용되는 CoreUI 아이콘만 개별적으로 임포트 (성능 최적화)
 import {
-  cilBell,
-  cilCalculator,
-  cilChartPie,
-  cilCursor,
-  cilDescription,
-  cilDrop,
-  cilExternalLink,
-  cilNotes,
-  cilPencil,
-  cilPuzzle,
-  cilSpeedometer,
-  cilStar,
   cibBtc,
-  // 자산 유형별 아이콘
   cibGoldenline,
-  cilGraph, // 기존 Assets List 기본 아이콘
-  cilChart, // 기존 Assets List 기본 아이콘
-  cilBank, // 모든 자산
-  cilChartLine, // Stocks (주식)
-  cilFactory, // Commodities (원자재)
-  cilDollar, // Currencies (통화)
-  cilSwapHorizontal, // ETFs
-  cilCalendarCheck, // Bonds (채권)
-  cilLibrary, // Funds (펀드)
-  cibBitcoin, // Crypto (암호화폐)
-  cilBarChart,
-  // 관리자 아이콘
-  cilSettings,
+  cilChart,
+  cilChartLine,
+  cilFactory,
+  cilDollar,
+  cilSwapHorizontal,
+  cilCalendarCheck,
+  cilLibrary,
+  cibBitcoin,
+  cibMatrix,
+  cilChartPie,
+  cilPuzzle,
+  cilDrop,
+  cilPencil,
+  cilCursor,
+  cilNotes,
+  cilStar,
+  cilBell,
   cilShieldAlt,
-  cilClock, // 스케줄러 아이콘
-  cilList, // 티커 관리 아이콘
-  cilDataTransferDown, // 온체인 데이터 아이콘
-  cibMatrix, // 서브메뉴 아이콘
 } from '@coreui/icons'
 
 // CoreUI 컴포넌트들을 여기서 임포트합니다.
@@ -83,6 +70,37 @@ const getNavigationItems = (assetTypes) => {
     {
       component: CNavTitle,
       name: 'OnChain',
+    },
+    {
+      component: CNavGroup,
+      name: 'Halving',
+      icon: <CIcon icon={cibMatrix} customClassName="nav-icon" />,
+      items: [
+        {
+          component: CNavItem,
+          name: 'Price Analysis',
+          to: '/onchain/overviews',
+          className: 'nav-submenu-item'
+        },
+        {
+          component: CNavItem,
+          name: 'Halving Analysis',
+          to: '/onchain/overviews?halving=true',
+          className: 'nav-submenu-item'
+        },
+        {
+          component: CNavItem,
+          name: 'Bull Market',
+          to: '/onchain/overviews?metric=realized_price',
+          className: 'nav-submenu-item'
+        },
+        {
+          component: CNavItem,
+          name: 'Spiral',
+          to: '/onchain/overviews?metric=true_market_mean',
+          className: 'nav-submenu-item'
+        },
+      ],
     },
     {
       component: CNavGroup,

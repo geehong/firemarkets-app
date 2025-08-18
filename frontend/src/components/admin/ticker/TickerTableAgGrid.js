@@ -24,7 +24,7 @@ const dataSources = [
 ]
 
 const TickerTableAgGrid = ({
-  assetType = 'Stocks',
+  assetType = 'All',
   pendingChanges = {},
   onSettingChange,
   onExecute,
@@ -83,6 +83,13 @@ const TickerTableAgGrid = ({
       setTimeout(refreshData, 1000)
       setTimeout(refreshData, 2000)
       setTimeout(refreshData, 5000)
+      
+      // 강제로 컴포넌트 리렌더링
+      setTimeout(() => {
+        if (gridApi && gridApi.refreshCells) {
+          gridApi.refreshCells({ force: true })
+        }
+      }, 1000)
     },
     onError: (error) => {
       setIsSaving(false)
@@ -90,32 +97,50 @@ const TickerTableAgGrid = ({
     }
   })
 
+  // 데이터 디버깅 함수 추가
+  const debugTickerData = (ticker) => {
+    console.log(`🔍 Debug ${ticker.ticker}:`, {
+      asset_id: ticker.asset_id,
+      collection_settings: ticker.collection_settings,
+      collection_settings_type: typeof ticker.collection_settings,
+      parsed_settings: typeof ticker.collection_settings === 'string' ? 
+        JSON.parse(ticker.collection_settings) : ticker.collection_settings
+    })
+  }
+
   // 자산 타입별로 필터링
   const filteredTickersByType = useMemo(() => {
-    const filtered = tickers.filter(ticker => {
-      const tickerType = ticker.type_name || 'Stocks'
-      return tickerType === assetType
-    })
+    console.log('🔍 Total tickers count:', tickers.length)
+    console.log('🔍 Current assetType:', assetType)
+    
+    let filtered = tickers
+    
+    // All이 아닌 경우에만 타입별 필터링
+    if (assetType !== 'All') {
+      filtered = tickers.filter(ticker => {
+        const tickerType = ticker.type_name || 'Stocks'
+        const matches = tickerType === assetType
+        if (!matches) {
+          console.log(`🔍 ${ticker.ticker} filtered out by type: ${tickerType} !== ${assetType}`)
+        }
+        return matches
+      })
+    } else {
+      console.log('🔍 Showing all asset types')
+    }
     
     // 디버깅을 위한 로그
     console.log('🔍 Filtered tickers by type:', assetType, 'Count:', filtered.length)
     if (filtered.length > 0) {
       console.log('🔍 Sample ticker data:', filtered[0])
+      // 첫 번째 티커의 데이터 구조 디버깅
+      debugTickerData(filtered[0])
     }
     
     return filtered
   }, [tickers, assetType])
 
-  // 검색어로 필터링
-  const filteredTickers = useMemo(() => {
-    return filteredTickersByType.filter(
-      (ticker) =>
-        ticker.ticker.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        ticker.name.toLowerCase().includes(searchTerm.toLowerCase()),
-    )
-  }, [filteredTickersByType, searchTerm])
-
-  // 설정 키 매핑 (changeSummary보다 먼저 정의)
+  // 설정 키 매핑 (먼저 정의)
   const getSettingKey = (columnKey) => {
     switch (columnKey) {
       case 'price':
@@ -123,7 +148,7 @@ const TickerTableAgGrid = ({
       case 'stock_info':
       case 'etf_info':
       case 'fund_info':
-        return 'collect_company_info'
+        return 'collect_assets_info'
       case 'stock_financials':
         return 'collect_financials'
       case 'stock_estimates':
@@ -137,7 +162,7 @@ const TickerTableAgGrid = ({
     }
   }
 
-  // 원래 DB 값 가져오기 (로컬 상태 무시) - changeSummary보다 먼저 정의
+  // 원래 DB 값 가져오기 (로컬 상태 무시) - 먼저 정의
   const getOriginalSettingValue = (ticker, columnKey) => {
     const settingKey = getSettingKey(columnKey)
     if (!settingKey) return true
@@ -150,20 +175,51 @@ const TickerTableAgGrid = ({
       return pendingChanges[ticker.asset_id][settingKey]
     }
 
-    // JSON 필드에서 확인
-    if (ticker.collection_settings && ticker.collection_settings[settingKey] !== undefined) {
-      return ticker.collection_settings[settingKey]
+    // JSON 필드에서 확인 (문자열로 저장된 경우도 처리)
+    if (ticker.collection_settings) {
+      let collectionSettings = ticker.collection_settings
+      
+      // 문자열인 경우 파싱
+      if (typeof collectionSettings === 'string') {
+        try {
+          collectionSettings = JSON.parse(collectionSettings)
+        } catch (e) {
+          console.error('Failed to parse collection_settings:', e)
+          collectionSettings = {}
+        }
+      }
+      
+      if (collectionSettings && collectionSettings[settingKey] !== undefined) {
+        // boolean 값으로 변환
+        const value = collectionSettings[settingKey]
+        if (typeof value === 'boolean') {
+          return value
+        } else if (typeof value === 'string') {
+          return value.toLowerCase() === 'true'
+        } else if (typeof value === 'number') {
+          return value === 1
+        }
+        return Boolean(value)
+      }
     }
 
     // 기존 필드에서 확인 (하위 호환성)
     if (ticker[settingKey] !== undefined) {
-      return ticker[settingKey]
+      const value = ticker[settingKey]
+      if (typeof value === 'boolean') {
+        return value
+      } else if (typeof value === 'string') {
+        return value.toLowerCase() === 'true'
+      } else if (typeof value === 'number') {
+        return value === 1
+      }
+      return Boolean(value)
     }
 
     // 기본값 반환
     switch (settingKey) {
       case 'collect_price':
-      case 'collect_company_info':
+      case 'collect_assets_info':
       case 'collect_financials':
       case 'collect_estimates':
       case 'collect_crypto_data':
@@ -174,6 +230,41 @@ const TickerTableAgGrid = ({
         return true
     }
   }
+
+  // 검색어로 필터링 + collect_assets_info=true 필터링
+  const filteredTickers = useMemo(() => {
+    console.log('🔍 filteredTickersByType count:', filteredTickersByType.length)
+    console.log('🔍 searchTerm:', searchTerm)
+    
+    const filtered = filteredTickersByType.filter((ticker) => {
+      // 검색어 필터링
+      const matchesSearch = 
+        ticker.ticker.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        ticker.name.toLowerCase().includes(searchTerm.toLowerCase())
+      
+      if (!matchesSearch) {
+        console.log(`🔍 ${ticker.ticker} filtered out by search term`)
+        return false
+      }
+      
+      // collect_assets_info=true 필터링 (선택적)
+      // 사용자가 명시적으로 collect_assets_info=true만 보기를 원할 때만 적용
+      // 현재는 모든 자산을 보여주도록 주석 처리
+      /*
+      const hasAssetsInfo = getOriginalSettingValue(ticker, 'stock_info') || 
+                           getOriginalSettingValue(ticker, 'etf_info') || 
+                           getOriginalSettingValue(ticker, 'fund_info')
+      
+      return hasAssetsInfo
+      */
+      
+      // 모든 자산 표시
+      return true
+    })
+    
+    console.log('🔍 Final filtered count:', filtered.length)
+    return filtered
+  }, [filteredTickersByType, searchTerm])
 
   // 변경사항 요약 계산
   const changeSummary = useMemo(() => {
@@ -360,6 +451,11 @@ const TickerTableAgGrid = ({
           { key: 'crypto_data', label: 'C-Data' },
           { key: 'technical_indicators', label: 'Tech-Indi' },
         ]
+      case 'All':
+        // All인 경우 Price만 표시 (ID, Ticker, Data Source는 기본 컬럼에 포함됨)
+        return [
+          { key: 'price', label: 'Price' },
+        ]
       default:
         return [{ key: 'price', label: 'Price' }]
     }
@@ -448,8 +544,22 @@ const TickerTableAgGrid = ({
         sortable: false,
         filter: false,
         headerComponent: (params) => {
+          const state = getHeaderCheckboxState(column.key)
+          // React can't directly set indeterminate via attribute; use ref callback
           return (
-            <div className="d-flex align-items-center justify-content-center">
+            <div className="d-flex align-items-center justify-content-center gap-1">
+              <input
+                type="checkbox"
+                ref={(el) => {
+                  if (el) {
+                    el.indeterminate = state.indeterminate
+                    el.checked = state.checked
+                    el.disabled = state.disabled || isExecuting
+                  }
+                }}
+                onChange={(e) => handleHeaderToggle(column.key, e.target.checked)}
+                style={{ cursor: isExecuting ? 'not-allowed' : 'pointer' }}
+              />
               <span>{column.label}</span>
             </div>
           )
@@ -458,8 +568,20 @@ const TickerTableAgGrid = ({
           const ticker = params.data
           const checkboxKey = `${ticker.asset_id}_${column.key}`
           const initialValue = getSettingValue(ticker, column.key)
+          
+          // 로컬 상태가 있으면 로컬 상태 사용, 없으면 초기값 사용
           const isChecked = checkboxStates[checkboxKey] !== undefined ? checkboxStates[checkboxKey] : initialValue
           const hasChange = hasLocalChange(ticker, column.key)
+          
+          // 디버깅 로그 추가
+          console.log(`🔍 ${ticker.ticker} ${column.key}:`, {
+            asset_id: ticker.asset_id,
+            checkboxKey,
+            initialValue,
+            isChecked,
+            hasChange,
+            collection_settings: ticker.collection_settings
+          })
           
           return (
             <div className="d-flex justify-content-center align-items-center">
@@ -592,6 +714,11 @@ const TickerTableAgGrid = ({
         try {
           await refetchTickers()
           console.log('🔍 Data refreshed when tab became active')
+          
+          // 로컬 상태 초기화
+          setCheckboxStates({})
+          setDataSourceStates({})
+          console.log('🔍 Local states reset on tab activation')
         } catch (error) {
           console.error('🔍 Failed to refresh data on tab activation:', error)
         }
@@ -613,6 +740,11 @@ const TickerTableAgGrid = ({
       try {
         await refetchTickers()
         console.log('🔍 Data refreshed on component mount')
+        
+        // 로컬 상태 초기화
+        setCheckboxStates({})
+        setDataSourceStates({})
+        console.log('🔍 Local states reset on mount')
       } catch (error) {
         console.error('🔍 Failed to refresh data on mount:', error)
       }
@@ -641,6 +773,64 @@ const TickerTableAgGrid = ({
     return () => clearInterval(interval)
   }, [refetchTickers])
 
+  // 현재 페이지 표시 중인 티커들 가져오기
+  const getVisiblePageTickers = () => {
+    if (!gridApi || !gridApi.getDisplayedRowCount || !gridApi.getDisplayedRowAtIndex) {
+      return []
+    }
+    const count = gridApi.getDisplayedRowCount()
+    const rows = []
+    for (let i = 0; i < count; i += 1) {
+      const node = gridApi.getDisplayedRowAtIndex(i)
+      if (node && node.data) {
+        rows.push(node.data)
+      }
+    }
+    return rows
+  }
+
+  // 헤더 체크박스 상태 계산 (checked/indeterminate)
+  const getHeaderCheckboxState = (columnKey) => {
+    const rows = getVisiblePageTickers()
+    const total = rows.length
+    if (total === 0) {
+      return { checked: false, indeterminate: false, disabled: true }
+    }
+    let checkedCount = 0
+    for (const ticker of rows) {
+      if (getSettingValue(ticker, columnKey)) {
+        checkedCount += 1
+      }
+    }
+    return {
+      checked: checkedCount === total,
+      indeterminate: checkedCount > 0 && checkedCount < total,
+      disabled: false,
+    }
+  }
+
+  // 헤더에서 전체 토글 처리 (현재 페이지 한정)
+  const handleHeaderToggle = (columnKey, targetChecked) => {
+    const rows = getVisiblePageTickers()
+    setCheckboxStates((prev) => {
+      const next = { ...prev }
+      for (const ticker of rows) {
+        const key = `${ticker.asset_id}_${columnKey}`
+        next[key] = targetChecked
+      }
+      return next
+    })
+
+    if (gridApi && gridApi.refreshCells) {
+      try {
+        gridApi.refreshCells({ columns: [columnKey], force: true })
+      } catch (e) {
+        console.log('Grid refresh failed, retrying with force=true')
+        gridApi.refreshCells({ force: true })
+      }
+    }
+  }
+
   return (
     <div>
       {/* 자산 타입 선택 - 항상 표시 */}
@@ -658,11 +848,14 @@ const TickerTableAgGrid = ({
           {!Array.isArray(assetTypes) || assetTypes.length === 0 ? (
             <option value="">Loading asset types...</option>
           ) : (
-            assetTypes.map((type) => (
-              <option key={type.asset_type_id} value={type.type_name}>
-                {type.type_name}
-              </option>
-            ))
+            <>
+              <option value="All">All Assets</option>
+              {assetTypes.map((type) => (
+                <option key={type.asset_type_id} value={type.type_name}>
+                  {type.type_name}
+                </option>
+              ))}
+            </>
           )}
         </CFormSelect>
       </div>

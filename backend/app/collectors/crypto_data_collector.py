@@ -2,6 +2,7 @@
 Crypto Data Collector for collecting detailed cryptocurrency information from CoinMarketCap
 """
 import logging
+import asyncio
 import httpx
 from typing import List, Dict, Any, Optional
 from datetime import datetime, date
@@ -12,6 +13,7 @@ from ..models.asset import Asset, AssetType
 from ..models.crypto import CryptoData
 from ..core.config import GLOBAL_APP_CONFIGS
 from ..core.database import SessionLocal
+from ..utils.retry import retry_with_backoff, classify_api_error, TransientAPIError, PermanentAPIError
 
 logger = logging.getLogger(__name__)
 
@@ -78,24 +80,40 @@ class CryptoDataCollector(BaseCollector):
             errors = []
             
             async with httpx.AsyncClient() as client:
-                for asset in crypto_assets:
-                    try:
-                        result = await self._collect_crypto_data_for_asset(client, asset, db)
-                        if result["success"]:
-                            total_updated += result["updated_count"]
-                        total_processed += 1
-                        
-                        # Log progress
-                        self.log_progress(
-                            f"Processed {asset.ticker}: {result['message']}", 
-                            "info" if result["success"] else "warning"
+                # 배치 처리로 개선
+                batch_size = 3
+                for i in range(0, len(crypto_assets), batch_size):
+                    batch = crypto_assets[i:i + batch_size]
+                    
+                    async def process_crypto_with_semaphore(asset):
+                        return await self.process_with_semaphore(
+                            self._collect_crypto_data_for_asset(client, asset, db)
                         )
-                        
-                    except Exception as e:
-                        error_msg = f"Error processing {asset.ticker}: {str(e)}"
-                        logger.error(error_msg)
-                        errors.append(error_msg)
-                        total_processed += 1
+                    
+                    tasks = [process_crypto_with_semaphore(asset) for asset in batch]
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+                    
+                    for j, result in enumerate(results):
+                        asset = batch[j]
+                        if isinstance(result, Exception):
+                            error_msg = f"Error processing {asset.ticker}: {str(result)}"
+                            logger.error(error_msg)
+                            errors.append(error_msg)
+                            total_processed += 1
+                        else:
+                            if result["success"]:
+                                total_updated += result["updated_count"]
+                            total_processed += 1
+                            
+                            # Log progress
+                            self.log_progress(
+                                f"Processed {asset.ticker}: {result['message']}", 
+                                "info" if result["success"] else "warning"
+                            )
+                    
+                    # 배치 간 지연
+                    if i + batch_size < len(crypto_assets):
+                        await asyncio.sleep(1)
             
             success_message = f"Crypto data collection completed. Processed: {total_processed}, Updated: {total_updated}"
             if errors:
@@ -186,9 +204,31 @@ class CryptoDataCollector(BaseCollector):
                 "Accept": "application/json"
             }
             
-            quotes_response = await client.get(quotes_url, params=quotes_params, headers=headers, timeout=30)
-            quotes_response.raise_for_status()
-            quotes_data = quotes_response.json()
+            async def fetch_quotes():
+                quotes_response = await client.get(quotes_url, params=quotes_params, headers=headers, timeout=30)
+                
+                # API 응답 상태 코드에 따른 오류 분류
+                if quotes_response.status_code == 429:
+                    raise TransientAPIError(f"Rate limit exceeded for CoinMarketCap quotes API")
+                elif quotes_response.status_code >= 500:
+                    raise TransientAPIError(f"Server error {quotes_response.status_code} for CoinMarketCap quotes API")
+                elif quotes_response.status_code == 404:
+                    raise PermanentAPIError(f"Symbol {symbol} not found in CoinMarketCap quotes API")
+                elif quotes_response.status_code in [401, 403]:
+                    raise PermanentAPIError(f"Authentication failed for CoinMarketCap quotes API")
+                
+                quotes_response.raise_for_status()
+                return quotes_response.json()
+            
+            # 고도화된 재시도 로직 적용
+            max_retries = GLOBAL_APP_CONFIGS.get("MAX_API_RETRY_ATTEMPTS", 3)
+            quotes_data = await retry_with_backoff(
+                fetch_quotes,
+                max_retries=max_retries,
+                base_delay=1.0,
+                max_delay=30.0,
+                jitter=True
+            )
             
             if "data" not in quotes_data or symbol not in quotes_data["data"]:
                 logger.warning(f"Symbol {symbol} not found in CoinMarketCap quotes data")
@@ -201,9 +241,30 @@ class CryptoDataCollector(BaseCollector):
             info_url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/info"
             info_params = {"symbol": symbol}
             
-            info_response = await client.get(info_url, params=info_params, headers=headers, timeout=30)
-            info_response.raise_for_status()
-            info_data = info_response.json()
+            async def fetch_info():
+                info_response = await client.get(info_url, params=info_params, headers=headers, timeout=30)
+                
+                # API 응답 상태 코드에 따른 오류 분류
+                if info_response.status_code == 429:
+                    raise TransientAPIError(f"Rate limit exceeded for CoinMarketCap info API")
+                elif info_response.status_code >= 500:
+                    raise TransientAPIError(f"Server error {info_response.status_code} for CoinMarketCap info API")
+                elif info_response.status_code == 404:
+                    raise PermanentAPIError(f"Symbol {symbol} not found in CoinMarketCap info API")
+                elif info_response.status_code in [401, 403]:
+                    raise PermanentAPIError(f"Authentication failed for CoinMarketCap info API")
+                
+                info_response.raise_for_status()
+                return info_response.json()
+            
+            # 고도화된 재시도 로직 적용
+            info_data = await retry_with_backoff(
+                fetch_info,
+                max_retries=max_retries,
+                base_delay=1.0,
+                max_delay=30.0,
+                jitter=True
+            )
             
             if "data" not in info_data or symbol not in info_data["data"]:
                 logger.warning(f"Symbol {symbol} not found in CoinMarketCap info data")

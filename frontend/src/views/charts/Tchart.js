@@ -102,7 +102,7 @@ const ChartTestPage = () => {
         secondsVisible: false,
       },
       width: chartContainerRef.current.clientWidth,
-      height: 400,
+      height: 600,
     }
 
     console.log('Attempting to create chart with options:', chartOptions)
@@ -173,7 +173,7 @@ const ChartTestPage = () => {
             <div
               ref={chartContainerRef}
               style={{
-                height: '400px',
+                height: '600px',
                 width: '100%',
                 marginBottom: '20px',
                 border: '2px solid red',

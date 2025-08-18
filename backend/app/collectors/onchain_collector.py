@@ -17,6 +17,8 @@ from ..models.crypto import CryptoMetric
 from ..external_apis.alpha_vantage_client import AlphaVantageClient
 from ..external_apis.fmp_client import FMPClient
 from ..external_apis.coinmarketcap_client import CoinMarketCapClient
+from ..external_apis.coingecko_client import CoinGeckoClient
+from ..utils.retry import retry_with_backoff, classify_api_error, TransientAPIError, PermanentAPIError
 
 from ..core.websocket import scheduler
 
@@ -32,6 +34,17 @@ class OnchainCollector(BaseCollector):
         self.base_url = GLOBAL_APP_CONFIGS.get("BGEO_API_BASE_URL", "https://bitcoin-data.com")
         self.bitcoin_asset_id = self._get_bitcoin_asset_id()
         self.api_timeout = GLOBAL_APP_CONFIGS.get("API_REQUEST_TIMEOUT_SECONDS", 30)
+        
+        # 온체인 API 제한 고려한 세마포어 설정
+        semaphore_limit = GLOBAL_APP_CONFIGS.get("ONCHAIN_SEMAPHORE_LIMIT", 1)  # 기본값 1
+        self.log_progress(f"OnchainCollector: Semaphore enabled with limit {semaphore_limit}", "info")
+        
+        # API 클라이언트 초기화 (Fallback 체인)
+        self.coingecko_client = CoinGeckoClient()
+        self.coinmarketcap_client = CoinMarketCapClient()
+        
+        # API 우선순위 설정
+        self.api_priority = GLOBAL_APP_CONFIGS.get("ONCHAIN_API_PRIORITY", "coingecko,coinmarketcap,bitcoin-data")
     
     def _get_bitcoin_asset_id(self) -> int:
         """비트코인 자산 ID를 동적으로 찾습니다. BTC 또는 BTCUSDT를 지원합니다."""
@@ -118,39 +131,35 @@ class OnchainCollector(BaseCollector):
             successful_metrics = []
             
             async with httpx.AsyncClient() as client:
-                for metric_name in metrics:
-                    try:
-                        # Check if metric collection is enabled
-                        config_key = f"ONCHAIN_COLLECT_{metric_name.replace('-', '_').upper()}"
-                        if not GLOBAL_APP_CONFIGS.get(config_key, True):
-                            self.log_progress(f"Skipping {metric_name} (disabled)")
-                            continue
-                        
-                        self.log_progress(f"Collecting {metric_name} data")
-                        
-                        # MVRV Z-Score 특별 처리
-                        if metric_name == 'mvrv-zscore':
-                            endpoint = "/v1/mvrv-zscore"  # 올바른 엔드포인트
-                        else:
-                            endpoint = f"/v1/{metric_name}"
-                        
-                        added_count = await self._fetch_and_store_onchain_metric(
-                            client, metric_name, endpoint, {
-                                'd': 'timestamp_utc',
-                                metric_name.replace('-', '_'): metric_name.replace('-', '_')
-                            }
+                # 메트릭을 배치로 처리 (API 제한 고려)
+                batch_size = 1  # 한 번에 1개씩만 처리
+                for i in range(0, len(metrics), batch_size):
+                    metric_batch = metrics[i:i + batch_size]
+                    
+                    async def process_metric_with_semaphore(metric_name):
+                        return await self.process_with_semaphore(
+                            self._process_single_metric(client, metric_name)
                         )
-                        
-                        if added_count > 0:
-                            total_fetched += added_count
+                    
+                    tasks = [process_metric_with_semaphore(metric_name) for metric_name in metric_batch]
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+                    
+                    for j, result in enumerate(results):
+                        metric_name = metric_batch[j]
+                        if isinstance(result, Exception):
+                            self.log_progress(f"Error collecting {metric_name}: {result}", "error")
+                        elif result and result > 0:
+                            total_fetched += result
                             successful_metrics.append(metric_name)
-                            self.log_progress(f"{metric_name}: Added {added_count} records")
+                            self.log_progress(f"{metric_name}: Added {result} records")
                         else:
                             self.log_progress(f"No new {metric_name} data was fetched", "warning")
-                            
-                    except Exception as e:
-                        self.log_progress(f"Error collecting {metric_name}: {e}", "error")
-                        continue
+                    
+                    # API 제한 고려한 긴 지연 (시간당 10회 = 6분 간격)
+                    if i + batch_size < len(metrics):
+                        delay_seconds = GLOBAL_APP_CONFIGS.get("ONCHAIN_API_DELAY_SECONDS", 360)  # 기본 6분
+                        self.log_progress(f"Waiting {delay_seconds} seconds before next API call...", "info")
+                        await asyncio.sleep(delay_seconds)
                 
                 # Update asset's last collection time
                 await self._update_asset_collection_time()
@@ -174,149 +183,282 @@ class OnchainCollector(BaseCollector):
             self.log_progress(f"Onchain data collection failed: {e}", "error")
             raise
     
-    @backoff.on_exception(
-        backoff.expo,
-        (httpx.RequestError, httpx.HTTPStatusError),
-        max_tries=3,
-        max_time=60
-    )
+    async def _process_single_metric(self, client: httpx.AsyncClient, metric_name: str) -> int:
+        """개별 메트릭 처리 (세마포어 내부에서 호출)"""
+        try:
+            # Check if metric collection is enabled
+            config_key = f"ONCHAIN_COLLECT_{metric_name.replace('-', '_').upper()}"
+            if not GLOBAL_APP_CONFIGS.get(config_key, True):
+                self.log_progress(f"Skipping {metric_name} (disabled)")
+                return 0
+            
+            self.log_progress(f"Collecting {metric_name} data")
+            
+            # MVRV Z-Score 특별 처리
+            if metric_name == 'mvrv-zscore':
+                endpoint = "/v1/mvrv-zscore"  # 올바른 엔드포인트
+            else:
+                endpoint = f"/v1/{metric_name}"
+            
+            added_count = await self._fetch_and_store_onchain_metric(
+                client, metric_name, endpoint, {
+                    'd': 'timestamp_utc',
+                    metric_name.replace('-', '_'): metric_name.replace('-', '_')
+                }
+            )
+            
+            return added_count
+            
+        except Exception as e:
+            self.log_progress(f"Error collecting {metric_name}: {e}", "error")
+            return 0
+
     async def _fetch_and_store_onchain_metric(self, client: httpx.AsyncClient, metric_name: str, endpoint: str, field_map: dict, collection_type: str = "recent", force_update: bool = False) -> int:
-        """Fetch and store onchain metric data"""
+        """Fetch and store onchain metric data with fallback chain"""
+        
+        # API 우선순위에 따라 순차적으로 시도
+        apis = self.api_priority.split(',')
+        
+        for api_name in apis:
+            api_name = api_name.strip()
+            try:
+                self.log_progress(f"Trying {api_name} API for {metric_name}", "info")
+                
+                if api_name == "coingecko":
+                    if self._is_coingecko_supported(metric_name):
+                        self.log_progress(f"CoinGecko supports {metric_name}, attempting fetch", "info")
+                        result = await self._fetch_from_coingecko(metric_name, collection_type, force_update)
+                        if result > 0:
+                            self.log_progress(f"Successfully collected {result} records from CoinGecko for {metric_name}", "success")
+                            return result
+                    else:
+                        self.log_progress(f"CoinGecko does not support {metric_name}, skipping", "info")
+                
+                elif api_name == "coinmarketcap":
+                    if self._is_coinmarketcap_supported(metric_name):
+                        self.log_progress(f"CoinMarketCap supports {metric_name}, attempting fetch", "info")
+                        result = await self._fetch_from_coinmarketcap(metric_name, collection_type, force_update)
+                        if result > 0:
+                            self.log_progress(f"Successfully collected {result} records from CoinMarketCap for {metric_name}", "success")
+                            return result
+                    else:
+                        self.log_progress(f"CoinMarketCap does not support {metric_name}, skipping", "info")
+                
+                elif api_name == "bitcoin-data":
+                    self.log_progress(f"Bitcoin-Data supports all metrics, attempting fetch", "info")
+                    result = await self._fetch_from_bitcoin_data(client, metric_name, endpoint, field_map, collection_type, force_update)
+                    if result > 0:
+                        self.log_progress(f"Successfully collected {result} records from Bitcoin-Data for {metric_name}", "success")
+                        return result
+                
+            except Exception as e:
+                self.log_progress(f"Failed to fetch from {api_name} for {metric_name}: {e}", "warning")
+                continue
+        
+        self.log_progress(f"All APIs failed for {metric_name}", "error")
+        return 0
+        
+        pass
+    
+    async def _fetch_from_bitcoin_data(self, client: httpx.AsyncClient, metric_name: str, endpoint: str, field_map: dict, collection_type: str, force_update: bool) -> int:
+        """Fetch data from bitcoin-data.com API"""
         url = f"{self.base_url}{endpoint}"
         
         # collection_type에 따라 날짜 범위 설정
         if collection_type == "all":
-            # 전체 데이터 수집을 위해 더 넓은 범위 사용
-            params = {
-                'startday': (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d'),  # 1년
-                'endday': datetime.now().strftime('%Y-%m-%d'),
-                'page': 0,
-                'size': 1000  # 더 많은 데이터 요청
-            }
+            params = {}
         else:
-            # 최근 데이터만 수집
-            params = {
-                'startday': (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d'),
-                'endday': datetime.now().strftime('%Y-%m-%d'),
-                'page': 0,
-                'size': 100
-            }
+            params = {}
         
-        try:
+        async def api_call():
             await self.safe_emit('scheduler_log', {
-                'message': f"Onchain API 호출 시도: {url} with params: {params}", 
+                'message': f"Bitcoin-Data API 호출 시도: {url} with params: {params}", 
                 'type': 'info'
             })
             
-            response = await client.get(url, params=params, timeout=self.api_timeout)
+            response = await client.get(url, params=params, timeout=30)
+            
+            # API 응답 상태 코드에 따른 오류 분류
+            if response.status_code == 429:
+                raise TransientAPIError(f"Rate limit exceeded for Bitcoin-Data API")
+            elif response.status_code >= 500:
+                raise TransientAPIError(f"Server error {response.status_code} for Bitcoin-Data API")
+            elif response.status_code == 404:
+                raise PermanentAPIError(f"Endpoint not found: {endpoint}")
+            elif response.status_code in [401, 403]:
+                raise PermanentAPIError(f"Authentication failed for Bitcoin-Data API")
+            
             response.raise_for_status()
-            data = response.json()
+            return response.json()
+        
+        try:
+            # 고도화된 재시도 로직 적용
+            max_retries = GLOBAL_APP_CONFIGS.get("MAX_API_RETRY_ATTEMPTS", 3)
+            data = await retry_with_backoff(
+                api_call,
+                max_retries=max_retries,
+                base_delay=1.0,
+                max_delay=30.0,
+                jitter=True
+            )
             
-            if not data or not isinstance(data, list):
-                self.log_progress(f"Invalid response format from {metric_name} API", "warning")
-                return 0
+            # 데이터 처리 및 저장
+            return await self._process_onchain_data(metric_name, data, field_map)
             
-            # 필드명 매핑 정의
-            field_mapping = {
-                'mvrv-zscore': 'mvrvZscore',
-                'sopr': 'sopr',
-                'nupl': 'nupl',
-                'realized-price': 'realizedPrice',
-                'hashrate': 'hashrate',
-                'difficulty-BTC': 'difficultyBtc',
-                'miner-reserves': 'reserves',
-                'etf-btc-total': 'etfBtcTotal',
-                'open-interest-futures': 'openInterestFutures',
-                'cap-real-usd': 'capRealUSD',
-                'cdd-90dma': 'cdd90dma',
-                'true-market-mean': 'trueMarketMean',
-                'nrpl-btc': 'nrplBtc',
-                'aviv': 'aviv',
-                'thermo-cap': 'thermoCap',
-                'hodl-waves-supply': 'hodlWavesSupply',
-                'etf-btc-flow': 'etfFlow'
-            }
+        except PermanentAPIError as e:
+            self.log_progress(f"Permanent error for {metric_name}: {e}", "error")
+            return 0
+        except TransientAPIError as e:
+            self.log_progress(f"Transient error for {metric_name}: {e}", "warning")
+            return 0
+        except Exception as e:
+            self.log_progress(f"Unexpected error for {metric_name}: {e}", "error")
+            return 0
+
+    async def _process_onchain_data(self, metric_name: str, data: dict, field_map: dict) -> int:
+        """온체인 데이터 처리 및 저장"""
+        # 디버깅 로그 추가
+        self.log_progress(f"DEBUG: Processing {metric_name} data, type: {type(data)}, length: {len(data) if isinstance(data, (list, dict)) else 'N/A'}", "info")
+        
+        if not data:
+            self.log_progress(f"DEBUG: No data for {metric_name}", "warning")
+            return 0
             
-            # 실제 필드명 가져오기
-            actual_field_name = field_mapping.get(metric_name, metric_name.replace('-', ''))
+        if not isinstance(data, (list, dict)):
+            self.log_progress(f"DEBUG: Invalid data type for {metric_name}: {type(data)}", "warning")
+            return 0
+        
+        db = self.get_db_session()
+        added_count = 0
+        
+        try:
+            # 데이터 구조에 따라 처리
+            if 'data' in data:
+                records = data['data']
+                self.log_progress(f"DEBUG: Using data['data'] for {metric_name}, records count: {len(records)}", "info")
+            elif isinstance(data, list):
+                records = data
+                self.log_progress(f"DEBUG: Using data as list for {metric_name}, records count: {len(records)}", "info")
+            else:
+                records = [data]
+                self.log_progress(f"DEBUG: Using data as single record for {metric_name}", "info")
             
-            total_fetched = 0
-            db = self.get_db_session()
-            
-            for item in data:
-                date_str = item.get('d')
-                
-                # HODL Waves Supply 특별 처리
-                if metric_name == 'hodl-waves-supply':
-                    hodl_fields = [
-                        'age_0d_1d', 'age_1d_1w', 'age_1w_1m', 'age_1m_3m',
-                        'age_3m_6m', 'age_6m_1y', 'age_1y_2y', 'age_2y_3y',
-                        'age_3y_4y', 'age_4y_5y', 'age_5y_7y', 'age_7y_10y', 'age_10y'
-                    ]
-                    
-                    # 모든 HODL 필드가 None인지 확인
-                    all_none = all(item.get(field) is None for field in hodl_fields)
-                    if all_none:
-                        continue
-                        
-                    metric_value = None  # HODL Waves는 개별 필드로 저장
-                else:
-                    metric_value = self._safe_float(item.get(actual_field_name))
-                
-                if not date_str or (metric_value is None and metric_name != 'hodl-waves-supply'):
+            for record in records:
+                if not isinstance(record, dict):
                     continue
                 
-                try:
-                    record_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-                except ValueError:
+                # 필드 매핑 적용
+                field_key = metric_name.replace('-', '_')
+                value = record.get(field_key) or record.get('value')
+                
+                # 디버깅 로그
+                if metric_name == 'aviv':
+                    self.log_progress(f"DEBUG: record={record}, field_key={field_key}, value={value}", "info")
+                
+                # 값 검증
+                if value is None:
+                    if metric_name == 'aviv':
+                        self.log_progress(f"DEBUG: Skipping record with None value: {record}", "warning")
                     continue
                 
-                # Check if record already exists
-                existing_record = db.query(CryptoMetric).filter(
+                # 중복 체크 및 저장
+                existing = db.query(CryptoMetric).filter(
                     CryptoMetric.asset_id == self.bitcoin_asset_id,
-                    CryptoMetric.timestamp_utc == record_date
+                    CryptoMetric.timestamp_utc == record.get('d')
                 ).first()
                 
-                if existing_record and not force_update:
-                    # Skip existing record if not forcing update
-                    continue
-                elif existing_record and force_update:
-                    # Update existing record when force_update is True
-                    if metric_name == 'hodl-waves-supply':
-                        # HODL Waves 필드들 업데이트
-                        for field in hodl_fields:
-                            db_field = f"hodl_{field}"
-                            value = self._safe_float(item.get(field))
-                            if value is not None:
-                                setattr(existing_record, db_field, value)
-                    else:
-                        setattr(existing_record, metric_name.replace('-', '_'), metric_value)
+                if existing:
+                    # 기존 레코드 업데이트
+                    if metric_name == 'aviv':
+                        existing.aviv = value
+                    elif metric_name == 'mvrv-zscore':
+                        existing.mvrv_z_score = value
+                    elif metric_name == 'sopr':
+                        existing.sopr = value
+                    elif metric_name == 'nupl':
+                        existing.nupl = value
+                    elif metric_name == 'realized-price':
+                        existing.realized_price = value
+                    elif metric_name == 'hashrate':
+                        existing.hashrate = value
+                    elif metric_name == 'difficulty-BTC':
+                        existing.difficulty = value
+                    elif metric_name == 'miner-reserves':
+                        existing.miner_reserves = value
+                    elif metric_name == 'etf-btc-total':
+                        existing.etf_btc_total = value
+                    elif metric_name == 'open-interest-futures':
+                        existing.open_interest_futures = value
+                    elif metric_name == 'cap-real-usd':
+                        existing.realized_cap = value
+                    elif metric_name == 'cdd-90dma':
+                        existing.cdd_90dma = value
+                    elif metric_name == 'true-market-mean':
+                        existing.true_market_mean = value
+                    elif metric_name == 'nrpl-btc':
+                        existing.nrpl_btc = value
+                    elif metric_name == 'thermo-cap':
+                        existing.thermo_cap = value
+                    elif metric_name == 'hodl-waves-supply':
+                        existing.hodl_waves_supply = value
+                    elif metric_name == 'etf-btc-flow':
+                        existing.etf_btc_flow = value
+                    
+                    existing.updated_at = datetime.now()
                 else:
-                    # Create new record
-                    new_record = CryptoMetric(
+                    # 새로운 레코드 생성
+                    new_metric = CryptoMetric(
                         asset_id=self.bitcoin_asset_id,
-                        timestamp_utc=record_date
+                        timestamp_utc=record.get('d'),
+                        created_at=datetime.now()
                     )
-                    if metric_name == 'hodl-waves-supply':
-                        # HODL Waves 필드들 설정
-                        for field in hodl_fields:
-                            db_field = f"hodl_{field}"
-                            value = self._safe_float(item.get(field))
-                            if value is not None:
-                                setattr(new_record, db_field, value)
-                    else:
-                        setattr(new_record, metric_name.replace('-', '_'), metric_value)
-                    db.add(new_record)
+                    
+                    # 메트릭별 필드 설정
+                    if metric_name == 'aviv':
+                        new_metric.aviv = value
+                    elif metric_name == 'mvrv-zscore':
+                        new_metric.mvrv_z_score = value
+                    elif metric_name == 'sopr':
+                        new_metric.sopr = value
+                    elif metric_name == 'nupl':
+                        new_metric.nupl = value
+                    elif metric_name == 'realized-price':
+                        new_metric.realized_price = value
+                    elif metric_name == 'hashrate':
+                        new_metric.hashrate = value
+                    elif metric_name == 'difficulty-BTC':
+                        new_metric.difficulty = value
+                    elif metric_name == 'miner-reserves':
+                        new_metric.miner_reserves = value
+                    elif metric_name == 'etf-btc-total':
+                        new_metric.etf_btc_total = value
+                    elif metric_name == 'open-interest-futures':
+                        new_metric.open_interest_futures = value
+                    elif metric_name == 'cap-real-usd':
+                        new_metric.realized_cap = value
+                    elif metric_name == 'cdd-90dma':
+                        new_metric.cdd_90dma = value
+                    elif metric_name == 'true-market-mean':
+                        new_metric.true_market_mean = value
+                    elif metric_name == 'nrpl-btc':
+                        new_metric.nrpl_btc = value
+                    elif metric_name == 'thermo-cap':
+                        new_metric.thermo_cap = value
+                    elif metric_name == 'hodl-waves-supply':
+                        new_metric.hodl_waves_supply = value
+                    elif metric_name == 'etf-btc-flow':
+                        new_metric.etf_btc_flow = value
+                    
+                    db.add(new_metric)
                 
-                total_fetched += 1
+                added_count += 1
             
-            if total_fetched > 0:
-                db.commit()
-            
-            return total_fetched
+            db.commit()
+            return added_count
             
         except Exception as e:
-            self.log_progress(f"Error fetching {metric_name} data: {e}", "error")
+            db.rollback()
+            self.log_progress(f"Error processing {metric_name} data: {e}", "error")
             return 0
     
     async def _update_asset_collection_time(self):
@@ -330,6 +472,137 @@ class OnchainCollector(BaseCollector):
                 self.log_progress("Updated asset last onchain collection time")
         except Exception as e:
             self.log_progress(f"Error updating asset collection time: {e}", "error")
+    
+
+    
+    def _is_coingecko_supported(self, metric_name: str) -> bool:
+        """Check if metric is supported by CoinGecko API"""
+        supported_metrics = [
+            'price', 'market-cap', 'volume', 'realized-price'
+        ]
+        return metric_name in supported_metrics
+    
+    def _is_coinmarketcap_supported(self, metric_name: str) -> bool:
+        """Check if metric is supported by CoinMarketCap API"""
+        supported_metrics = [
+            'price', 'market-cap', 'volume', 'circulating-supply'
+        ]
+        return metric_name in supported_metrics
+    
+
+    
+    def _update_metric_field(self, metric: CryptoMetric, metric_name: str, value: float):
+        """Update specific metric field on CryptoMetric object"""
+        field_mapping = {
+            'mvrv-zscore': 'mvrv_z_score',
+            'sopr': 'sopr',
+            'nupl': 'nupl',
+            'realized-price': 'realized_price',
+            'hashrate': 'hashrate',
+            'difficulty-BTC': 'difficulty',
+            'hodl-waves-supply': 'hodl_waves_supply',
+            'aviv': 'aviv'
+        }
+        
+        field_name = field_mapping.get(metric_name)
+        if field_name and hasattr(metric, field_name):
+            setattr(metric, field_name, value)
+    
+    async def _fetch_from_coingecko(self, metric_name: str, collection_type: str, force_update: bool) -> int:
+        """Fetch data from CoinGecko API"""
+        try:
+            self.log_progress(f"Fetching {metric_name} from CoinGecko API", "info")
+            
+            # 메트릭별 CoinGecko 메서드 매핑
+            method_mapping = {
+                'price': self.coingecko_client.get_bitcoin_price_history,
+                'market-cap': self.coingecko_client.get_bitcoin_market_cap_history,
+                'volume': self.coingecko_client.get_bitcoin_volume_history,
+                'realized-price': self.coingecko_client.get_bitcoin_price_history  # 대체로 사용
+            }
+            
+            method = method_mapping.get(metric_name)
+            if not method:
+                self.log_progress(f"CoinGecko method not found for {metric_name}", "warning")
+                return 0
+            
+            # 데이터 가져오기 (최근 30일)
+            days = 30 if collection_type == "recent" else 365
+            data = await method(days)
+            
+            if not data:
+                self.log_progress(f"No data received from CoinGecko for {metric_name}", "warning")
+                return 0
+            
+            # 데이터 처리 및 저장
+            return await self._process_coingecko_data(metric_name, data)
+            
+        except Exception as e:
+            self.log_progress(f"Error fetching from CoinGecko for {metric_name}: {e}", "error")
+            return 0
+    
+    async def _fetch_from_coinmarketcap(self, metric_name: str, collection_type: str, force_update: bool) -> int:
+        """Fetch data from CoinMarketCap API"""
+        try:
+            self.log_progress(f"Fetching {metric_name} from CoinMarketCap API", "info")
+            
+            # CoinMarketCap은 기본적인 시장 데이터만 제공
+            # 여기서는 기본적인 메트릭만 처리
+            if metric_name in ['price', 'market-cap', 'volume']:
+                # CoinMarketCap API 호출 (구현 필요)
+                self.log_progress(f"CoinMarketCap API implementation needed for {metric_name}", "warning")
+                return 0
+            
+            return 0
+            
+        except Exception as e:
+            self.log_progress(f"Error fetching from CoinMarketCap for {metric_name}: {e}", "error")
+            return 0
+    
+    async def _process_coingecko_data(self, metric_name: str, data: List[Dict]) -> int:
+        """Process and store CoinGecko data"""
+        if not data:
+            return 0
+        
+        db = self.get_db_session()
+        added_count = 0
+        
+        try:
+            for item in data:
+                if len(item) >= 2:
+                    timestamp_utc = datetime.fromtimestamp(item[0] / 1000)  # CoinGecko uses milliseconds
+                    value = item[1]
+                    
+                    # 중복 체크
+                    existing = db.query(CryptoMetric).filter(
+                        CryptoMetric.asset_id == self.bitcoin_asset_id,
+                        CryptoMetric.timestamp_utc == timestamp_utc.date()
+                    ).first()
+                    
+                    if existing:
+                        # 기존 레코드 업데이트 (CoinGecko 데이터는 기본 메트릭만)
+                        if metric_name == 'price':
+                            # 가격 데이터는 다른 필드에 저장하거나 무시
+                            pass
+                        existing.updated_at = datetime.now()
+                    else:
+                        # 새 레코드 생성 (CoinGecko 데이터는 기본 메트릭만)
+                        new_metric = CryptoMetric(
+                            asset_id=self.bitcoin_asset_id,
+                            timestamp_utc=timestamp_utc.date(),
+                            created_at=datetime.now()
+                        )
+                        db.add(new_metric)
+                    
+                    added_count += 1
+            
+            db.commit()
+            return added_count
+            
+        except Exception as e:
+            db.rollback()
+            self.log_progress(f"Error processing CoinGecko data for {metric_name}: {e}", "error")
+            return 0
     
     def _safe_float(self, value: Any) -> Optional[float]:
         """Safely convert value to float"""
@@ -379,18 +652,97 @@ class OnchainCollector(BaseCollector):
             # metric_id를 API 형식으로 변환
             metric_name = metric_id.replace('_', '-')
             
-            # MVRV Z-Score 특별 처리
+            # 각 메트릭별 올바른 API 응답 필드명 매핑
             if metric_id == 'mvrv_z_score':
-                endpoint = "/v1/mvrv-zscore"  # 올바른 엔드포인트
+                endpoint = "/v1/mvrv-zscore"
+                field_map = {
+                    'd': 'timestamp_utc',
+                    'mvrv_z_score': 'mvrvZscore'
+                }
+            elif metric_id == 'realized_price':
+                endpoint = "/v1/realized-price"
+                field_map = {
+                    'd': 'timestamp_utc',
+                    'realized_price': 'realizedPrice'
+                }
+            elif metric_id == 'difficulty_btc':
+                endpoint = "/v1/difficulty-BTC"
+                field_map = {
+                    'd': 'timestamp_utc',
+                    'difficulty_btc': 'difficultyBtc'
+                }
+            elif metric_id == 'miner_reserves':
+                endpoint = "/v1/miner-reserves"
+                field_map = {
+                    'd': 'timestamp_utc',
+                    'miner_reserves': 'reserves'
+                }
+            elif metric_id == 'etf_btc_total':
+                endpoint = "/v1/etf-btc-total"
+                field_map = {
+                    'd': 'timestamp_utc',
+                    'etf_btc_total': 'etfBtcTotal'
+                }
+            elif metric_id == 'open_interest_futures':
+                endpoint = "/v1/open-interest-futures"
+                field_map = {
+                    'd': 'timestamp_utc',
+                    'open_interest_futures': 'openInterestFutures'
+                }
+            elif metric_id == 'realized_cap':
+                endpoint = "/v1/cap-real-usd"
+                field_map = {
+                    'date_field': 'theDay',
+                    'theDay': 'timestamp_utc',
+                    'realized_cap': 'capRealUSD'
+                }
+            elif metric_id == 'cdd_90dma':
+                endpoint = "/v1/cdd-90dma"
+                field_map = {
+                    'd': 'timestamp_utc',
+                    'cdd_90dma': 'cdd90dma'
+                }
+            elif metric_id == 'true_market_mean':
+                endpoint = "/v1/true-market-mean"
+                field_map = {
+                    'd': 'timestamp_utc',
+                    'true_market_mean': 'trueMarketMean'
+                }
+            elif metric_id == 'nrpl_btc':
+                endpoint = "/v1/nrpl-btc"
+                field_map = {
+                    'd': 'timestamp_utc',
+                    'nrpl_btc': 'nrplBtc'
+                }
+            elif metric_id == 'thermo_cap':
+                endpoint = "/v1/thermo-cap"
+                field_map = {
+                    'd': 'timestamp_utc',
+                    'thermo_cap': 'thermoCap'
+                }
+            elif metric_id == 'etf_btc_flow':
+                endpoint = "/v1/etf-btc-flow"
+                field_map = {
+                    'd': 'timestamp_utc',
+                    'etf_btc_flow': 'etfFlow'
+                }
+            elif metric_id == 'hodl_waves_supply':
+                endpoint = "/v1/hodl-waves-supply"
+                field_map = {
+                    'd': 'timestamp_utc',
+                    'hodl_waves_supply': 'hodlWavesSupply'
+                }
             else:
+                # 나머지 메트릭들은 API 응답 필드명이 동일함
                 endpoint = f"/v1/{metric_name}"
+                field_map = {
+                    'd': 'timestamp_utc',
+                    metric_name.replace('-', '_'): metric_name.replace('-', '_')
+                }
             
             async with httpx.AsyncClient() as client:
                 added_count = await self._fetch_and_store_onchain_metric(
-                    client, metric_name, endpoint, {
-                        'd': 'timestamp_utc',
-                        metric_name.replace('-', '_'): metric_name.replace('-', '_')
-                    }, collection_type, force_update
+                    client, metric_name, endpoint, field_map, collection_type, force_update
                 )
                 
                 await self._update_asset_collection_time()

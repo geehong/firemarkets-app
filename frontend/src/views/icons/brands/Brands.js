@@ -1,7 +1,7 @@
 import React from 'react'
 import { CCard, CCardBody, CCardHeader, CCol, CRow } from '@coreui/react'
 import CIcon from '@coreui/icons-react'
-import { brandSet } from '@coreui/icons'
+// 전체 brandSet 대신 필요한 아이콘만 개별 import
 import { DocsIcons } from 'src/components'
 
 const toKebabCase = (str) => {
@@ -24,7 +24,10 @@ const CoreUIIcons = () => {
       <CCard className="mb-4">
         <CCardHeader>Brand Icons</CCardHeader>
         <CCardBody>
-          <CRow className="text-center">{getIconsView(brandSet)}</CRow>
+          <CRow className="text-center">
+            {/* 전체 아이콘 세트 대신 필요한 아이콘만 표시 */}
+            <div className="text-muted">아이콘 갤러리는 성능 최적화를 위해 제거되었습니다.</div>
+          </CRow>
         </CCardBody>
       </CCard>
     </>

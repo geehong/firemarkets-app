@@ -106,7 +106,7 @@ const AssetsTable = ({
           if (settings.collect_onchain) settingsList.push("온체인 수집");
           if (settings.collect_estimates) settingsList.push("예측 수집");
           if (settings.collect_financials) settingsList.push("재무 수집");
-          if (settings.collect_company_info) settingsList.push("회사정보 수집");
+          if (settings.collect_assets_info) settingsList.push("자산정보 수집");
           if (settings.collect_technical_indicators) settingsList.push("기술지표 수집");
           
           return settingsList.join(", ");

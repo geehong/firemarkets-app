@@ -21,6 +21,16 @@ class BaseCollector(ABC):
     def __init__(self, db: Session = None):
         self.db = db
         self.collector_name = self.__class__.__name__
+        
+        # 세마포어 기능 설정 기반 활성화
+        self.enable_semaphore = GLOBAL_APP_CONFIGS.get("ENABLE_SEMAPHORE", True)
+        if self.enable_semaphore:
+            semaphore_limit = GLOBAL_APP_CONFIGS.get("SEMAPHORE_LIMIT", 3)
+            self.semaphore = asyncio.Semaphore(semaphore_limit)
+            logger.info(f"{self.collector_name}: Semaphore enabled with limit {semaphore_limit}")
+        else:
+            self.semaphore = None
+            logger.info(f"{self.collector_name}: Semaphore disabled")
     
     async def collect(self) -> Dict[str, Any]:
         """Main collection method with error handling and logging"""
@@ -77,6 +87,14 @@ class BaseCollector(ABC):
                 "duration": duration,
                 "error": str(e)
             }
+    
+    async def process_with_semaphore(self, coro):
+        """세마포어가 활성화된 경우에만 동시성 제어 적용"""
+        if self.enable_semaphore and self.semaphore:
+            async with self.semaphore:
+                return await coro
+        else:
+            return await coro
     
     @abstractmethod
     async def _collect_data(self) -> Dict[str, Any]:

@@ -5,9 +5,22 @@ import autoprefixer from 'autoprefixer'
 
 export default defineConfig(() => {
   return {
-    base: './',
+    base: '/',
     build: {
       outDir: 'build',
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            vendor: ['react', 'react-dom'],
+            coreui: ['@coreui/react', '@coreui/icons-react'],
+            charts: ['highcharts', 'highcharts-react-official'],
+            grid: ['ag-grid-community', 'ag-grid-react'],
+            query: ['@tanstack/react-query'],
+            router: ['react-router-dom'],
+          },
+        },
+      },
+      chunkSizeWarningLimit: 1000,
     },
     css: {
       postcss: {
@@ -23,6 +36,15 @@ export default defineConfig(() => {
     },
     optimizeDeps: {
       force: true,
+      include: [
+        'react',
+        'react-dom',
+        '@coreui/react',
+        '@coreui/icons-react',
+        'highcharts',
+        'ag-grid-community',
+        '@tanstack/react-query',
+      ],
       esbuildOptions: {
         loader: {
           '.js': 'jsx',

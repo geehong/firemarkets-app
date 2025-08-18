@@ -5,7 +5,40 @@ import { AppContent, AppSidebar, AppFooter, AppHeader } from '../components/inde
 // 필요한 CoreUI 컴포넌트들을 임포트합니다.
 import { CNavGroup, CNavItem, CNavTitle } from '@coreui/react'
 import CIcon from '@coreui/icons-react'
-import * as icons from '@coreui/icons' // 모든 아이콘을 임포트 (DefaultLayout에서 CIcon에 전달할 때 사용)
+// 실제로 사용되는 아이콘만 임포트 (성능 최적화)
+// import {
+//   cilBell,
+//   cilCalculator,
+//   cilChartPie,
+//   cilCursor,
+//   cilDescription,
+//   cilDrop,
+//   cilExternalLink,
+//   cilNotes,
+//   cilPencil,
+//   cilPuzzle,
+//   cilSpeedometer,
+//   cilStar,
+//   cibBtc,
+//   cibGoldenline,
+//   cilGraph,
+//   cilChart,
+//   cilBank,
+//   cilChartLine,
+//   cilFactory,
+//   cilDollar,
+//   cilSwapHorizontal,
+//   cilCalendarCheck,
+//   cilLibrary,
+//   cibBitcoin,
+//   cilBarChart,
+//   cilSettings,
+//   cilShieldAlt,
+//   cilClock,
+//   cilList,
+//   cilDataTransferDown,
+//   cibMatrix,
+// } from '@coreui/icons'
 
 import axios from 'axios' // axios 임포트
 import getNavigationItems from '../_nav' // <<--- _nav.js에서 함수 임포트

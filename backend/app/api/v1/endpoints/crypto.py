@@ -1,7 +1,7 @@
 # backend_temp/app/api/v1/endpoints/crypto.py
 import logging
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
@@ -30,6 +30,7 @@ class OHLCVPoint(BaseModel):
     close_price: float
     volume: float
     change_percent: Optional[float] = None
+    days: Optional[int] = None  # 반감기 후 경과일수
 
 class BitcoinHalvingPeriodDataResponse(BaseModel):
     period_number: int
@@ -49,6 +50,7 @@ HALVING_DATES = {
 @router.get("/bitcoin/halving-data/{period_number}", response_model=BitcoinHalvingPeriodDataResponse)
 async def get_bitcoin_halving_data(
     period_number: int = Path(..., ge=1, le=len(HALVING_DATES), description=f"Bitcoin halving period (1-{len(HALVING_DATES)})"),
+    normalize_to_price: Optional[float] = Query(None, description="정규화할 기준 가격 (null이면 4차 반감기 시작가격 사용)"),
     db: Session = Depends(get_db)
 ):
     """비트코인 반감기 기간별 OHLCV 데이터를 조회합니다."""
@@ -93,10 +95,50 @@ async def get_bitcoin_halving_data(
                 change_percent=change_percent
             ))
 
+        # normalize_to_price가 None이면 4차 반감기 시작가격을 가져와서 설정
+        if normalize_to_price is None:
+            # 4차 반감기 데이터를 가져와서 시작가격 설정
+            fourth_period_info = HALVING_DATES[4]
+            fourth_start_date = datetime.strptime(fourth_period_info["start"], "%Y-%m-%d").date()
+            
+            fourth_ohlcv = db.query(OHLCVData).filter(
+                OHLCVData.asset_id == bitcoin_asset.asset_id,
+                OHLCVData.data_interval == '1d',
+                OHLCVData.timestamp_utc >= fourth_start_date,
+                OHLCVData.timestamp_utc < (fourth_start_date + timedelta(days=1))
+            ).order_by(OHLCVData.timestamp_utc).first()
+            
+            if fourth_ohlcv:
+                normalize_to_price = fourth_ohlcv.close_price
+            else:
+                normalize_to_price = 1000  # 기본값
+
+        # 모든 가격을 정규화
+        normalized_ohlcv_data = []
+        if ohlcv_data:
+            original_start_price = float(ohlcv_data[0].close_price)
+            adjustment_factor = float(normalize_to_price) / original_start_price
+            
+            for i, point in enumerate(ohlcv_data):
+                # 모든 가격을 정규화
+                normalized_point = OHLCVPoint(
+                    timestamp_utc=point.timestamp_utc,
+                    open_price=float(point.open_price) * adjustment_factor,
+                    high_price=float(point.high_price) * adjustment_factor,
+                    low_price=float(point.low_price) * adjustment_factor,
+                    close_price=float(point.close_price) * adjustment_factor,
+                    volume=float(point.volume),
+                    change_percent=point.change_percent,
+                    days=i  # 반감기 후 경과일수 추가
+                )
+                normalized_ohlcv_data.append(normalized_point)
+        else:
+            normalized_ohlcv_data = ohlcv_data
+
         # 메타데이터
         metadata = {
             "period_name": f"Halving Period {period_number}",
-            "total_days": len(ohlcv_data),
+            "total_days": len(normalized_ohlcv_data),
             "start_date": start_date_obj.isoformat(),
             "end_date": end_date_obj.isoformat(),
             "block_reward": {
@@ -104,14 +146,17 @@ async def get_bitcoin_halving_data(
                 2: 12.5,
                 3: 6.25,
                 4: 3.125
-            }.get(period_number, "Unknown")
+            }.get(period_number, "Unknown"),
+            "normalize_to_price": normalize_to_price,
+            "original_start_price": original_start_price if ohlcv_data else None,
+            "adjustment_factor": adjustment_factor if ohlcv_data else None
         }
 
         return BitcoinHalvingPeriodDataResponse(
             period_number=period_number,
             start_date=start_date_obj,
             end_date=end_date_obj,
-            ohlcv_data=ohlcv_data,
+            ohlcv_data=normalized_ohlcv_data,
             metadata=metadata
         )
 

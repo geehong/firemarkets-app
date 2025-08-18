@@ -11,6 +11,7 @@ import {
 } from '@coreui/react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import CorrelationChart from '../../components/charts/CorrelationChart'
+import HalvingChart from '../../components/charts/HalvingChart'
 import { usePriceData } from '../../hooks/useIntegratedMetrics'
 
 const OnchainDataOverviews = ({ 
@@ -23,10 +24,24 @@ const OnchainDataOverviews = ({
   const [searchParams] = useSearchParams()
   const [metrics, setMetrics] = useState([])
   const [metricsLoading, setMetricsLoading] = useState(true)
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
   
   // URL에서 메트릭 ID 가져오기, 없으면 기본값 사용
   const metricId = searchParams.get('metric') || 'mvrv_z_score'
   
+  // halving 모드인지 확인 (URL에 halving=true가 있으면 반감기 분석 모드)
+  const isHalvingMode = searchParams.get('halving') === 'true'
+  
+  // 화면 크기 변경 감지
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
   // 메트릭 정보 로드
   useEffect(() => {
     const loadMetrics = async () => {
@@ -49,17 +64,29 @@ const OnchainDataOverviews = ({
     loadMetrics()
   }, [])
   
+  // 메트릭 이름에서 괄호 부분 제거하는 함수
+  const cleanMetricName = (name) => {
+    if (!name) return name
+    // 괄호와 그 안의 내용을 제거
+    return name.replace(/\s*\([^)]*\)/g, '')
+  }
+
   // 현재 메트릭 정보 찾기
   const metricConfig = metrics.find(m => m.id === metricId) || {
-    name: 'MVRV Z-Score',
+    name: 'MVRV-Z',
     description: 'Bitcoin market value to realized value ratio',
-    title: 'Bitcoin Price vs MVRV Z-Score Correlation',
-    loadingText: 'Loading MVRV Z-Score data...'
+    title: 'Bitcoin Price vs MVRV-Z Correlation',
+    loadingText: 'Loading MVRV-Z data...'
   }
+
+  // 정리된 메트릭 이름
+  const cleanMetricNameValue = cleanMetricName(metricConfig.name)
+
+
 
   if (metricsLoading) {
     return (
-      <div className="d-flex justify-content-center align-items-center" style={{ height: '400px' }}>
+      <div className="d-flex justify-content-center align-items-center" style={{ height: '600px' }}>
         <CSpinner size="sm" />
         <span className="ms-3">Loading metrics...</span>
       </div>
@@ -68,7 +95,7 @@ const OnchainDataOverviews = ({
 
   if (loading) {
     return (
-      <div className="d-flex justify-content-center align-items-center" style={{ height: '400px' }}>
+      <div className="d-flex justify-content-center align-items-center" style={{ height: '600px' }}>
         <CSpinner size="sm" />
         <span className="ms-3">{metricConfig.loadingText || 'Loading data...'}</span>
       </div>
@@ -87,62 +114,128 @@ const OnchainDataOverviews = ({
 
   return (
     <div>
+      {isHalvingMode ? (
+        // 반감기 분석 모드
+        <>
+          {/* 통합 반감기 차트 - 모든 반감기를 하나의 차트에 표시 */}
+          <HalvingChart
+            title="Bitcoin 반감기 가격 비교 분석"
+            height={600}
+            showRangeSelector={true}
+            showStockTools={false}
+            showExporting={true}
+          />
+          
+          {/* 반감기 정보 카드 */}
+          <CCard className="mb-4" style={{
+            backgroundColor: isMobile ? 'var(--cui-card-bg, #fff)' : undefined,
+            color: isMobile ? 'var(--cui-card-color, #000)' : undefined
+          }}>
+            <CCardHeader style={{
+              backgroundColor: isMobile ? 'var(--cui-card-cap-bg, #f8f9fa)' : undefined,
+              color: isMobile ? 'var(--cui-card-cap-color, #000)' : undefined
+            }}>
+              <h5>Bitcoin 반감기 정보</h5>
+            </CCardHeader>
+            <CCardBody style={{
+              backgroundColor: isMobile ? 'var(--cui-card-bg, #fff)' : undefined,
+              color: isMobile ? 'var(--cui-card-color, #000)' : undefined
+            }}>
+              <CRow>
+                <CCol md={6}>
+                  <h6>반감기란?</h6>
+                  <p className="text-muted">
+                    Bitcoin 반감기는 약 4년마다 발생하는 이벤트로, 채굴자들이 받는 보상이 절반으로 줄어듭니다.
+                    이는 Bitcoin의 총 공급량을 제한하고 인플레이션을 방지하는 메커니즘입니다.
+                  </p>
+                </CCol>
+                <CCol md={6}>
+                  <h6>반감기 효과</h6>
+                  <ul className="text-muted">
+                    <li>
+                      <strong>1차 반감기 (2012):</strong> 50 BTC → 25 BTC
+                    </li>
+                    <li>
+                      <strong>2차 반감기 (2016):</strong> 25 BTC → 12.5 BTC
+                    </li>
+                    <li>
+                      <strong>3차 반감기 (2020):</strong> 12.5 BTC → 6.25 BTC
+                    </li>
+                    <li>
+                      <strong>4차 반감기 (2024):</strong> 6.25 BTC → 3.125 BTC
+                    </li>
+                  </ul>
+                </CCol>
+              </CRow>
+            </CCardBody>
+          </CCard>
+        </>
+      ) : (
+        // 상관관계 분석 모드
+        <>
+          {/* 상관관계 분석 결과 */}
+          {/* Removed correlation analysis section as CorrelationChart handles this internally */}
 
-      {/* 상관관계 분석 결과 */}
-      {/* Removed correlation analysis section as CorrelationChart handles this internally */}
+          {/* 통합 차트 */}
+          <CorrelationChart
+            assetId="BTCUSDT"
+            title={metricConfig.title || `Bitcoin Price vs ${cleanMetricNameValue} Correlation`}
+            height={600}
+            showRangeSelector={true}
+            showStockTools={false}
+            showExporting={true}
+            metricId={metricId}
+          />
 
-      {/* 통합 차트 */}
-      <CorrelationChart
-        assetId="BTCUSDT"
-        title={metricConfig.title || `Bitcoin Price vs ${metricConfig.name} Correlation`}
-        height={600}
-        showRangeSelector={true}
-        showStockTools={true}
-        showExporting={true}
-        metricId={metricId}
-      />
-
-      {/* LineChart 추가 */}
-      {/* Removed LineChart as per edit hint */}
-
-      {/* 데이터 정보 카드 */}
-      <CCard className="mb-4">
-        <CCardHeader>
-          <h5>{metricConfig.name} Analysis Information</h5>
-        </CCardHeader>
-        <CCardBody>
-          <CRow>
-            <CCol md={6}>
-              <h6>What is {metricConfig.name}?</h6>
-              <p className="text-muted">
-                {metricConfig.description}. Correlation analysis measures the relationship between Bitcoin price and {metricConfig.name}.
-                A positive correlation means they move together, while a negative correlation means
-                they move in opposite directions. The correlation coefficient ranges from -1 to +1.
-              </p>
-            </CCol>
-            <CCol md={6}>
-              <h6>Correlation Interpretation</h6>
-              <ul className="text-muted">
-                <li>
-                  <strong>Strong Positive (0.7-1.0):</strong> High correlation, similar movements
-                </li>
-                <li>
-                  <strong>Moderate Positive (0.5-0.7):</strong> Moderate correlation
-                </li>
-                <li>
-                  <strong>Weak Positive (0.3-0.5):</strong> Low correlation
-                </li>
-                <li>
-                  <strong>No Correlation (-0.3 to 0.3):</strong> Independent movements
-                </li>
-                <li>
-                  <strong>Negative Correlations:</strong> Opposite movements
-                </li>
-              </ul>
-            </CCol>
-          </CRow>
-        </CCardBody>
-      </CCard>
+          {/* 데이터 정보 카드 */}
+          <CCard className="mb-4" style={{
+            backgroundColor: isMobile ? 'var(--cui-card-bg, #fff)' : undefined,
+            color: isMobile ? 'var(--cui-card-color, #000)' : undefined
+          }}>
+            <CCardHeader style={{
+              backgroundColor: isMobile ? 'var(--cui-card-cap-bg, #f8f9fa)' : undefined,
+              color: isMobile ? 'var(--cui-card-cap-color, #000)' : undefined
+            }}>
+              <h5>{cleanMetricNameValue} Analysis Information</h5>
+            </CCardHeader>
+            <CCardBody style={{
+              backgroundColor: isMobile ? 'var(--cui-card-bg, #fff)' : undefined,
+              color: isMobile ? 'var(--cui-card-color, #000)' : undefined
+            }}>
+              <CRow>
+                <CCol md={6}>
+                  <h6>What is {cleanMetricNameValue}?</h6>
+                  <p className="text-muted">
+                    {metricConfig.description}. Correlation analysis measures the relationship between Bitcoin price and {cleanMetricNameValue}.
+                    A positive correlation means they move together, while a negative correlation means
+                    they move in opposite directions. The correlation coefficient ranges from -1 to +1.
+                  </p>
+                </CCol>
+                <CCol md={6}>
+                  <h6>Correlation Interpretation</h6>
+                  <ul className="text-muted">
+                    <li>
+                      <strong>Strong Positive (0.7-1.0):</strong> High correlation, similar movements
+                    </li>
+                    <li>
+                      <strong>Moderate Positive (0.5-0.7):</strong> Moderate correlation
+                    </li>
+                    <li>
+                      <strong>Weak Positive (0.3-0.5):</strong> Low correlation
+                    </li>
+                    <li>
+                      <strong>No Correlation (-0.3 to 0.3):</strong> Independent movements
+                    </li>
+                    <li>
+                      <strong>Negative Correlations:</strong> Opposite movements
+                    </li>
+                  </ul>
+                </CCol>
+              </CRow>
+            </CCardBody>
+          </CCard>
+        </>
+      )}
     </div>
   )
 }

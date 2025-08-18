@@ -108,7 +108,7 @@ const AssetsOverviews = () => {
           <OHLCVChart
             assetIdentifier={asset.ticker}
             dataInterval="1d"
-            height={400}
+            height={600}
             showVolume={true}
             showRangeSelector={true}
             showStockTools={true}

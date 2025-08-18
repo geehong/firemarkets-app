@@ -98,6 +98,40 @@ div[class*="tab-content"],
 div[class*="CTabContent"],
 div[class*="tab-pane"],
 div[class*="CTabPane"] {
+
+// 모바일 환경에서 카드 배경색 강제 설정
+@media (max-width: 768px) {
+  .card {
+    background-color: var(--cui-card-bg, #fff) !important;
+    color: var(--cui-card-color, #000) !important;
+  }
+  
+  .card-body {
+    background-color: var(--cui-card-bg, #fff) !important;
+    color: var(--cui-card-color, #000) !important;
+  }
+  
+  .card-header {
+    background-color: var(--cui-card-cap-bg, #f8f9fa) !important;
+    color: var(--cui-card-cap-color, #000) !important;
+  }
+  
+  // 다크 모드 대응
+  [data-coreui-theme="dark"] .card {
+    background-color: var(--cui-card-bg, #2b3035) !important;
+    color: var(--cui-card-color, #fff) !important;
+  }
+  
+  [data-coreui-theme="dark"] .card-body {
+    background-color: var(--cui-card-bg, #2b3035) !important;
+    color: var(--cui-card-color, #fff) !important;
+  }
+  
+  [data-coreui-theme="dark"] .card-header {
+    background-color: var(--cui-card-cap-bg, #343a40) !important;
+    color: var(--cui-card-cap-color, #fff) !important;
+  }
+}
   max-height: none !important;
   overflow: visible !important;
   height: auto !important;

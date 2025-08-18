@@ -152,4 +152,45 @@ export const useAssetAnalysis = (assetId, metrics = [], options = {}) => {
     enabled: !!assetId && !!metrics && metrics.length > 0,
     staleTime: 1 * 60 * 1000, // 1분
   })
+}
+
+// 반감기 데이터 API 훅
+export const useHalvingData = (period, normalizeToPrice, options = {}) => {
+  const {
+    enabled = true
+  } = options
+
+  return useQuery({
+    queryKey: ['halving-data', period, normalizeToPrice],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      if (normalizeToPrice > 0) {
+        params.append('normalize_to_price', normalizeToPrice.toString())
+      }
+
+      const response = await fetch(`/api/v1/crypto/bitcoin/halving-data/${period}?${params}`)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch halving data for period ${period}: ${response.status}`)
+      }
+      return response.json()
+    },
+    enabled: enabled && !!period,
+    staleTime: 10 * 60 * 1000, // 10분
+  })
+}
+
+// 4차 반감기 시작가격 API 훅
+export const useFourthHalvingStartPrice = () => {
+  return useQuery({
+    queryKey: ['fourth-halving-start-price'],
+    queryFn: async () => {
+      const response = await fetch('/api/v1/crypto/bitcoin/halving-data/4')
+      if (!response.ok) {
+        throw new Error(`Failed to fetch 4th halving data: ${response.status}`)
+      }
+      const data = await response.json()
+      return data.ohlcv_data?.[0]?.close_price || 0
+    },
+    staleTime: 30 * 60 * 1000, // 30분
+  })
 } 

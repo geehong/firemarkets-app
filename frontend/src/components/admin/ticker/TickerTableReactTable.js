@@ -95,7 +95,7 @@ const TickerTableReactTable = ({
       case 'stock_info':
       case 'etf_info':
       case 'fund_info':
-        return 'collect_company_info'
+        return 'collect_assets_info'
       case 'stock_financials':
         return 'collect_financials'
       case 'stock_estimates':
@@ -135,7 +135,7 @@ const TickerTableReactTable = ({
     // 기본값 반환
     switch (settingKey) {
       case 'collect_price':
-      case 'collect_company_info':
+      case 'collect_assets_info':
       case 'collect_financials':
       case 'collect_estimates':
       case 'collect_crypto_data':

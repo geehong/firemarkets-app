@@ -96,7 +96,7 @@ const TickerTable = ({
       case 'stock_info':
       case 'etf_info':
       case 'fund_info':
-        return 'collect_company_info'
+        return 'collect_assets_info'
       case 'stock_financials':
         return 'collect_financials'
       case 'stock_estimates':
@@ -136,7 +136,7 @@ const TickerTable = ({
     // 기본값 반환
     switch (settingKey) {
       case 'collect_price':
-      case 'collect_company_info':
+      case 'collect_assets_info':
       case 'collect_financials':
       case 'collect_estimates':
       case 'collect_crypto_data':
@@ -330,7 +330,7 @@ const TickerTable = ({
     switch (settingKey) {
       case 'collect_price':
         return 'price'
-      case 'collect_company_info':
+      case 'collect_assets_info':
         if (assetType === 'Stocks') return 'stock_info'
         if (assetType === 'ETFs') return 'etf_info'
         if (assetType === 'Funds') return 'fund_info'

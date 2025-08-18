@@ -14,6 +14,7 @@ from .base_collector import BaseCollector
 from ..core.config import GLOBAL_APP_CONFIGS
 from ..models.asset import Asset
 from ..models.etf import EtfInfo
+from ..utils.retry import retry_with_backoff, classify_api_error, TransientAPIError, PermanentAPIError
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +35,8 @@ class ETFCollector(BaseCollector):
             from sqlalchemy import or_, text
             
             db = self.get_db_session()
-            condition1 = Asset.collection_settings.contains({"collect_etf_info": True})
-            condition2 = text("JSON_EXTRACT(collection_settings, '$.collect_etf_info') = true")
+            condition1 = Asset.collection_settings.contains({"collect_assets_info": True})
+            condition2 = text("JSON_EXTRACT(collection_settings, '$.collect_assets_info') = true")
             
             assets = db.query(Asset).filter(
                 Asset.is_active == True,
@@ -67,11 +68,17 @@ class ETFCollector(BaseCollector):
         db = self.get_db_session()
         
         try:
-            # Get all ETF assets
+            # Get ETF assets that have collection enabled in their settings
             from ..models import AssetType
+            from sqlalchemy import or_, text
+            
+            condition1 = Asset.collection_settings.contains({"collect_assets_info": True})
+            condition2 = text("JSON_EXTRACT(collection_settings, '$.collect_assets_info') = true")
+            
             etf_assets = db.query(Asset).join(AssetType).filter(
                 Asset.is_active == True,
-                AssetType.type_name.in_(['ETF', 'etf'])
+                AssetType.type_name.in_(['ETF', 'etf']),
+                or_(condition1, condition2)
             ).all()
             
             if not etf_assets:
@@ -87,8 +94,13 @@ class ETFCollector(BaseCollector):
             for i in range(0, len(etf_assets), batch_size):
                 batch = etf_assets[i:i + batch_size]
                 
-                # Process batch concurrently
-                tasks = [self._fetch_and_store_etf_info_for_asset(asset) for asset in batch]
+                # Process batch concurrently with semaphore control
+                async def process_etf_with_semaphore(asset):
+                    return await self.process_with_semaphore(
+                        self._fetch_and_store_etf_info_for_asset(asset)
+                    )
+                
+                tasks = [process_etf_with_semaphore(asset) for asset in batch]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 
                 for result in results:
@@ -113,30 +125,38 @@ class ETFCollector(BaseCollector):
             self.log_progress(f"ETF collection failed: {e}", "error")
             raise
     
-    @backoff.on_exception(
-        backoff.expo,
-        (httpx.RequestError, httpx.HTTPStatusError),
-        max_tries=3,
-        max_time=60
-    )
     async def _fetch_async(self, client: httpx.AsyncClient, url: str, api_name: str, ticker: str):
-        """Fetch data from API with retry logic"""
-        await self.safe_emit('scheduler_log', {
-            'message': f"[{ticker}] {api_name} API 호출 시도: {url}", 
-            'type': 'info'
-        })
-        
-        response = await client.get(url, timeout=self.api_timeout)
-        
-        if response.status_code == 429:  # Too Many Requests
+        """Fetch data from API with advanced retry logic"""
+        async def api_call():
             await self.safe_emit('scheduler_log', {
-                'message': f"[{ticker}] {api_name} API 호출 제한 도달. 재시도합니다.", 
-                'type': 'warning'
+                'message': f"[{ticker}] {api_name} API 호출 시도: {url}", 
+                'type': 'info'
             })
+            
+            response = await client.get(url, timeout=self.api_timeout)
+            
+            # API 응답 상태 코드에 따른 오류 분류
+            if response.status_code == 429:
+                raise TransientAPIError(f"Rate limit exceeded for {api_name}")
+            elif response.status_code >= 500:
+                raise TransientAPIError(f"Server error {response.status_code} for {api_name}")
+            elif response.status_code == 404:
+                raise PermanentAPIError(f"Resource not found for {ticker} in {api_name}")
+            elif response.status_code in [401, 403]:
+                raise PermanentAPIError(f"Authentication failed for {api_name}")
+            
             response.raise_for_status()
+            return response.json()
         
-        response.raise_for_status()
-        return response.json()
+        # 고도화된 재시도 로직 적용
+        max_retries = GLOBAL_APP_CONFIGS.get("MAX_API_RETRY_ATTEMPTS", 3)
+        return await retry_with_backoff(
+            api_call,
+            max_retries=max_retries,
+            base_delay=1.0,
+            max_delay=30.0,
+            jitter=True
+        )
     
     async def _fetch_etf_info_from_fmp(self, client: httpx.AsyncClient, ticker: str, api_key: str) -> Dict:
         """Fetch ETF information from FMP"""

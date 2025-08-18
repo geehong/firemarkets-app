@@ -82,8 +82,58 @@ const CustomBreadcrumb = () => {
       breadcrumbs.push({ name: 'OnChain', path: '/onchain', clickable: true })
 
       if (pathSegments[1] === 'overviews') {
-        breadcrumbs.push({ name: 'Market Metrics', path: '/onchain', clickable: true })
-        breadcrumbs.push({ name: 'MVRV Z-Score', path: null, clickable: false })
+        // halving 모드인지 확인
+        const halvingParam = new URLSearchParams(location.search).get('halving')
+        
+        if (halvingParam === 'true') {
+          // Halving Analysis 모드
+          breadcrumbs.push({ name: 'Halving Analysis', path: null, clickable: false })
+        } else {
+          // 일반 메트릭 분석 모드
+          breadcrumbs.push({ name: 'Market Metrics', path: '/onchain', clickable: true })
+          
+          // URL에서 메트릭 파라미터 가져오기
+          const metricParam = new URLSearchParams(location.search).get('metric')
+          let metricName = 'MVRV-Z' // 기본값
+          
+          // 메트릭 파라미터가 있으면 해당 메트릭 이름 사용
+          if (metricParam) {
+            // API에서 메트릭 정보를 가져와서 이름 사용
+            const currentMetric = metrics.find(m => m.id === metricParam)
+            if (currentMetric) {
+              metricName = cleanMetricName(currentMetric.name)
+            } else {
+              // 매핑 테이블 사용 (fallback)
+              const metricNameMap = {
+                'mvrv_z_score': 'MVRV-Z',
+                'sopr': 'SOPR',
+                'nvt': 'NVT',
+                'puell_multiple': 'Puell Multiple',
+                'reserve_risk': 'Reserve Risk',
+                'hth': 'HTH',
+                'cdd': 'CDD',
+                'asopr': 'aSOPR',
+                'nupl': 'NUPL',
+                'rhodl': 'RHODL',
+                'cvdd': 'CVDD',
+                'binary_cdd': 'Binary CDD',
+                'binary_hth': 'Binary HTH',
+                'binary_nupl': 'Binary NUPL',
+                'binary_rhodl': 'Binary RHODL',
+                'binary_cvdd': 'Binary CVDD',
+                'binary_asopr': 'Binary aSOPR',
+                'binary_sopr': 'Binary SOPR',
+                'binary_nvt': 'Binary NVT',
+                'binary_puell_multiple': 'Binary Puell Multiple',
+                'binary_reserve_risk': 'Binary Reserve Risk',
+                'binary_mvrv_z_score': 'Binary MVRV-Z'
+              }
+              metricName = metricNameMap[metricParam] || metricParam
+            }
+          }
+          
+          breadcrumbs.push({ name: metricName, path: null, clickable: false })
+        }
       } else {
         // 다른 onchain 경로들 처리
         if (pathSegments[1]) {
@@ -146,6 +196,8 @@ const CustomBreadcrumb = () => {
   // 자산 정보 가져오기 - 제거 (불필요한 API 호출)
 
   // 자산 타입 목록 가져오기 - 자산 목록 페이지에서만 필요할 때 호출
+  const [metrics, setMetrics] = useState([]) // 메트릭 목록
+
   useEffect(() => {
     const fetchAssetTypes = async () => {
       // 자산 목록 페이지에서만 자산 타입이 필요
@@ -158,7 +210,24 @@ const CustomBreadcrumb = () => {
         }
       }
     }
+    
+    const fetchMetrics = async () => {
+      // onchain 페이지에서만 메트릭 목록이 필요
+      if (location.pathname === '/onchain/overviews') {
+        try {
+          const response = await fetch('/api/v1/onchain/metrics')
+          if (response.ok) {
+            const data = await response.json()
+            setMetrics(data)
+          }
+        } catch (error) {
+          console.error('CustomBreadcrumb: Error fetching metrics:', error)
+        }
+      }
+    }
+    
     fetchAssetTypes()
+    fetchMetrics()
   }, [location.pathname, location.search])
 
   // 자산 목록 가져오기 - 자산 상세 페이지에서 드롭다운용
@@ -215,6 +284,21 @@ const CustomBreadcrumb = () => {
     }
   }
 
+  // 메트릭 이름에서 괄호 부분 제거하는 함수
+  const cleanMetricName = (name) => {
+    if (!name) return name
+    // 괄호와 그 안의 내용을 제거
+    return name.replace(/\s*\([^)]*\)/g, '')
+  }
+
+  // 메트릭 선택 핸들러
+  const handleMetricChange = (selectedMetricId) => {
+    if (selectedMetricId) {
+      console.log('CustomBreadcrumb: Navigating to metric:', selectedMetricId)
+      navigate(`/onchain/overviews?metric=${selectedMetricId}`)
+    }
+  }
+
   const breadcrumbs = getBreadcrumbs()
 
   // 자산 목록 페이지인지 확인
@@ -224,9 +308,13 @@ const CustomBreadcrumb = () => {
   const isAssetDetailPage = 
     (location.pathname.startsWith('/assetsdetail/') || location.pathname.startsWith('/overviews/')) && assetIdentifier
 
+  // onchain 페이지인지 확인
+  const isOnchainPage = location.pathname === '/onchain/overviews'
+
   return (
     <div className="container-fluid px-4 pt-3">
-      <div className="d-flex justify-content-between align-items-center mb-2">
+      {/* 데스크톱: 가로 배치 */}
+      <div className="d-none d-md-flex justify-content-between align-items-center mb-2">
         <div className="flex-grow-1">
           <CBreadcrumb className="text-wrap">
             {breadcrumbs.map((breadcrumb, index) => (
@@ -295,6 +383,133 @@ const CustomBreadcrumb = () => {
                   style={{ textAlign: 'center' }}
                 >
                   {assetItem.name} ({assetItem.ticker})
+                </option>
+              ))}
+            </CFormSelect>
+          )}
+          {isOnchainPage && (
+            <CFormSelect
+              value={new URLSearchParams(location.search).get('metric') || 'mvrv_z_score'}
+              onChange={(e) => handleMetricChange(e.target.value)}
+              className="w-auto d-inline-block"
+              style={{
+                minWidth: '250px',
+                textAlign: 'center',
+                textAlignLast: 'center',
+              }}
+            >
+              <option value="" style={{ textAlign: 'center' }}>
+                Select Metric
+              </option>
+              {metrics.map((metric) => (
+                <option
+                  key={metric.id}
+                  value={metric.id}
+                  style={{ textAlign: 'center' }}
+                >
+                  {cleanMetricName(metric.name)}
+                </option>
+              ))}
+            </CFormSelect>
+          )}
+        </div>
+      </div>
+
+      {/* 모바일: 세로 배치 */}
+      <div className="d-flex d-md-none flex-column mb-2">
+        <div className="mb-2">
+          <CBreadcrumb className="text-wrap">
+            {breadcrumbs.map((breadcrumb, index) => (
+              <CBreadcrumbItem
+                key={index}
+                {...(breadcrumb.clickable && breadcrumb.path
+                  ? {
+                      href: breadcrumb.path,
+                      onClick: (e) => {
+                        e.preventDefault()
+                        navigate(breadcrumb.path)
+                      },
+                    }
+                  : { active: true })}
+              >
+                {breadcrumb.name}
+              </CBreadcrumbItem>
+            ))}
+          </CBreadcrumb>
+        </div>
+        <div className="d-flex justify-content-center">
+          {isAssetsListPage && (
+            <CFormSelect
+              value={new URLSearchParams(location.search).get('type_name') || ''}
+              onChange={(e) => handleAssetTypeChange(e.target.value)}
+              className="w-auto"
+              style={{
+                minWidth: '200px',
+                textAlign: 'center',
+                textAlignLast: 'center',
+              }}
+            >
+              <option value="" style={{ textAlign: 'center' }}>
+                Select Asset Type
+              </option>
+              {assetTypes.map((assetType) => (
+                <option
+                  key={assetType.asset_type_id}
+                  value={assetType.type_name}
+                  style={{ textAlign: 'center' }}
+                >
+                  {assetType.type_name}
+                </option>
+              ))}
+            </CFormSelect>
+          )}
+          {isAssetDetailPage && (
+            <CFormSelect
+              value={assetIdentifier || ''}
+              onChange={(e) => handleAssetChange(e.target.value)}
+              disabled={loading}
+              className="w-auto"
+              style={{
+                minWidth: '200px',
+                textAlign: 'center',
+                textAlignLast: 'center',
+              }}
+            >
+              <option value="" style={{ textAlign: 'center' }}>
+                Select Asset
+              </option>
+              {allAssets.map((assetItem) => (
+                <option
+                  key={assetItem.asset_id}
+                  value={assetItem.ticker}
+                  style={{ textAlign: 'center' }}
+                >
+                  {assetItem.name} ({assetItem.ticker})
+                </option>
+              ))}
+            </CFormSelect>
+          )}
+          {isOnchainPage && (
+            <CFormSelect
+              value={new URLSearchParams(location.search).get('metric') || 'mvrv_z_score'}
+              onChange={(e) => handleMetricChange(e.target.value)}
+              className="w-auto"
+              style={{
+                minWidth: '250px',
+                textAlign: 'center',
+                textAlignLast: 'center',
+              }}
+            >
+              <option value="" style={{ textAlign: 'center' }}>
+                Select Metric
+              </option>
+              {metrics.map((metric) => (
+                <option
+                  key={metric.id}
+                  value={metric.id}
+                  style={{ textAlign: 'center' }}
+                >
+                  {cleanMetricName(metric.name)}
                 </option>
               ))}
             </CFormSelect>

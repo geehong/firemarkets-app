@@ -118,7 +118,7 @@ def get_all_assets(
                 'type_name': type_name,
                 # collection_settings에서 개별 필드들을 추출
                 'collect_price': collection_settings.get('collect_price', True),
-                'collect_company_info': collection_settings.get('collect_company_info', True),
+                'collect_assets_info': collection_settings.get('collect_assets_info', True),
                 'collect_financials': collection_settings.get('collect_financials', True),
                 'collect_estimates': collection_settings.get('collect_estimates', True),
                 'collect_onchain': collection_settings.get('collect_onchain', False),

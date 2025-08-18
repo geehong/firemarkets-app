@@ -148,7 +148,7 @@ const OnChainChart = ({ assetIdentifier }) => {
         display: 'flex', 
         justifyContent: 'center', 
         alignItems: 'center', 
-        height: '400px',
+        height: '600px',
         backgroundColor: '#1a1a1a',
         color: '#ffffff'
       }}>
@@ -163,7 +163,7 @@ const OnChainChart = ({ assetIdentifier }) => {
         display: 'flex', 
         justifyContent: 'center', 
         alignItems: 'center', 
-        height: '400px',
+        height: '600px',
         backgroundColor: '#1a1a1a',
         color: '#ff6b6b'
       }}>
@@ -173,7 +173,7 @@ const OnChainChart = ({ assetIdentifier }) => {
   }
 
   return (
-    <div style={{ width: '100%', height: '500px' }}>
+    <div style={{ width: '100%', height: '700px' }}>
       <HighchartsReact
         highcharts={Highcharts}
         options={chartOptions}

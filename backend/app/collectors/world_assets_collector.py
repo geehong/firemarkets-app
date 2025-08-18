@@ -2,6 +2,7 @@
 World Assets Collector for scraping and storing world assets data from companiesmarketcap.com
 """
 import logging
+import asyncio
 import requests
 import pandas as pd
 import io
@@ -15,6 +16,7 @@ import re
 from .base_collector import BaseCollector
 from ..models.world_assets import WorldAssetsRanking, BondMarketData, ScrapingLogs
 from ..models.asset import Asset
+from ..utils.retry import retry_with_backoff, classify_api_error, TransientAPIError, PermanentAPIError
 
 logger = logging.getLogger(__name__)
 

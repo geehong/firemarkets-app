@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import Highcharts from 'highcharts/highstock';
 import HighchartsReact from 'highcharts-react-official';
 import { useIntegratedMetrics } from '../../hooks/useIntegratedMetrics';
@@ -6,18 +6,18 @@ import { CCard, CCardBody, CCardHeader } from '@coreui/react';
 import CardTools from '../common/CardTools';
 import styles from './css/CorrelationChart.module.css';
 
-// Load Highcharts modules
+// Load Highcharts modules in correct order
+import 'highcharts/modules/stock';
 import 'highcharts/modules/exporting';
 import 'highcharts/modules/accessibility';
-import 'highcharts/modules/stock';
 import 'highcharts/modules/drag-panes';
 import 'highcharts/modules/navigator';
-import 'highcharts/modules/export-data';
-import 'highcharts/modules/stock-tools';
-import 'highcharts/modules/full-screen';
-import 'highcharts/modules/annotations-advanced';
-import 'highcharts/modules/price-indicator';
-import 'highcharts/indicators/indicators-all';
+// import 'highcharts/modules/export-data'; // 문제가 있는 모듈 제거
+// import 'highcharts/modules/stock-tools'; // 문제가 있는 모듈 제거
+// import 'highcharts/modules/full-screen'; // 문제가 있는 모듈 제거
+// import 'highcharts/modules/annotations-advanced'; // 문제가 있는 모듈 제거
+// import 'highcharts/modules/price-indicator'; // 문제가 있는 모듈 제거
+// import 'highcharts/indicators/indicators-all'; // 문제가 있는 모듈 제거
 // Highcharts 모바일 지원은 기본적으로 포함되어 있음
 // 추가 모바일 설정은 chartOptions에서 처리
 
@@ -26,7 +26,7 @@ const CorrelationChart = ({
   title = 'Bitcoin Price vs MVRV Z-Score Correlation',
   height = 800,
   showRangeSelector = true,
-  showStockTools = true,
+  showStockTools = false,
   showExporting = true,
   metricId = 'mvrv-zscore'
 }) => {
@@ -39,7 +39,44 @@ const CorrelationChart = ({
   const [showFlags, setShowFlags] = useState(true);
   const [useLogScale, setUseLogScale] = useState(false); // 로그 스케일 상태
   const [currentCorrelation, setCurrentCorrelation] = useState(null); // 현재 선택된 범위의 상관관계
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768); // 모바일 상태
   const chartRef = useRef(null);
+  const previousCorrelationRef = useRef(null); // 이전 상관관계 값을 추적
+
+  // 메트릭 ID를 표시 이름으로 변환하는 함수
+  const getMetricDisplayName = (metricId) => {
+    const metricNameMap = {
+      'mvrv_z_score': 'MVRV Z-Score',
+      'sopr': 'SOPR',
+      'nupl': 'NUPL',
+      'realized_price': 'Realized Price',
+      'hashrate': 'Hash Rate',
+      'difficulty': 'Difficulty',
+      'miner_reserves': 'Miner Reserves',
+      'etf_btc_total': 'ETF BTC Total',
+      'etf_btc_flow': 'ETF BTC Flow',
+      'open_interest_futures': 'Open Interest Futures',
+      'realized_cap': 'Realized Cap',
+      'cdd_90dma': 'CDD 90DMA',
+      'true_market_mean': 'True Market Mean',
+      'nrpl_btc': 'NRPL BTC',
+      'aviv': 'AVIV',
+      'thermo_cap': 'Thermo Cap',
+      'hodl_waves_supply': 'HODL Waves Supply'
+    };
+    
+    return metricNameMap[metricId] || metricId.toUpperCase().replace(/_/g, ' ');
+  };
+
+  // 화면 크기 변경 감지
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // 통합 메트릭 데이터 가져오기
   const { data: integratedData, isLoading, error: apiError } = useIntegratedMetrics(
@@ -162,8 +199,8 @@ const CorrelationChart = ({
     setUseLogScale(!useLogScale);
   };
 
-  // 특정 범위의 상관관계 계산 함수
-  const calculateCorrelationForRange = (startTime, endTime) => {
+  // 특정 범위의 상관관계 계산 함수 (메모이제이션)
+  const calculateCorrelationForRange = useCallback((startTime, endTime) => {
     if (!priceData.length || !mvrvData.length) return null;
 
     // 선택된 범위 내의 데이터 필터링
@@ -210,14 +247,26 @@ const CorrelationChart = ({
       interpretation = 'No Significant Correlation';
     }
 
-    return {
+    const result = {
       correlation: Math.round(correlation * 1000) / 1000,
       interpretation,
       data_points: commonDates.length,
       start_date: new Date(startTime).toISOString().split('T')[0],
       end_date: new Date(endTime).toISOString().split('T')[0]
     };
-  };
+
+    // 이전 값과 비교하여 변경사항이 있을 때만 상태 업데이트
+    const previousCorrelation = previousCorrelationRef.current;
+    if (!previousCorrelation || 
+        previousCorrelation.correlation !== result.correlation ||
+        previousCorrelation.start_date !== result.start_date ||
+        previousCorrelation.end_date !== result.end_date) {
+      previousCorrelationRef.current = result;
+      return result;
+    }
+
+         return previousCorrelation;
+   }, [priceData, mvrvData, isMobile]);
 
   const chartOptions = {
     chart: {
@@ -239,7 +288,10 @@ const CorrelationChart = ({
           // 초기 상관관계 계산
           const extremes = this.xAxis[0].getExtremes();
           const initialCorrelation = calculateCorrelationForRange(extremes.min, extremes.max);
-          setCurrentCorrelation(initialCorrelation);
+          if (initialCorrelation) {
+            setCurrentCorrelation(initialCorrelation);
+            previousCorrelationRef.current = initialCorrelation;
+          }
         },
         render: function() {
           console.log('차트 렌더링 완료');
@@ -261,17 +313,27 @@ const CorrelationChart = ({
         afterSetExtremes: function() {
           const extremes = this.getExtremes();
           const newCorrelation = calculateCorrelationForRange(extremes.min, extremes.max);
-          setCurrentCorrelation(newCorrelation);
-          console.log('범위 변경 - 새로운 상관관계:', newCorrelation);
+          
+          // 이전 값과 비교하여 변경사항이 있을 때만 상태 업데이트
+          if (newCorrelation && (!currentCorrelation || 
+              currentCorrelation.correlation !== newCorrelation.correlation ||
+              currentCorrelation.start_date !== newCorrelation.start_date ||
+              currentCorrelation.end_date !== newCorrelation.end_date)) {
+            setCurrentCorrelation(newCorrelation);
+            console.log('범위 변경 - 새로운 상관관계:', newCorrelation);
+          }
         }
       }
     },
     yAxis: [{
       title: {
-        text: 'MVRV Z-Score'
+        text: getMetricDisplayName(metricId)
       },
       labels: {
-        format: '{value:.2f}'
+        format: '{value:.2f}',
+        style: {
+          fontSize: isMobile ? '0px' : '12px' // 모바일에서 라벨 숨김
+        }
       },
       height: '100%',
       offset: 0,
@@ -281,7 +343,19 @@ const CorrelationChart = ({
         text: 'Bitcoin 가격 (USD)'
       },
       labels: {
-        format: '${value:,.0f}'
+        formatter: function() {
+          const value = this.value;
+          if (value >= 1000000) {
+            return '$' + (value / 1000000).toFixed(1) + 'M';
+          } else if (value >= 1000) {
+            return '$' + (value / 1000).toFixed(1) + 'K';
+          } else {
+            return '$' + value.toFixed(0);
+          }
+        },
+        style: {
+          fontSize: isMobile ? '0px' : '12px' // 모바일에서 라벨 숨김
+        }
       },
       height: '100%',
       offset: 0,
@@ -318,36 +392,36 @@ const CorrelationChart = ({
       formatter: function() {
         let tooltip = `<b>${Highcharts.dateFormat('%Y-%m-%d', this.x)}</b><br/>`;
         
-        this.points.forEach(point => {
-          if (point.series.name === 'MVRV Z-Score') {
-            tooltip += `${point.series.name}: <b>${Number(point.y).toFixed(2)}</b><br/>`;
-          } else if (point.series.name === 'Bitcoin Price') {
-            tooltip += `${point.series.name}: <b>$${Number(point.y).toLocaleString()}</b><br/>`;
-          }
-        });
+        // this.points가 존재하는지 확인
+        if (this.points && Array.isArray(this.points)) {
+          this.points.forEach(point => {
+            if (point && point.series && point.series.name) {
+              // 메트릭 이름을 동적으로 가져오기
+              const metricName = getMetricDisplayName(metricId);
+              
+              if (point.series.name === metricName) {
+                tooltip += `${point.series.name}: <b>${Number(point.y).toFixed(2)}</b><br/>`;
+              } else if (point.series.name === 'Bitcoin Price') {
+                const value = Number(point.y);
+                let formattedValue;
+                if (value >= 1000000) {
+                  formattedValue = '$' + (value / 1000000).toFixed(2) + 'M';
+                } else if (value >= 1000) {
+                  formattedValue = '$' + (value / 1000).toFixed(2) + 'K';
+                } else {
+                  formattedValue = '$' + value.toFixed(2);
+                }
+                tooltip += `${point.series.name}: <b>${formattedValue}</b><br/>`;
+              }
+            }
+          });
+        }
         
         return tooltip;
       }
     },
     series: [{
-      name: metricId === 'mvrv_z_score' ? 'MVRV Z-Score' : 
-             metricId === 'sopr' ? 'SOPR' :
-             metricId === 'nupl' ? 'NUPL' :
-             metricId === 'realized_price' ? 'Realized Price' :
-             metricId === 'hashrate' ? 'Hash Rate' :
-             metricId === 'difficulty' ? 'Difficulty' :
-             metricId === 'miner_reserves' ? 'Miner Reserves' :
-             metricId === 'etf_btc_total' ? 'ETF BTC Total' :
-             metricId === 'etf_btc_flow' ? 'ETF BTC Flow' :
-             metricId === 'open_interest_futures' ? 'Open Interest Futures' :
-             metricId === 'realized_cap' ? 'Realized Cap' :
-             metricId === 'cdd_90dma' ? 'CDD 90DMA' :
-             metricId === 'true_market_mean' ? 'True Market Mean' :
-             metricId === 'nrpl_btc' ? 'NRPL BTC' :
-             metricId === 'aviv' ? 'AVIV' :
-             metricId === 'thermo_cap' ? 'Thermo Cap' :
-             metricId === 'hodl_waves_supply' ? 'HODL Waves Supply' :
-             metricId.toUpperCase().replace(/_/g, ' '),
+      name: getMetricDisplayName(metricId),
       type: chartType,
       data: mvrvData,
       color: '#ff6b6b',
@@ -457,7 +531,7 @@ const CorrelationChart = ({
         },
         chartOptions: {
           chart: {
-            height: Math.min(height, 400),
+            height: Math.min(height, 800),
             spacing: [10, 10, 10, 10]
           },
           rangeSelector: {
@@ -538,7 +612,7 @@ const CorrelationChart = ({
               onClick={() => handleChartTypeChange('line')}
             >
               <img 
-                src="/assets/icon/stock-icons/linechart.svg" 
+                src="/assets/icon/stock-icons/linechart2.svg" 
                 alt="Line Chart" 
                 className={styles.chartIcon}
               />
@@ -559,17 +633,11 @@ const CorrelationChart = ({
               className={`${styles.chartButton} ${chartType === 'area' ? styles.chartButtonActive : styles.chartButtonInactive}`}
               onClick={() => handleChartTypeChange('area')}
             >
-              <svg viewBox="0 0 16 18" fill="none" xmlns="http://www.w3.org/2000/svg" className={styles.areaIcon}>
-                <g clipPath="url(#area-charts_svg__a)" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M15.055 4.769s-.008 0 0-.008m-3.681-2.766H4.626C2.275 1.995.8 3.66.8 6.015v6.359c0 2.356 1.468 4.02 3.826 4.02h6.747c2.36 0 3.827-1.664 3.827-4.02V6.016c0-2.356-1.467-4.021-3.826-4.021Z"></path>
-                  <path d="m.942 13.565 5.254-6.001 3.37 3.005 5.488-5.8L14.5 13l-1 2-3 1h-5l-3-.5-1.558-1.935Z" fill="currentColor"></path>
-                </g>
-                <defs>
-                  <clipPath id="area-charts_svg__a">
-                    <path fill="#fff" transform="translate(0 .5)" d="M0 0h16v17H0z"></path>
-                  </clipPath>
-                </defs>
-              </svg>
+              <img 
+                src="/assets/icon/stock-icons/areachart.svg" 
+                alt="Area Chart" 
+                className={styles.chartIcon}
+              />
             </button>
           </div>
 
@@ -581,23 +649,23 @@ const CorrelationChart = ({
               onClick={handleFlagsToggle}
               title="Toggle Flags"
             >
-              {showFlags ? (
-                <img 
-                  src="/assets/icon/stock-icons/flag-basic.svg" 
-                  alt="Flags On" 
-                  className={styles.chartIcon}
-                />
-              ) : (
-                <div className={styles.flagContainer}>
+                              {showFlags ? (
                   <img 
-                    src="/assets/icon/stock-icons/flag-basic.svg" 
-                    alt="Flags Off" 
-                    className={styles.flagIconInactive}
+                    src="/assets/icon/stock-icons/flagIcon.svg" 
+                    alt="Flags On" 
+                    className={styles.chartIcon}
                   />
-                  <div className={`${styles.xLine} ${styles.xLine1}`}></div>
-                  <div className={`${styles.xLine} ${styles.xLine2}`}></div>
-                </div>
-              )}
+                ) : (
+                  <div className={styles.flagContainer}>
+                    <img 
+                      src="/assets/icon/stock-icons/flagIcon.svg" 
+                      alt="Flags Off" 
+                      className={styles.flagIconInactive}
+                    />
+                    <div className={`${styles.xLine} ${styles.xLine1}`}></div>
+                    <div className={`${styles.xLine} ${styles.xLine2}`}></div>
+                  </div>
+                )}
             </button>
             <button
               type="button"

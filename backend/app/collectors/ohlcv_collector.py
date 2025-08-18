@@ -159,7 +159,7 @@ class OHLCVCollector(BaseCollector):
             self.log_progress(f"Starting OHLCV collection for {len(assets)} assets")
             
             # Process assets in batches to avoid overwhelming APIs
-            batch_size = 5
+            batch_size = GLOBAL_APP_CONFIGS.get("BATCH_SIZE", 1)  # 기본값을 1로 변경
             total_processed = 0
             total_added = 0
             
@@ -209,6 +209,8 @@ class OHLCVCollector(BaseCollector):
         except Exception as e:
             self.log_progress(f"OHLCV collection failed: {e}", "error")
             raise
+        finally:
+            db.close()
     
     async def _collect_data_with_interval(self, assets: List[Asset], interval: str) -> Dict[str, Any]:
         """Collect OHLCV data for specific interval"""
@@ -221,7 +223,7 @@ class OHLCVCollector(BaseCollector):
             })
             
             # Process assets in batches to avoid overwhelming APIs
-            batch_size = 5
+            batch_size = GLOBAL_APP_CONFIGS.get("BATCH_SIZE", 1)  # 기본값을 1로 변경
             total_processed = 0
             total_added = 0
             
@@ -522,7 +524,8 @@ class OHLCVCollector(BaseCollector):
             added_count = 0
             
             for data_point in ohlcv_list:
-                # 간격 정보 추가
+                # asset_id와 간격 정보 추가
+                data_point['asset_id'] = asset_id
                 data_point['data_interval'] = interval
                 
                 # 기존 데이터 확인
@@ -556,129 +559,163 @@ class OHLCVCollector(BaseCollector):
     
     async def _fetch_and_store_ohlcv_for_asset(self, asset: Asset) -> Dict[str, Any]:
         """단일 자산에 대한 OHLCV 데이터를 수집하고 저장합니다."""
-        # 데이터 소스별 fallback 전략 정의
-        asset_type_name_lower = asset.asset_type.type_name.lower()
-        primary_source = asset.data_source
-        fallback_sources = []
-        
-        if asset_type_name_lower in ['stocks', 'etfs', 'bonds', 'funds']:
-            if primary_source == 'alpha_vantage':
-                fallback_sources = ['fmp']
-            elif primary_source == 'fmp':
-                fallback_sources = ['alpha_vantage']
-        elif asset_type_name_lower == 'cryptocurrency':
-            if primary_source == 'binance':
-                fallback_sources = ['coinbase', 'coinmarketcap']
-            elif primary_source == 'coinbase':
-                fallback_sources = ['binance', 'coinmarketcap']
-            elif primary_source == 'coinmarketcap':
-                fallback_sources = ['binance', 'coinbase']
-            else:
-                fallback_sources = ['binance', 'coinbase', 'coinmarketcap']
-        
-        sources_to_try = [primary_source] + [s for s in fallback_sources if s != primary_source]
-        
-        async with httpx.AsyncClient() as client:
-            for source in sources_to_try:
-                try:
-                    ohlcv_data = []
-                    
-                    if source == 'alpha_vantage':
-                        api_keys = GLOBAL_APP_CONFIGS.get("ALPHA_VANTAGE_API_KEYS", [])
-                        ohlcv_data = await self._fetch_ohlcv_from_alpha_vantage(client, asset.ticker, api_keys)
-                    elif source == 'fmp':
-                        api_key = GLOBAL_APP_CONFIGS.get("FMP_API_KEY", "")
-                        ohlcv_data = await self._fetch_ohlcv_from_fmp(client, asset.ticker, api_key)
-                    elif source == 'binance':
-                        ohlcv_data = await self._fetch_ohlcv_from_binance(client, asset.ticker)
-                    elif source == 'coinbase':
-                        ohlcv_data = await self._fetch_ohlcv_from_coinbase(client, asset.ticker)
-                    elif source == 'coinmarketcap':
-                        ohlcv_data = await self._fetch_ohlcv_from_coinmarketcap(client, asset.ticker)
-                    
-                    if ohlcv_data:
-                        added_count = await self._store_ohlcv_data(asset.asset_id, ohlcv_data)
-                        return {
-                            "asset_id": asset.asset_id,
-                            "ticker": asset.ticker,
-                            "source": source,
-                            "added_count": added_count,
-                            "success": True
-                        }
+        # 새로운 세션에서 Asset 정보를 다시 로드하여 세션 오류 방지
+        db = self.get_db_session()
+        try:
+            # Asset과 AssetType을 함께 로드
+            from sqlalchemy.orm import joinedload
+            fresh_asset = db.query(Asset).options(joinedload(Asset.asset_type)).filter(Asset.asset_id == asset.asset_id).first()
+            
+            if not fresh_asset:
+                return {
+                    "asset_id": asset.asset_id,
+                    "ticker": asset.ticker,
+                    "success": False,
+                    "error": "Asset not found"
+                }
+            
+            # 데이터 소스별 fallback 전략 정의
+            asset_type_name_lower = fresh_asset.asset_type.type_name.lower()
+            primary_source = fresh_asset.data_source
+            fallback_sources = []
+            
+            if asset_type_name_lower in ['stocks', 'etfs', 'bonds', 'funds']:
+                if primary_source == 'alpha_vantage':
+                    fallback_sources = ['fmp']
+                elif primary_source == 'fmp':
+                    fallback_sources = ['alpha_vantage']
+            elif asset_type_name_lower == 'cryptocurrency':
+                if primary_source == 'binance':
+                    fallback_sources = ['coinbase', 'coinmarketcap']
+                elif primary_source == 'coinbase':
+                    fallback_sources = ['binance', 'coinmarketcap']
+                elif primary_source == 'coinmarketcap':
+                    fallback_sources = ['binance', 'coinbase']
+                else:
+                    fallback_sources = ['binance', 'coinbase', 'coinmarketcap']
+            
+            sources_to_try = [primary_source] + [s for s in fallback_sources if s != primary_source]
+            
+            async with httpx.AsyncClient() as client:
+                for source in sources_to_try:
+                    try:
+                        ohlcv_data = []
                         
-                except Exception as e:
-                    self.log_progress(f"Failed to fetch from {source} for {asset.ticker}: {e}", "warning")
-                    continue
-        
-        return {
-            "asset_id": asset.asset_id,
-            "ticker": asset.ticker,
-            "success": False,
-            "error": "All data sources failed"
-        }
+                        if source == 'alpha_vantage':
+                            api_keys = GLOBAL_APP_CONFIGS.get("ALPHA_VANTAGE_API_KEYS", [])
+                            ohlcv_data = await self._fetch_ohlcv_from_alpha_vantage(client, asset.ticker, api_keys)
+                        elif source == 'fmp':
+                            api_key = GLOBAL_APP_CONFIGS.get("FMP_API_KEY", "")
+                            ohlcv_data = await self._fetch_ohlcv_from_fmp(client, asset.ticker, api_key)
+                        elif source == 'binance':
+                            ohlcv_data = await self._fetch_ohlcv_from_binance(client, asset.ticker)
+                        elif source == 'coinbase':
+                            ohlcv_data = await self._fetch_ohlcv_from_coinbase(client, asset.ticker)
+                        elif source == 'coinmarketcap':
+                            ohlcv_data = await self._fetch_ohlcv_from_coinmarketcap(client, asset.ticker)
+                        
+                        if ohlcv_data:
+                            added_count = await self._store_ohlcv_data(asset.asset_id, ohlcv_data)
+                            return {
+                                "asset_id": asset.asset_id,
+                                "ticker": asset.ticker,
+                                "source": source,
+                                "added_count": added_count,
+                                "success": True
+                            }
+                            
+                    except Exception as e:
+                        self.log_progress(f"Failed to fetch from {source} for {asset.ticker}: {e}", "warning")
+                        continue
+            
+            return {
+                "asset_id": asset.asset_id,
+                "ticker": asset.ticker,
+                "success": False,
+                "error": "All data sources failed"
+            }
+        finally:
+            db.close()
     
     async def _fetch_and_store_ohlcv_for_asset_with_interval(self, asset: Asset, interval: str) -> Dict[str, Any]:
         """단일 자산에 대한 특정 간격 OHLCV 데이터를 수집하고 저장합니다."""
-        # 데이터 소스별 fallback 전략 정의
-        asset_type_name_lower = asset.asset_type.type_name.lower()
-        primary_source = asset.data_source
-        fallback_sources = []
-        
-        if asset_type_name_lower in ['stocks', 'etfs', 'bonds', 'funds']:
-            if primary_source == 'alpha_vantage':
-                fallback_sources = ['fmp']
-            elif primary_source == 'fmp':
-                fallback_sources = ['alpha_vantage']
-        elif asset_type_name_lower == 'cryptocurrency':
-            if primary_source == 'binance':
-                fallback_sources = ['coinbase', 'coinmarketcap']
-            elif primary_source == 'coinbase':
-                fallback_sources = ['binance', 'coinmarketcap']
-            elif primary_source == 'coinmarketcap':
-                fallback_sources = ['binance', 'coinbase']
-            else:
-                fallback_sources = ['binance', 'coinbase', 'coinmarketcap']
-        
-        sources_to_try = [primary_source] + [s for s in fallback_sources if s != primary_source]
-        
-        async with httpx.AsyncClient() as client:
-            for source in sources_to_try:
-                try:
-                    ohlcv_data = []
-                    
-                    if source == 'alpha_vantage':
-                        ohlcv_data = await self._fetch_ohlcv_from_alpha_vantage_with_interval(client, asset.ticker, [], interval)
-                    elif source == 'fmp':
-                        ohlcv_data = await self._fetch_ohlcv_from_fmp_with_interval(client, asset.ticker, "", interval)
-                    elif source == 'binance':
-                        ohlcv_data = await self._fetch_ohlcv_from_binance_with_interval(client, asset.ticker, interval)
-                    elif source == 'coinbase':
-                        ohlcv_data = await self._fetch_ohlcv_from_coinbase_with_interval(client, asset.ticker, interval)
-                    elif source == 'coinmarketcap':
-                        ohlcv_data = await self._fetch_ohlcv_from_coinmarketcap_with_interval(client, asset.ticker, interval)
-                    
-                    if ohlcv_data:
-                        added_count = await self._store_ohlcv_data_with_interval(asset.asset_id, ohlcv_data, interval)
-                        return {
-                            "asset_id": asset.asset_id,
-                            "ticker": asset.ticker,
-                            "source": source,
-                            "interval": interval,
-                            "added_count": added_count,
-                            "success": True
-                        }
+        # 새로운 세션에서 Asset 정보를 다시 로드하여 세션 오류 방지
+        db = self.get_db_session()
+        try:
+            # Asset과 AssetType을 함께 로드
+            from sqlalchemy.orm import joinedload
+            fresh_asset = db.query(Asset).options(joinedload(Asset.asset_type)).filter(Asset.asset_id == asset.asset_id).first()
+            
+            if not fresh_asset:
+                return {
+                    "asset_id": asset.asset_id,
+                    "ticker": asset.ticker,
+                    "success": False,
+                    "error": "Asset not found"
+                }
+            
+            # 데이터 소스별 fallback 전략 정의
+            asset_type_name_lower = fresh_asset.asset_type.type_name.lower()
+            primary_source = fresh_asset.data_source
+            fallback_sources = []
+            
+            if asset_type_name_lower in ['stocks', 'etfs', 'bonds', 'funds']:
+                if primary_source == 'alpha_vantage':
+                    fallback_sources = ['fmp']
+                elif primary_source == 'fmp':
+                    fallback_sources = ['alpha_vantage']
+            elif asset_type_name_lower == 'cryptocurrency':
+                if primary_source == 'binance':
+                    fallback_sources = ['coinbase', 'coinmarketcap']
+                elif primary_source == 'coinbase':
+                    fallback_sources = ['binance', 'coinmarketcap']
+                elif primary_source == 'coinmarketcap':
+                    fallback_sources = ['binance', 'coinbase']
+                else:
+                    fallback_sources = ['binance', 'coinbase', 'coinmarketcap']
+            
+            sources_to_try = [primary_source] + [s for s in fallback_sources if s != primary_source]
+            
+            async with httpx.AsyncClient() as client:
+                for source in sources_to_try:
+                    try:
+                        ohlcv_data = []
                         
-                except Exception as e:
-                    self.log_progress(f"Failed to fetch {interval} from {source} for {asset.ticker}: {e}", "warning")
-                    continue
-        
-        return {
-            "asset_id": asset.asset_id,
-            "ticker": asset.ticker,
-            "interval": interval,
-            "success": False,
-            "error": "All data sources failed"
-        }
+                        if source == 'alpha_vantage':
+                            ohlcv_data = await self._fetch_ohlcv_from_alpha_vantage_with_interval(client, asset.ticker, [], interval)
+                        elif source == 'fmp':
+                            ohlcv_data = await self._fetch_ohlcv_from_fmp_with_interval(client, asset.ticker, "", interval)
+                        elif source == 'binance':
+                            ohlcv_data = await self._fetch_ohlcv_from_binance_with_interval(client, asset.ticker, interval)
+                        elif source == 'coinbase':
+                            ohlcv_data = await self._fetch_ohlcv_from_coinbase_with_interval(client, asset.ticker, interval)
+                        elif source == 'coinmarketcap':
+                            ohlcv_data = await self._fetch_ohlcv_from_coinmarketcap_with_interval(client, asset.ticker, interval)
+                        
+                        if ohlcv_data:
+                            added_count = await self._store_ohlcv_data_with_interval(asset.asset_id, ohlcv_data, interval)
+                            return {
+                                "asset_id": asset.asset_id,
+                                "ticker": asset.ticker,
+                                "source": source,
+                                "interval": interval,
+                                "added_count": added_count,
+                                "success": True
+                            }
+                            
+                    except Exception as e:
+                        self.log_progress(f"Failed to fetch {interval} from {source} for {asset.ticker}: {e}", "warning")
+                        continue
+            
+            return {
+                "asset_id": asset.asset_id,
+                "ticker": asset.ticker,
+                "interval": interval,
+                "success": False,
+                "error": "All data sources failed"
+            }
+        finally:
+            db.close()
     
     def _safe_float(self, value: Any, default: float = None) -> Optional[float]:
         """Safely convert value to float"""
@@ -711,7 +748,8 @@ class OHLCVCollector(BaseCollector):
         for asset in assets:
             try:
                 # 각 자산의 최신 데이터 날짜 확인
-                latest_data = self.db.query(crud_ohlcv.model).filter(
+                db = self.get_db_session()
+                latest_data = db.query(crud_ohlcv.model).filter(
                     crud_ohlcv.model.asset_id == asset.asset_id
                 ).order_by(crud_ohlcv.model.timestamp_utc.desc()).first()
                 
@@ -724,6 +762,11 @@ class OHLCVCollector(BaseCollector):
                         days_to_backfill = (current_date - latest_date).days
                         if days_to_backfill > 0:
                             await self._backfill_historical_data(asset, days_to_backfill)
+                else:
+                    # 데이터가 없는 경우 최대 히스토리 기간만큼 백필
+                    await self._backfill_historical_data(asset, self.max_historical_days)
+                    
+                db.close()
                             
             except Exception as e:
                 self.log_progress(f"Historical backfill error for {asset.ticker}: {e}", "error")
@@ -751,9 +794,100 @@ class OHLCVCollector(BaseCollector):
     
     async def _fetch_historical_data_for_period(self, asset: Asset, start_date: date, end_date: date) -> None:
         """Fetch historical data for a specific period"""
-        # 실제 구현은 API별로 다르게 처리
-        # 여기서는 기본적인 구조만 제공
-        pass
+        try:
+            # 자산 타입에 따라 다른 API 사용
+            asset_type_name = asset.asset_type.type_name.lower() if asset.asset_type else ""
+            
+            async with httpx.AsyncClient() as client:
+                if 'crypto' in asset_type_name:
+                    # 코인은 Binance API 사용
+                    await self._fetch_crypto_historical_data(client, asset, start_date, end_date)
+                else:
+                    # 주식/ETF는 FMP API 사용
+                    await self._fetch_stock_historical_data(client, asset, start_date, end_date)
+                    
+        except Exception as e:
+            self.log_progress(f"Historical data fetch error for {asset.ticker}: {e}", "error")
+    
+    async def _fetch_crypto_historical_data(self, client: httpx.AsyncClient, asset: Asset, start_date: date, end_date: date) -> None:
+        """Fetch historical crypto data from Binance"""
+        try:
+            # Binance API로 히스토리 데이터 수집
+            start_timestamp = int(datetime.combine(start_date, datetime.min.time()).timestamp() * 1000)
+            end_timestamp = int(datetime.combine(end_date, datetime.max.time()).timestamp() * 1000)
+            
+            url = f"https://api.binance.com/api/v3/klines?symbol={asset.ticker}&interval=1d&startTime={start_timestamp}&endTime={end_timestamp}&limit=1000"
+            
+            data = await self._fetch_async(client, url, "Binance Historical", asset.ticker)
+            
+            if data:
+                ohlcv_data = [
+                    {
+                        "timestamp_utc": datetime.fromtimestamp(item[0] / 1000),
+                        "open_price": self._safe_float(item[1]),
+                        "high_price": self._safe_float(item[2]),
+                        "low_price": self._safe_float(item[3]),
+                        "close_price": self._safe_float(item[4]),
+                        "volume": self._safe_float(item[5], 0.0),
+                        "asset_id": asset.asset_id,
+                        "data_interval": "1d"
+                    }
+                    for item in data
+                    if len(item) >= 6
+                ]
+                
+                if ohlcv_data:
+                    await self._store_ohlcv_data_with_interval(asset.asset_id, ohlcv_data, "1d")
+                    
+        except Exception as e:
+            self.log_progress(f"Crypto historical data fetch error for {asset.ticker}: {e}", "error")
+    
+    async def _fetch_stock_historical_data(self, client: httpx.AsyncClient, asset: Asset, start_date: date, end_date: date) -> None:
+        """Fetch historical stock data from FMP"""
+        try:
+            # FMP API로 히스토리 데이터 수집
+            db = self.get_db_session()
+            api_key = ""
+            try:
+                from ..models import AppConfiguration
+                api_key_config = db.query(AppConfiguration).filter(
+                    AppConfiguration.config_key == "FMP_API_KEY"
+                ).first()
+                
+                if api_key_config:
+                    api_key = api_key_config.config_value
+            finally:
+                db.close()
+            
+            if not api_key:
+                return
+            
+            # FMP는 전체 히스토리를 반환하므로 클라이언트에서 필터링
+            url = f"https://financialmodelingprep.com/api/v3/historical-price-full/{asset.ticker}?apikey={api_key}"
+            
+            data = await self._fetch_async(client, url, "FMP Historical", asset.ticker)
+            
+            if "historical" in data:
+                ohlcv_data = [
+                    {
+                        "timestamp_utc": self._safe_date_parse(item["date"]),
+                        "open_price": self._safe_float(item["open"]),
+                        "high_price": self._safe_float(item["high"]),
+                        "low_price": self._safe_float(item["low"]),
+                        "close_price": self._safe_float(item["close"]),
+                        "volume": self._safe_float(item["volume"], 0.0),
+                        "asset_id": asset.asset_id,
+                        "data_interval": "1d"
+                    }
+                    for item in data["historical"]
+                    if self._safe_date_parse(item["date"]) and start_date <= self._safe_date_parse(item["date"]).date() <= end_date
+                ]
+                
+                if ohlcv_data:
+                    await self._store_ohlcv_data_with_interval(asset.asset_id, ohlcv_data, "1d")
+                    
+        except Exception as e:
+            self.log_progress(f"Stock historical data fetch error for {asset.ticker}: {e}", "error")
 
     async def _fetch_ohlcv_from_alpha_vantage_with_interval(self, client: httpx.AsyncClient, ticker: str, api_keys_list: List[str], interval: str) -> List[Dict]:
         """Fetch OHLCV data from Alpha Vantage with specific interval"""
@@ -866,14 +1000,36 @@ class OHLCVCollector(BaseCollector):
             
             if api_key_config:
                 api_key = api_key_config.config_value
+                
+            # HISTORICAL_DATA_DAYS_PER_RUN 설정 조회
+            historical_days_config = db.query(AppConfiguration).filter(
+                AppConfiguration.config_key == "HISTORICAL_DATA_DAYS_PER_RUN"
+            ).first()
+            
+            historical_days = int(historical_days_config.config_value) if historical_days_config else 1000
         finally:
             db.close()
         
         if not api_key:
             return []
         
-        # FMP는 주로 일간 데이터를 제공
-        url = f"https://financialmodelingprep.com/api/v3/historical-price-full/{ticker}?apikey={api_key}"
+        # 간격별 limit 설정 (HISTORICAL_DATA_DAYS_PER_RUN 기반)
+        limit_map = {
+            '1d': 1,    # 1일 간격: 최신 1개
+            '4h': 6,    # 4시간 간격: 하루 6개 (24시간/4시간)
+            '1h': 24,   # 1시간 간격: 하루 24개
+            '1w': 1,    # 1주 간격: 최신 1개
+            '1m': 1     # 1개월 간격: 최신 1개
+        }
+        
+        # 히스토리 백필의 경우 HISTORICAL_DATA_DAYS_PER_RUN 사용
+        if interval == '1d' and self.enable_historical_backfill:
+            limit = historical_days
+        else:
+            limit = limit_map.get(interval, 1)
+        
+        # FMP는 주로 일간 데이터를 제공하지만 limit으로 제한
+        url = f"https://financialmodelingprep.com/api/v3/historical-price-full/{ticker}?apikey={api_key}&limit={limit}"
         
         try:
             data = await self._fetch_async(client, url, "FMP", ticker)
@@ -904,7 +1060,7 @@ class OHLCVCollector(BaseCollector):
                 'type': 'error'
             })
             return []
-    
+
     async def _fetch_ohlcv_from_binance_with_interval(self, client: httpx.AsyncClient, ticker: str, interval: str) -> List[Dict]:
         """Fetch OHLCV data from Binance with specific interval"""
         # Binance 간격 매핑
@@ -916,8 +1072,36 @@ class OHLCVCollector(BaseCollector):
             '1m': '1M'
         }
         
+        # HISTORICAL_DATA_DAYS_PER_RUN 설정 조회
+        db = self.get_db_session()
+        try:
+            from ..models import AppConfiguration
+            historical_days_config = db.query(AppConfiguration).filter(
+                AppConfiguration.config_key == "HISTORICAL_DATA_DAYS_PER_RUN"
+            ).first()
+            
+            historical_days = int(historical_days_config.config_value) if historical_days_config else 1000
+        finally:
+            db.close()
+        
+        # 간격별 limit 설정 (HISTORICAL_DATA_DAYS_PER_RUN 기반)
+        limit_map = {
+            '1d': 1,    # 1일 간격: 최신 1개
+            '4h': 6,    # 4시간 간격: 하루 6개 (24시간/4시간)
+            '1h': 24,   # 1시간 간격: 하루 24개
+            '1w': 1,    # 1주 간격: 최신 1개
+            '1m': 1     # 1개월 간격: 최신 1개
+        }
+        
         binance_interval = interval_map.get(interval, '1d')
-        url = f"https://api.binance.com/api/v3/klines?symbol={ticker}&interval={binance_interval}&limit=1000"
+        
+        # 히스토리 백필의 경우 HISTORICAL_DATA_DAYS_PER_RUN 사용
+        if interval == '1d' and self.enable_historical_backfill:
+            limit = historical_days
+        else:
+            limit = limit_map.get(interval, 1)
+        
+        url = f"https://api.binance.com/api/v3/klines?symbol={ticker}&interval={binance_interval}&limit={limit}"
         
         try:
             data = await self._fetch_async(client, url, "Binance", ticker)
@@ -941,7 +1125,7 @@ class OHLCVCollector(BaseCollector):
                 'type': 'error'
             })
             return []
-    
+
     async def _fetch_ohlcv_from_coinbase_with_interval(self, client: httpx.AsyncClient, ticker: str, interval: str) -> List[Dict]:
         """Fetch OHLCV data from Coinbase with specific interval"""
         # Coinbase 간격 매핑
@@ -978,7 +1162,7 @@ class OHLCVCollector(BaseCollector):
                 'type': 'error'
             })
             return []
-    
+
     async def _fetch_ohlcv_from_coinmarketcap_with_interval(self, client: httpx.AsyncClient, ticker: str, interval: str) -> List[Dict]:
         """Fetch OHLCV data from CoinMarketCap with specific interval"""
         # API 키를 데이터베이스에서 조회

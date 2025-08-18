@@ -81,7 +81,7 @@ const TreeMapPage = () => {
       <CContainer fluid>
         <div
           className="d-flex justify-content-center align-items-center"
-          style={{ height: '400px' }}
+          style={{ height: '600px' }}
         >
           <CSpinner />
         </div>

@@ -332,3 +332,4 @@ const CommodityInfoTab = ({ commodityData }) => {
 }
 
 export default CommodityInfoTab
+

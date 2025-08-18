@@ -64,8 +64,8 @@ class Asset(Base):
     def get_collect_price(self):
         return self.get_setting('collect_price', True)
     
-    def get_collect_company_info(self):
-        return self.get_setting('collect_company_info', True)
+    def get_collect_assets_info(self):
+        return self.get_setting('collect_assets_info', True)
     
     def get_collect_financials(self):
         return self.get_setting('collect_financials', True)

@@ -74,7 +74,7 @@ const TickerManagement = () => {
       // 기본 설정 (모든 타입에서 가격과 기술지표 수집 가능)
       config[type.asset_type_id] = {
         name: type.type_name,
-        canCollectCompanyInfo: false,
+        canCollectAssetsInfo: false,
         canCollectOnchain: false,
       }
 
@@ -84,7 +84,7 @@ const TickerManagement = () => {
         case 'etfs':
         case 'bonds':
         case 'funds':
-          config[type.asset_type_id].canCollectCompanyInfo = true
+          config[type.asset_type_id].canCollectAssetsInfo = true
           break
         case 'crypto':
         case 'cryptocurrency':
@@ -108,7 +108,7 @@ const TickerManagement = () => {
     description: '',
     data_source: 'fmp',
     collect_price: true,
-    collect_company_info: true,
+            collect_assets_info: true,
     collect_onchain: false,
     collect_technical_indicators: false,
   })
@@ -424,7 +424,7 @@ const TickerManagement = () => {
         description: '',
         data_source: 'fmp',
         collect_price: true,
-        collect_company_info: true,
+        collect_assets_info: true,
         collect_onchain: false,
         collect_technical_indicators: false,
       })
@@ -502,7 +502,7 @@ const TickerManagement = () => {
     setNewTicker((prev) => ({
       ...prev,
       asset_type_id: assetTypeId,
-      collect_company_info: config?.canCollectCompanyInfo || false,
+              collect_assets_info: config?.canCollectAssetsInfo || false,
       collect_onchain: config?.canCollectOnchain || false,
       // 크립토 타입이면 기본 데이터 소스를 바이낸스로 설정
       data_source:
@@ -873,7 +873,7 @@ const TickerManagement = () => {
                                 handleColumnToggle(
                                   category,
                                   categoryTickers,
-                                  'collect_company_info',
+                                  'collect_assets_info',
                                 )
                               }
                             >
@@ -985,8 +985,8 @@ const TickerManagement = () => {
                                       pendingChanges[ticker.asset_id]?.collect_price ??
                                       ticker.collect_price,
                                     stock_profiles:
-                                      pendingChanges[ticker.asset_id]?.collect_company_info ??
-                                      ticker.collect_company_info,
+                                              pendingChanges[ticker.asset_id]?.collect_assets_info ??
+        ticker.collect_assets_info,
                                     onchain_metrics:
                                       pendingChanges[ticker.asset_id]?.collect_onchain ??
                                       ticker.collect_onchain,
@@ -999,7 +999,7 @@ const TickerManagement = () => {
                                     // GenericCollectionSettings의 키를 백엔드 API 키로 매핑
                                     const mapping = {
                                       price_data: 'collect_price',
-                                      stock_profiles: 'collect_company_info',
+                                      stock_profiles: 'collect_assets_info',
                                       onchain_metrics: 'collect_onchain',
                                       technical_indicators: 'collect_technical_indicators',
                                     }
@@ -1279,19 +1279,19 @@ const TickerManagement = () => {
                   </div>
                   <div className="form-check form-switch">
                     <CFormSwitch
-                      id="collect_company_info"
-                      checked={newTicker.collect_company_info}
+                      id="collect_assets_info"
+                      checked={newTicker.collect_assets_info}
                       onChange={(e) =>
                         setNewTicker((prev) => ({
                           ...prev,
-                          collect_company_info: e.target.checked,
+                          collect_assets_info: e.target.checked,
                         }))
                       }
-                      disabled={!assetTypeConfig[newTicker.asset_type_id]?.canCollectCompanyInfo}
+                      disabled={!assetTypeConfig[newTicker.asset_type_id]?.canCollectAssetsInfo}
                     />
-                    <label className="form-check-label" htmlFor="collect_company_info">
-                      기업 정보 수집{' '}
-                      {!assetTypeConfig[newTicker.asset_type_id]?.canCollectCompanyInfo &&
+                    <label className="form-check-label" htmlFor="collect_assets_info">
+                      자산 정보 수집{' '}
+                      {!assetTypeConfig[newTicker.asset_type_id]?.canCollectAssetsInfo &&
                         '(사용 불가)'}
                     </label>
                   </div>

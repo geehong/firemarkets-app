@@ -10,6 +10,9 @@ from pydantic import BaseModel, Field, AliasChoices
 # Global dictionary to store application configurations
 GLOBAL_APP_CONFIGS = {}
 
+# ConfigLoader import (나중에 초기화)
+config_loader = None
+
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -40,7 +43,11 @@ BITCOIN_ASSET_ID = 1
 # Function to load application configurations from DB and environment variables
 def load_and_set_global_configs():
     """Loads application configurations from the database and environment variables into GLOBAL_APP_CONFIGS."""
-    from ..models import AppConfiguration
+    global config_loader
+    
+    # ConfigLoader 초기화
+    from .config_loader import config_loader as cl
+    config_loader = cl
     
     # First, load environment variables
     GLOBAL_APP_CONFIGS.update({
@@ -55,7 +62,28 @@ def load_and_set_global_configs():
         "BITCOIN_ASSET_ID": BITCOIN_ASSET_ID
     })
     
+    # ConfigLoader에서 추가 설정 로드
+    GLOBAL_APP_CONFIGS.update({
+        "ENABLE_SEMAPHORE": config_loader.get("concurrency.enable_semaphore", True),
+        "SEMAPHORE_LIMIT": config_loader.get("concurrency.semaphore_limit", 3),
+        "BATCH_SIZE": config_loader.get("concurrency.batch_size", 5),
+        "MAX_API_RETRY_ATTEMPTS": config_loader.get("retry.max_retry_attempts", 3),
+        "RETRY_BASE_DELAY": config_loader.get("retry.base_delay", 1.0),
+        "RETRY_MAX_DELAY": config_loader.get("retry.max_delay", 30.0),
+        "ENABLE_JITTER": config_loader.get("retry.enable_jitter", True),
+        "REQUEST_TIMEOUT_SECONDS": config_loader.get("api_limits.request_timeout_seconds", 30),
+        "RATE_LIMIT_DELAY": config_loader.get("api_limits.rate_limit_delay", 0.5),
+        "HISTORICAL_DATA_DAYS_PER_RUN": config_loader.get("historical_data.days_per_run", 1000),
+        "MAX_HISTORICAL_DAYS": config_loader.get("historical_data.max_historical_days", 10950),
+        "ENABLE_HISTORICAL_BACKFILL": config_loader.get("historical_data.enable_backfill", True),
+        "ENABLE_IMMEDIATE_EXECUTION": config_loader.get("data_collection.enable_immediate_execution", True),
+        "DATA_COLLECTION_INTERVAL_MINUTES": config_loader.get("data_collection.interval_minutes", 240),
+        "DATA_COLLECTION_INTERVAL_DAILY": config_loader.get("data_collection.interval_days", 30),
+    })
+    
     # Then load from database (database values will override environment variables)
+    from ..models import AppConfiguration
+    
     db = SessionLocal()
     try:
         app_configs = db.query(AppConfiguration).filter(AppConfiguration.is_active == True).all()
@@ -69,7 +97,7 @@ def load_and_set_global_configs():
                 GLOBAL_APP_CONFIGS[config.config_key] = config.config_value.lower() == 'true' if config.config_value else False
             else: # string or other types
                 GLOBAL_APP_CONFIGS[config.config_key] = config.config_value
-        logger.info(f"Loaded {len(GLOBAL_APP_CONFIGS)} configurations from database and environment.")
+        logger.info(f"Loaded {len(GLOBAL_APP_CONFIGS)} configurations from database, environment, and config.json.")
     except Exception as e:
         logger.critical(f"Failed to load global configurations from DB: {e}", exc_info=True)
         raise # Re-raise to prevent app from starting with incomplete configs
@@ -197,7 +225,9 @@ def setup_scheduler_jobs():
         frequent_interval_minutes = GLOBAL_APP_CONFIGS.get("DATA_COLLECTION_INTERVAL_MINUTES", 240)
         daily_interval_days = GLOBAL_APP_CONFIGS.get("DATA_COLLECTION_INTERVAL_DAILY", 30)
         
-        # 즉시 실행 작업 제거 - 주기적 실행 작업만 등록
+        # 즉시 실행 옵션 확인
+        enable_immediate_execution = GLOBAL_APP_CONFIGS.get("ENABLE_IMMEDIATE_EXECUTION", False)
+        
         # OHLCV 데이터 수집 (자주 수집)
         scheduler.add_job(
             run_ohlcv_collection_sync,
@@ -205,7 +235,8 @@ def setup_scheduler_jobs():
             minutes=frequent_interval_minutes,
             id='periodic_ohlcv_fetch',
             replace_existing=True,
-            misfire_grace_time=300
+            misfire_grace_time=300,
+            next_run_time=datetime.now() if enable_immediate_execution else None
         )
         
         # 세계 자산 데이터 수집 (자주 수집)
@@ -215,17 +246,20 @@ def setup_scheduler_jobs():
             minutes=frequent_interval_minutes,
             id='periodic_world_assets_fetch',
             replace_existing=True,
-            misfire_grace_time=300
+            misfire_grace_time=300,
+            next_run_time=datetime.now() if enable_immediate_execution else None
         )
         
-        # 온체인 데이터 수집 (자주 수집)
+        # 온체인 데이터 수집 (API 제한 고려하여 덜 자주 수집)
+        onchain_interval_hours = GLOBAL_APP_CONFIGS.get("ONCHAIN_COLLECTION_INTERVAL_HOURS", 24)  # 기본 24시간
         scheduler.add_job(
             run_onchain_collection_sync,
             'interval',
-            minutes=frequent_interval_minutes,
+            hours=onchain_interval_hours,
             id='periodic_onchain_fetch',
             replace_existing=True,
-            misfire_grace_time=300
+            misfire_grace_time=300,
+            next_run_time=datetime.now() if enable_immediate_execution else None
         )
         
         # 주식 데이터 수집 (덜 자주 수집)
@@ -235,7 +269,8 @@ def setup_scheduler_jobs():
             days=daily_interval_days,
             id='periodic_stock_fetch',
             replace_existing=True,
-            misfire_grace_time=300
+            misfire_grace_time=300,
+            next_run_time=datetime.now() if enable_immediate_execution else None
         )
         
         # ETF 데이터 수집 (덜 자주 수집)
@@ -245,7 +280,8 @@ def setup_scheduler_jobs():
             days=daily_interval_days,
             id='periodic_etf_fetch',
             replace_existing=True,
-            misfire_grace_time=300
+            misfire_grace_time=300,
+            next_run_time=datetime.now() if enable_immediate_execution else None
         )
         
         # 크립토 데이터 수집 (덜 자주 수집)
@@ -255,7 +291,8 @@ def setup_scheduler_jobs():
             days=daily_interval_days,
             id='periodic_crypto_fetch',
             replace_existing=True,
-            misfire_grace_time=300
+            misfire_grace_time=300,
+            next_run_time=datetime.now() if enable_immediate_execution else None
         )
         
         logger.info(f"Scheduler jobs configured with {frequent_interval_minutes} minute intervals for frequent jobs and {daily_interval_days} days for daily jobs")

@@ -12,7 +12,7 @@ import { usePriceData, useOnChainMetricData } from '../../hooks/useIntegratedMet
 const LineChart = ({
   data = [],
   title = 'Line Chart',
-  height = 400,
+  height = 600,
   backgroundColor = '#fff',
   color = '#007bff',
   showRangeSelector = true,

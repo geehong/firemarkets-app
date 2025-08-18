@@ -601,6 +601,9 @@ async def run_metric(
             "collection_type": request.collection_type,
             "force_update": request.force_update
         }
+    except HTTPException:
+        # HTTPException은 그대로 재발생
+        raise
     except Exception as e:
         logger.error(f"Failed to run metric {metric_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to run metric: {str(e)}")

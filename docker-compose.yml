@@ -81,22 +81,15 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile.dev # <-- 운영용 Dockerfile이 있다면 그것으로 변경 (예: Dockerfile)
-      args:
-        USER_ID: 1000
-        GROUP_ID: 1000
+      dockerfile: Dockerfile.prod # 프로덕션 모드로 변경
     container_name: fire_markets_frontend
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3000:80" # nginx는 80포트 사용
     environment:
       VITE_API_URL: /api
     depends_on:
       - backend
-    user: "1000:1000"
-    volumes:
-      - ./frontend:/app:delegated
-      - frontend_node_modules:/app/node_modules
     networks:
       - app_network
       - shared-network
@@ -144,31 +137,33 @@ services:
     networks:
       - shared-network
 
-  filebrowser:
-    image: filebrowser/filebrowser:latest
-    container_name: fire_markets_filebrowser
-    restart: unless-stopped
-    ports:
-      - "8080:80"
-    environment:
-      PUID: 1000
-      PGID: 1000
-      TZ: Asia/Seoul
-    volumes:
-      - /home/geehong/firemarkets-app:/srv
-      - filebrowser_data:/database
-    networks:
-      - shared-network
-
-
+  # FTP 서비스 주석 처리 (리얼 서버에서 FTP 실행 중)
+  # ftp:
+  #   image: fauria/vsftpd:latest
+  #   container_name: fire_markets_ftp
+  #   restart: unless-stopped
+  #   ports:
+  #     - "21:21"
+  #     - "30000-30009:30000-30009"
+  #   environment:
+  #     FTP_USER: geehong
+  #     FTP_PASS: Power@6100
+  #     PASV_ADDRESS: 211.176.23.51 
+  #     PASV_MIN_PORT: 30000
+  #     PASV_MAX_PORT: 30009
+  #     ANONYMOUS_ACCESS: "NO"
+  #   volumes:
+  #     - /home/geehong/firemarkets-app:/home/vsftpd/geehong/firemarkets-app
+  #     - /home/geehong/Documents:/home/vsftpd/geehong/Documents
+  #     - /home/geehong/Downloads:/home/vsftpd/geehong/Downloads
+  #   networks:
+  #     - shared-network
 
 volumes:
   db_data:
   portainer_data:
   npm_data:
   npm_letsencrypt:
-  frontend_node_modules:
-  filebrowser_data:
 
 networks:
   app_network:

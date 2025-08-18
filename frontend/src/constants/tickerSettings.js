@@ -8,9 +8,9 @@ export const TICKER_SETTING_DEFS = {
       default: true,
     },
     {
-      key: 'collect_company_info',
-      label: '기업 정보',
-      description: '기업 프로필 및 재무 정보 수집',
+      key: 'collect_assets_info',
+      label: '자산 정보',
+      description: '자산 프로필 및 기본 정보 수집',
       default: true,
     },
     {
@@ -40,7 +40,7 @@ export const TICKER_SETTING_DEFS = {
       default: true,
     },
     {
-      key: 'collect_company_info',
+      key: 'collect_assets_info',
       label: 'ETF 정보',
       description: 'ETF 상세 정보 및 보유 종목 수집',
       default: true,
@@ -54,7 +54,7 @@ export const TICKER_SETTING_DEFS = {
       default: true,
     },
     {
-      key: 'collect_company_info',
+      key: 'collect_assets_info',
       label: '펀드 정보',
       description: '펀드 상세 정보 수집',
       default: true,
@@ -96,7 +96,7 @@ export const TICKER_SETTING_DEFS = {
       default: true,
     },
     {
-      key: 'collect_company_info',
+      key: 'collect_assets_info',
       label: '채권 정보',
       description: '채권 상세 정보 수집',
       default: true,
@@ -192,12 +192,12 @@ export const COLUMN_DESCRIPTIONS = {
 // 컬럼과 데이터베이스 필드 매핑
 export const COLUMN_TO_DB_FIELD = {
   price: 'collect_price',
-  stock_info: 'collect_company_info',
+  stock_info: 'collect_assets_info',
   stock_financials: 'collect_financials',
   stock_estimates: 'collect_estimates',
-  etf_info: 'collect_company_info',
-  fund_info: 'collect_company_info',
-  bond_info: 'collect_company_info',
+  etf_info: 'collect_assets_info',
+  fund_info: 'collect_assets_info',
+  bond_info: 'collect_assets_info',
   crypto_data: 'collect_crypto_data',
   technical_indicators: 'collect_technical_indicators',
 }

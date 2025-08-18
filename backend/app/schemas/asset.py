@@ -104,7 +104,7 @@ class AssetListItem(BaseModel):
     updated_at: datetime = Field(..., description="Last update timestamp")
     type_name: str = Field(..., description="Asset type name")
     collect_price: bool = Field(..., description="Whether to collect price data")
-    collect_company_info: bool = Field(..., description="Whether to collect company info")
+    collect_assets_info: bool = Field(..., description="Whether to collect assets info")
     collect_financials: bool = Field(..., description="Whether to collect financial data")
     collect_estimates: bool = Field(..., description="Whether to collect analyst estimates")
     collect_onchain: bool = Field(..., description="Whether to collect onchain data")
