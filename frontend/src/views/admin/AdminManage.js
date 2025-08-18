@@ -134,6 +134,18 @@ const AdminManage = () => {
     }
   }
 
+  const handleSchedulerTrigger = async () => {
+    try {
+      const response = await schedulerAPI.triggerScheduler()
+      const result = response.data
+      showAlert('success', 'Data collection started successfully')
+      addLog({ level: 'success', message: 'Data collection started successfully' })
+    } catch (error) {
+      showAlert('error', error.response?.data?.detail || error.message)
+      addLog({ level: 'error', message: error.response?.data?.detail || error.message })
+    }
+  }
+
   const handleSchedulerStop = async () => {
     try {
       const response = await schedulerAPI.stopScheduler()
@@ -330,6 +342,7 @@ const AdminManage = () => {
                   onStart={handleSchedulerStart}
                   onStop={handleSchedulerStop}
                   onPause={handleSchedulerPause}
+                  onTrigger={handleSchedulerTrigger}
                 />
               )}
             </CCardBody>

@@ -137,6 +137,9 @@ export const schedulerAPI = {
   // 스케줄러 시작/재시작
   startScheduler: () => api.post('/scheduler/restart'),
   
+  // 스케줄러 트리거 (실제 데이터 수집 시작)
+  triggerScheduler: () => api.post('/scheduler/trigger'),
+  
   // 스케줄러 중지
   stopScheduler: () => api.post('/scheduler/stop'),
   

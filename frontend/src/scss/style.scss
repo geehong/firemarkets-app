@@ -99,6 +99,56 @@ div[class*="CTabContent"],
 div[class*="tab-pane"],
 div[class*="CTabPane"] {
 
+// 헤더 드롭다운 메뉴 스타일
+.header-nav-dropdown {
+  position: relative;
+  
+  .nav-group {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: var(--cui-body-bg);
+    border: 1px solid var(--cui-border-color);
+    border-radius: 0.375rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    z-index: 1050;
+    min-width: 200px;
+    display: none;
+    
+    &.show {
+      display: block;
+    }
+    
+    .nav-item {
+      .nav-link {
+        padding: 0.5rem 1rem;
+        color: var(--cui-body-color);
+        text-decoration: none;
+        display: block;
+        
+        &:hover {
+          background-color: var(--cui-tertiary-bg);
+        }
+      }
+    }
+  }
+}
+
+// 모바일 메뉴 스타일
+.mobile-menu {
+  background: var(--cui-body-bg);
+  border-top: 1px solid var(--cui-border-color);
+  
+  .nav-link {
+    color: var(--cui-body-color);
+    text-decoration: none;
+    
+    &:hover {
+      background-color: var(--cui-tertiary-bg);
+    }
+  }
+}
+
 // 모바일 환경에서 카드 배경색 강제 설정
 @media (max-width: 768px) {
   .card {

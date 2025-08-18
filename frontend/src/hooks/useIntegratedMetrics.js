@@ -154,19 +154,21 @@ export const useAssetAnalysis = (assetId, metrics = [], options = {}) => {
   })
 }
 
-// 반감기 데이터 API 훅
+// 반감기 데이터 API 훅 (OHLCV 포함)
 export const useHalvingData = (period, normalizeToPrice, options = {}) => {
   const {
-    enabled = true
+    enabled = true,
+    include_ohlcv = true
   } = options
 
   return useQuery({
-    queryKey: ['halving-data', period, normalizeToPrice],
+    queryKey: ['halving-data', period, normalizeToPrice, include_ohlcv, 'v2'], // 캐시 키에 버전 추가
     queryFn: async () => {
       const params = new URLSearchParams()
       if (normalizeToPrice > 0) {
         params.append('normalize_to_price', normalizeToPrice.toString())
       }
+      params.append('include_ohlcv', include_ohlcv.toString())
 
       const response = await fetch(`/api/v1/crypto/bitcoin/halving-data/${period}?${params}`)
       if (!response.ok) {
@@ -175,22 +177,27 @@ export const useHalvingData = (period, normalizeToPrice, options = {}) => {
       return response.json()
     },
     enabled: enabled && !!period,
-    staleTime: 10 * 60 * 1000, // 10분
+    staleTime: 5 * 60 * 1000, // 5분 (더 빠른 업데이트)
   })
+}
+
+// 반감기 데이터 API 훅 (close_price만 사용)
+export const useHalvingDataClosePrice = (period, normalizeToPrice, options = {}) => {
+  return useHalvingData(period, normalizeToPrice, { ...options, include_ohlcv: false })
 }
 
 // 4차 반감기 시작가격 API 훅
 export const useFourthHalvingStartPrice = () => {
   return useQuery({
-    queryKey: ['fourth-halving-start-price'],
+    queryKey: ['fourth-halving-start-price', 'v2'], // 캐시 키에 버전 추가
     queryFn: async () => {
-      const response = await fetch('/api/v1/crypto/bitcoin/halving-data/4')
+      const response = await fetch('/api/v1/crypto/bitcoin/halving-data/4?include_ohlcv=false')
       if (!response.ok) {
         throw new Error(`Failed to fetch 4th halving data: ${response.status}`)
       }
       const data = await response.json()
-      return data.ohlcv_data?.[0]?.close_price || 0
+      return data.close_price_data?.[0]?.close_price || 0
     },
-    staleTime: 30 * 60 * 1000, // 30분
+    staleTime: 10 * 60 * 1000, // 10분 (더 빠른 업데이트)
   })
 } 

@@ -32,11 +32,24 @@ class OHLCVPoint(BaseModel):
     change_percent: Optional[float] = None
     days: Optional[int] = None  # 반감기 후 경과일수
 
+class ClosePricePoint(BaseModel):
+    timestamp_utc: date
+    close_price: float
+    change_percent: Optional[float] = None
+    days: Optional[int] = None  # 반감기 후 경과일수
+
 class BitcoinHalvingPeriodDataResponse(BaseModel):
     period_number: int
     start_date: date
     end_date: date
     ohlcv_data: List[OHLCVPoint]
+    metadata: dict
+
+class BitcoinHalvingClosePriceResponse(BaseModel):
+    period_number: int
+    start_date: date
+    end_date: date
+    close_price_data: List[ClosePricePoint]
     metadata: dict
 
 # 비트코인 반감기 기간 정의
@@ -47,10 +60,11 @@ HALVING_DATES = {
     4: {"start": "2024-04-20", "end": date.today().strftime('%Y-%m-%d')},
 }
 
-@router.get("/bitcoin/halving-data/{period_number}", response_model=BitcoinHalvingPeriodDataResponse)
+@router.get("/bitcoin/halving-data/{period_number}")
 async def get_bitcoin_halving_data(
     period_number: int = Path(..., ge=1, le=len(HALVING_DATES), description=f"Bitcoin halving period (1-{len(HALVING_DATES)})"),
     normalize_to_price: Optional[float] = Query(None, description="정규화할 기준 가격 (null이면 4차 반감기 시작가격 사용)"),
+    include_ohlcv: bool = Query(True, description="OHLCV 데이터 포함 여부 (False면 close_price만 포함)"),
     db: Session = Depends(get_db)
 ):
     """비트코인 반감기 기간별 OHLCV 데이터를 조회합니다."""
@@ -78,22 +92,37 @@ async def get_bitcoin_halving_data(
         ).order_by(OHLCVData.timestamp_utc).all()
 
         # 데이터 변환
-        ohlcv_data = []
-        for i, record in enumerate(ohlcv_records):
-            change_percent = None
-            if i > 0 and record.close_price and ohlcv_records[i-1].close_price:
-                prev_close = ohlcv_records[i-1].close_price
-                change_percent = ((record.close_price - prev_close) / prev_close) * 100
+        if include_ohlcv:
+            ohlcv_data = []
+            for i, record in enumerate(ohlcv_records):
+                change_percent = None
+                if i > 0 and record.close_price and ohlcv_records[i-1].close_price:
+                    prev_close = ohlcv_records[i-1].close_price
+                    change_percent = ((record.close_price - prev_close) / prev_close) * 100
 
-            ohlcv_data.append(OHLCVPoint(
-                timestamp_utc=record.timestamp_utc,
-                open_price=record.open_price,
-                high_price=record.high_price,
-                low_price=record.low_price,
-                close_price=record.close_price,
-                volume=record.volume,
-                change_percent=change_percent
-            ))
+                ohlcv_data.append(OHLCVPoint(
+                    timestamp_utc=record.timestamp_utc,
+                    open_price=record.open_price,
+                    high_price=record.high_price,
+                    low_price=record.low_price,
+                    close_price=record.close_price,
+                    volume=record.volume,
+                    change_percent=change_percent
+                ))
+        else:
+            # close_price만 포함하는 간소화된 데이터
+            close_price_data = []
+            for i, record in enumerate(ohlcv_records):
+                change_percent = None
+                if i > 0 and record.close_price and ohlcv_records[i-1].close_price:
+                    prev_close = ohlcv_records[i-1].close_price
+                    change_percent = ((record.close_price - prev_close) / prev_close) * 100
+
+                close_price_data.append(ClosePricePoint(
+                    timestamp_utc=record.timestamp_utc,
+                    close_price=record.close_price,
+                    change_percent=change_percent
+                ))
 
         # normalize_to_price가 None이면 4차 반감기 시작가격을 가져와서 설정
         if normalize_to_price is None:
@@ -114,31 +143,49 @@ async def get_bitcoin_halving_data(
                 normalize_to_price = 1000  # 기본값
 
         # 모든 가격을 정규화
-        normalized_ohlcv_data = []
-        if ohlcv_data:
-            original_start_price = float(ohlcv_data[0].close_price)
-            adjustment_factor = float(normalize_to_price) / original_start_price
-            
-            for i, point in enumerate(ohlcv_data):
-                # 모든 가격을 정규화
-                normalized_point = OHLCVPoint(
-                    timestamp_utc=point.timestamp_utc,
-                    open_price=float(point.open_price) * adjustment_factor,
-                    high_price=float(point.high_price) * adjustment_factor,
-                    low_price=float(point.low_price) * adjustment_factor,
-                    close_price=float(point.close_price) * adjustment_factor,
-                    volume=float(point.volume),
-                    change_percent=point.change_percent,
-                    days=i  # 반감기 후 경과일수 추가
-                )
-                normalized_ohlcv_data.append(normalized_point)
+        if include_ohlcv:
+            normalized_ohlcv_data = []
+            if ohlcv_data:
+                original_start_price = float(ohlcv_data[0].close_price)
+                adjustment_factor = float(normalize_to_price) / original_start_price
+                
+                for i, point in enumerate(ohlcv_data):
+                    # 모든 가격을 정규화
+                    normalized_point = OHLCVPoint(
+                        timestamp_utc=point.timestamp_utc,
+                        open_price=float(point.open_price) * adjustment_factor,
+                        high_price=float(point.high_price) * adjustment_factor,
+                        low_price=float(point.low_price) * adjustment_factor,
+                        close_price=float(point.close_price) * adjustment_factor,
+                        volume=float(point.volume),
+                        change_percent=point.change_percent,
+                        days=i  # 반감기 후 경과일수 추가
+                    )
+                    normalized_ohlcv_data.append(normalized_point)
+            else:
+                normalized_ohlcv_data = ohlcv_data
         else:
-            normalized_ohlcv_data = ohlcv_data
+            normalized_close_price_data = []
+            if close_price_data:
+                original_start_price = float(close_price_data[0].close_price)
+                adjustment_factor = float(normalize_to_price) / original_start_price
+                
+                for i, point in enumerate(close_price_data):
+                    # close_price만 정규화
+                    normalized_point = ClosePricePoint(
+                        timestamp_utc=point.timestamp_utc,
+                        close_price=float(point.close_price) * adjustment_factor,
+                        change_percent=point.change_percent,
+                        days=i  # 반감기 후 경과일수 추가
+                    )
+                    normalized_close_price_data.append(normalized_point)
+            else:
+                normalized_close_price_data = close_price_data
 
         # 메타데이터
         metadata = {
             "period_name": f"Halving Period {period_number}",
-            "total_days": len(normalized_ohlcv_data),
+            "total_days": len(normalized_ohlcv_data) if include_ohlcv else len(normalized_close_price_data),
             "start_date": start_date_obj.isoformat(),
             "end_date": end_date_obj.isoformat(),
             "block_reward": {
@@ -148,17 +195,26 @@ async def get_bitcoin_halving_data(
                 4: 3.125
             }.get(period_number, "Unknown"),
             "normalize_to_price": normalize_to_price,
-            "original_start_price": original_start_price if ohlcv_data else None,
-            "adjustment_factor": adjustment_factor if ohlcv_data else None
+            "original_start_price": original_start_price if (ohlcv_data if include_ohlcv else close_price_data) else None,
+            "adjustment_factor": adjustment_factor if (ohlcv_data if include_ohlcv else close_price_data) else None
         }
 
-        return BitcoinHalvingPeriodDataResponse(
-            period_number=period_number,
-            start_date=start_date_obj,
-            end_date=end_date_obj,
-            ohlcv_data=normalized_ohlcv_data,
-            metadata=metadata
-        )
+        if include_ohlcv:
+            return BitcoinHalvingPeriodDataResponse(
+                period_number=period_number,
+                start_date=start_date_obj,
+                end_date=end_date_obj,
+                ohlcv_data=normalized_ohlcv_data,
+                metadata=metadata
+            )
+        else:
+            return BitcoinHalvingClosePriceResponse(
+                period_number=period_number,
+                start_date=start_date_obj,
+                end_date=end_date_obj,
+                close_price_data=normalized_close_price_data,
+                metadata=metadata
+            )
 
     except HTTPException:
         raise

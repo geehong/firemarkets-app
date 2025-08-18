@@ -15,13 +15,46 @@ export const AuthProvider = ({ children }) => {
   const checkAuth = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      if (token) {
-        const userData = await authService.verifyToken(token);
-        setUser(userData);
-        setAccessToken(token);
+      const savedUser = localStorage.getItem('user');
+      
+      if (token && savedUser) {
+        // 토큰이 있으면 백엔드에서 검증
+        try {
+          const userData = await authService.verifyToken(token);
+          setUser(userData);
+          setAccessToken(token);
+          // 사용자 정보 업데이트
+          localStorage.setItem('user', JSON.stringify(userData));
+        } catch (error) {
+          // 토큰이 유효하지 않으면 refresh 시도
+          const refreshSuccess = await refreshAccessToken();
+          if (!refreshSuccess) {
+            // refresh도 실패하면 로그아웃
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('user');
+            setUser(null);
+            setAccessToken(null);
+          }
+        }
+      } else if (token) {
+        // 토큰만 있고 사용자 정보가 없으면 검증 시도
+        try {
+          const userData = await authService.verifyToken(token);
+          setUser(userData);
+          setAccessToken(token);
+          localStorage.setItem('user', JSON.stringify(userData));
+        } catch (error) {
+          localStorage.removeItem('accessToken');
+          setUser(null);
+          setAccessToken(null);
+        }
       }
     } catch (error) {
+      console.error('Auth check error:', error);
       localStorage.removeItem('accessToken');
+      localStorage.removeItem('user');
+      setUser(null);
+      setAccessToken(null);
     } finally {
       setLoading(false);
     }
@@ -34,6 +67,7 @@ export const AuthProvider = ({ children }) => {
         setUser(response.user);
         setAccessToken(response.access_token);
         localStorage.setItem('accessToken', response.access_token);
+        localStorage.setItem('user', JSON.stringify(response.user));
         return { success: true };
       }
       return { success: false, message: response.message };
@@ -51,6 +85,7 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
       setAccessToken(null);
       localStorage.removeItem('accessToken');
+      localStorage.removeItem('user');
     }
   };
 

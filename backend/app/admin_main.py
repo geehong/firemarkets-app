@@ -7,6 +7,8 @@ from app.database import engine
 from app.models.user import User
 from app.models.session import UserSession, TokenBlacklist, AuditLog
 from app.core.cache import setup_cache
+from app.core.websocket import sio
+import socketio
 
 # 데이터베이스 테이블 생성
 User.__table__.create(bind=engine, checkfirst=True)
@@ -24,9 +26,20 @@ app = FastAPI(
 )
 
 # CORS 설정
+origins = [
+    "http://localhost", "http://localhost:3000", "http://localhost:8000", "http://localhost:8001",
+    "http://127.0.0.1:3000", "http://127.0.0.1:8000", "http://127.0.0.1:8001",
+    "ws://localhost:3000", "ws://localhost:8000", "ws://localhost:8001",
+    "ws://127.0.0.1:3000", "ws://127.0.0.1:8000", "ws://127.0.0.1:8001",
+    # 프로덕션 도메인 추가
+    "https://firemarkets.net", "http://firemarkets.net",
+    "wss://firemarkets.net", "ws://firemarkets.net",
+    "https://backend.firemarkets.net", "http://backend.firemarkets.net",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -48,4 +61,10 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"} 
+    return {"status": "healthy"}
+
+# Socket.IO 애플리케이션 생성
+socket_app = socketio.ASGIApp(sio, app)
+
+# Socket.IO 애플리케이션을 메인 앱으로 설정
+app = socket_app 

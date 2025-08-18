@@ -92,6 +92,7 @@ const SchedulerControls = ({
   onStop,
   onPause,
   onResume,
+  onTrigger,
   status,
   schedulerStatus,
   jobDetails = [],
@@ -100,6 +101,7 @@ const SchedulerControls = ({
 }) => {
   const [isCollecting, setIsCollecting] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
+  const [isTriggering, setIsTriggering] = useState(false)
   const [showStatusDetails, setShowStatusDetails] = useState(false)
   const [showJobDetails, setShowJobDetails] = useState(false)
 
@@ -118,6 +120,15 @@ const SchedulerControls = ({
       await onStop()
     } finally {
       setIsStopping(false)
+    }
+  }
+
+  const handleTrigger = async () => {
+    setIsTriggering(true)
+    try {
+      await onTrigger()
+    } finally {
+      setIsTriggering(false)
     }
   }
 
@@ -152,6 +163,25 @@ const SchedulerControls = ({
             >
               {isCollecting ? <DownloadIcon className="me-2" /> : <PlayIcon className="me-2" />}
               {isCollecting ? 'Collecting...' : 'Start Scheduler'}
+            </CButton>
+
+            <CButton
+              color="info"
+              onClick={handleTrigger}
+              disabled={isTriggering}
+              size="sm"
+              className="px-3 py-2"
+              style={{
+                fontSize: '0.85rem',
+                fontWeight: '500',
+                borderRadius: '6px',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                minWidth: '120px',
+                animation: isTriggering ? 'pulse 1.5s infinite' : 'none',
+              }}
+            >
+              <DownloadIcon className="me-2" />
+              {isTriggering ? 'Triggering...' : 'Collect Data'}
             </CButton>
 
             <CButton

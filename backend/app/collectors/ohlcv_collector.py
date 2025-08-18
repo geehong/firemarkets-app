@@ -769,7 +769,8 @@ class OHLCVCollector(BaseCollector):
                 db.close()
                             
             except Exception as e:
-                self.log_progress(f"Historical backfill error for {asset.ticker}: {e}", "error")
+                ticker = getattr(asset, 'ticker', 'Unknown')
+                self.log_progress(f"Historical backfill error for {ticker}: {e}", "error")
     
     async def _backfill_historical_data(self, asset: Asset, days_to_backfill: int) -> None:
         """Backfill historical data for a specific asset"""
@@ -790,7 +791,8 @@ class OHLCVCollector(BaseCollector):
                 await self._fetch_historical_data_for_period(asset, start_date, end_date)
                 
         except Exception as e:
-            self.log_progress(f"Backfill error for {asset.ticker}: {e}", "error")
+            ticker = getattr(asset, 'ticker', 'Unknown')
+            self.log_progress(f"Backfill error for {ticker}: {e}", "error")
     
     async def _fetch_historical_data_for_period(self, asset: Asset, start_date: date, end_date: date) -> None:
         """Fetch historical data for a specific period"""
@@ -807,7 +809,8 @@ class OHLCVCollector(BaseCollector):
                     await self._fetch_stock_historical_data(client, asset, start_date, end_date)
                     
         except Exception as e:
-            self.log_progress(f"Historical data fetch error for {asset.ticker}: {e}", "error")
+            ticker = getattr(asset, 'ticker', 'Unknown')
+            self.log_progress(f"Historical data fetch error for {ticker}: {e}", "error")
     
     async def _fetch_crypto_historical_data(self, client: httpx.AsyncClient, asset: Asset, start_date: date, end_date: date) -> None:
         """Fetch historical crypto data from Binance"""
@@ -840,7 +843,8 @@ class OHLCVCollector(BaseCollector):
                     await self._store_ohlcv_data_with_interval(asset.asset_id, ohlcv_data, "1d")
                     
         except Exception as e:
-            self.log_progress(f"Crypto historical data fetch error for {asset.ticker}: {e}", "error")
+            ticker = getattr(asset, 'ticker', 'Unknown')
+            self.log_progress(f"Crypto historical data fetch error for {ticker}: {e}", "error")
     
     async def _fetch_stock_historical_data(self, client: httpx.AsyncClient, asset: Asset, start_date: date, end_date: date) -> None:
         """Fetch historical stock data from FMP"""

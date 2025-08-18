@@ -3,7 +3,7 @@ import Highcharts from 'highcharts/highstock';
 import HighchartsReact from 'highcharts-react-official';
 import { CCard, CCardBody, CCardHeader } from '@coreui/react';
 import CardTools from '../common/CardTools';
-import { useFourthHalvingStartPrice, useHalvingData } from '../../hooks/useIntegratedMetrics';
+import { useFourthHalvingStartPrice, useHalvingDataClosePrice } from '../../hooks/useIntegratedMetrics';
 import styles from './css/CorrelationChart.module.css';
 
 // Load Highcharts modules in correct order
@@ -43,17 +43,33 @@ const HalvingChart = ({
   // 4차 반감기 시작가격 가져오기
   const { data: defaultStartPrice = 0, isLoading: isLoadingStartPrice } = useFourthHalvingStartPrice();
 
-  // 반감기 데이터 가져오기
+  // 반감기 데이터 가져오기 (close_price만 사용)
   const periodsToLoad = singlePeriod ? [singlePeriod] : [1, 2, 3, 4];
   const halvingQueries = periodsToLoad.map(period => 
-    useHalvingData(period, startPrice, { enabled: startPrice > 0 })
+    useHalvingDataClosePrice(period, startPrice, { enabled: startPrice > 0 })
   );
+  
+  // 디버깅을 위한 로그
+  // console.log('Halving queries:', halvingQueries);
+  // console.log('Start price:', startPrice);
+  // console.log('Periods to load:', periodsToLoad);
 
   // 모든 쿼리의 로딩 상태 확인
   const isLoading = isLoadingStartPrice || halvingQueries.some(query => query.isLoading);
   
   // 에러 확인
   const error = halvingQueries.find(query => query.error)?.error;
+  
+  // 디버깅: 각 쿼리 상태 확인
+  // halvingQueries.forEach((query, index) => {
+  //   const period = periodsToLoad[index];
+  //   console.log(`Query ${period}:`, {
+  //     isLoading: query.isLoading,
+  //     isError: query.isError,
+  //     error: query.error,
+  //     data: query.data
+  //   });
+  // });
 
   // 화면 크기 변경 감지
   useEffect(() => {
@@ -142,9 +158,9 @@ const HalvingChart = ({
         const period = periodsToLoad[index];
         const data = query.data;
         
-        if (data && data.ohlcv_data) {
-          const ohlcvData = data.ohlcv_data;
-          const chartData = ohlcvData.map((point) => [
+        if (data && (data.ohlcv_data || data.close_price_data)) {
+          const priceData = data.ohlcv_data || data.close_price_data;
+          const chartData = priceData.map((point) => [
             point.days || 0,
             point.close_price
           ]);
@@ -169,7 +185,7 @@ const HalvingChart = ({
                 valuePrefix: '$',
                 formatter: function() {
                   // 4차 반감기 기준으로 날짜 계산
-                  const fourthHalvingDate = new Date('2024-04-19');
+                  const fourthHalvingDate = new Date('2024-04-20');
                   const currentDate = new Date(fourthHalvingDate.getTime() + this.x * 24 * 60 * 60 * 1000);
                   const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
                   
@@ -218,14 +234,19 @@ const HalvingChart = ({
       
       if (!showHalving) return; // 표시하지 않을 반감기는 건너뛰기
       
-      if (data && data.ohlcv_data) {
-        const ohlcvData = data.ohlcv_data;
+      if (data && (data.ohlcv_data || data.close_price_data)) {
+        const priceData = data.ohlcv_data || data.close_price_data;
+        
+        // console.log(`Period ${period} data:`, data);
+        // console.log(`Period ${period} priceData:`, priceData);
         
         // 가로축을 일수로 변경 (days 필드 사용)
-        let chartData = ohlcvData.map((point) => [
+        let chartData = priceData.map((point) => [
           point.days || 0, // days 필드 사용, 없으면 0
           point.close_price // 정규화된 가격
         ]);
+        
+        // console.log(`Period ${period} chartData:`, chartData.slice(0, 5)); // 처음 5개만 로그
         
         // 4차 반감기의 경우 데이터가 끝나는 지점 이후부터 1400일까지 빈 데이터 추가
         if (period === 4) {
@@ -249,11 +270,11 @@ const HalvingChart = ({
           tooltip: {
             valueDecimals: 2,
             valuePrefix: '$',
-            formatter: function() {
-              // 4차 반감기 기준으로 날짜 계산
-              const fourthHalvingDate = new Date('2024-04-19');
-              const currentDate = new Date(fourthHalvingDate.getTime() + this.x * 24 * 60 * 60 * 1000);
-              const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
+                            formatter: function() {
+                  // 4차 반감기 기준으로 날짜 계산
+                  const fourthHalvingDate = new Date('2024-04-20');
+                  const currentDate = new Date(fourthHalvingDate.getTime() + this.x * 24 * 60 * 60 * 1000);
+                  const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
               
               // 가격을 K 단위로 표시
               const price = this.y;
@@ -322,8 +343,8 @@ const HalvingChart = ({
       },
       labels: {
         formatter: function() {
-          // 4차 반감기 기준으로 날짜 계산 (2024-04-01)
-          const fourthHalvingDate = new Date('2024-04-01');
+          // 4차 반감기 기준으로 날짜 계산 (2024-04-20)
+          const fourthHalvingDate = new Date('2024-04-20');
           const currentDate = new Date(fourthHalvingDate.getTime() + this.value * 24 * 60 * 60 * 1000);
           const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
           return `${String(this.value).padStart(3, '0')}Day [${dateStr}]`;
@@ -403,8 +424,8 @@ const HalvingChart = ({
         const points = this.points;
         const days = this.x;
         
-        // Format the date based on the fourth halving (2024-04-01)
-        const fourthHalvingDate = new Date('2024-04-01');
+        // Format the date based on the fourth halving (2024-04-20)
+        const fourthHalvingDate = new Date('2024-04-20');
         const currentDate = new Date(fourthHalvingDate.getTime() + days * 24 * 60 * 60 * 1000);
         const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
         
@@ -441,13 +462,13 @@ const HalvingChart = ({
       enabled: true,
       xAxis: {
         labels: {
-          formatter: function() {
-            // 4차 반감기 기준으로 날짜 계산 (2024-04-01)
-            const fourthHalvingDate = new Date('2024-04-01');
-            const currentDate = new Date(fourthHalvingDate.getTime() + this.value * 24 * 60 * 60 * 1000);
-            const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
-            return dateStr;
-          }
+                          formatter: function() {
+                  // 4차 반감기 기준으로 날짜 계산 (2024-04-20)
+                  const fourthHalvingDate = new Date('2024-04-20');
+                  const currentDate = new Date(fourthHalvingDate.getTime() + this.value * 24 * 60 * 60 * 1000);
+                  const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
+                  return dateStr;
+                }
         }
       }
     },
@@ -469,8 +490,8 @@ const HalvingChart = ({
             xAxis: {
               labels: {
                 formatter: function() {
-                  // 4차 반감기 기준으로 날짜 계산 (2024-04-01)
-                  const fourthHalvingDate = new Date('2024-04-01');
+                  // 4차 반감기 기준으로 날짜 계산 (2024-04-20)
+                  const fourthHalvingDate = new Date('2024-04-20');
                   const currentDate = new Date(fourthHalvingDate.getTime() + this.value * 24 * 60 * 60 * 1000);
                   const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
                   return dateStr;

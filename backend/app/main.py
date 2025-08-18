@@ -5,6 +5,8 @@ from app.api import auth
 from app.database import engine
 from app.models.user import User
 from app.models.session import UserSession, TokenBlacklist, AuditLog
+from app.core.websocket import sio
+import socketio
 
 # 데이터베이스 테이블 생성
 User.__table__.create(bind=engine, checkfirst=True)
@@ -41,6 +43,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Socket.IO 애플리케이션 생성
+socket_app = socketio.ASGIApp(sio, app)
+
 # 라우터 등록
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 
@@ -51,3 +56,6 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+# Socket.IO 애플리케이션을 메인 앱으로 설정
+app = socket_app

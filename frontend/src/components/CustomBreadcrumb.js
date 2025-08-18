@@ -310,6 +310,9 @@ const CustomBreadcrumb = () => {
 
   // onchain 페이지인지 확인
   const isOnchainPage = location.pathname === '/onchain/overviews'
+  
+  // halving 모드인지 확인
+  const isHalvingMode = new URLSearchParams(location.search).get('halving') === 'true'
 
   return (
     <div className="container-fluid px-4 pt-3">
@@ -387,7 +390,7 @@ const CustomBreadcrumb = () => {
               ))}
             </CFormSelect>
           )}
-          {isOnchainPage && (
+          {isOnchainPage && !isHalvingMode && (
             <CFormSelect
               value={new URLSearchParams(location.search).get('metric') || 'mvrv_z_score'}
               onChange={(e) => handleMetricChange(e.target.value)}
@@ -410,6 +413,29 @@ const CustomBreadcrumb = () => {
                   {cleanMetricName(metric.name)}
                 </option>
               ))}
+            </CFormSelect>
+          )}
+          {isOnchainPage && isHalvingMode && (
+            <CFormSelect
+              value="halving"
+              onChange={(e) => {
+                if (e.target.value === 'metrics') {
+                  navigate('/onchain/overviews')
+                }
+              }}
+              className="w-auto d-inline-block"
+              style={{
+                minWidth: '250px',
+                textAlign: 'center',
+                textAlignLast: 'center',
+              }}
+            >
+              <option value="halving" style={{ textAlign: 'center' }}>
+                Halving Analysis
+              </option>
+              <option value="metrics" style={{ textAlign: 'center' }}>
+                Market Metrics
+              </option>
             </CFormSelect>
           )}
         </div>
@@ -489,7 +515,7 @@ const CustomBreadcrumb = () => {
               ))}
             </CFormSelect>
           )}
-          {isOnchainPage && (
+          {isOnchainPage && !isHalvingMode && (
             <CFormSelect
               value={new URLSearchParams(location.search).get('metric') || 'mvrv_z_score'}
               onChange={(e) => handleMetricChange(e.target.value)}
@@ -512,6 +538,29 @@ const CustomBreadcrumb = () => {
                   {cleanMetricName(metric.name)}
                 </option>
               ))}
+            </CFormSelect>
+          )}
+          {isOnchainPage && isHalvingMode && (
+            <CFormSelect
+              value="halving"
+              onChange={(e) => {
+                if (e.target.value === 'metrics') {
+                  navigate('/onchain/overviews')
+                }
+              }}
+              className="w-auto"
+              style={{
+                minWidth: '250px',
+                textAlign: 'center',
+                textAlignLast: 'center',
+              }}
+            >
+              <option value="halving" style={{ textAlign: 'center' }}>
+                Halving Analysis
+              </option>
+              <option value="metrics" style={{ textAlign: 'center' }}>
+                Market Metrics
+              </option>
             </CFormSelect>
           )}
         </div>

@@ -132,6 +132,18 @@ async def admin_login(
     
     return response_obj
 
+@router.get("/verify")
+async def verify_token(
+    current_user: User = Depends(get_current_user)
+):
+    """토큰 검증 및 사용자 정보 반환"""
+    return {
+        "id": current_user.id,
+        "username": current_user.username,
+        "role": current_user.role,
+        "permissions": current_user.permissions
+    }
+
 @router.post("/admin/logout")
 async def admin_logout(
     response: Response,
