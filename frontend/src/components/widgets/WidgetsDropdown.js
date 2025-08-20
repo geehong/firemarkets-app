@@ -262,10 +262,12 @@ const WidgetsDropdown = (props) => {
                               datasets: [
                                 {
                                   label: data.ticker,
-                                  backgroundColor: 'transparent',
-                                  borderColor: color,
-                                  pointBackgroundColor: color,
+                                  backgroundColor: 'rgba(255,255,255,0.35)',
+                                  borderColor: 'rgba(255,255,255,0.95)',
+                                  pointBackgroundColor: '#ffffff',
                                   data: data.monthly_prices_7m, // API에서 받은 7개월치 가격 데이터
+                                  fill: true,
+                                  tension: 0.4,
                                 },
                               ],
                             }}
@@ -273,6 +275,12 @@ const WidgetsDropdown = (props) => {
                               plugins: {
                                 legend: { display: false },
                                 tooltip: {
+                                  displayColors: false,
+                                  padding: 6,
+                                  caretSize: 5,
+                                  titleFont: { size: 10 },
+                                  bodyFont: { size: 9 },
+                                  footerFont: { size: 9 },
                                   callbacks: {
                                     label: function (context) {
                                       let label = context.dataset.label || ''

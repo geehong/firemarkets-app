@@ -1,6 +1,6 @@
 # backend_temp/app/models/crypto.py
 from sqlalchemy import (BIGINT, DECIMAL, TIMESTAMP, Boolean, Column, Date,
-                        DateTime, ForeignKey, Integer, String, Text, func)
+                        DateTime, ForeignKey, Integer, String, Text, func, JSON)
 from sqlalchemy.orm import relationship
 
 from ..core.database import Base
@@ -24,7 +24,7 @@ class CryptoMetric(Base):
     etf_btc_total = Column(DECIMAL(24, 10))
     sopr = Column(DECIMAL(18, 10))
     nupl = Column(DECIMAL(18, 10))
-    open_interest_futures = Column(DECIMAL(24, 10))
+    open_interest_futures = Column(JSON)  # JSON 형식으로 저장 (거래소별 데이터 포함)
     realized_cap = Column(DECIMAL(30, 2))
     cdd_90dma = Column(DECIMAL(18, 10))
     true_market_mean = Column(DECIMAL(24, 10))

@@ -253,16 +253,18 @@ const ProfileTab = ({ asset, stockProfile, stockFinancials, etfInfo, cryptoMetri
 
         {/* Scrolling Asset Info Component */}
         <div className="p-2 rounded">
-          <div className="d-flex align-items-center text-muted small">
-            <span className="badge bg-info me-2">{asset?.type_name || 'Stocks'}</span>
-            <span className="me-2">/</span>
-            <span className="badge bg-info me-2">{asset?.exchange || 'NASDAQ'}</span>
-            <span className="me-2">/</span>
-            <span className="badge bg-info me-2">{asset?.ticker || 'MSFT'}</span>
-            <span className="me-2">/</span>
-            <span className="badge bg-info me-2">{stockProfile?.sector || 'Technology'}</span>
-            <span className="me-2">/</span>
-            <span className="badge bg-info me-2">{asset?.currency || 'USD'}</span>
+          <div className="d-flex align-items-center text-muted small overflow-auto">
+            <div className="d-flex align-items-center flex-nowrap" style={{ minWidth: 'max-content' }}>
+              <span className="badge bg-info me-2">{asset?.type_name || 'Stocks'}</span>
+              <span className="me-2">/</span>
+              <span className="badge bg-info me-2">{asset?.exchange || 'NASDAQ'}</span>
+              <span className="me-2">/</span>
+              <span className="badge bg-info me-2">{asset?.ticker || 'MSFT'}</span>
+              <span className="me-2">/</span>
+              <span className="badge bg-info me-2">{stockProfile?.sector || 'Technology'}</span>
+              <span className="me-2">/</span>
+              <span className="badge bg-info me-2">{asset?.currency || 'USD'}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -290,9 +292,9 @@ const ProfileTab = ({ asset, stockProfile, stockFinancials, etfInfo, cryptoMetri
       </div>
 
       {/* Three Column Layout */}
-      <div className="row g-4">
+      <div className="row g-2 g-sm-3 g-md-4">
         {/* Company Column */}
-        <div className="col-md-4">
+        <div className="col-12 col-sm-6 col-md-4">
           <CCard className="h-100">
             <CCardHeader>
               <h6 className="fw-semibold mb-0">Company</h6>
@@ -310,7 +312,7 @@ const ProfileTab = ({ asset, stockProfile, stockFinancials, etfInfo, cryptoMetri
         </div>
 
         {/* Stock Column */}
-        <div className="col-md-4">
+        <div className="col-12 col-sm-6 col-md-4">
           <CCard className="h-100">
             <CCardHeader>
               <h6 className="fw-semibold mb-0">Stock</h6>
@@ -328,7 +330,7 @@ const ProfileTab = ({ asset, stockProfile, stockFinancials, etfInfo, cryptoMetri
         </div>
 
         {/* Indicators Column */}
-        <div className="col-md-4">
+        <div className="col-12 col-sm-6 col-md-4">
           <CCard className="h-100">
             <CCardHeader>
               <h6 className="fw-semibold mb-0">Indicators</h6>

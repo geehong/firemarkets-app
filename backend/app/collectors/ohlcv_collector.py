@@ -747,10 +747,14 @@ class OHLCVCollector(BaseCollector):
         
         for asset in assets:
             try:
+                # asset_id를 미리 저장하여 세션 분리 문제 방지
+                asset_id = asset.asset_id
+                ticker = getattr(asset, 'ticker', 'Unknown')
+                
                 # 각 자산의 최신 데이터 날짜 확인
                 db = self.get_db_session()
                 latest_data = db.query(crud_ohlcv.model).filter(
-                    crud_ohlcv.model.asset_id == asset.asset_id
+                    crud_ohlcv.model.asset_id == asset_id
                 ).order_by(crud_ohlcv.model.timestamp_utc.desc()).first()
                 
                 if latest_data:
@@ -761,10 +765,10 @@ class OHLCVCollector(BaseCollector):
                     if latest_date < current_date:
                         days_to_backfill = (current_date - latest_date).days
                         if days_to_backfill > 0:
-                            await self._backfill_historical_data(asset, days_to_backfill)
+                            await self._backfill_historical_data(asset_id, ticker, days_to_backfill)
                 else:
                     # 데이터가 없는 경우 최대 히스토리 기간만큼 백필
-                    await self._backfill_historical_data(asset, self.max_historical_days)
+                    await self._backfill_historical_data(asset_id, ticker, self.max_historical_days)
                     
                 db.close()
                             
@@ -772,7 +776,7 @@ class OHLCVCollector(BaseCollector):
                 ticker = getattr(asset, 'ticker', 'Unknown')
                 self.log_progress(f"Historical backfill error for {ticker}: {e}", "error")
     
-    async def _backfill_historical_data(self, asset: Asset, days_to_backfill: int) -> None:
+    async def _backfill_historical_data(self, asset_id: int, ticker: str, days_to_backfill: int) -> None:
         """Backfill historical data for a specific asset"""
         try:
             # 백필할 기간을 청크로 나누어 처리
@@ -783,45 +787,55 @@ class OHLCVCollector(BaseCollector):
                 start_date = end_date - timedelta(days=chunk_size-1)
                 
                 await self.safe_emit('scheduler_log', {
-                    'message': f"[{asset.ticker}] 히스토리 백필: {start_date} ~ {end_date}", 
+                    'message': f"[{ticker}] 히스토리 백필: {start_date} ~ {end_date}", 
                     'type': 'info'
                 })
                 
                 # 이 기간의 데이터 수집
-                await self._fetch_historical_data_for_period(asset, start_date, end_date)
+                await self._fetch_historical_data_for_period(asset_id, ticker, start_date, end_date)
                 
         except Exception as e:
-            ticker = getattr(asset, 'ticker', 'Unknown')
             self.log_progress(f"Backfill error for {ticker}: {e}", "error")
     
-    async def _fetch_historical_data_for_period(self, asset: Asset, start_date: date, end_date: date) -> None:
+    async def _fetch_historical_data_for_period(self, asset_id: int, ticker: str, start_date: date, end_date: date) -> None:
         """Fetch historical data for a specific period"""
         try:
-            # 자산 타입에 따라 다른 API 사용
+            # 자산 타입을 다시 조회
+            db = self.get_db_session()
+            asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
+            if not asset:
+                db.close()
+                return
+                
             asset_type_name = asset.asset_type.type_name.lower() if asset.asset_type else ""
+            db.close()
             
             async with httpx.AsyncClient() as client:
                 if 'crypto' in asset_type_name:
                     # 코인은 Binance API 사용
-                    await self._fetch_crypto_historical_data(client, asset, start_date, end_date)
+                    await self._fetch_crypto_historical_data(client, asset_id, ticker, start_date, end_date)
                 else:
                     # 주식/ETF는 FMP API 사용
-                    await self._fetch_stock_historical_data(client, asset, start_date, end_date)
+                    await self._fetch_stock_historical_data(client, asset_id, ticker, start_date, end_date)
                     
         except Exception as e:
-            ticker = getattr(asset, 'ticker', 'Unknown')
             self.log_progress(f"Historical data fetch error for {ticker}: {e}", "error")
     
-    async def _fetch_crypto_historical_data(self, client: httpx.AsyncClient, asset: Asset, start_date: date, end_date: date) -> None:
+    async def _fetch_crypto_historical_data(self, client: httpx.AsyncClient, asset_id: int, ticker: str, start_date: date, end_date: date) -> None:
         """Fetch historical crypto data from Binance"""
         try:
             # Binance API로 히스토리 데이터 수집
             start_timestamp = int(datetime.combine(start_date, datetime.min.time()).timestamp() * 1000)
             end_timestamp = int(datetime.combine(end_date, datetime.max.time()).timestamp() * 1000)
             
-            url = f"https://api.binance.com/api/v3/klines?symbol={asset.ticker}&interval=1d&startTime={start_timestamp}&endTime={end_timestamp}&limit=1000"
+            url = f"https://api.binance.com/api/v3/klines?symbol={ticker}&interval=1d&startTime={start_timestamp}&endTime={end_timestamp}&limit=1000"
             
-            data = await self._fetch_async(client, url, "Binance Historical", asset.ticker)
+            await self.safe_emit('scheduler_log', {
+                'message': f"[{ticker}] Binance Historical API 호출 시도: {url}", 
+                'type': 'info'
+            })
+            
+            data = await self._fetch_async(client, url, "Binance Historical", ticker)
             
             if data:
                 ohlcv_data = [
@@ -832,7 +846,7 @@ class OHLCVCollector(BaseCollector):
                         "low_price": self._safe_float(item[3]),
                         "close_price": self._safe_float(item[4]),
                         "volume": self._safe_float(item[5], 0.0),
-                        "asset_id": asset.asset_id,
+                        "asset_id": asset_id,
                         "data_interval": "1d"
                     }
                     for item in data
@@ -840,58 +854,96 @@ class OHLCVCollector(BaseCollector):
                 ]
                 
                 if ohlcv_data:
-                    await self._store_ohlcv_data_with_interval(asset.asset_id, ohlcv_data, "1d")
-                    
+                    # 데이터베이스에 저장
+                    db = self.get_db_session()
+                    try:
+                        for ohlcv_record in ohlcv_data:
+                            # 중복 데이터 확인
+                            existing = db.query(crud_ohlcv.model).filter(
+                                crud_ohlcv.model.asset_id == asset_id,
+                                crud_ohlcv.model.timestamp_utc == ohlcv_record["timestamp_utc"],
+                                crud_ohlcv.model.data_interval == "1d"
+                            ).first()
+                            
+                            if not existing:
+                                new_ohlcv = crud_ohlcv.model(**ohlcv_record)
+                                db.add(new_ohlcv)
+                        
+                        db.commit()
+                        await self.safe_emit('scheduler_log', {
+                            'message': f"[{ticker}] 히스토리 데이터 {len(ohlcv_data)}개 저장 완료", 
+                            'type': 'success'
+                        })
+                    except Exception as e:
+                        db.rollback()
+                        self.log_progress(f"Database error for {ticker}: {e}", "error")
+                    finally:
+                        db.close()
+                        
         except Exception as e:
-            ticker = getattr(asset, 'ticker', 'Unknown')
             self.log_progress(f"Crypto historical data fetch error for {ticker}: {e}", "error")
     
-    async def _fetch_stock_historical_data(self, client: httpx.AsyncClient, asset: Asset, start_date: date, end_date: date) -> None:
+    async def _fetch_stock_historical_data(self, client: httpx.AsyncClient, asset_id: int, ticker: str, start_date: date, end_date: date) -> None:
         """Fetch historical stock data from FMP"""
         try:
-            # FMP API로 히스토리 데이터 수집
-            db = self.get_db_session()
-            api_key = ""
-            try:
-                from ..models import AppConfiguration
-                api_key_config = db.query(AppConfiguration).filter(
-                    AppConfiguration.config_key == "FMP_API_KEY"
-                ).first()
-                
-                if api_key_config:
-                    api_key = api_key_config.config_value
-            finally:
-                db.close()
-            
-            if not api_key:
+            # FMP API 키 가져오기
+            fmp_api_key = GLOBAL_APP_CONFIGS.get("FMP_API_KEY")
+            if not fmp_api_key:
+                self.log_progress(f"FMP API key not configured for {ticker}", "error")
                 return
             
-            # FMP는 전체 히스토리를 반환하므로 클라이언트에서 필터링
-            url = f"https://financialmodelingprep.com/api/v3/historical-price-full/{asset.ticker}?apikey={api_key}"
+            url = f"https://financialmodelingprep.com/api/v3/historical-price-full/{ticker}?from={start_date}&to={end_date}&apikey={fmp_api_key}"
             
-            data = await self._fetch_async(client, url, "FMP Historical", asset.ticker)
+            data = await self._fetch_async(client, url, "FMP Historical", ticker)
             
-            if "historical" in data:
-                ohlcv_data = [
-                    {
-                        "timestamp_utc": self._safe_date_parse(item["date"]),
-                        "open_price": self._safe_float(item["open"]),
-                        "high_price": self._safe_float(item["high"]),
-                        "low_price": self._safe_float(item["low"]),
-                        "close_price": self._safe_float(item["close"]),
-                        "volume": self._safe_float(item["volume"], 0.0),
-                        "asset_id": asset.asset_id,
-                        "data_interval": "1d"
-                    }
-                    for item in data["historical"]
-                    if self._safe_date_parse(item["date"]) and start_date <= self._safe_date_parse(item["date"]).date() <= end_date
-                ]
+            if data and "historical" in data:
+                ohlcv_data = []
+                for item in data["historical"]:
+                    try:
+                        timestamp = datetime.strptime(item["date"], "%Y-%m-%d")
+                        ohlcv_data.append({
+                            "timestamp_utc": timestamp,
+                            "open_price": self._safe_float(item.get("open")),
+                            "high_price": self._safe_float(item.get("high")),
+                            "low_price": self._safe_float(item.get("low")),
+                            "close_price": self._safe_float(item.get("close")),
+                            "volume": self._safe_float(item.get("volume"), 0.0),
+                            "asset_id": asset_id,
+                            "data_interval": "1d"
+                        })
+                    except (KeyError, ValueError) as e:
+                        self.log_progress(f"Data parsing error for {ticker}: {e}", "error")
+                        continue
                 
                 if ohlcv_data:
-                    await self._store_ohlcv_data_with_interval(asset.asset_id, ohlcv_data, "1d")
-                    
+                    # 데이터베이스에 저장
+                    db = self.get_db_session()
+                    try:
+                        for ohlcv_record in ohlcv_data:
+                            # 중복 데이터 확인
+                            existing = db.query(crud_ohlcv.model).filter(
+                                crud_ohlcv.model.asset_id == asset_id,
+                                crud_ohlcv.model.timestamp_utc == ohlcv_record["timestamp_utc"],
+                                crud_ohlcv.model.data_interval == "1d"
+                            ).first()
+                            
+                            if not existing:
+                                new_ohlcv = crud_ohlcv.model(**ohlcv_record)
+                                db.add(new_ohlcv)
+                        
+                        db.commit()
+                        await self.safe_emit('scheduler_log', {
+                            'message': f"[{ticker}] 히스토리 데이터 {len(ohlcv_data)}개 저장 완료", 
+                            'type': 'success'
+                        })
+                    except Exception as e:
+                        db.rollback()
+                        self.log_progress(f"Database error for {ticker}: {e}", "error")
+                    finally:
+                        db.close()
+                        
         except Exception as e:
-            self.log_progress(f"Stock historical data fetch error for {asset.ticker}: {e}", "error")
+            self.log_progress(f"Stock historical data fetch error for {ticker}: {e}", "error")
 
     async def _fetch_ohlcv_from_alpha_vantage_with_interval(self, client: httpx.AsyncClient, ticker: str, api_keys_list: List[str], interval: str) -> List[Dict]:
         """Fetch OHLCV data from Alpha Vantage with specific interval"""

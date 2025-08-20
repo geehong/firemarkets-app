@@ -311,6 +311,8 @@ def get_ohlcv_data(
                 last_day_subquery,
                 (OHLCVData.asset_id == last_day_subquery.c.asset_id) &
                 (OHLCVData.timestamp_utc == last_day_subquery.c.max_timestamp)
+            ).filter(
+                OHLCVData.data_interval == '1d'
             ).order_by(OHLCVData.timestamp_utc.asc()).limit(limit).all()
             
         elif data_interval.upper() == '1W':
@@ -340,6 +342,8 @@ def get_ohlcv_data(
                 last_day_subquery,
                 (OHLCVData.asset_id == last_day_subquery.c.asset_id) &
                 (OHLCVData.timestamp_utc == last_day_subquery.c.max_timestamp)
+            ).filter(
+                OHLCVData.data_interval == '1d'
             ).order_by(OHLCVData.timestamp_utc.asc()).limit(limit).all()
             
         else:

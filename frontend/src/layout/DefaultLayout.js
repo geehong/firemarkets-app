@@ -76,9 +76,9 @@ const DefaultLayout = () => {
         {' '}
         {/* bg-light 클래스 추가 (템플릿 기본 스타일) */}
         <AppHeader />
-        <div className="body flex-grow-1 px-3">
+        <div className="body flex-grow-1 px-3 px-md-3 px-sm-2 px-1">
           {' '}
-          {/* px-3 패딩 추가 (템플릿 기본 스타일) */}
+          {/* 반응형 패딩: 데스크톱 px-3, 태블릿 px-2, 모바일 px-1 */}
           <AppContent />
         </div>
         <AppFooter />

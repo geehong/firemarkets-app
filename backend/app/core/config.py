@@ -147,111 +147,530 @@ def setup_scheduler_jobs():
     # 비동기 함수를 동기적으로 실행하는 래퍼 함수들
     def run_ohlcv_collection_sync():
         """OHLCV 데이터 수집 작업을 동기적으로 실행"""
+        from ..core.database import SessionLocal
+        from ..models.system import SchedulerLog
+        from ..models.world_assets import ScrapingLogs
+        
+        start_time = datetime.now()
+        db = SessionLocal()
+        
+        # 스케줄러 로그 생성
+        scheduler_log = SchedulerLog(
+            job_name="ohlcvcollector_collection",
+            start_time=start_time,
+            status="running"
+        )
+        db.add(scheduler_log)
+        
+        # 스크래핑 로그 생성
+        scraping_log = ScrapingLogs(
+            source="OHLCV Collector",
+            status="running",
+            started_at=start_time
+        )
+        db.add(scraping_log)
+        db.commit()
+        
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             collector = OHLCVCollector()
-            loop.run_until_complete(collector.collect_with_settings())
+            result = loop.run_until_complete(collector.collect_with_settings())
+            
+            # 성공 로그 업데이트
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            
+            # 스케줄러 로그 업데이트
+            scheduler_log.end_time = end_time
+            scheduler_log.duration_seconds = int(duration)
+            scheduler_log.status = "completed"
+            scheduler_log.assets_processed = result.get("processed_assets", 0) if result else 0
+            scheduler_log.data_points_added = result.get("total_added_records", 0) if result else 0
+            
+            # 스크래핑 로그 업데이트
+            scraping_log.status = "success"
+            scraping_log.records_processed = result.get("processed_assets", 0) if result else 0
+            scraping_log.records_successful = result.get("total_added_records", 0) if result else 0
+            scraping_log.execution_time_seconds = duration
+            scraping_log.completed_at = end_time
+            
+            db.commit()
+            
         except Exception as e:
+            # 실패 로그 업데이트
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            
+            # 스케줄러 로그 업데이트
+            scheduler_log.end_time = end_time
+            scheduler_log.duration_seconds = int(duration)
+            scheduler_log.status = "failed"
+            scheduler_log.error_message = str(e)
+            
+            # 스크래핑 로그 업데이트
+            scraping_log.status = "failed"
+            scraping_log.error_message = str(e)
+            scraping_log.execution_time_seconds = duration
+            scraping_log.completed_at = end_time
+            
+            db.commit()
             logger.error(f"Error in OHLCV data collection: {e}", exc_info=True)
         finally:
             loop.close()
+            db.close()
     
     def run_stock_collection_sync():
         """주식 데이터 수집 작업을 동기적으로 실행"""
+        from ..core.database import SessionLocal
+        from ..models.system import SchedulerLog
+        from ..models.world_assets import ScrapingLogs
+        
+        start_time = datetime.now()
+        db = SessionLocal()
+        
+        # 스케줄러 로그 생성
+        scheduler_log = SchedulerLog(
+            job_name="stockcollector_collection",
+            start_time=start_time,
+            status="running"
+        )
+        db.add(scheduler_log)
+        
+        # 스크래핑 로그 생성
+        scraping_log = ScrapingLogs(
+            source="Stock Collector",
+            status="running",
+            started_at=start_time
+        )
+        db.add(scraping_log)
+        db.commit()
+        
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             collector = StockCollector()
-            loop.run_until_complete(collector.collect_with_settings())
+            result = loop.run_until_complete(collector.collect_with_settings())
+            
+            # 성공 로그 업데이트
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            
+            # 스케줄러 로그 업데이트
+            scheduler_log.end_time = end_time
+            scheduler_log.duration_seconds = int(duration)
+            scheduler_log.status = "completed"
+            scheduler_log.assets_processed = result.get("processed_assets", 0) if result else 0
+            scheduler_log.data_points_added = result.get("total_added_records", 0) if result else 0
+            
+            # 스크래핑 로그 업데이트
+            scraping_log.status = "success"
+            scraping_log.records_processed = result.get("processed_assets", 0) if result else 0
+            scraping_log.records_successful = result.get("total_added_records", 0) if result else 0
+            scraping_log.execution_time_seconds = duration
+            scraping_log.completed_at = end_time
+            
+            db.commit()
+            
         except Exception as e:
+            # 실패 로그 업데이트
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            
+            # 스케줄러 로그 업데이트
+            scheduler_log.end_time = end_time
+            scheduler_log.duration_seconds = int(duration)
+            scheduler_log.status = "failed"
+            scheduler_log.error_message = str(e)
+            
+            # 스크래핑 로그 업데이트
+            scraping_log.status = "failed"
+            scraping_log.error_message = str(e)
+            scraping_log.execution_time_seconds = duration
+            scraping_log.completed_at = end_time
+            
+            db.commit()
             logger.error(f"Error in stock data collection: {e}", exc_info=True)
         finally:
             loop.close()
+            db.close()
     
     def run_etf_collection_sync():
         """ETF 데이터 수집 작업을 동기적으로 실행"""
+        from ..core.database import SessionLocal
+        from ..models.system import SchedulerLog
+        from ..models.world_assets import ScrapingLogs
+        
+        start_time = datetime.now()
+        db = SessionLocal()
+        
+        # 스케줄러 로그 생성
+        scheduler_log = SchedulerLog(
+            job_name="etfcollector_collection",
+            start_time=start_time,
+            status="running"
+        )
+        db.add(scheduler_log)
+        
+        # 스크래핑 로그 생성
+        scraping_log = ScrapingLogs(
+            source="ETF Collector",
+            status="running",
+            started_at=start_time
+        )
+        db.add(scraping_log)
+        db.commit()
+        
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             collector = ETFCollector()
-            loop.run_until_complete(collector.collect_with_settings())
+            result = loop.run_until_complete(collector.collect_with_settings())
+            
+            # 성공 로그 업데이트
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            
+            # 스케줄러 로그 업데이트
+            scheduler_log.end_time = end_time
+            scheduler_log.duration_seconds = int(duration)
+            scheduler_log.status = "completed"
+            scheduler_log.assets_processed = result.get("processed_assets", 0) if result else 0
+            scheduler_log.data_points_added = result.get("total_added_records", 0) if result else 0
+            
+            # 스크래핑 로그 업데이트
+            scraping_log.status = "success"
+            scraping_log.records_processed = result.get("processed_assets", 0) if result else 0
+            scraping_log.records_successful = result.get("total_added_records", 0) if result else 0
+            scraping_log.execution_time_seconds = duration
+            scraping_log.completed_at = end_time
+            
+            db.commit()
+            
         except Exception as e:
+            # 실패 로그 업데이트
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            
+            # 스케줄러 로그 업데이트
+            scheduler_log.end_time = end_time
+            scheduler_log.duration_seconds = int(duration)
+            scheduler_log.status = "failed"
+            scheduler_log.error_message = str(e)
+            
+            # 스크래핑 로그 업데이트
+            scraping_log.status = "failed"
+            scraping_log.error_message = str(e)
+            scraping_log.execution_time_seconds = duration
+            scraping_log.completed_at = end_time
+            
+            db.commit()
             logger.error(f"Error in ETF data collection: {e}", exc_info=True)
         finally:
             loop.close()
+            db.close()
     
     def run_onchain_collection_sync():
         """온체인 데이터 수집 작업을 동기적으로 실행"""
+        from ..core.database import SessionLocal
+        from ..models.system import SchedulerLog
+        from ..models.world_assets import ScrapingLogs
+        
+        start_time = datetime.now()
+        db = SessionLocal()
+        
+        # 스케줄러 로그 생성
+        scheduler_log = SchedulerLog(
+            job_name="onchaincollector_collection",
+            start_time=start_time,
+            status="running"
+        )
+        db.add(scheduler_log)
+        
+        # 스크래핑 로그 생성
+        scraping_log = ScrapingLogs(
+            source="Onchain Collector",
+            status="running",
+            started_at=start_time
+        )
+        db.add(scraping_log)
+        db.commit()
+        
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             collector = OnchainCollector()
-            loop.run_until_complete(collector.collect_with_settings())
+            result = loop.run_until_complete(collector.collect_with_settings())
+            
+            # 성공 로그 업데이트
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            
+            # 스케줄러 로그 업데이트
+            scheduler_log.end_time = end_time
+            scheduler_log.duration_seconds = int(duration)
+            scheduler_log.status = "completed"
+            scheduler_log.assets_processed = result.get("processed_assets", 0) if result else 0
+            scheduler_log.data_points_added = result.get("total_added_records", 0) if result else 0
+            
+            # 스크래핑 로그 업데이트
+            scraping_log.status = "success"
+            scraping_log.records_processed = result.get("processed_assets", 0) if result else 0
+            scraping_log.records_successful = result.get("total_added_records", 0) if result else 0
+            scraping_log.execution_time_seconds = duration
+            scraping_log.completed_at = end_time
+            
+            db.commit()
+            
         except Exception as e:
+            # 실패 로그 업데이트
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            
+            # 스케줄러 로그 업데이트
+            scheduler_log.end_time = end_time
+            scheduler_log.duration_seconds = int(duration)
+            scheduler_log.status = "failed"
+            scheduler_log.error_message = str(e)
+            
+            # 스크래핑 로그 업데이트
+            scraping_log.status = "failed"
+            scraping_log.error_message = str(e)
+            scraping_log.execution_time_seconds = duration
+            scraping_log.completed_at = end_time
+            
+            db.commit()
             logger.error(f"Error in onchain data collection: {e}", exc_info=True)
         finally:
             loop.close()
+            db.close()
     
     def run_crypto_collection_sync():
         """크립토 데이터 수집 작업을 동기적으로 실행"""
+        from ..core.database import SessionLocal
+        from ..models.system import SchedulerLog
+        from ..models.world_assets import ScrapingLogs
+        
+        start_time = datetime.now()
+        db = SessionLocal()
+        
+        # 스케줄러 로그 생성
+        scheduler_log = SchedulerLog(
+            job_name="cryptocollector_collection",
+            start_time=start_time,
+            status="running"
+        )
+        db.add(scheduler_log)
+        
+        # 스크래핑 로그 생성
+        scraping_log = ScrapingLogs(
+            source="Crypto Collector",
+            status="running",
+            started_at=start_time
+        )
+        db.add(scraping_log)
+        db.commit()
+        
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             collector = CryptoDataCollector()
-            loop.run_until_complete(collector.collect_with_settings())
+            result = loop.run_until_complete(collector.collect_with_settings())
+            
+            # 성공 로그 업데이트
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            
+            # 스케줄러 로그 업데이트
+            scheduler_log.end_time = end_time
+            scheduler_log.duration_seconds = int(duration)
+            scheduler_log.status = "completed"
+            scheduler_log.assets_processed = result.get("processed_assets", 0) if result else 0
+            scheduler_log.data_points_added = result.get("total_added_records", 0) if result else 0
+            
+            # 스크래핑 로그 업데이트
+            scraping_log.status = "success"
+            scraping_log.records_processed = result.get("processed_assets", 0) if result else 0
+            scraping_log.records_successful = result.get("total_added_records", 0) if result else 0
+            scraping_log.execution_time_seconds = duration
+            scraping_log.completed_at = end_time
+            
+            db.commit()
+            
         except Exception as e:
+            # 실패 로그 업데이트
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            
+            # 스케줄러 로그 업데이트
+            scheduler_log.end_time = end_time
+            scheduler_log.duration_seconds = int(duration)
+            scheduler_log.status = "failed"
+            scheduler_log.error_message = str(e)
+            
+            # 스크래핑 로그 업데이트
+            scraping_log.status = "failed"
+            scraping_log.error_message = str(e)
+            scraping_log.execution_time_seconds = duration
+            scraping_log.completed_at = end_time
+            
+            db.commit()
             logger.error(f"Error in crypto data collection: {e}", exc_info=True)
         finally:
             loop.close()
+            db.close()
     
     def run_world_assets_collection_sync():
         """세계 자산 데이터 수집 작업을 동기적으로 실행"""
+        from ..core.database import SessionLocal
+        from ..models.system import SchedulerLog
+        from ..models.world_assets import ScrapingLogs
+        
+        start_time = datetime.now()
+        db = SessionLocal()
+        
+        # 스케줄러 로그 생성
+        scheduler_log = SchedulerLog(
+            job_name="worldassetscollector_collection",
+            start_time=start_time,
+            status="running"
+        )
+        db.add(scheduler_log)
+        
+        # 스크래핑 로그 생성
+        scraping_log = ScrapingLogs(
+            source="World Assets Collector",
+            status="running",
+            started_at=start_time
+        )
+        db.add(scraping_log)
+        db.commit()
+        
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             collector = WorldAssetsCollector()
-            loop.run_until_complete(collector.collect_with_settings())
+            result = loop.run_until_complete(collector.collect_with_settings())
+            
+            # 성공 로그 업데이트
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            
+            # 스케줄러 로그 업데이트
+            scheduler_log.end_time = end_time
+            scheduler_log.duration_seconds = int(duration)
+            scheduler_log.status = "completed"
+            scheduler_log.assets_processed = result.get("processed_assets", 0) if result else 0
+            scheduler_log.data_points_added = result.get("total_added_records", 0) if result else 0
+            
+            # 스크래핑 로그 업데이트
+            scraping_log.status = "success"
+            scraping_log.records_processed = result.get("processed_assets", 0) if result else 0
+            scraping_log.records_successful = result.get("total_added_records", 0) if result else 0
+            scraping_log.execution_time_seconds = duration
+            scraping_log.completed_at = end_time
+            
+            db.commit()
+            
         except Exception as e:
+            # 실패 로그 업데이트
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            
+            # 스케줄러 로그 업데이트
+            scheduler_log.end_time = end_time
+            scheduler_log.duration_seconds = int(duration)
+            scheduler_log.status = "failed"
+            scheduler_log.error_message = str(e)
+            
+            # 스크래핑 로그 업데이트
+            scraping_log.status = "failed"
+            scraping_log.error_message = str(e)
+            scraping_log.execution_time_seconds = duration
+            scraping_log.completed_at = end_time
+            
+            db.commit()
             logger.error(f"Error in world assets collection: {e}", exc_info=True)
         finally:
             loop.close()
+            db.close()
     
     # 메인 데이터 수집 작업 등록 (데이터베이스 설정 사용)
     schedule_interval_minutes = GLOBAL_APP_CONFIGS.get("DATA_COLLECTION_INTERVAL_MINUTES", 240)
     
     try:
-        # 설정에서 수집 주기 가져오기
-        frequent_interval_minutes = GLOBAL_APP_CONFIGS.get("DATA_COLLECTION_INTERVAL_MINUTES", 240)
-        daily_interval_days = GLOBAL_APP_CONFIGS.get("DATA_COLLECTION_INTERVAL_DAILY", 30)
+        # config_loader를 직접 사용하여 설정 가져오기
+        from .config_loader import config_loader
         
-        # 즉시 실행 옵션 확인
-        enable_immediate_execution = GLOBAL_APP_CONFIGS.get("ENABLE_IMMEDIATE_EXECUTION", False)
+        # 설정에서 수집 주기 가져오기
+        frequent_interval_minutes = config_loader.get("data_collection.interval_minutes", 240)
+        daily_interval_days = config_loader.get("data_collection.interval_daily", 30)
+        
+        # 즉시 실행 옵션 확인 - config_loader에서 직접 가져오기
+        enable_immediate_execution = config_loader.get("data_collection.enable_immediate_execution", False)
+        
+        logger.info(f"Setting up scheduler with immediate execution: {enable_immediate_execution}")
+        
+        # 시간 단위를 올바르게 처리
+        # frequent_interval_minutes가 1440 이상이면 hours로 변환
+        if frequent_interval_minutes >= 1440:  # 24시간 이상
+            frequent_interval_hours = frequent_interval_minutes // 60
+            frequent_interval_minutes = frequent_interval_minutes % 60
+            use_hours = True
+        else:
+            frequent_interval_hours = 0
+            use_hours = False
+        
+        logger.info(f"Frequent interval: {frequent_interval_hours} hours, {frequent_interval_minutes} minutes")
         
         # OHLCV 데이터 수집 (자주 수집)
-        scheduler.add_job(
-            run_ohlcv_collection_sync,
-            'interval',
-            minutes=frequent_interval_minutes,
-            id='periodic_ohlcv_fetch',
-            replace_existing=True,
-            misfire_grace_time=300,
-            next_run_time=datetime.now() if enable_immediate_execution else None
-        )
+        if use_hours:
+            scheduler.add_job(
+                run_ohlcv_collection_sync,
+                'interval',
+                hours=frequent_interval_hours,
+                minutes=frequent_interval_minutes,
+                id='periodic_ohlcv_fetch',
+                replace_existing=True,
+                misfire_grace_time=300,
+                next_run_time=datetime.now() if enable_immediate_execution else None
+            )
+        else:
+            scheduler.add_job(
+                run_ohlcv_collection_sync,
+                'interval',
+                minutes=frequent_interval_minutes,
+                id='periodic_ohlcv_fetch',
+                replace_existing=True,
+                misfire_grace_time=300,
+                next_run_time=datetime.now() if enable_immediate_execution else None
+            )
         
         # 세계 자산 데이터 수집 (자주 수집)
-        scheduler.add_job(
-            run_world_assets_collection_sync,
-            'interval',
-            minutes=frequent_interval_minutes,
-            id='periodic_world_assets_fetch',
-            replace_existing=True,
-            misfire_grace_time=300,
-            next_run_time=datetime.now() if enable_immediate_execution else None
-        )
+        if use_hours:
+            scheduler.add_job(
+                run_world_assets_collection_sync,
+                'interval',
+                hours=frequent_interval_hours,
+                minutes=frequent_interval_minutes,
+                id='periodic_world_assets_fetch',
+                replace_existing=True,
+                misfire_grace_time=300,
+                next_run_time=datetime.now() if enable_immediate_execution else None
+            )
+        else:
+            scheduler.add_job(
+                run_world_assets_collection_sync,
+                'interval',
+                minutes=frequent_interval_minutes,
+                id='periodic_world_assets_fetch',
+                replace_existing=True,
+                misfire_grace_time=300,
+                next_run_time=datetime.now() if enable_immediate_execution else None
+            )
         
         # 온체인 데이터 수집 (API 제한 고려하여 덜 자주 수집)
-        onchain_interval_hours = GLOBAL_APP_CONFIGS.get("ONCHAIN_COLLECTION_INTERVAL_HOURS", 24)  # 기본 24시간
+        onchain_interval_hours = config_loader.get("onchain_collection.interval_hours", 24)  # 기본 24시간
         scheduler.add_job(
             run_onchain_collection_sync,
             'interval',

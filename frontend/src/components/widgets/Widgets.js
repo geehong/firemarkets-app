@@ -1,6 +1,7 @@
 import React from 'react'
-import { CCard, CCardBody, CCardHeader } from '@coreui/react'
-import { CChartBar } from '@coreui/react-chartjs'
+import { useQuery } from '@tanstack/react-query'
+import { CCard, CCardBody, CCardHeader, CRow, CCol, CWidgetStatsA } from '@coreui/react'
+import { CChartBar, CChartLine } from '@coreui/react-chartjs'
 import { DocsExample } from 'src/components'
 
 import WidgetsBrand from './WidgetsBrand'
@@ -20,6 +21,53 @@ const Widgets = ({
   onAssetDataLoad,
   onAssetError,
 }) => {
+  // 실제 데이터 연동: WidgetsDropdown과 동일한 API 사용
+  const fetchTickerSummary = async (tickers) => {
+    try {
+      const response = await fetch(`/api/v1/widgets/ticker-summary?tickers=${tickers.join(',')}`)
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      const data = await response.json()
+      return data.data
+    } catch (error) {
+      return tickers.map((ticker) => ({
+        ticker,
+        name: `${ticker} (Error)`,
+        current_price: null,
+        change_percent_7m: null,
+        monthly_prices_7m: Array(7).fill(null),
+        error: true,
+      }))
+    }
+  }
+
+  const targetTickers = ['BTCUSDT', 'GCUSD', 'SPY', 'MSFT']
+  const { data: widgetData = [], isLoading: isLoadingWidgets, error: widgetsError } = useQuery({
+    queryKey: ['widget-ticker-summary', targetTickers],
+    queryFn: () => fetchTickerSummary(targetTickers),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const widgetColorMap = {
+    BTCUSDT: '#F7931A',
+    GCUSD: '#FFD700',
+    MSFT: '#0078D4',
+    SPY: '#006400',
+  }
+
+  const monthLabels = (() => {
+    const labels = []
+    const today = new Date()
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1)
+      labels.push(d.toLocaleString('default', { month: 'short' }))
+    }
+    return labels
+  })()
+
   // Example widget configurations
   const exampleStatsB = createStatsBWidgets([
     {
@@ -108,6 +156,74 @@ const Widgets = ({
           <CCard className="mb-4">
             <CCardHeader>Widgets</CCardHeader>
             <CCardBody>
+              {/* CWidgetStatsA with Spline Area charts */}
+              <DocsExample href="components/widgets/#cwidgetstatsa">
+                <CRow xs={{ gutter: 4 }}>
+                  {isLoadingWidgets || widgetsError || widgetData.length === 0
+                    ? targetTickers.map((ticker) => (
+                        <CCol sm={6} xl={4} xxl={3} key={ticker}>
+                          <CWidgetStatsA
+                            style={{ backgroundColor: widgetColorMap[ticker] || '#888', color: '#fff' }}
+                            value={<>Loading...</>}
+                            title={ticker}
+                            chart={<div style={{ height: '70px' }}></div>}
+                          />
+                        </CCol>
+                      ))
+                    : widgetData.map((w, idx) => {
+                        const color = widgetColorMap[w.ticker] || '#888888'
+                        const valueText =
+                          w.current_price !== null
+                            ? `$${w.current_price.toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}`
+                            : 'N/A'
+                        const prices = w.monthly_prices_7m && w.monthly_prices_7m.some((p) => p !== null)
+                          ? w.monthly_prices_7m
+                          : []
+                        return (
+                          <CCol sm={6} xl={4} xxl={3} key={w.ticker || idx}>
+                            <CWidgetStatsA
+                              style={{ backgroundColor: color, color: '#fff' }}
+                              value={<>{valueText}</>}
+                              title={w.name || w.ticker}
+                              chart={
+                                prices.length > 0 ? (
+                                  <CChartLine
+                                    className="mt-3 mx-3"
+                                    style={{ height: '70px' }}
+                                    data={{
+                                      labels: monthLabels,
+                                      datasets: [{
+                                        label: w.ticker,
+                                        data: prices,
+                                        borderColor: 'rgba(255,255,255,0.95)',
+                                        backgroundColor: 'rgba(255,255,255,0.35)',
+                                        fill: true,
+                                        tension: 0.4,
+                                        pointRadius: 0,
+                                        borderWidth: 2,
+                                      }],
+                                    }}
+                                    options={{
+                                      plugins: { legend: { display: false } },
+                                      maintainAspectRatio: false,
+                                      scales: { x: { display: false }, y: { display: false } },
+                                      elements: { point: { hitRadius: 10, hoverRadius: 4 } },
+                                    }}
+                                  />
+                                ) : (
+                                  <div style={{ height: '70px' }} />
+                                )
+                              }
+                            />
+                          </CCol>
+                        )
+                      })}
+                </CRow>
+              </DocsExample>
+
               <DocsExample href="components/widgets/#cwidgetstatsa">
                 <WidgetsDropdown />
               </DocsExample>

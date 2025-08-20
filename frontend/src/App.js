@@ -16,19 +16,20 @@ import './scss/examples.scss'
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 30 * 60 * 1000, // 30분으로 증가 (캐시 유지 시간)
-      gcTime: 60 * 60 * 1000, // 1시간 (cacheTime 대신 gcTime 사용)
+      staleTime: 60 * 60 * 1000, // 1시간으로 증가 (캐시 유지 시간)
+      gcTime: 2 * 60 * 60 * 1000, // 2시간 (cacheTime 대신 gcTime 사용)
       retry: 0, // 재시도 비활성화 (빠른 실패)
-      retryDelay: 1000, // 재시도 지연 최소화
+      retryDelay: 500, // 재시도 지연 최소화
       refetchOnWindowFocus: false, // 윈도우 포커스 시 재요청 비활성화
       refetchOnMount: false, // 마운트 시 재요청 비활성화 (캐시 우선)
       refetchOnReconnect: false, // 재연결 시 재요청 비활성화
       networkMode: 'online', // 온라인 모드만
       suspense: false, // Suspense 비활성화로 초기 로딩 속도 향상
+      enabled: true, // 쿼리 활성화
     },
     mutations: {
       retry: 0, // 뮤테이션 재시도 비활성화
-      retryDelay: 1000, // 뮤테이션 재시도 지연
+      retryDelay: 500, // 뮤테이션 재시도 지연
     },
   },
 })

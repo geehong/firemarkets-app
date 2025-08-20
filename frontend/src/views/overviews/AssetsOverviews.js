@@ -3,9 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import useAssetData from '../../hooks/useAssetData'
 
 // Import the new modular components
-import OverViewHeader from '../../components/overviews/OverViewHeader'
-import OverViewTabs from '../../components/overviews/OverViewTabs'
-import OHLCVChart from '../../components/charts/OHLCVChart'
+import ResponsiveOverView from '../../components/overviews/ResponsiveOverView'
 import AssetsList from '../../components/list/AssetsList'
 
 const AssetsOverviews = () => {
@@ -32,8 +30,8 @@ const AssetsOverviews = () => {
   // type_name이 있는 경우 자산 목록을 표시
   if (typeName && !assetId) {
     return (
-      <div className="container-lg my-4">
-        <div className="row g-4">
+      <div className="container-fluid px-0 px-sm-2 px-md-3 px-lg-4 my-2 my-sm-3 my-md-4">
+        <div className="row g-2 g-sm-3 g-md-4">
           <div className="col-lg-12">
             <h2>{typeName} Overview</h2>
             <p>Select an asset from the list below to view detailed information.</p>
@@ -90,47 +88,20 @@ const AssetsOverviews = () => {
     )
 
   return (
-    <div className="container-lg my-4">
-      <div className="row g-4">
-        {/* 1. 헤더 영역 */}
-        <div className="col-lg-12">
-          <OverViewHeader
-            asset={asset}
-            ohlcvData={ohlcvData}
-            stockFinancials={stockFinancials}
-            stockProfile={stockProfile}
-            cryptoData={cryptoData}
-          />
-        </div>
-
-        {/* 2. 차트 영역 */}
-        <div className="col-lg-12">
-          <OHLCVChart
-            assetIdentifier={asset.ticker}
-            dataInterval="1d"
-            height={600}
-            showVolume={true}
-            showRangeSelector={true}
-            showStockTools={true}
-            showExporting={true}
-            title={`${asset.name} (${asset.ticker}) Price Chart`}
-            subtitle="OHLCV Data"
-            externalOhlcvData={ohlcvData}
-          />
-        </div>
-
-        {/* 3. 하단 탭 상세 정보 */}
-        <div className="col-lg-12">
-          <OverViewTabs
+    <div className="container-fluid px-0 px-sm-2 px-md-3 px-lg-4 my-2 my-sm-3 my-md-4">
+      <div className="row g-2 g-sm-3 g-md-4">
+        {/* 반응형 오버뷰 (헤더 + 차트 + 탭) */}
+        <div className="col-12">
+          <ResponsiveOverView
             assetId={assetId}
             asset={asset}
+            ohlcvData={ohlcvData}
             stockProfile={stockProfile}
             stockFinancials={stockFinancials}
             stockEstimates={stockEstimates}
             etfInfo={etfInfo}
             cryptoMetrics={cryptoMetrics}
             cryptoData={cryptoData}
-            ohlcvData={ohlcvData}
           />
         </div>
       </div>

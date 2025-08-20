@@ -217,9 +217,152 @@ div[class*="CTabPane"] {
   @include transition(padding .15s);
 }
 
+// 브레드크럼 애니메이션
+.breadcrumb-container {
+  transition: all 0.3s ease-in-out !important;
+  overflow: hidden;
+  min-height: 20px;
+  transform: translateY(0) !important;
+  
+  &.breadcrumb-hidden {
+    max-height: 0 !important;
+    opacity: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    transform: translateY(-100%) !important;
+    pointer-events: none !important;
+  }
+  
+  &.breadcrumb-animating {
+    transition: all 2s ease-in-out !important;
+    transform: translateY(-100%) !important;
+    max-height: 0 !important;
+    opacity: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    pointer-events: none !important;
+  }
+}
+
+// 브레드크럼 클릭 영역
+.breadcrumb-click-area {
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 20px;
+  z-index: 1050;
+  cursor: pointer;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.05), transparent);
+  transition: background 0.2s ease-in-out;
+  
+  &:hover {
+    background: linear-gradient(to bottom, rgba(0,0,0,0.1), transparent);
+  }
+  
+  // 모바일에서는 더 큰 영역
+  @media (max-width: 768px) {
+    height: 30px;
+  }
+}
+
+.breadcrumb-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+  font-size: 12px;
+  background-color: rgba(0,0,0,0.05);
+  border-radius: 4px;
+  margin: 4px 0;
+  padding: 4px 8px;
+  
+  &:hover {
+    background-color: rgba(0,0,0,0.1);
+  }
+}
+
+// Header auto-hide styles
+.header-hidden {
+  transform: translateY(calc(-100% + 8px)) !important;
+  transition: transform 0.3s ease-in-out !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+  opacity: 0.7 !important;
+}
+
+// 헤더 투명화 상태 - 배경만 투명하고 텍스트는 선명하게
+.header-transparent {
+  transform: translateY(0) !important; // 완전히 보이도록
+  background-color: rgba(var(--cui-body-bg-rgb), 0.1) !important;
+  backdrop-filter: blur(10px) !important;
+  transition: all 0.5s ease-in-out !important; // 애니메이션 시간 증가
+  opacity: 1 !important; // 완전히 보이도록
+  
+  // 텍스트와 아이콘은 선명하게 유지
+  .nav-link,
+  .dropdown-toggle,
+  .btn,
+  .navbar-brand,
+  .breadcrumb-item,
+  .breadcrumb-item a {
+    color: var(--cui-body-color) !important;
+    text-shadow: 0 0 2px rgba(255, 255, 255, 0.8) !important;
+  }
+  
+  // 드롭다운 메뉴는 완전 불투명하게
+  .dropdown-menu {
+    background-color: var(--cui-body-bg) !important;
+    backdrop-filter: none !important;
+    opacity: 1 !important;
+  }
+  
+  // 테두리와 그림자 효과
+  border-bottom: 1px solid rgba(var(--cui-border-color-rgb), 0.3) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+}
+
+// 모바일에서 헤더 숨김 시 브로드크럼도 함께 숨김
+.header-hidden .breadcrumb-container {
+  display: none !important;
+}
+
+// 모바일에서 헤더가 더 많이 보이도록 조정
+@media (max-width: 768px) {
+  .header-hidden {
+    transform: translateY(calc(-100% + 15px)) !important;
+    opacity: 0.7 !important;
+  }
+  
+  .header-transparent {
+    background-color: rgba(var(--cui-body-bg-rgb), 0.15) !important;
+    transform: translateY(0) !important;
+  }
+}
+
+.header-reveal-strip {
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  z-index: 1100;
+}
+
 .header > .container-fluid,
 .sidebar-header {
   min-height: calc(4rem + 1px); // stylelint-disable-line function-disallowed-list
+}
+
+// 모바일에서 헤더 높이 조정
+@media (max-width: 768px) {
+  .header > .container-fluid,
+  .sidebar-header {
+    min-height: calc(2rem + 1px) !important; // 4rem에서 2rem으로 변경
+  }
+  
+  .sidebar-header .nav-link {
+    min-height: calc(2rem + 1px) !important;
+  }
 }
 
 .sidebar-brand-full {

@@ -2073,6 +2073,15 @@ CREATE TABLE
     INDEX `idx_started_at` (`started_at`)
   ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '데이터 수집 로그 (모니터링용)';
 
+-- APScheduler 작업 저장 테이블
+CREATE TABLE
+  `apscheduler_jobs` (
+    `id` VARCHAR(191) NOT NULL,
+    `next_run_time` DOUBLE PRECISION,
+    `job_state` BLOB NOT NULL,
+    PRIMARY KEY (`id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = 'APScheduler 작업 정보 저장';
+
 -- 샘플 데이터 삽입 (테스트용)
 INSERT INTO
   `world_assets_ranking` (

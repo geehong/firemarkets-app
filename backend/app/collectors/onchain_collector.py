@@ -246,10 +246,18 @@ class OnchainCollector(BaseCollector):
                 
                 elif api_name == "bitcoin-data":
                     self.log_progress(f"Bitcoin-Data supports all metrics, attempting fetch", "info")
-                    result = await self._fetch_from_bitcoin_data(client, metric_name, endpoint, field_map, collection_type, force_update)
-                    if result > 0:
-                        self.log_progress(f"Successfully collected {result} records from Bitcoin-Data for {metric_name}", "success")
-                        return result
+                    # client가 None인 경우 새로운 client 생성
+                    if client is None:
+                        async with httpx.AsyncClient() as new_client:
+                            result = await self._fetch_from_bitcoin_data(new_client, metric_name, endpoint, field_map, collection_type, force_update)
+                            if result > 0:
+                                self.log_progress(f"Successfully collected {result} records from Bitcoin-Data for {metric_name}", "success")
+                                return result
+                    else:
+                        result = await self._fetch_from_bitcoin_data(client, metric_name, endpoint, field_map, collection_type, force_update)
+                        if result > 0:
+                            self.log_progress(f"Successfully collected {result} records from Bitcoin-Data for {metric_name}", "success")
+                            return result
                 
             except Exception as e:
                 self.log_progress(f"Failed to fetch from {api_name} for {metric_name}: {e}", "warning")
@@ -347,9 +355,48 @@ class OnchainCollector(BaseCollector):
                 if not isinstance(record, dict):
                     continue
                 
-                # 필드 매핑 적용
+                # 필드 매핑 적용 (API별 필드명 변환 고려)
                 field_key = metric_name.replace('-', '_')
                 value = record.get(field_key) or record.get('value')
+                
+                # API별 특별한 필드명 처리
+                if metric_name == 'mvrv-zscore' and value is None:
+                    value = record.get('mvrvZscore')  # Bitcoin-Data API 필드명
+                elif metric_name == 'difficulty-BTC' and value is None:
+                    value = record.get('difficultyBtc')  # Bitcoin-Data API 필드명
+                elif metric_name == 'realized-price' and value is None:
+                    value = record.get('realizedPrice')  # Bitcoin-Data API 필드명
+                elif metric_name == 'miner-reserves' and value is None:
+                    value = record.get('reserves')  # Bitcoin-Data API 필드명
+                elif metric_name == 'etf-btc-total' and value is None:
+                    value = record.get('etfBtcTotal')  # Bitcoin-Data API 필드명
+                elif metric_name == 'etf-btc-flow' and value is None:
+                    value = record.get('etfFlow')  # Bitcoin-Data API 필드명
+                elif metric_name == 'true-market-mean' and value is None:
+                    value = record.get('trueMarketMean')  # Bitcoin-Data API 필드명
+                elif metric_name == 'open-interest-futures' and value is None:
+                    # JSON 형식으로 거래소별 데이터 저장
+                    exchanges = ['binance', 'bybit', 'okx', 'bitget', 'deribit', 'bitmex', 'huobi', 'bitfinex', 'gateIo', 'kucoin', 'kraken', 'cryptoCom', 'dydx', 'deltaExchange']
+                    exchange_data = {}
+                    total_oi = 0
+                    
+                    for exchange in exchanges:
+                        exchange_value = record.get(exchange)
+                        if exchange_value is not None and exchange_value != 'null':
+                            try:
+                                float_value = float(exchange_value)
+                                exchange_data[exchange] = float_value
+                                total_oi += float_value
+                            except (ValueError, TypeError):
+                                continue
+                    
+                    # JSON 형식으로 저장
+                    value = {
+                        "total": total_oi if total_oi > 0 else None,
+                        "exchanges": exchange_data,
+                        "timestamp": record.get('d'),
+                        "unix_ts": record.get('unixTs')
+                    }
                 
                 # 디버깅 로그
                 if metric_name == 'aviv':
@@ -361,10 +408,13 @@ class OnchainCollector(BaseCollector):
                         self.log_progress(f"DEBUG: Skipping record with None value: {record}", "warning")
                     continue
                 
-                # 중복 체크 및 저장
+                # 중복 체크 및 저장 (날짜 필드 처리)
+                timestamp_field = 'theDay' if metric_name == 'realized-price' else 'd'
+                timestamp_value = record.get(timestamp_field)
+                
                 existing = db.query(CryptoMetric).filter(
                     CryptoMetric.asset_id == self.bitcoin_asset_id,
-                    CryptoMetric.timestamp_utc == record.get('d')
+                    CryptoMetric.timestamp_utc == timestamp_value
                 ).first()
                 
                 if existing:
@@ -409,7 +459,7 @@ class OnchainCollector(BaseCollector):
                     # 새로운 레코드 생성
                     new_metric = CryptoMetric(
                         asset_id=self.bitcoin_asset_id,
-                        timestamp_utc=record.get('d'),
+                        timestamp_utc=timestamp_value,
                         created_at=datetime.now()
                     )
                     
@@ -650,7 +700,10 @@ class OnchainCollector(BaseCollector):
             self.log_progress(f"Starting {metric_id} data collection (type: {collection_type})")
             
             # metric_id를 API 형식으로 변환
-            metric_name = metric_id.replace('_', '-')
+            if metric_id == 'difficulty':
+                metric_name = 'difficulty-BTC'  # difficulty는 difficulty-BTC로 변환
+            else:
+                metric_name = metric_id.replace('_', '-')
             
             # 각 메트릭별 올바른 API 응답 필드명 매핑
             if metric_id == 'mvrv_z_score':
@@ -662,32 +715,38 @@ class OnchainCollector(BaseCollector):
             elif metric_id == 'realized_price':
                 endpoint = "/v1/realized-price"
                 field_map = {
-                    'd': 'timestamp_utc',
-                    'realized_price': 'realizedPrice'
+                    'theDay': 'timestamp_utc',  # API 응답 필드명과 일치
+                    'realizedPrice': 'realizedPrice'  # API 응답 필드명과 일치
                 }
             elif metric_id == 'difficulty_btc':
                 endpoint = "/v1/difficulty-BTC"
                 field_map = {
                     'd': 'timestamp_utc',
-                    'difficulty_btc': 'difficultyBtc'
+                    'difficultyBtc': 'difficultyBtc'  # API 응답 필드명과 일치
+                }
+            elif metric_id == 'difficulty':
+                endpoint = "/v1/difficulty-BTC"
+                field_map = {
+                    'd': 'timestamp_utc',
+                    'difficultyBtc': 'difficultyBtc'  # API 응답 필드명과 일치
                 }
             elif metric_id == 'miner_reserves':
                 endpoint = "/v1/miner-reserves"
                 field_map = {
                     'd': 'timestamp_utc',
-                    'miner_reserves': 'reserves'
+                    'reserves': 'reserves'  # API 응답 필드명과 일치
                 }
             elif metric_id == 'etf_btc_total':
                 endpoint = "/v1/etf-btc-total"
                 field_map = {
                     'd': 'timestamp_utc',
-                    'etf_btc_total': 'etfBtcTotal'
+                    'etfBtcTotal': 'etfBtcTotal'  # API 응답 필드명과 일치
                 }
             elif metric_id == 'open_interest_futures':
                 endpoint = "/v1/open-interest-futures"
                 field_map = {
-                    'd': 'timestamp_utc',
-                    'open_interest_futures': 'openInterestFutures'
+                    'd': 'timestamp_utc'
+                    # JSON 형식으로 저장하므로 field_map은 최소화
                 }
             elif metric_id == 'realized_cap':
                 endpoint = "/v1/cap-real-usd"
@@ -721,10 +780,10 @@ class OnchainCollector(BaseCollector):
                     'thermo_cap': 'thermoCap'
                 }
             elif metric_id == 'etf_btc_flow':
-                endpoint = "/v1/etf-btc-flow"
+                endpoint = "/v1/etf-flow-btc"  # 올바른 엔드포인트
                 field_map = {
                     'd': 'timestamp_utc',
-                    'etf_btc_flow': 'etfFlow'
+                    'etfFlow': 'etfFlow'  # API 응답 필드명과 일치
                 }
             elif metric_id == 'hodl_waves_supply':
                 endpoint = "/v1/hodl-waves-supply"

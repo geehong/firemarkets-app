@@ -10,6 +10,7 @@ services:
       MYSQL_DATABASE: ${DB_DATABASE}
       MYSQL_USER: ${DB_USERNAME}
       MYSQL_PASSWORD: ${DB_PASSWORD}
+      TZ: Asia/Seoul
     volumes:
       - db_data:/var/lib/mysql
       - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -60,6 +61,7 @@ services:
       PORT: 8000
       HOST: 0.0.0.0
       RELOAD: "false"
+      TZ: Asia/Seoul
     depends_on:
       db:
         condition: service_healthy
@@ -88,6 +90,7 @@ services:
       - "3000:80" # nginx는 80포트 사용
     environment:
       VITE_API_URL: /api
+      TZ: Asia/Seoul
     depends_on:
       - backend
     networks:

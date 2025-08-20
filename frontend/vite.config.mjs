@@ -10,14 +10,28 @@ export default defineConfig(() => {
       outDir: 'build',
       rollupOptions: {
         output: {
-          manualChunks: {
-            vendor: ['react', 'react-dom'],
-            coreui: ['@coreui/react', '@coreui/icons-react'],
-            charts: ['highcharts', 'highcharts-react-official'],
-            grid: ['ag-grid-community', 'ag-grid-react'],
-            query: ['@tanstack/react-query'],
-            router: ['react-router-dom'],
-          },
+                  manualChunks: {
+          vendor: ['react', 'react-dom'],
+          coreui: ['@coreui/react', '@coreui/icons-react'],
+          charts: ['highcharts', 'highcharts-react-official'],
+          grid: ['ag-grid-community', 'ag-grid-react'],
+          query: ['@tanstack/react-query'],
+          router: ['react-router-dom'],
+          // 더 세분화된 청크 분할
+          highcharts_modules: [
+            'highcharts/modules/stock',
+            'highcharts/modules/exporting',
+            'highcharts/modules/accessibility',
+            'highcharts/modules/drag-panes',
+            'highcharts/modules/navigator',
+            'highcharts/modules/treemap',
+            'highcharts/modules/data',
+            'highcharts/modules/coloraxis'
+          ],
+          ag_grid_modules: [
+            'ag-grid-community/styles/ag-theme-alpine.css'
+          ]
+        },
         },
       },
       chunkSizeWarningLimit: 1000,
@@ -44,6 +58,14 @@ export default defineConfig(() => {
         'highcharts',
         'ag-grid-community',
         '@tanstack/react-query',
+        'highcharts/modules/stock',
+        'highcharts/modules/exporting',
+        'highcharts/modules/accessibility',
+        'highcharts/modules/drag-panes',
+        'highcharts/modules/navigator',
+        'highcharts/modules/treemap',
+        'highcharts/modules/data',
+        'highcharts/modules/coloraxis'
       ],
       esbuildOptions: {
         loader: {

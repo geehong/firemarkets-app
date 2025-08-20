@@ -25,7 +25,13 @@ class BaseCollector(ABC):
         # 세마포어 기능 설정 기반 활성화
         self.enable_semaphore = GLOBAL_APP_CONFIGS.get("ENABLE_SEMAPHORE", True)
         if self.enable_semaphore:
-            semaphore_limit = GLOBAL_APP_CONFIGS.get("SEMAPHORE_LIMIT", 3)
+            # Use a more balanced default and clamp to a sane range
+            raw_limit = GLOBAL_APP_CONFIGS.get("SEMAPHORE_LIMIT", 8)
+            try:
+                semaphore_limit = int(raw_limit) if raw_limit is not None else 8
+            except (TypeError, ValueError):
+                semaphore_limit = 8
+            semaphore_limit = max(1, min(16, semaphore_limit))
             self.semaphore = asyncio.Semaphore(semaphore_limit)
             logger.info(f"{self.collector_name}: Semaphore enabled with limit {semaphore_limit}")
         else:

@@ -1,8 +1,11 @@
 {
   "data_collection": {
-    "interval_minutes": 240,
+    "interval_minutes": 1440,
     "interval_daily": 30,
     "enable_immediate_execution": true
+  },
+  "onchain_collection": {
+    "interval_hours": 24
   },
   "concurrency": {
     "enable_semaphore": true,

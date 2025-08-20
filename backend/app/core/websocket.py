@@ -39,13 +39,16 @@ async def safe_emit(event, data):
     except Exception as e:
         print(f"Failed to emit {event}: {e}")
 
-# APScheduler 설정 - MemoryJobStore를 명시하여 파일 시스템 접근 방지
+# APScheduler 설정 - MemoryJobStore를 사용하되 daemon=True로 설정하여 독립 실행
+from apscheduler.jobstores.memory import MemoryJobStore
+
 jobstores = {
     'default': MemoryJobStore()
 }
 
 scheduler = BackgroundScheduler(
-    daemon=False,
+    daemon=True,  # 메인 프로세스와 독립적으로 실행
+    jobstores=jobstores,
     job_defaults={
         'coalesce': True,
         'max_instances': 1,

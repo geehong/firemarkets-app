@@ -473,6 +473,41 @@ def trigger_scheduler(db: Session = Depends(get_db)):
         logger.error(f"Failed to trigger scheduler: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to trigger scheduler: {str(e)}")
 
+@router.post("/scheduler/fix-running-jobs", response_model=SchedulerActionResponse)
+def fix_running_jobs(db: Session = Depends(get_db)):
+    """실행 중인 작업들을 강제로 완료 처리합니다."""
+    try:
+        logger.info("Fixing running jobs")
+        
+        # 실행 중인 작업들을 찾아서 완료 처리
+        running_jobs = db.query(SchedulerLog).filter(
+            SchedulerLog.status == "running"
+        ).all()
+        
+        fixed_count = 0
+        for job in running_jobs:
+            job.status = "completed"
+            job.end_time = datetime.now()
+            if job.start_time:
+                duration = (job.end_time - job.start_time).total_seconds()
+                job.duration_seconds = int(duration)
+            else:
+                job.duration_seconds = 0
+            fixed_count += 1
+        
+        db.commit()
+        
+        logger.info(f"Fixed {fixed_count} running jobs")
+        
+        return SchedulerActionResponse(
+            success=True,
+            message=f"Fixed {fixed_count} running jobs",
+            job_count=fixed_count
+        )
+    except Exception as e:
+        logger.error(f"Failed to fix running jobs: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fix running jobs: {str(e)}")
+
 @router.get("/scheduler/jobs", response_model=SchedulerJobsResponse)
 def get_scheduler_jobs_detail():
     """스케줄러에 등록된 작업들의 상세 정보를 조회합니다."""
