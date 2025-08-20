@@ -1,0 +1,5 @@
+[33m7dd54f9[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m Update admin features and UI components - Add scheduler controls - Update AppHeader with admin menu - Add user avatar - Update crypto endpoints and collectors - Improve admin management interface
+[33m7398dcc[m Fix FastAPI Cache initialization and update various components - Add cache initialization to admin_main.py startup event - Update backend and frontend components - Add new admin features and authentication - Improve data collection and API endpoints
+[33m93339b9[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Merge branch 'main' of https://github.com/geehong/firemarkets-app
+[33m5846a32[m Initial commit: Fire Markets App - Crypto Market Analysis Platform
+[33m87f3aaf[m Initial commit
