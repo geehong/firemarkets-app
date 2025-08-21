@@ -311,7 +311,16 @@ class OnchainCollector(BaseCollector):
             )
             
             # 데이터 처리 및 저장
-            return await self._process_onchain_data(metric_name, data, field_map)
+            try:
+                self.log_progress(f"DEBUG: About to call _process_onchain_data for {metric_name}", "info")
+                result = await self._process_onchain_data(metric_name, data, field_map)
+                self.log_progress(f"DEBUG: _process_onchain_data returned {result} for {metric_name}", "info")
+                return result
+            except Exception as e:
+                self.log_progress(f"Error in _process_onchain_data for {metric_name}: {e}", "error")
+                import traceback
+                self.log_progress(f"Traceback: {traceback.format_exc()}", "error")
+                return 0
             
         except PermanentAPIError as e:
             self.log_progress(f"Permanent error for {metric_name}: {e}", "error")
@@ -351,8 +360,16 @@ class OnchainCollector(BaseCollector):
                 records = [data]
                 self.log_progress(f"DEBUG: Using data as single record for {metric_name}", "info")
             
-            for record in records:
+            if metric_name == 'realized-cap':
+                self.log_progress(f"DEBUG: About to process {len(records)} records", "info")
+                self.log_progress(f"DEBUG: First record sample: {records[0] if records else 'No records'}", "info")
+            
+            for i, record in enumerate(records):
+                if metric_name == 'realized-cap' and i < 3:  # 처음 3개만 로그
+                    self.log_progress(f"DEBUG: Processing record {i}: {record}", "info")
                 if not isinstance(record, dict):
+                    if metric_name == 'realized-cap':
+                        self.log_progress(f"DEBUG: Skipping non-dict record {i}: {record}", "warning")
                     continue
                 
                 # 필드 매핑 적용 (API별 필드명 변환 고려)
@@ -374,6 +391,18 @@ class OnchainCollector(BaseCollector):
                     value = record.get('etfFlow')  # Bitcoin-Data API 필드명
                 elif metric_name == 'true-market-mean' and value is None:
                     value = record.get('trueMarketMean')  # Bitcoin-Data API 필드명
+                elif metric_name == 'cdd-90dma' and value is None:
+                    value = record.get('cdd90dma')  # Bitcoin-Data API 필드명
+                elif metric_name == 'nrpl-btc' and value is None:
+                    value = record.get('nrplBtc')  # Bitcoin-Data API 필드명
+                elif metric_name == 'cap-real-usd' and value is None:
+                    value = record.get('capRealUSD')  # Bitcoin-Data API 필드명
+                    # 과학적 표기법 문자열을 일반 문자열로 변환
+                    if value and isinstance(value, str) and 'E' in value:
+                        try:
+                            value = f"{float(value):.2f}"
+                        except (ValueError, TypeError):
+                            pass
                 elif metric_name == 'open-interest-futures' and value is None:
                     # JSON 형식으로 거래소별 데이터 저장
                     exchanges = ['binance', 'bybit', 'okx', 'bitget', 'deribit', 'bitmex', 'huobi', 'bitfinex', 'gateIo', 'kucoin', 'kraken', 'cryptoCom', 'dydx', 'deltaExchange']
@@ -398,19 +427,20 @@ class OnchainCollector(BaseCollector):
                         "unix_ts": record.get('unixTs')
                     }
                 
-                # 디버깅 로그
-                if metric_name == 'aviv':
-                    self.log_progress(f"DEBUG: record={record}, field_key={field_key}, value={value}", "info")
-                
                 # 값 검증
                 if value is None:
-                    if metric_name == 'aviv':
+                    if metric_name in ['aviv', 'cap-real-usd']:
                         self.log_progress(f"DEBUG: Skipping record with None value: {record}", "warning")
                     continue
                 
                 # 중복 체크 및 저장 (날짜 필드 처리)
-                timestamp_field = 'theDay' if metric_name == 'realized-price' else 'd'
+                timestamp_field = 'theDay' if metric_name in ['realized-price', 'cap-real-usd'] else 'd'
                 timestamp_value = record.get(timestamp_field)
+                
+                # 디버깅 로그
+                if metric_name in ['aviv', 'cap-real-usd', 'realized-cap']:
+                    self.log_progress(f"DEBUG: metric_name={metric_name}, record={record}, field_key={field_key}, value={value}", "info")
+                    self.log_progress(f"DEBUG: timestamp_field={timestamp_field}, timestamp_value={timestamp_value}", "info")
                 
                 existing = db.query(CryptoMetric).filter(
                     CryptoMetric.asset_id == self.bitcoin_asset_id,
@@ -509,6 +539,8 @@ class OnchainCollector(BaseCollector):
         except Exception as e:
             db.rollback()
             self.log_progress(f"Error processing {metric_name} data: {e}", "error")
+            import traceback
+            self.log_progress(f"Traceback: {traceback.format_exc()}", "error")
             return 0
     
     async def _update_asset_collection_time(self):

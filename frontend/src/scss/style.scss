@@ -217,30 +217,52 @@ div[class*="CTabPane"] {
   @include transition(padding .15s);
 }
 
-// 브레드크럼 애니메이션
-.breadcrumb-container {
+// 브레드크럼 애니메이션 - test.html 구조에 맞게 수정
+.component-sub-nav-wrapper {
   transition: all 0.3s ease-in-out !important;
-  overflow: hidden;
-  min-height: 20px;
+  overflow: visible !important; // 드롭다운이 잘리지 않도록 visible로 변경
+  height: auto !important; // 자동 높이로 변경
+  min-height: 40px;
   transform: translateY(0) !important;
   
   &.breadcrumb-hidden {
-    max-height: 0 !important;
+    height: 0 !important; // 높이만 0으로
+    min-height: 0 !important;
     opacity: 0 !important;
     padding: 0 !important;
     margin: 0 !important;
     transform: translateY(-100%) !important;
     pointer-events: none !important;
+    overflow: hidden !important; // 숨겨질 때만 hidden
   }
   
   &.breadcrumb-animating {
     transition: all 2s ease-in-out !important;
     transform: translateY(-100%) !important;
-    max-height: 0 !important;
+    height: 0 !important; // 높이만 0으로
+    min-height: 0 !important;
     opacity: 0 !important;
     padding: 0 !important;
     margin: 0 !important;
     pointer-events: none !important;
+    overflow: hidden !important; // 애니메이션 중에도 hidden
+  }
+}
+
+// 브레드크럼이 숨겨진 상태일 때 헤더 높이 조정 (클래스 기반)
+
+// 헤더 높이 조정 - test.html 구조에 맞게 수정
+.header-sticky {
+  .container-fluid {
+    min-height: calc(4rem + 1px) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .header-sticky {
+    .container-fluid {
+      min-height: calc(2rem + 1px) !important;
+    }
   }
 }
 

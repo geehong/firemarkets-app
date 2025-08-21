@@ -101,7 +101,7 @@ async def get_bitcoin_halving_data(
                     change_percent = ((record.close_price - prev_close) / prev_close) * 100
 
                 ohlcv_data.append(OHLCVPoint(
-                    timestamp_utc=record.timestamp_utc,
+                    timestamp_utc=record.timestamp_utc.date(),
                     open_price=record.open_price,
                     high_price=record.high_price,
                     low_price=record.low_price,
@@ -119,7 +119,7 @@ async def get_bitcoin_halving_data(
                     change_percent = ((record.close_price - prev_close) / prev_close) * 100
 
                 close_price_data.append(ClosePricePoint(
-                    timestamp_utc=record.timestamp_utc,
+                    timestamp_utc=record.timestamp_utc.date(),
                     close_price=record.close_price,
                     change_percent=change_percent
                 ))
