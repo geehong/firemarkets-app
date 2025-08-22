@@ -4,6 +4,8 @@ import HighchartsReact from 'highcharts-react-official';
 import { CCard, CCardBody, CCardHeader } from '@coreui/react';
 import CardTools from '../common/CardTools';
 import { useFourthHalvingStartPrice, useHalvingDataClosePrice } from '../../hooks/useIntegratedMetrics';
+import ChartControls from '../common/ChartControls';
+import { getColorMode } from '../../constants/colorModes';
 import styles from './css/CorrelationChart.module.css';
 
 // Load Highcharts modules in correct order
@@ -22,6 +24,8 @@ const HalvingChart = ({
 }) => {
   const [chartType, setChartType] = useState('line');
   const [useLogScale, setUseLogScale] = useState(true);
+  const [isAreaMode, setIsAreaMode] = useState(false);
+  const [lineSplineMode, setLineSplineMode] = useState('line'); // 'line' 또는 'spline'
   const [startPrice, setStartPrice] = useState(64940);
   const [customStartPrice, setCustomStartPrice] = useState(64940);
   const [showPlotBands, setShowPlotBands] = useState(false);
@@ -38,6 +42,7 @@ const HalvingChart = ({
   const [showHalving3, setShowHalving3] = useState(true);
   const [showHalving4, setShowHalving4] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [colorMode, setColorMode] = useState('dark'); // 색상 모드 상태 추가
   const chartRef = useRef(null);
 
   // 4차 반감기 시작가격 가져오기
@@ -88,6 +93,52 @@ const HalvingChart = ({
     if (chart && chart.series && chart.series.length > 0) {
       chart.series.forEach(series => {
         series.update({ type }, false);
+      });
+      chart.redraw();
+    }
+  };
+
+  // Line/Spline 토글 핸들러
+  const handleLineSplineToggle = () => {
+    const newLineSplineMode = lineSplineMode === 'line' ? 'spline' : 'line';
+    setLineSplineMode(newLineSplineMode);
+    
+    // Area 모드가 켜져있으면 spline-area 또는 area, 꺼져있으면 line/spline
+    let newChartType;
+    if (isAreaMode) {
+      newChartType = newLineSplineMode === 'spline' ? 'areaspline' : 'area';
+    } else {
+      newChartType = newLineSplineMode;
+    }
+    setChartType(newChartType);
+    
+    const chart = chartRef.current?.chart;
+    if (chart && chart.series && chart.series.length > 0) {
+      chart.series.forEach(series => {
+        series.update({ type: newChartType }, false);
+      });
+      chart.redraw();
+    }
+  };
+
+  // Area 모드 토글 핸들러
+  const handleAreaModeToggle = () => {
+    const newAreaMode = !isAreaMode;
+    setIsAreaMode(newAreaMode);
+    
+    // Area 모드가 켜져있으면 현재 lineSplineMode에 따라 area/areaspline, 꺼져있으면 line/spline
+    let newChartType;
+    if (newAreaMode) {
+      newChartType = lineSplineMode === 'spline' ? 'areaspline' : 'area';
+    } else {
+      newChartType = lineSplineMode;
+    }
+    setChartType(newChartType);
+    
+    const chart = chartRef.current?.chart;
+    if (chart && chart.series && chart.series.length > 0) {
+      chart.series.forEach(series => {
+        series.update({ type: newChartType }, false);
       });
       chart.redraw();
     }
@@ -160,10 +211,24 @@ const HalvingChart = ({
         
         if (data && (data.ohlcv_data || data.close_price_data)) {
           const priceData = data.ohlcv_data || data.close_price_data;
-          const chartData = priceData.map((point) => [
-            point.days || 0,
-            point.close_price
-          ]);
+          const chartData = priceData.map((point) => {
+            const pointDate = new Date(point.timestamp_utc + 'T00:00:00.000Z');
+            
+            // 각 반감기의 시작일 정의
+            const halvingStartDates = {
+              1: new Date('2012-11-28T00:00:00.000Z'),
+              2: new Date('2016-07-09T00:00:00.000Z'),
+              3: new Date('2020-05-11T00:00:00.000Z'),
+              4: new Date('2024-04-20T00:00:00.000Z')
+            };
+            
+            const startDate = halvingStartDates[period];
+            const days = Math.floor((pointDate - startDate) / (24 * 60 * 60 * 1000));
+            
+            // 모든 반감기를 동일한 시작 가격으로 정규화
+            const normalizedPrice = point.close_price;
+            return [days, normalizedPrice];
+          }).sort((a, b) => a[0] - b[0]); // 날짜순으로 정렬
           
           const maData = calculateMovingAverage(chartData, maPeriod);
           const maSeries = maData
@@ -171,22 +236,48 @@ const HalvingChart = ({
             .map(point => [point[0], point[1]]);
           
           if (maSeries.length > 0) {
-            series.push({
-              name: `${period}st MA(${maPeriod})`,
-              type: 'line',
-              data: maSeries,
-              color: `rgba(255, 107, 107, 0.6)`,
-              line: {
-                dash: 'dot',
-                width: maWidth
-              },
+                      series.push({
+            name: `${period}st MA(${maPeriod})`,
+            type: chartType === 'area' ? 'area' : 'line',
+            data: maSeries,
+            color: Highcharts.color(currentColors.moving_average).setOpacity(0.6).get('rgba'),
+            line: {
+              dash: 'dot',
+              width: maWidth
+            },
+              // Area 차트일 때 그라데이션 효과 추가
+              ...(chartType === 'area' && {
+                fillColor: {
+                  linearGradient: {
+                    x1: 0,
+                    y1: 0,
+                    x2: 0,
+                    y2: 1
+                  },
+                  stops: [
+                    [0, Highcharts.color(currentColors.moving_average).setOpacity(0.4).get('rgba')],
+                    [1, Highcharts.color(currentColors.moving_average).setOpacity(0.05).get('rgba')]
+                  ]
+                }
+              }),
               tooltip: {
                 valueDecimals: 2,
                 valuePrefix: '$',
                 formatter: function() {
-                  // 4차 반감기 기준으로 날짜 계산
-                  const fourthHalvingDate = new Date('2024-04-20');
-                  const currentDate = new Date(fourthHalvingDate.getTime() + this.x * 24 * 60 * 60 * 1000);
+                  // 각 반감기의 시작일 기준으로 날짜 계산
+                  const halvingStartDates = {
+                    1: new Date('2012-11-28T00:00:00.000Z'),
+                    2: new Date('2016-07-09T00:00:00.000Z'),
+                    3: new Date('2020-05-11T00:00:00.000Z'),
+                    4: new Date('2024-04-20T00:00:00.000Z')
+                  };
+                  
+                  // 시리즈 이름에서 반감기 번호 추출 (예: "1st MA(20)" -> 1)
+                  const periodMatch = this.series.name.match(/(\d+)st/);
+                  const period = periodMatch ? parseInt(periodMatch[1]) : 4;
+                  const startDate = halvingStartDates[period];
+                  
+                  const currentDate = new Date(startDate.getTime() + this.x * 24 * 60 * 60 * 1000);
                   const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
                   
                   // 가격을 K 단위로 표시
@@ -217,7 +308,7 @@ const HalvingChart = ({
   // 차트 데이터 변환
   const getChartSeries = () => {
     const series = [];
-    const colors = ['#ff0000', '#ff8c00', '#32cd32', '#000000']; // 빨강, 주황, 초록, 검정
+    const currentColors = getColorMode(colorMode);
     const lineWidths = [2, 2, 2, 4]; // 4차 반감기는 굵게
     
     halvingQueries.forEach((query, index) => {
@@ -240,11 +331,25 @@ const HalvingChart = ({
         // console.log(`Period ${period} data:`, data);
         // console.log(`Period ${period} priceData:`, priceData);
         
-        // 가로축을 일수로 변경 (days 필드 사용)
-        let chartData = priceData.map((point) => [
-          point.days || 0, // days 필드 사용, 없으면 0
-          point.close_price // 정규화된 가격
-        ]);
+        // 가로축을 일수로 변경 (각 반감기의 시작일 기준으로 계산)
+        let chartData = priceData.map((point) => {
+          const pointDate = new Date(point.timestamp_utc + 'T00:00:00.000Z');
+          
+          // 각 반감기의 시작일 정의
+          const halvingStartDates = {
+            1: new Date('2012-11-28T00:00:00.000Z'),
+            2: new Date('2016-07-09T00:00:00.000Z'),
+            3: new Date('2020-05-11T00:00:00.000Z'),
+            4: new Date('2024-04-20T00:00:00.000Z')
+          };
+          
+          const startDate = halvingStartDates[period];
+          const days = Math.floor((pointDate - startDate) / (24 * 60 * 60 * 1000));
+          
+          // 모든 반감기를 동일한 시작 가격으로 정규화
+          const normalizedPrice = point.close_price;
+          return [days, normalizedPrice]; // 정규화된 가격 사용
+        }).sort((a, b) => a[0] - b[0]); // 날짜순으로 정렬
         
         // console.log(`Period ${period} chartData:`, chartData.slice(0, 5)); // 처음 5개만 로그
         
@@ -263,17 +368,46 @@ const HalvingChart = ({
           name: `${period}st`,
           type: chartType,
           data: chartData,
-          color: colors[index % colors.length],
+          color: currentColors[`halving_${period}`],
           line: {
             width: lineWidths[index % lineWidths.length]
           },
+                  // Area 차트일 때 그라데이션 효과 추가
+        ...(chartType === 'area' && {
+          fillColor: {
+            linearGradient: {
+              x1: 0,
+              y1: 0,
+              x2: 0,
+              y2: 1
+            },
+            stops: [
+              [0, Highcharts.color(currentColors[`halving_${period}`]).setOpacity(0.7).get('rgba')],
+              [0.5, Highcharts.color(currentColors[`halving_${period}`]).setOpacity(0.35).get('rgba')],
+              [0.8, Highcharts.color(currentColors[`halving_${period}`]).setOpacity(0.05).get('rgba')],
+              [0.9, Highcharts.color(currentColors[`halving_${period}`]).setOpacity(0.02).get('rgba')],
+              [1, Highcharts.color(currentColors[`halving_${period}`]).setOpacity(0.01).get('rgba')]
+            ]
+          }
+        }),
           tooltip: {
             valueDecimals: 2,
             valuePrefix: '$',
                             formatter: function() {
-                  // 4차 반감기 기준으로 날짜 계산
-                  const fourthHalvingDate = new Date('2024-04-20');
-                  const currentDate = new Date(fourthHalvingDate.getTime() + this.x * 24 * 60 * 60 * 1000);
+                  // 각 반감기의 시작일 기준으로 날짜 계산
+                  const halvingStartDates = {
+                    1: new Date('2012-11-28T00:00:00.000Z'),
+                    2: new Date('2016-07-09T00:00:00.000Z'),
+                    3: new Date('2020-05-11T00:00:00.000Z'),
+                    4: new Date('2024-04-20T00:00:00.000Z')
+                  };
+                  
+                  // 시리즈 이름에서 반감기 번호 추출 (예: "1st" -> 1)
+                  const periodMatch = this.series.name.match(/(\d+)st/);
+                  const period = periodMatch ? parseInt(periodMatch[1]) : 4;
+                  const startDate = halvingStartDates[period];
+                  
+                  const currentDate = new Date(startDate.getTime() + this.x * 24 * 60 * 60 * 1000);
                   const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
               
               // 가격을 K 단위로 표시
@@ -299,7 +433,10 @@ const HalvingChart = ({
     return series;
   };
 
-  const chartOptions = {
+  const getChartOptions = () => {
+    const currentColors = getColorMode(colorMode);
+    
+    return {
     chart: {
       height: height,
       type: 'line',
@@ -343,8 +480,8 @@ const HalvingChart = ({
       },
       labels: {
         formatter: function() {
-          // 4차 반감기 기준으로 날짜 계산 (2024-04-20)
-          const fourthHalvingDate = new Date('2024-04-20');
+          // 4차 반감기 기준으로 날짜 계산 (2024-04-20 UTC)
+          const fourthHalvingDate = new Date('2024-04-20T00:00:00.000Z');
           const currentDate = new Date(fourthHalvingDate.getTime() + this.value * 24 * 60 * 60 * 1000);
           const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
           return `${String(this.value).padStart(3, '0')}Day [${dateStr}]`;
@@ -370,7 +507,7 @@ const HalvingChart = ({
       min: 0,
       max: dayRange,
       plotBands: showPlotBands ? [{
-        color: 'rgba(68, 170, 213, 0.1)',
+        color: currentColors.plot_band,
         from: plotBandStart,
         to: plotBandEnd,
         label: {
@@ -381,13 +518,13 @@ const HalvingChart = ({
         }
       }] : [],
       plotLines: showPlotBands ? [{
-        color: '#ff0000',
+        color: currentColors.plot_line,
         width: 2,
         value: plotLineDay,
         label: {
           text: 'Plot Line',
           style: {
-            color: '#ff0000'
+            color: currentColors.plot_line
           }
         }
       }] : []
@@ -424,8 +561,8 @@ const HalvingChart = ({
         const points = this.points;
         const days = this.x;
         
-        // Format the date based on the fourth halving (2024-04-20)
-        const fourthHalvingDate = new Date('2024-04-20');
+        // Format the date based on the fourth halving (2024-04-20 UTC) - 공통 기준
+        const fourthHalvingDate = new Date('2024-04-20T00:00:00.000Z');
         const currentDate = new Date(fourthHalvingDate.getTime() + days * 24 * 60 * 60 * 1000);
         const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
         
@@ -463,8 +600,8 @@ const HalvingChart = ({
       xAxis: {
         labels: {
                           formatter: function() {
-                  // 4차 반감기 기준으로 날짜 계산 (2024-04-20)
-                  const fourthHalvingDate = new Date('2024-04-20');
+                  // 4차 반감기 기준으로 날짜 계산 (2024-04-20 UTC)
+                  const fourthHalvingDate = new Date('2024-04-20T00:00:00.000Z');
                   const currentDate = new Date(fourthHalvingDate.getTime() + this.value * 24 * 60 * 60 * 1000);
                   const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
                   return dateStr;
@@ -490,8 +627,8 @@ const HalvingChart = ({
             xAxis: {
               labels: {
                 formatter: function() {
-                  // 4차 반감기 기준으로 날짜 계산 (2024-04-20)
-                  const fourthHalvingDate = new Date('2024-04-20');
+                  // 4차 반감기 기준으로 날짜 계산 (2024-04-20 UTC)
+                  const fourthHalvingDate = new Date('2024-04-20T00:00:00.000Z');
                   const currentDate = new Date(fourthHalvingDate.getTime() + this.value * 24 * 60 * 60 * 1000);
                   const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
                   return dateStr;
@@ -502,6 +639,7 @@ const HalvingChart = ({
         }
       }]
     }
+  };
   };
 
   if (isLoading) {
@@ -755,68 +893,26 @@ const HalvingChart = ({
           </div>
         </div>
 
-        {/* Chart Type Icons */}
-        <div className={styles.controlsContainer}>
-          {/* 차트 타입 버튼들 */}
-          <div className={styles.buttonGroup}>
-            <button
-              type="button"
-              className={`${styles.chartButton} ${chartType === 'line' ? styles.chartButtonActive : styles.chartButtonInactive}`}
-              onClick={() => handleChartTypeChange('line')}
-            >
-              <img 
-                src="/assets/icon/chart-icons/Line.svg" 
-                alt="Line Chart" 
-                className={styles.chartIcon}
-              />
-            </button>
-            <button
-              type="button"
-              className={`${styles.chartButton} ${chartType === 'spline' ? styles.chartButtonActive : styles.chartButtonInactive}`}
-              onClick={() => handleChartTypeChange('spline')}
-            >
-              <img 
-                src="/assets/icon/chart-icons/Spline.svg" 
-                alt="Spline Chart" 
-                className={styles.chartIcon}
-              />
-            </button>
-            <button
-              type="button"
-              className={`${styles.chartButton} ${chartType === 'area' ? styles.chartButtonActive : styles.chartButtonInactive}`}
-              onClick={() => handleChartTypeChange('area')}
-            >
-              <img 
-                src="/assets/icon/chart-icons/Area.svg" 
-                alt="Area Chart" 
-                className={styles.chartIcon}
-              />
-            </button>
-          </div>
-
-          {/* 로그 스케일 버튼 */}
-          <div className={styles.buttonGroup}>
-            <button
-              type="button"
-              className={`${styles.chartButton} ${useLogScale ? styles.logButtonActive : styles.logButtonInactive}`}
-              onClick={handleLogScaleToggle}
-              title="Toggle Log Scale"
-            >
-              <img 
-                src={useLogScale ? "/assets/icon/chart-icons/Linear.svg" : "/assets/icon/chart-icons/Log.svg"} 
-                alt="Log Scale" 
-                className={styles.chartIcon}
-              />
-            </button>
-          </div>
-        </div>
+        {/* Chart Controls */}
+        <ChartControls
+          chartType={lineSplineMode}
+          onChartTypeChange={handleLineSplineToggle}
+          isAreaMode={isAreaMode}
+          onAreaModeToggle={handleAreaModeToggle}
+          showFlags={false}
+          onFlagsToggle={() => {}}
+          useLogScale={useLogScale}
+          onLogScaleToggle={handleLogScaleToggle}
+          colorMode={colorMode}
+          onColorModeChange={setColorMode}
+        />
 
         {/* 차트 */}
         <div style={{ height: `${height}px` }}>
           <HighchartsReact
             highcharts={Highcharts}
             constructorType={'stockChart'}
-            options={chartOptions}
+            options={getChartOptions()}
             ref={chartRef}
           />
         </div>

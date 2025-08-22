@@ -4,6 +4,8 @@ import HighchartsReact from 'highcharts-react-official';
 import { useIntegratedMetrics } from '../../hooks/useIntegratedMetrics';
 import { CCard, CCardBody, CCardHeader } from '@coreui/react';
 import CardTools from '../common/CardTools';
+import ChartControls from '../common/ChartControls';
+import { getColorMode } from '../../constants/colorModes';
 import styles from './css/CorrelationChart.module.css';
 
 // Load Highcharts modules in correct order
@@ -38,6 +40,9 @@ const CorrelationChart = ({
   const [chartType, setChartType] = useState('line'); // line, spline, area
   const [showFlags, setShowFlags] = useState(true);
   const [useLogScale, setUseLogScale] = useState(false); // 로그 스케일 상태
+  const [isAreaMode, setIsAreaMode] = useState(false);
+  const [lineSplineMode, setLineSplineMode] = useState('line'); // 'line' 또는 'spline'
+  const [colorMode, setColorMode] = useState('dark'); // 기본값: 다크 모드
   const [currentCorrelation, setCurrentCorrelation] = useState(null); // 현재 선택된 범위의 상관관계
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768); // 모바일 상태
   const chartRef = useRef(null);
@@ -175,14 +180,50 @@ const CorrelationChart = ({
     }
   }, [apiError]);
 
-  // 차트 타입 변경 핸들러
-  const handleChartTypeChange = (type) => {
-    setChartType(type);
+  // Line/Spline 토글 핸들러
+  const handleLineSplineToggle = () => {
+    const newLineSplineMode = lineSplineMode === 'line' ? 'spline' : 'line';
+    setLineSplineMode(newLineSplineMode);
+    
+    // Area 모드가 켜져있으면 spline-area 또는 area, 꺼져있으면 line/spline
+    let newChartType;
+    if (isAreaMode) {
+      newChartType = newLineSplineMode === 'spline' ? 'areaspline' : 'area';
+    } else {
+      newChartType = newLineSplineMode;
+    }
+    setChartType(newChartType);
+    
     const chart = chartRef.current?.chart;
     if (chart && chart.series && chart.series.length > 0) {
       chart.series.forEach(series => {
         if (series.type !== 'flags') {
-          series.update({ type }, false);
+          series.update({ type: newChartType }, false);
+        }
+      });
+      chart.redraw();
+    }
+  };
+
+  // Area 모드 토글 핸들러
+  const handleAreaModeToggle = () => {
+    const newAreaMode = !isAreaMode;
+    setIsAreaMode(newAreaMode);
+    
+    // Area 모드가 켜져있으면 현재 lineSplineMode에 따라 area/areaspline, 꺼져있으면 line/spline
+    let newChartType;
+    if (newAreaMode) {
+      newChartType = lineSplineMode === 'spline' ? 'areaspline' : 'area';
+    } else {
+      newChartType = lineSplineMode;
+    }
+    setChartType(newChartType);
+    
+    const chart = chartRef.current?.chart;
+    if (chart && chart.series && chart.series.length > 0) {
+      chart.series.forEach(series => {
+        if (series.type !== 'flags') {
+          series.update({ type: newChartType }, false);
         }
       });
       chart.redraw();
@@ -424,16 +465,34 @@ const CorrelationChart = ({
       name: getMetricDisplayName(metricId),
       type: chartType,
       data: mvrvData,
-      color: '#ff6b6b',
+      color: getColorMode(colorMode).metric,
       yAxis: 0,
+      // Area 차트일 때 그라데이션 효과 추가
+      ...(chartType === 'area' && {
+        fillColor: {
+          linearGradient: {
+            x1: 0,
+            y1: 0,
+            x2: 0,
+            y2: 1
+          },
+          stops: [
+            [0, Highcharts.color(getColorMode(colorMode).metric).setOpacity(0.7).get('rgba')],
+            [0.5, Highcharts.color(getColorMode(colorMode).metric).setOpacity(0.35).get('rgba')],
+            [0.8, Highcharts.color(getColorMode(colorMode).metric).setOpacity(0.05).get('rgba')],
+            [0.9, Highcharts.color(getColorMode(colorMode).metric).setOpacity(0.02).get('rgba')],
+            [1, Highcharts.color(getColorMode(colorMode).metric).setOpacity(0.01).get('rgba')]
+          ]
+        }
+      }),
       tooltip: {
         valueDecimals: 2
       }
     }, {
       name: 'Bitcoin Price',
-      type: chartType,
+      type: isAreaMode ? 'line' : chartType, // Area 모드일 때는 항상 line으로 유지
       data: priceData,
-      color: '#ffbf00',
+      color: getColorMode(colorMode).coin,
       yAxis: 1,
       tooltip: {
         valueDecimals: 2,
@@ -602,85 +661,19 @@ const CorrelationChart = ({
         <CardTools />
       </CCardHeader>
       <CCardBody>
-        {/* 인터랙티브 컨트롤 버튼들 */}
-        <div className={styles.controlsContainer}>
-          {/* 차트 타입 버튼들 */}
-          <div className={styles.buttonGroup}>
-            <button
-              type="button"
-              className={`${styles.chartButton} ${chartType === 'line' ? styles.chartButtonActive : styles.chartButtonInactive}`}
-              onClick={() => handleChartTypeChange('line')}
-            >
-              <img 
-                src="/assets/icon/stock-icons/linechart2.svg" 
-                alt="Line Chart" 
-                className={styles.chartIcon}
-              />
-            </button>
-            <button
-              type="button"
-              className={`${styles.chartButton} ${chartType === 'spline' ? styles.chartButtonActive : styles.chartButtonInactive}`}
-              onClick={() => handleChartTypeChange('spline')}
-            >
-              <img 
-                src="/assets/icon/stock-icons/splinechart.svg" 
-                alt="Spline Chart" 
-                className={styles.chartIcon}
-              />
-            </button>
-            <button
-              type="button"
-              className={`${styles.chartButton} ${chartType === 'area' ? styles.chartButtonActive : styles.chartButtonInactive}`}
-              onClick={() => handleChartTypeChange('area')}
-            >
-              <img 
-                src="/assets/icon/stock-icons/areachart.svg" 
-                alt="Area Chart" 
-                className={styles.chartIcon}
-              />
-            </button>
-          </div>
-
-          {/* 토글 버튼들 */}
-          <div className={styles.buttonGroup}>
-            <button
-              type="button"
-              className={`${styles.chartButton} ${showFlags ? styles.flagButtonActive : styles.flagButtonInactive}`}
-              onClick={handleFlagsToggle}
-              title="Toggle Flags"
-            >
-                              {showFlags ? (
-                  <img 
-                    src="/assets/icon/stock-icons/flagIcon.svg" 
-                    alt="Flags On" 
-                    className={styles.chartIcon}
-                  />
-                ) : (
-                  <div className={styles.flagContainer}>
-                    <img 
-                      src="/assets/icon/stock-icons/flagIcon.svg" 
-                      alt="Flags Off" 
-                      className={styles.flagIconInactive}
-                    />
-                    <div className={`${styles.xLine} ${styles.xLine1}`}></div>
-                    <div className={`${styles.xLine} ${styles.xLine2}`}></div>
-                  </div>
-                )}
-            </button>
-            <button
-              type="button"
-              className={`${styles.chartButton} ${useLogScale ? styles.logButtonActive : styles.logButtonInactive}`}
-              onClick={handleLogScaleToggle}
-              title="Toggle Log Scale (Price only)"
-            >
-              <img 
-                src={useLogScale ? "/assets/icon/stock-icons/linear.svg" : "/assets/icon/stock-icons/logarithmic.svg"} 
-                alt="Log Scale" 
-                className={styles.chartIcon}
-              />
-            </button>
-          </div>
-        </div>
+        {/* Chart Controls */}
+        <ChartControls
+          chartType={lineSplineMode}
+          onChartTypeChange={handleLineSplineToggle}
+          isAreaMode={isAreaMode}
+          onAreaModeToggle={handleAreaModeToggle}
+          showFlags={showFlags}
+          onFlagsToggle={handleFlagsToggle}
+          useLogScale={useLogScale}
+          onLogScaleToggle={handleLogScaleToggle}
+          colorMode={colorMode}
+          onColorModeChange={setColorMode}
+        />
 
 
 

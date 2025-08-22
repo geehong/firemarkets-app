@@ -387,67 +387,61 @@ const AppHeader = React.memo(() => {
         {/* 왼쪽 메뉴 */}
         <CHeaderNav className="me-auto">
           {/* MAP 메뉴 */}
-          <CNavItem>
-            <CDropdown variant="nav-item" placement="bottom-start" visible={openDropdown === 'map'}>
-              <CDropdownToggle caret={false} onMouseEnter={() => handleMouseEnter('map')}>
-                MAP
-              </CDropdownToggle>
-              <CDropdownMenu>
-                <CDropdownItem to="/world-assets-treemap" as={NavLink}>
-                  World Assets TreeMap
-                </CDropdownItem>
-                <CDropdownItem to="/overviews/treemap" as={NavLink}>
-                  Performance Map
-                </CDropdownItem>
-              </CDropdownMenu>
-            </CDropdown>
-          </CNavItem>
+          <CDropdown variant="nav-item" placement="bottom-start" visible={openDropdown === 'map'}>
+            <CDropdownToggle caret={false} onMouseEnter={() => handleMouseEnter('map')}>
+              MAP
+            </CDropdownToggle>
+            <CDropdownMenu>
+              <CDropdownItem to="/world-assets-treemap" as={NavLink}>
+                World Assets TreeMap
+              </CDropdownItem>
+              <CDropdownItem to="/overviews/treemap" as={NavLink}>
+                Performance Map
+              </CDropdownItem>
+            </CDropdownMenu>
+          </CDropdown>
 
           {/* ONCHAIN 메뉴 */}
-          <CNavItem>
-            <CDropdown variant="nav-item" placement="bottom-start" visible={openDropdown === 'onchain'}>
-              <CDropdownToggle caret={false} onMouseEnter={() => handleMouseEnter('onchain')}>
-                ONCHAIN
-              </CDropdownToggle>
-              <CDropdownMenu>
-                <CDropdownItem to="/onchain/overviews" as={NavLink}>
-                  Market Metrics
-                </CDropdownItem>
-                <CDropdownItem to="/onchain/overviews?halving=true" as={NavLink}>
-                  Halving Analysis
-                </CDropdownItem>
-                <CDropdownItem to="/onchain/overviews?metric=mvrv_z_score" as={NavLink}>
-                  MVRV Z-Score
-                </CDropdownItem>
-                <CDropdownItem to="/onchain/overviews?metric=sopr" as={NavLink}>
-                  SOPR
-                </CDropdownItem>
-              </CDropdownMenu>
-            </CDropdown>
-          </CNavItem>
+          <CDropdown variant="nav-item" placement="bottom-start" visible={openDropdown === 'onchain'}>
+            <CDropdownToggle caret={false} onMouseEnter={() => handleMouseEnter('onchain')}>
+              ONCHAIN
+            </CDropdownToggle>
+            <CDropdownMenu>
+              <CDropdownItem to="/onchain/overviews" as={NavLink}>
+                Market Metrics
+              </CDropdownItem>
+              <CDropdownItem to="/onchain/overviews?halving=true" as={NavLink}>
+                Halving Analysis
+              </CDropdownItem>
+              <CDropdownItem to="/onchain/overviews?metric=mvrv_z_score" as={NavLink}>
+                MVRV Z-Score
+              </CDropdownItem>
+              <CDropdownItem to="/onchain/overviews?metric=sopr" as={NavLink}>
+                SOPR
+              </CDropdownItem>
+            </CDropdownMenu>
+          </CDropdown>
 
           {/* ASSET 메뉴 */}
-          <CNavItem>
-            <CDropdown variant="nav-item" placement="bottom-start" visible={openDropdown === 'asset'}>
-              <CDropdownToggle caret={false} onMouseEnter={() => handleMouseEnter('asset')}>
-                ASSET
-              </CDropdownToggle>
-              <CDropdownMenu>
-                <CDropdownItem to="/assets" as={NavLink}>
-                  All Assets
-                </CDropdownItem>
-                <CDropdownItem to="/assets?type_name=Stocks" as={NavLink}>
-                  Stocks
-                </CDropdownItem>
-                <CDropdownItem to="/assets?type_name=Crypto" as={NavLink}>
-                  Crypto
-                </CDropdownItem>
-                <CDropdownItem to="/assets?type_name=ETFs" as={NavLink}>
-                  ETFs
-                </CDropdownItem>
-              </CDropdownMenu>
-            </CDropdown>
-          </CNavItem>
+          <CDropdown variant="nav-item" placement="bottom-start" visible={openDropdown === 'asset'}>
+            <CDropdownToggle caret={false} onMouseEnter={() => handleMouseEnter('asset')}>
+              ASSET
+            </CDropdownToggle>
+            <CDropdownMenu>
+              <CDropdownItem to="/assets" as={NavLink}>
+                All Assets
+              </CDropdownItem>
+              <CDropdownItem to="/assets?type_name=Stocks" as={NavLink}>
+                Stocks
+              </CDropdownItem>
+              <CDropdownItem to="/assets?type_name=Crypto" as={NavLink}>
+                Crypto
+              </CDropdownItem>
+              <CDropdownItem to="/assets?type_name=ETFs" as={NavLink}>
+                ETFs
+              </CDropdownItem>
+            </CDropdownMenu>
+          </CDropdown>
 
           {/* ADMIN 메뉴 */}
           <CNavItem>
@@ -474,48 +468,46 @@ const AppHeader = React.memo(() => {
           </CNavItem>
           
           {/* 테마 토글 */}
-          <CNavItem>
-            <CDropdown variant="nav-item" placement="bottom-end">
-              <CDropdownToggle caret={false}>
-                {colorMode === 'dark' ? (
-                  <CIcon icon={cilMoon} size="lg" />
-                ) : colorMode === 'auto' ? (
-                  <CIcon icon={cilContrast} size="lg" />
-                ) : (
-                  <CIcon icon={cilSun} size="lg" />
-                )}
-              </CDropdownToggle>
-              <CDropdownMenu>
-                <CDropdownItem
-                  active={colorMode === 'light'}
-                  className="d-flex align-items-center"
-                  as="button"
-                  type="button"
-                  onClick={() => setColorMode('light')}
-                >
-                  <CIcon className="me-2" icon={cilSun} size="lg" /> Light
-                </CDropdownItem>
-                <CDropdownItem
-                  active={colorMode === 'dark'}
-                  className="d-flex align-items-center"
-                  as="button"
-                  type="button"
-                  onClick={() => setColorMode('dark')}
-                >
-                  <CIcon className="me-2" icon={cilMoon} size="lg" /> Dark
-                </CDropdownItem>
-                <CDropdownItem
-                  active={colorMode === 'auto'}
-                  className="d-flex align-items-center"
-                  as="button"
-                  type="button"
-                  onClick={() => setColorMode('auto')}
-                >
-                  <CIcon className="me-2" icon={cilContrast} size="lg" /> Auto
-                </CDropdownItem>
-              </CDropdownMenu>
-            </CDropdown>
-          </CNavItem>
+          <CDropdown variant="nav-item" placement="bottom-end">
+            <CDropdownToggle caret={false}>
+              {colorMode === 'dark' ? (
+                <CIcon icon={cilMoon} size="lg" />
+              ) : colorMode === 'auto' ? (
+                <CIcon icon={cilContrast} size="lg" />
+              ) : (
+                <CIcon icon={cilSun} size="lg" />
+              )}
+            </CDropdownToggle>
+            <CDropdownMenu>
+              <CDropdownItem
+                active={colorMode === 'light'}
+                className="d-flex align-items-center"
+                as="button"
+                type="button"
+                onClick={() => setColorMode('light')}
+              >
+                <CIcon className="me-2" icon={cilSun} size="lg" /> Light
+              </CDropdownItem>
+              <CDropdownItem
+                active={colorMode === 'dark'}
+                className="d-flex align-items-center"
+                as="button"
+                type="button"
+                onClick={() => setColorMode('dark')}
+              >
+                <CIcon className="me-2" icon={cilMoon} size="lg" /> Dark
+              </CDropdownItem>
+              <CDropdownItem
+                active={colorMode === 'auto'}
+                className="d-flex align-items-center"
+                as="button"
+                type="button"
+                onClick={() => setColorMode('auto')}
+              >
+                <CIcon className="me-2" icon={cilContrast} size="lg" /> Auto
+              </CDropdownItem>
+            </CDropdownMenu>
+          </CDropdown>
           
           <CNavItem className="py-2 py-lg-1">
             <div className="vr d-none d-lg-flex h-100 mx-lg-2 text-body text-opacity-75"></div>

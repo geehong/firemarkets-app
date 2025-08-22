@@ -367,6 +367,10 @@ class OnchainCollector(BaseCollector):
             for i, record in enumerate(records):
                 if metric_name == 'realized-cap' and i < 3:  # 처음 3개만 로그
                     self.log_progress(f"DEBUG: Processing record {i}: {record}", "info")
+                
+                # realized-cap 메트릭을 cap-real-usd로 처리
+                if metric_name == 'realized-cap':
+                    metric_name = 'cap-real-usd'
                 if not isinstance(record, dict):
                     if metric_name == 'realized-cap':
                         self.log_progress(f"DEBUG: Skipping non-dict record {i}: {record}", "warning")
@@ -403,6 +407,9 @@ class OnchainCollector(BaseCollector):
                             value = f"{float(value):.2f}"
                         except (ValueError, TypeError):
                             pass
+                    # 디버깅 로그 추가
+                    if i < 3:  # 처음 3개만 로그
+                        self.log_progress(f"DEBUG: cap-real-usd record {i}: value={value}, type={type(value)}", "info")
                 elif metric_name == 'open-interest-futures' and value is None:
                     # JSON 형식으로 거래소별 데이터 저장
                     exchanges = ['binance', 'bybit', 'okx', 'bitget', 'deribit', 'bitmex', 'huobi', 'bitfinex', 'gateIo', 'kucoin', 'kraken', 'cryptoCom', 'dydx', 'deltaExchange']
@@ -426,6 +433,14 @@ class OnchainCollector(BaseCollector):
                         "timestamp": record.get('d'),
                         "unix_ts": record.get('unixTs')
                     }
+                elif metric_name == 'cap-real-usd':
+                    # capRealUSD 필드에서 값 추출
+                    value = record.get('capRealUSD')
+                    if value and isinstance(value, str) and 'E' in value:
+                        try:
+                            value = f"{float(value):.2f}"
+                        except (ValueError, TypeError):
+                            pass
                 
                 # 값 검증
                 if value is None:
@@ -783,9 +798,8 @@ class OnchainCollector(BaseCollector):
             elif metric_id == 'realized_cap':
                 endpoint = "/v1/cap-real-usd"
                 field_map = {
-                    'date_field': 'theDay',
                     'theDay': 'timestamp_utc',
-                    'realized_cap': 'capRealUSD'
+                    'capRealUSD': 'capRealUSD'
                 }
             elif metric_id == 'cdd_90dma':
                 endpoint = "/v1/cdd-90dma"

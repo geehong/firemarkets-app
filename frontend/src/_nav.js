@@ -234,38 +234,7 @@ const getNavigationItems = (assetTypes) => {
         {
           component: CNavItem,
           name: 'Open Interest Futures',
-          to: '/onchain/overviews?metric=open_interest_futures',
-          className: 'nav-submenu-item'
-        },
-      ],
-    },
-    {
-      component: CNavGroup,
-      name: 'Advanced',
-      icon: <CIcon icon={cibMatrix} customClassName="nav-icon" />,
-      items: [
-        {
-          component: CNavItem,
-          name: 'Open Interest Futures',
-          to: '/onchain/overviews?metric=open_interest_futures',
-          className: 'nav-submenu-item'
-        },
-        {
-          component: CNavItem,
-          name: 'CDD 90DMA',
-          to: '/onchain/overviews?metric=cdd_90dma',
-          className: 'nav-submenu-item'
-        },
-        {
-          component: CNavItem,
-          name: 'NRPL BTC',
-          to: '/onchain/overviews?metric=nrpl_btc',
-          className: 'nav-submenu-item'
-        },
-        {
-          component: CNavItem,
-          name: 'AVIV',
-          to: '/onchain/overviews?metric=aviv',
+          to: '/onchain/open-interest',
           className: 'nav-submenu-item'
         },
       ],

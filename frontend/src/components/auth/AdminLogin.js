@@ -41,6 +41,10 @@ const AdminLogin = () => {
     setLoading(false);
   };
 
+  const handleGoHome = () => {
+    navigate('/dashboard');
+  };
+
   return (
     <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
       <CCard style={{ width: '400px' }}>
@@ -81,7 +85,7 @@ const AdminLogin = () => {
             <CButton 
               type="submit" 
               color="primary" 
-              className="w-100"
+              className="w-100 mb-3"
               disabled={loading}
             >
               {loading ? (
@@ -92,6 +96,17 @@ const AdminLogin = () => {
               ) : (
                 '로그인'
               )}
+            </CButton>
+
+            <CButton 
+              type="button" 
+              color="secondary" 
+              variant="outline"
+              className="w-100"
+              onClick={handleGoHome}
+              disabled={loading}
+            >
+              홈으로 이동
             </CButton>
           </CForm>
         </CCardBody>

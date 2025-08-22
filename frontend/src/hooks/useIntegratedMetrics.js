@@ -200,4 +200,50 @@ export const useFourthHalvingStartPrice = () => {
     },
     staleTime: 10 * 60 * 1000, // 10분 (더 빠른 업데이트)
   })
+}
+
+// Open Interest 데이터 API 훅
+export const useOpenInterestData = (options = {}) => {
+  const {
+    limit = 1000,
+    includeAnalysis = true,
+    includeExchanges = true,
+    includeLeverage = true
+  } = options
+
+  return useQuery({
+    queryKey: ['open-interest-data', limit, includeAnalysis, includeExchanges, includeLeverage],
+    queryFn: async () => {
+      const results = {}
+
+      // 기본 분석 데이터
+      if (includeAnalysis) {
+        const analysisResponse = await fetch(`/api/v1/open-interest/analysis?limit=${limit}`)
+        if (analysisResponse.ok) {
+          results.analysis = await analysisResponse.json()
+        }
+      }
+
+      // 거래소별 데이터
+      if (includeExchanges) {
+        const exchangeResponse = await fetch('/api/v1/open-interest/exchanges')
+        if (exchangeResponse.ok) {
+          const exchangeData = await exchangeResponse.json()
+          results.exchanges = exchangeData.exchanges
+        }
+      }
+
+      // 레버리지 데이터
+      if (includeLeverage) {
+        const leverageResponse = await fetch('/api/v1/open-interest/leverage')
+        if (leverageResponse.ok) {
+          const leverageData = await leverageResponse.json()
+          results.leverage = leverageData.leverage_data
+        }
+      }
+
+      return results
+    },
+    staleTime: 2 * 60 * 1000, // 2분
+  })
 } 

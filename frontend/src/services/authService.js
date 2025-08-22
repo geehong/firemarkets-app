@@ -1,8 +1,8 @@
 import axios from 'axios';
 
 // 프로덕션에서는 동일 도메인 프록시(/api) 사용 -> CORS 회피
-// 개발에서는 REACT_APP_API_URL 설정 시 해당 값 사용
-const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
+// 개발에서는 VITE_API_URL 설정 시 해당 값 사용
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 axios.defaults.withCredentials = true;
 

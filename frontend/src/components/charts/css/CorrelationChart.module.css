@@ -59,15 +59,48 @@
   opacity: 1 !important;
 }
 
+/* 로그 스케일 버튼 활성화된 상태의 아이콘 색상 */
+.logButtonActive .chartIcon {
+  filter: brightness(0) invert(1); /* 흰색으로 변경 */
+}
+
 /* 로그 스케일 버튼 비활성화 */
 .logButtonInactive {
   background-color: transparent !important;
+}
+
+/* 로그 스케일 버튼 비활성화된 상태의 아이콘 색상 */
+.logButtonInactive .chartIcon {
+  filter: none; /* 원본 색상 유지 */
+}
+
+/* Linear 아이콘은 항상 원본 색상 유지 */
+.chartIcon[src*="Linear.svg"] {
+  filter: none !important;
+}
+
+/* Area, Line, Spline 아이콘도 원본 색상 유지 */
+.chartIcon[src*="Area.svg"],
+.chartIcon[src*="Line.svg"],
+.chartIcon[src*="Spline.svg"] {
+  filter: none !important;
 }
 
 /* 아이콘 스타일 */
 .chartIcon {
   width: 24px;
   height: 24px;
+  transition: filter 0.2s ease;
+}
+
+/* 활성화된 버튼의 아이콘 색상 */
+.chartButtonActive .chartIcon {
+  filter: brightness(0) invert(1); /* 흰색으로 변경 */
+}
+
+/* 비활성화된 버튼의 아이콘 색상 */
+.chartButtonInactive .chartIcon {
+  filter: none; /* 원본 색상 유지 */
 }
 
 .areaIcon {
@@ -206,5 +239,10 @@
   
   .buttonGroup {
     justify-content: center;
+  }
+  
+  /* 모바일에서 모드 버튼 그룹의 우측 정렬 제거 */
+  .buttonGroup:last-child {
+    margin-left: 0 !important;
   }
 } 

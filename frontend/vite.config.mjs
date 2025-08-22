@@ -5,6 +5,7 @@ import autoprefixer from 'autoprefixer'
 
 export default defineConfig(() => {
   return {
+    mode: 'production',
     base: '/',
     build: {
       outDir: 'build',
