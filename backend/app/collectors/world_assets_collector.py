@@ -59,7 +59,15 @@ class WorldAssetsCollector(BaseCollector):
                 'type': 'info'
             })
             
-            return await self._collect_data()
+            result = await self._collect_data()
+            
+            # BaseCollector에서 사용하는 키로 변환
+            if result.get('success'):
+                result['total_added_records'] = result.get('assets_updated', 0) + result.get('bonds_updated', 0)
+            else:
+                result['total_added_records'] = 0
+                
+            return result
             
         except Exception as e:
             self.log_progress(f"World assets collection with settings failed: {e}", "error")
@@ -67,8 +75,14 @@ class WorldAssetsCollector(BaseCollector):
     
     async def _collect_data(self) -> Dict[str, Any]:
         """Main collection method - collects and stores world assets data"""
+        start_time = datetime.now()
+        scraping_log = None
+        
         try:
             self.log_progress("Starting world assets data collection process")
+            
+            # 스크래핑 로그 시작
+            scraping_log = self._create_scraping_log("world_assets_ranking", "running")
             
             # 1. 자산 데이터 수집
             assets_data = await self.scrape_companies_marketcap()
@@ -84,18 +98,31 @@ class WorldAssetsCollector(BaseCollector):
             else:
                 bonds_updated = 0
             
+            # 스크래핑 로그 완료
+            end_time = datetime.now()
+            execution_time = (end_time - start_time).total_seconds()
+            self._update_scraping_log(scraping_log, "success", assets_updated + bonds_updated, assets_updated + bonds_updated, None, execution_time)
+            
             return {
                 'success': True,
                 'assets_updated': assets_updated,
                 'bonds_updated': bonds_updated,
+                'total_added_records': assets_updated + bonds_updated,  # 스케줄러 로그용
                 'message': f"Successfully updated {assets_updated} assets and {bonds_updated} bond records"
             }
             
         except Exception as e:
+            # 스크래핑 로그 실패
+            if scraping_log:
+                end_time = datetime.now()
+                execution_time = (end_time - start_time).total_seconds()
+                self._update_scraping_log(scraping_log, "failed", 0, 0, str(e), execution_time)
+            
             self.log_progress(f"World assets collection failed: {str(e)}", "error")
             return {
                 'success': False,
-                'error': str(e)
+                'error': str(e),
+                'total_added_records': 0  # 스케줄러 로그용
             }
 
     async def scrape_companies_marketcap(self) -> List[AssetData]:
@@ -473,4 +500,42 @@ class WorldAssetsCollector(BaseCollector):
         except Exception as e:
             db.rollback()
             self.log_progress(f"Error updating bond market database: {e}", "error")
-            raise 
+            raise
+
+    def _create_scraping_log(self, source: str, status: str) -> ScrapingLogs:
+        """스크래핑 로그 생성"""
+        try:
+            db = self.get_db_session()
+            scraping_log = ScrapingLogs(
+                source=source,
+                status=status,
+                started_at=datetime.now()
+            )
+            db.add(scraping_log)
+            db.commit()
+            return scraping_log
+        except Exception as e:
+            self.log_progress(f"Error creating scraping log: {e}", "error")
+            return None
+
+    def _update_scraping_log(self, scraping_log: ScrapingLogs, status: str, 
+                           records_processed: int, records_successful: int, 
+                           error_message: str = None, execution_time: float = None):
+        """스크래핑 로그 업데이트"""
+        try:
+            if not scraping_log:
+                return
+                
+            db = self.get_db_session()
+            scraping_log.status = status
+            scraping_log.records_processed = records_processed
+            scraping_log.records_successful = records_successful
+            scraping_log.error_message = error_message
+            scraping_log.execution_time_seconds = execution_time
+            scraping_log.completed_at = datetime.now()
+            
+            db.commit()
+            self.log_progress(f"Scraping log updated: {status}, {records_successful} records processed")
+            
+        except Exception as e:
+            self.log_progress(f"Error updating scraping log: {e}", "error") 

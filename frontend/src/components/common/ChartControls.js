@@ -11,7 +11,13 @@ const ChartControls = ({
   useLogScale,
   onLogScaleToggle,
   colorMode,
-  onColorModeChange
+  onColorModeChange,
+  showFlagsButton = true, // 플래그 버튼 표시 여부 (기본값: true)
+  // 반감기 차트 관련 props 추가
+  isHalvingChart = false,
+  halvingStates = {},
+  onHalvingToggle = () => {},
+  halvingColors = {}
 }) => {
   // Line/Spline 토글 핸들러
   const handleLineSplineToggle = () => {
@@ -22,7 +28,7 @@ const ChartControls = ({
   return (
     <div className={styles.controlsContainer}>
       {/* 아이콘 버튼들 (좌측 정렬) */}
-      <div className={styles.buttonGroup}>
+      <div className={styles.buttonGroup} style={{ marginRight: 'auto' }}>
         <button
           type="button"
           className={`${styles.chartButton} ${chartType === 'spline' || chartType === 'line' ? styles.chartButtonActive : styles.chartButtonInactive}`}
@@ -45,7 +51,7 @@ const ChartControls = ({
             className={styles.chartIcon}
           />
         </button>
-        {showFlags && (
+        {showFlagsButton && (
           <button
             type="button"
             className={`${styles.chartButton} ${showFlags ? styles.flagButtonActive : styles.flagButtonInactive}`}
@@ -84,6 +90,33 @@ const ChartControls = ({
           />
         </button>
       </div>
+
+      {/* 반감기 버튼들 (반감기 차트일 때만 표시) */}
+      {isHalvingChart && (
+        <div className={styles.buttonGroup} style={{ margin: '0 auto' }}>
+          {[1, 2, 3, 4].map((id) => {
+            const state = halvingStates[`showHalving${id}`] || false;
+            const buttonColor = state ? halvingColors[id] : '#6c757d';
+            return (
+              <button
+                key={id}
+                type="button"
+                className={`btn btn-sm ${state ? 'btn-primary' : 'btn-outline-secondary'}`}
+                onClick={() => onHalvingToggle(id)}
+                style={{ 
+                  fontSize: '11px', 
+                  fontWeight: 'bold',
+                  backgroundColor: state ? buttonColor : 'transparent',
+                  borderColor: buttonColor,
+                  color: state ? 'white' : buttonColor
+                }}
+              >
+                H{id}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* 색상 모드 선택 */}
       <div className={styles.buttonGroup} style={{ marginLeft: 'auto' }}>

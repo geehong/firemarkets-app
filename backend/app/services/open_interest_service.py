@@ -212,3 +212,4 @@ class OpenInterestService:
                 'end': data_points[0].timestamp.isoformat() if data_points else None
             }
         }
+

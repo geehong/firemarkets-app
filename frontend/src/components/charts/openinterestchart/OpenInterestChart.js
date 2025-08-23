@@ -77,14 +77,27 @@ const OpenInterestChart = ({
             const point = data[i];
             if (point.timestamp && point.total !== undefined && point.total !== null) {
               const timeValue = new Date(point.timestamp).getTime();
-              const numValue = parseFloat(point.total);
+              
+              // total 값이 숫자인지 확인하고 변환
+              let numValue;
+              if (typeof point.total === 'number') {
+                numValue = point.total;
+              } else if (typeof point.total === 'string') {
+                numValue = parseFloat(point.total);
+              } else if (point.total && typeof point.total === 'object' && point.total.total) {
+                // JSON 객체인 경우 total 필드 추출
+                numValue = typeof point.total.total === 'number' ? point.total.total : parseFloat(point.total.total);
+              } else {
+                console.warn('Open Interest total 값이 예상과 다릅니다:', point.total);
+                continue;
+              }
              
-              if (!isNaN(timeValue) && !isNaN(numValue) && timeValue > 0) {
+              if (!isNaN(timeValue) && !isNaN(numValue) && timeValue > 0 && numValue > 0) {
                 formattedData.push([timeValue, numValue]);
               }
             }
           } catch (error) {
-            console.error('Open Interest 데이터 변환 에러:', error);
+            console.error('Open Interest 데이터 변환 에러:', error, 'point:', point);
           }
         }
         
@@ -575,6 +588,7 @@ const OpenInterestChart = ({
           onLogScaleToggle={handleLogScaleToggle}
           colorMode={colorMode}
           onColorModeChange={setColorMode}
+          showFlagsButton={true} // Open Interest 차트에서는 플래그 버튼 표시
         />
 
         {/* 요약 정보 */}

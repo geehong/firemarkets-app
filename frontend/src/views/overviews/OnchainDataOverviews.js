@@ -12,6 +12,9 @@ import {
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import CorrelationChart from '../../components/charts/CorrelationChart'
 import HalvingChart from '../../components/charts/HalvingChart'
+import OHLCVTable from '../../components/tables/OHLCVTable'
+import CardTools from '../../components/common/CardTools'
+import '../../components/common/CardTools.css'
 import { usePriceData } from '../../hooks/useIntegratedMetrics'
 
 const OnchainDataOverviews = ({ 
@@ -127,46 +130,31 @@ const OnchainDataOverviews = ({
           />
           
           {/* 반감기 정보 카드 */}
+
+
+          {/* Bitcoin 히스토리 데이터 테이블 */}
           <CCard className="mb-4" style={{
             backgroundColor: isMobile ? 'var(--cui-card-bg, #fff)' : undefined,
             color: isMobile ? 'var(--cui-card-color, #000)' : undefined
           }}>
-            <CCardHeader style={{
+            <CCardHeader className="d-flex justify-content-between align-items-center" style={{
               backgroundColor: isMobile ? 'var(--cui-card-cap-bg, #f8f9fa)' : undefined,
               color: isMobile ? 'var(--cui-card-cap-color, #000)' : undefined
             }}>
-              <h5>Bitcoin 반감기 정보</h5>
+              <h5 className="mb-0">Bitcoin 히스토리 데이터</h5>
+              <CardTools />
             </CCardHeader>
             <CCardBody style={{
               backgroundColor: isMobile ? 'var(--cui-card-bg, #fff)' : undefined,
               color: isMobile ? 'var(--cui-card-color, #000)' : undefined
             }}>
-              <CRow>
-                <CCol md={6}>
-                  <h6>반감기란?</h6>
-                  <p className="text-muted">
-                    Bitcoin 반감기는 약 4년마다 발생하는 이벤트로, 채굴자들이 받는 보상이 절반으로 줄어듭니다.
-                    이는 Bitcoin의 총 공급량을 제한하고 인플레이션을 방지하는 메커니즘입니다.
-                  </p>
-                </CCol>
-                <CCol md={6}>
-                  <h6>반감기 효과</h6>
-                  <ul className="text-muted">
-                    <li>
-                      <strong>1차 반감기 (2012):</strong> 50 BTC → 25 BTC
-                    </li>
-                    <li>
-                      <strong>2차 반감기 (2016):</strong> 25 BTC → 12.5 BTC
-                    </li>
-                    <li>
-                      <strong>3차 반감기 (2020):</strong> 12.5 BTC → 6.25 BTC
-                    </li>
-                    <li>
-                      <strong>4차 반감기 (2024):</strong> 6.25 BTC → 3.125 BTC
-                    </li>
-                  </ul>
-                </CCol>
-              </CRow>
+              <OHLCVTable
+                assetId="BTCUSDT"
+                interval="1d"
+                showVolume={true}
+                showChangePercent={true}
+                height={400}
+              />
             </CCardBody>
           </CCard>
         </>

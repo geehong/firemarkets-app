@@ -51,7 +51,7 @@ api.interceptors.response.use(
 // 자산 관련 API
 export const assetAPI = {
   // 기본 자산 정보 (티커 또는 assetId로 조회 가능)
-  getAsset: (assetId) => api.get(`/assets/${assetId}`),
+  getAsset: async (assetId) => cachedApi.get(`/assets/${assetId}`, {}, { cacheTtl: 600000 }), // 10분 캐시
 
   // OHLCV 데이터 (캐싱 적용)
   getOHLCV: async (assetId, interval = '1d', limit = 50000, startDate = null, endDate = null) => {

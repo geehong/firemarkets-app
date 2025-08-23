@@ -673,6 +673,7 @@ const CorrelationChart = ({
           onLogScaleToggle={handleLogScaleToggle}
           colorMode={colorMode}
           onColorModeChange={setColorMode}
+          showFlagsButton={true} // Correlation 차트에서는 플래그 버튼 표시
         />
 
 

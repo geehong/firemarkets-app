@@ -168,6 +168,7 @@ class OnchainCollector(BaseCollector):
                 self.log_progress(f"Onchain data collection completed: {total_fetched} records from {len(successful_metrics)} metrics")
                 return {
                     "total_records": total_fetched,
+                    "total_added_records": total_fetched,  # 스케줄러 로그용
                     "successful_metrics": successful_metrics,
                     "message": f"Successfully collected {total_fetched} records from {len(successful_metrics)} metrics"
                 }
@@ -175,6 +176,7 @@ class OnchainCollector(BaseCollector):
                 self.log_progress("No onchain data was collected", "warning")
                 return {
                     "total_records": 0,
+                    "total_added_records": 0,  # 스케줄러 로그용
                     "successful_metrics": [],
                     "message": "No onchain data was collected"
                 }
@@ -462,89 +464,107 @@ class OnchainCollector(BaseCollector):
                     CryptoMetric.timestamp_utc == timestamp_value
                 ).first()
                 
-                if existing:
-                    # 기존 레코드 업데이트
-                    if metric_name == 'aviv':
-                        existing.aviv = value
-                    elif metric_name == 'mvrv-zscore':
-                        existing.mvrv_z_score = value
-                    elif metric_name == 'sopr':
-                        existing.sopr = value
-                    elif metric_name == 'nupl':
-                        existing.nupl = value
-                    elif metric_name == 'realized-price':
-                        existing.realized_price = value
-                    elif metric_name == 'hashrate':
-                        existing.hashrate = value
-                    elif metric_name == 'difficulty-BTC':
-                        existing.difficulty = value
-                    elif metric_name == 'miner-reserves':
-                        existing.miner_reserves = value
-                    elif metric_name == 'etf-btc-total':
-                        existing.etf_btc_total = value
-                    elif metric_name == 'open-interest-futures':
-                        existing.open_interest_futures = value
-                    elif metric_name == 'cap-real-usd':
-                        existing.realized_cap = value
-                    elif metric_name == 'cdd-90dma':
-                        existing.cdd_90dma = value
-                    elif metric_name == 'true-market-mean':
-                        existing.true_market_mean = value
-                    elif metric_name == 'nrpl-btc':
-                        existing.nrpl_btc = value
-                    elif metric_name == 'thermo-cap':
-                        existing.thermo_cap = value
-                    elif metric_name == 'hodl-waves-supply':
-                        existing.hodl_waves_supply = value
-                    elif metric_name == 'etf-btc-flow':
-                        existing.etf_btc_flow = value
+                # UPSERT 로직: 기존 레코드가 있으면 업데이트, 없으면 새로 생성
+                try:
+                    # 기존 레코드 확인
+                    existing = db.query(CryptoMetric).filter(
+                        CryptoMetric.asset_id == self.bitcoin_asset_id,
+                        CryptoMetric.timestamp_utc == timestamp_value
+                    ).first()
                     
-                    existing.updated_at = datetime.now()
-                else:
-                    # 새로운 레코드 생성
-                    new_metric = CryptoMetric(
-                        asset_id=self.bitcoin_asset_id,
-                        timestamp_utc=timestamp_value,
-                        created_at=datetime.now()
-                    )
+                    if existing:
+                        # 기존 레코드 업데이트
+                        if metric_name == 'aviv':
+                            existing.aviv = value
+                        elif metric_name == 'mvrv-zscore':
+                            existing.mvrv_z_score = value
+                        elif metric_name == 'sopr':
+                            existing.sopr = value
+                        elif metric_name == 'nupl':
+                            existing.nupl = value
+                        elif metric_name == 'realized-price':
+                            existing.realized_price = value
+                        elif metric_name == 'hashrate':
+                            existing.hashrate = value
+                        elif metric_name == 'difficulty-BTC':
+                            existing.difficulty = value
+                        elif metric_name == 'miner-reserves':
+                            existing.miner_reserves = value
+                        elif metric_name == 'etf-btc-total':
+                            existing.etf_btc_total = value
+                        elif metric_name == 'open-interest-futures':
+                            existing.open_interest_futures = value
+                        elif metric_name == 'cap-real-usd':
+                            existing.realized_cap = value
+                        elif metric_name == 'cdd-90dma':
+                            existing.cdd_90dma = value
+                        elif metric_name == 'true-market-mean':
+                            existing.true_market_mean = value
+                        elif metric_name == 'nrpl-btc':
+                            existing.nrpl_btc = value
+                        elif metric_name == 'thermo-cap':
+                            existing.thermo_cap = value
+                        elif metric_name == 'hodl-waves-supply':
+                            existing.hodl_waves_supply = value
+                        elif metric_name == 'etf-btc-flow':
+                            existing.etf_btc_flow = value
+                        
+                        existing.updated_at = datetime.now()
+                        self.log_progress(f"Updated existing record for {metric_name} on {timestamp_value}", "info")
+                    else:
+                        # 새로운 레코드 생성
+                        new_metric = CryptoMetric(
+                            asset_id=self.bitcoin_asset_id,
+                            timestamp_utc=timestamp_value,
+                            created_at=datetime.now()
+                        )
+                        
+                        # 메트릭별 필드 설정
+                        if metric_name == 'aviv':
+                            new_metric.aviv = value
+                        elif metric_name == 'mvrv-zscore':
+                            new_metric.mvrv_z_score = value
+                        elif metric_name == 'sopr':
+                            new_metric.sopr = value
+                        elif metric_name == 'nupl':
+                            new_metric.nupl = value
+                        elif metric_name == 'realized-price':
+                            new_metric.realized_price = value
+                        elif metric_name == 'hashrate':
+                            new_metric.hashrate = value
+                        elif metric_name == 'difficulty-BTC':
+                            new_metric.difficulty = value
+                        elif metric_name == 'miner-reserves':
+                            new_metric.miner_reserves = value
+                        elif metric_name == 'etf-btc-total':
+                            new_metric.etf_btc_total = value
+                        elif metric_name == 'open-interest-futures':
+                            new_metric.open_interest_futures = value
+                        elif metric_name == 'cap-real-usd':
+                            new_metric.realized_cap = value
+                        elif metric_name == 'cdd-90dma':
+                            new_metric.cdd_90dma = value
+                        elif metric_name == 'true-market-mean':
+                            new_metric.true_market_mean = value
+                        elif metric_name == 'nrpl-btc':
+                            new_metric.nrpl_btc = value
+                        elif metric_name == 'thermo-cap':
+                            new_metric.thermo_cap = value
+                        elif metric_name == 'hodl-waves-supply':
+                            new_metric.hodl_waves_supply = value
+                        elif metric_name == 'etf-btc-flow':
+                            new_metric.etf_btc_flow = value
+                        
+                        db.add(new_metric)
+                        self.log_progress(f"Created new record for {metric_name} on {timestamp_value}", "info")
                     
-                    # 메트릭별 필드 설정
-                    if metric_name == 'aviv':
-                        new_metric.aviv = value
-                    elif metric_name == 'mvrv-zscore':
-                        new_metric.mvrv_z_score = value
-                    elif metric_name == 'sopr':
-                        new_metric.sopr = value
-                    elif metric_name == 'nupl':
-                        new_metric.nupl = value
-                    elif metric_name == 'realized-price':
-                        new_metric.realized_price = value
-                    elif metric_name == 'hashrate':
-                        new_metric.hashrate = value
-                    elif metric_name == 'difficulty-BTC':
-                        new_metric.difficulty = value
-                    elif metric_name == 'miner-reserves':
-                        new_metric.miner_reserves = value
-                    elif metric_name == 'etf-btc-total':
-                        new_metric.etf_btc_total = value
-                    elif metric_name == 'open-interest-futures':
-                        new_metric.open_interest_futures = value
-                    elif metric_name == 'cap-real-usd':
-                        new_metric.realized_cap = value
-                    elif metric_name == 'cdd-90dma':
-                        new_metric.cdd_90dma = value
-                    elif metric_name == 'true-market-mean':
-                        new_metric.true_market_mean = value
-                    elif metric_name == 'nrpl-btc':
-                        new_metric.nrpl_btc = value
-                    elif metric_name == 'thermo-cap':
-                        new_metric.thermo_cap = value
-                    elif metric_name == 'hodl-waves-supply':
-                        new_metric.hodl_waves_supply = value
-                    elif metric_name == 'etf-btc-flow':
-                        new_metric.etf_btc_flow = value
+                    # 각 레코드마다 커밋 (중복 키 오류 방지)
+                    db.commit()
                     
-                    db.add(new_metric)
+                except Exception as e:
+                    db.rollback()
+                    self.log_progress(f"Error saving {metric_name} data for {timestamp_value}: {e}", "error")
+                    continue
                 
                 added_count += 1
             

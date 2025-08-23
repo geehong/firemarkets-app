@@ -16,7 +16,7 @@ export const useAssetData = (assetId, interval = '1d', limit = 1000) => {
       console.log('🔍 Fetching asset data for assetId:', assetId);
       const response = await assetAPI.getAsset(assetId)
       console.log('🔍 Asset API response:', response);
-      return response.data
+      return response
     },
     enabled: !!assetId,
     staleTime: 5 * 60 * 1000, // 5분

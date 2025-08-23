@@ -3,10 +3,10 @@ import Highcharts from 'highcharts/highstock';
 import HighchartsReact from 'highcharts-react-official';
 import { CCard, CCardBody, CCardHeader } from '@coreui/react';
 import CardTools from '../common/CardTools';
+import '../common/CardTools.css';
 import { useFourthHalvingStartPrice, useHalvingDataClosePrice } from '../../hooks/useIntegratedMetrics';
 import ChartControls from '../common/ChartControls';
 import { getColorMode } from '../../constants/colorModes';
-import styles from './css/CorrelationChart.module.css';
 
 // Load Highcharts modules in correct order
 import 'highcharts/modules/stock';
@@ -36,13 +36,15 @@ const HalvingChart = ({
   const [plotLineDay, setPlotLineDay] = useState(365);
   const [plotBandStart, setPlotBandStart] = useState(366);
   const [plotBandEnd, setPlotBandEnd] = useState(550);
-  const [showCrosshair, setShowCrosshair] = useState(true);
+
   const [showHalving1, setShowHalving1] = useState(true);
   const [showHalving2, setShowHalving2] = useState(true);
   const [showHalving3, setShowHalving3] = useState(true);
   const [showHalving4, setShowHalving4] = useState(true);
+  const [showFlags, setShowFlags] = useState(false); // Halving 차트에서는 플래그를 기본적으로 비활성화
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [colorMode, setColorMode] = useState('dark'); // 색상 모드 상태 추가
+  const [showSettings, setShowSettings] = useState(false); // 설정 패널 표시 상태
   const chartRef = useRef(null);
 
   // 4차 반감기 시작가격 가져오기
@@ -173,8 +175,6 @@ const HalvingChart = ({
     }
   }, [dayRange]);
 
-
-
   // 이동평균 계산 함수
   const calculateMovingAverage = (data, period) => {
     if (!data || data.length < period) return [];
@@ -236,15 +236,15 @@ const HalvingChart = ({
             .map(point => [point[0], point[1]]);
           
           if (maSeries.length > 0) {
-                      series.push({
-            name: `${period}st MA(${maPeriod})`,
-            type: chartType === 'area' ? 'area' : 'line',
-            data: maSeries,
-            color: Highcharts.color(currentColors.moving_average).setOpacity(0.6).get('rgba'),
-            line: {
-              dash: 'dot',
-              width: maWidth
-            },
+            series.push({
+              name: `${period}st MA(${maPeriod})`,
+              type: chartType === 'area' ? 'area' : 'line',
+              data: maSeries,
+              color: Highcharts.color(currentColors.moving_average).setOpacity(0.6).get('rgba'),
+              line: {
+                dash: 'dot',
+                width: maWidth
+              },
               // Area 차트일 때 그라데이션 효과 추가
               ...(chartType === 'area' && {
                 fillColor: {
@@ -303,6 +303,17 @@ const HalvingChart = ({
     }
     
     return series;
+  };
+
+  // 반감기 색상 가져오기
+  const getHalvingColors = () => {
+    const currentColors = getColorMode(colorMode);
+    return {
+      1: currentColors.halving_1,
+      2: currentColors.halving_2,
+      3: currentColors.halving_3,
+      4: currentColors.halving_4
+    };
   };
 
   // 차트 데이터 변환
@@ -372,44 +383,44 @@ const HalvingChart = ({
           line: {
             width: lineWidths[index % lineWidths.length]
           },
-                  // Area 차트일 때 그라데이션 효과 추가
-        ...(chartType === 'area' && {
-          fillColor: {
-            linearGradient: {
-              x1: 0,
-              y1: 0,
-              x2: 0,
-              y2: 1
-            },
-            stops: [
-              [0, Highcharts.color(currentColors[`halving_${period}`]).setOpacity(0.7).get('rgba')],
-              [0.5, Highcharts.color(currentColors[`halving_${period}`]).setOpacity(0.35).get('rgba')],
-              [0.8, Highcharts.color(currentColors[`halving_${period}`]).setOpacity(0.05).get('rgba')],
-              [0.9, Highcharts.color(currentColors[`halving_${period}`]).setOpacity(0.02).get('rgba')],
-              [1, Highcharts.color(currentColors[`halving_${period}`]).setOpacity(0.01).get('rgba')]
-            ]
-          }
-        }),
+          // Area 차트일 때 그라데이션 효과 추가
+          ...(chartType === 'area' && {
+            fillColor: {
+              linearGradient: {
+                x1: 0,
+                y1: 0,
+                x2: 0,
+                y2: 1
+              },
+              stops: [
+                [0, Highcharts.color(currentColors[`halving_${period}`]).setOpacity(0.7).get('rgba')],
+                [0.5, Highcharts.color(currentColors[`halving_${period}`]).setOpacity(0.35).get('rgba')],
+                [0.8, Highcharts.color(currentColors[`halving_${period}`]).setOpacity(0.05).get('rgba')],
+                [0.9, Highcharts.color(currentColors[`halving_${period}`]).setOpacity(0.02).get('rgba')],
+                [1, Highcharts.color(currentColors[`halving_${period}`]).setOpacity(0.01).get('rgba')]
+              ]
+            }
+          }),
           tooltip: {
             valueDecimals: 2,
             valuePrefix: '$',
-                            formatter: function() {
-                  // 각 반감기의 시작일 기준으로 날짜 계산
-                  const halvingStartDates = {
-                    1: new Date('2012-11-28T00:00:00.000Z'),
-                    2: new Date('2016-07-09T00:00:00.000Z'),
-                    3: new Date('2020-05-11T00:00:00.000Z'),
-                    4: new Date('2024-04-20T00:00:00.000Z')
-                  };
-                  
-                  // 시리즈 이름에서 반감기 번호 추출 (예: "1st" -> 1)
-                  const periodMatch = this.series.name.match(/(\d+)st/);
-                  const period = periodMatch ? parseInt(periodMatch[1]) : 4;
-                  const startDate = halvingStartDates[period];
-                  
-                  const currentDate = new Date(startDate.getTime() + this.x * 24 * 60 * 60 * 1000);
-                  const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
+            formatter: function() {
+              // 각 반감기의 시작일 기준으로 날짜 계산
+              const halvingStartDates = {
+                1: new Date('2012-11-28T00:00:00.000Z'),
+                2: new Date('2016-07-09T00:00:00.000Z'),
+                3: new Date('2020-05-11T00:00:00.000Z'),
+                4: new Date('2024-04-20T00:00:00.000Z')
+              };
               
+              // 시리즈 이름에서 반감기 번호 추출 (예: "1st" -> 1)
+              const periodMatch = this.series.name.match(/(\d+)st/);
+              const period = periodMatch ? parseInt(periodMatch[1]) : 4;
+              const startDate = halvingStartDates[period];
+              
+              const currentDate = new Date(startDate.getTime() + this.x * 24 * 60 * 60 * 1000);
+              const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
+          
               // 가격을 K 단위로 표시
               const price = this.y;
               let priceStr;
@@ -437,209 +448,209 @@ const HalvingChart = ({
     const currentColors = getColorMode(colorMode);
     
     return {
-    chart: {
-      height: height,
-      type: 'line',
-      animation: {
-        duration: 500
-      },
-      zoomType: 'xy',
-      panning: {
-        enabled: true,
-        type: 'xy'
-      },
-      pinchType: 'xy',
-      spacing: [5, 5, 5, 5],
-      margin: [10, 10, 10, 10],
-      events: {
-        load: function() {
-          //console.log('Halving chart loaded');
-        }
-      }
-    },
-    boost: {
-      useGPUTranslations: true,
-      seriesThreshold: 1
-    },
-    title: {
-      text: title,
-      style: {
-        fontSize: '14px'
-      }
-    },
-    subtitle: {
-      text: `Normalized to $${startPrice.toLocaleString()}`,
-      style: {
-        fontSize: '12px'
-      }
-    },
-    xAxis: {
-      type: 'linear',
-      title: {
-        text: 'Days After Halving'
-      },
-      labels: {
-        formatter: function() {
-          // 4차 반감기 기준으로 날짜 계산 (2024-04-20 UTC)
-          const fourthHalvingDate = new Date('2024-04-20T00:00:00.000Z');
-          const currentDate = new Date(fourthHalvingDate.getTime() + this.value * 24 * 60 * 60 * 1000);
-          const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
-          return `${String(this.value).padStart(3, '0')}Day [${dateStr}]`;
+      chart: {
+        height: height,
+        type: 'line',
+        animation: {
+          duration: 500
         },
-        style: { fontSize: '11px' }
-      },
-      tickPositioner: function() {
-        const positions = [];
-        const max = Math.min(this.dataMax, dayRange);
-        const interval = Math.ceil(max / 6);
-        
-        for (let i = 0; i <= max; i += interval) {
-          positions.push(i);
-        }
-        
-        if (positions.indexOf(max) === -1) {
-          positions.push(max);
-        }
-        
-        return positions;
-      },
-      crosshair: showCrosshair,
-      min: 0,
-      max: dayRange,
-      plotBands: showPlotBands ? [{
-        color: currentColors.plot_band,
-        from: plotBandStart,
-        to: plotBandEnd,
-        label: {
-          text: 'Custom Band',
-          style: {
-            color: '#606060'
-          }
-        }
-      }] : [],
-      plotLines: showPlotBands ? [{
-        color: currentColors.plot_line,
-        width: 2,
-        value: plotLineDay,
-        label: {
-          text: 'Plot Line',
-          style: {
-            color: currentColors.plot_line
-          }
-        }
-      }] : []
-    },
-    yAxis: {
-      title: {
-        text: 'Bitcoin Price (USD)'
-      },
-      labels: {
-        formatter: function() {
-          const value = this.value;
-          if (value >= 1000000) {
-            return '$' + (value / 1000000).toFixed(1) + 'M';
-          } else if (value >= 1000) {
-            return '$' + (value / 1000).toFixed(1) + 'K';
-          } else {
-            return '$' + value.toFixed(0);
-          }
+        zoomType: 'xy',
+        panning: {
+          enabled: true,
+          type: 'xy'
         },
+        pinchType: 'xy',
+        spacing: [5, 5, 5, 5],
+        margin: [10, 10, 10, 10],
+        events: {
+          load: function() {
+            //console.log('Halving chart loaded');
+          }
+        }
+      },
+      boost: {
+        useGPUTranslations: true,
+        seriesThreshold: 1
+      },
+      title: {
+        text: title,
+        style: {
+          fontSize: '14px'
+        }
+      },
+      subtitle: {
+        text: `Normalized to $${startPrice.toLocaleString()}`,
         style: {
           fontSize: '12px'
         }
       },
-      crosshair: showCrosshair,
-      type: useLogScale ? 'logarithmic' : 'linear'
-    },
-    rangeSelector: {
-      enabled: false
-    },
-    tooltip: {
-      split: true,
-      valueDecimals: 2,
-      formatter: function () {
-        const points = this.points;
-        const days = this.x;
-        
-        // Format the date based on the fourth halving (2024-04-20 UTC) - 공통 기준
-        const fourthHalvingDate = new Date('2024-04-20T00:00:00.000Z');
-        const currentDate = new Date(fourthHalvingDate.getTime() + days * 24 * 60 * 60 * 1000);
-        const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
-        
-        let tooltip = [`Day ${days} <span style="font-weight: bold; color: blue;">[${dateStr}]</span>`];
-        
-        points.forEach(point => {
-          tooltip.push(`<span style="color:${point.series.color}">\u25CF ${point.series.name}</span>: <b>$${Highcharts.numberFormat(point.y, 2)}</b>`);
-        });
-        
-        return tooltip;
-      },
-      style: { fontSize: '12px' }
-    },
-    series: getChartSeriesWithMA(),
-    plotOptions: {
-      line: {
-        marker: {
-          enabled: false
-        },
-        connectNulls: false // null 값 연결하지 않음
-      },
-      series: {
-        stickyTracking: false,
-        enableMouseTracking: true
-      }
-    },
-    credits: {
-      enabled: false
-    },
-    exporting: {
-      enabled: showExporting
-    },
-    navigator: {
-      enabled: true,
       xAxis: {
-        labels: {
-                          formatter: function() {
-                  // 4차 반감기 기준으로 날짜 계산 (2024-04-20 UTC)
-                  const fourthHalvingDate = new Date('2024-04-20T00:00:00.000Z');
-                  const currentDate = new Date(fourthHalvingDate.getTime() + this.value * 24 * 60 * 60 * 1000);
-                  const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
-                  return dateStr;
-                }
-        }
-      }
-    },
-    responsive: {
-      rules: [{
-        condition: {
-          maxWidth: 768
+        type: 'linear',
+        title: {
+          text: 'Days After Halving'
         },
-        chartOptions: {
-          chart: {
-            height: Math.min(height, 800),
-            spacing: [10, 10, 10, 10]
+        labels: {
+          formatter: function() {
+            // 4차 반감기 기준으로 날짜 계산 (2024-04-20 UTC)
+            const fourthHalvingDate = new Date('2024-04-20T00:00:00.000Z');
+            const currentDate = new Date(fourthHalvingDate.getTime() + this.value * 24 * 60 * 60 * 1000);
+            const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
+            return `${String(this.value).padStart(3, '0')}Day [${dateStr}]`;
           },
-          rangeSelector: {
+          style: { fontSize: '11px' }
+        },
+        tickPositioner: function() {
+          const positions = [];
+          const max = Math.min(this.dataMax, dayRange);
+          const interval = Math.ceil(max / 6);
+          
+          for (let i = 0; i <= max; i += interval) {
+            positions.push(i);
+          }
+          
+          if (positions.indexOf(max) === -1) {
+            positions.push(max);
+          }
+          
+          return positions;
+        },
+        crosshair: true,
+        min: 0,
+        max: dayRange,
+        plotBands: showPlotBands ? [{
+          color: currentColors.plot_band,
+          from: plotBandStart,
+          to: plotBandEnd,
+          label: {
+            text: 'Custom Band',
+            style: {
+              color: '#606060'
+            }
+          }
+        }] : [],
+        plotLines: showPlotBands ? [{
+          color: currentColors.plot_line,
+          width: 2,
+          value: plotLineDay,
+          label: {
+            text: 'Plot Line',
+            style: {
+              color: currentColors.plot_line
+            }
+          }
+        }] : []
+      },
+      yAxis: {
+        title: {
+          text: 'Bitcoin Price (USD)'
+        },
+        labels: {
+          formatter: function() {
+            const value = this.value;
+            if (value >= 1000000) {
+              return '$' + (value / 1000000).toFixed(1) + 'M';
+            } else if (value >= 1000) {
+              return '$' + (value / 1000).toFixed(1) + 'K';
+            } else {
+              return '$' + value.toFixed(0);
+            }
+          },
+          style: {
+            fontSize: '12px'
+          }
+        },
+        crosshair: true,
+        type: useLogScale ? 'logarithmic' : 'linear'
+      },
+      rangeSelector: {
+        enabled: false
+      },
+      tooltip: {
+        split: true,
+        valueDecimals: 2,
+        formatter: function () {
+          const points = this.points;
+          const days = this.x;
+          
+          // Format the date based on the fourth halving (2024-04-20 UTC) - 공통 기준
+          const fourthHalvingDate = new Date('2024-04-20T00:00:00.000Z');
+          const currentDate = new Date(fourthHalvingDate.getTime() + days * 24 * 60 * 60 * 1000);
+          const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
+          
+          let tooltip = [`Day ${days} <span style="font-weight: bold; color: blue;">[${dateStr}]</span>`];
+          
+          points.forEach(point => {
+            tooltip.push(`<span style="color:${point.series.color}">\u25CF ${point.series.name}</span>: <b>$${Highcharts.numberFormat(point.y, 2)}</b>`);
+          });
+          
+          return tooltip;
+        },
+        style: { fontSize: '12px' }
+      },
+      series: getChartSeriesWithMA(),
+      plotOptions: {
+        line: {
+          marker: {
             enabled: false
           },
-          navigator: {
-            enabled: true,
-            xAxis: {
-              labels: {
-                formatter: function() {
-                  // 4차 반감기 기준으로 날짜 계산 (2024-04-20 UTC)
-                  const fourthHalvingDate = new Date('2024-04-20T00:00:00.000Z');
-                  const currentDate = new Date(fourthHalvingDate.getTime() + this.value * 24 * 60 * 60 * 1000);
-                  const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
-                  return dateStr;
+          connectNulls: false // null 값 연결하지 않음
+        },
+        series: {
+          stickyTracking: false,
+          enableMouseTracking: true
+        }
+      },
+      credits: {
+        enabled: false
+      },
+      exporting: {
+        enabled: showExporting
+      },
+      navigator: {
+        enabled: true,
+        xAxis: {
+          labels: {
+            formatter: function() {
+              // 4차 반감기 기준으로 날짜 계산 (2024-04-20 UTC)
+              const fourthHalvingDate = new Date('2024-04-20T00:00:00.000Z');
+              const currentDate = new Date(fourthHalvingDate.getTime() + this.value * 24 * 60 * 60 * 1000);
+              const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
+              return dateStr;
+            }
+          }
+        }
+      },
+      responsive: {
+        rules: [{
+          condition: {
+            maxWidth: 768
+          },
+          chartOptions: {
+            chart: {
+              height: Math.min(height, 800),
+              spacing: [10, 10, 10, 10]
+            },
+            rangeSelector: {
+              enabled: false
+            },
+            navigator: {
+              enabled: true,
+              xAxis: {
+                labels: {
+                  formatter: function() {
+                    // 4차 반감기 기준으로 날짜 계산 (2024-04-20 UTC)
+                    const fourthHalvingDate = new Date('2024-04-20T00:00:00.000Z');
+                    const currentDate = new Date(fourthHalvingDate.getTime() + this.value * 24 * 60 * 60 * 1000);
+                    const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
+                    return dateStr;
+                  }
                 }
               }
             }
           }
-        }
-      }]
-    }
-  };
+        }]
+      }
+    };
   };
 
   if (isLoading) {
@@ -669,243 +680,47 @@ const HalvingChart = ({
         <CardTools />
       </CCardHeader>
       <CCardBody>
-        {/* Input Controls and Indicate Controls */}
-        <div className="row mb-3">
-          {/* Input Settings */}
-          <div className="col-md-6">
-            <div className="card">
-              <div className="card-header">
-                <h6 className="mb-0">Input Settings</h6>
-              </div>
-              <div className="card-body">
-                <div className="row">
-                  <div className="col-12 mb-3">
-                    <label className="form-label">Start Price</label>
-                    <div className="input-group">
-                      <input
-                        type="number"
-                        className="form-control"
-                        value={customStartPrice}
-                        onChange={(e) => setCustomStartPrice(Number(e.target.value))}
-                        placeholder="Enter start price"
-                      />
-                      <button
-                        className="btn btn-primary"
-                        onClick={handleExecuteStartPrice}
-                      >
-                        Execute
-                      </button>
-                    </div>
-                  </div>
-                  <div className="col-12">
-                    <div className="d-flex align-items-center gap-3">
-                      <label className="form-label mb-0">Range: {dayRange} Days</label>
-                      <div className="flex-grow-1">
-                        <input
-                          type="range"
-                          className="form-range"
-                          min="0"
-                          max="1460"
-                          value={dayRange}
-                          onChange={(e) => {
-                            const value = Number(e.target.value);
-                            setDayRange(value);
-                          }}
-                        />
-                      </div>
-                      <span className="text-muted">{dayRange} Days</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Indicate Settings */}
-          <div className="col-md-6">
-            <div className="card">
-              <div className="card-header">
-                <h6 className="mb-0">Indicate Settings</h6>
-              </div>
-              <div className="card-body">
-                <div className="row">
-                  {/* Plot Bands Section */}
-                  <div className="col-md-6">
-                    <div className="form-check mb-3">
-                      <input
-                        className="form-check-input"
-                        type="checkbox"
-                        checked={showPlotBands}
-                        onChange={(e) => setShowPlotBands(e.target.checked)}
-                      />
-                      <label className="form-check-label">Plot Bands/Lines</label>
-                    </div>
-                    {showPlotBands && (
-                      <div className="row">
-                        <div className="col-md-4">
-                          <label className="form-label">PL Day</label>
-                          <input
-                            type="number"
-                            className="form-control"
-                            value={plotLineDay}
-                            onChange={(e) => setPlotLineDay(Number(e.target.value))}
-                            min="0"
-                            max="1460"
-                          />
-                        </div>
-                        <div className="col-md-4">
-                          <label className="form-label">PB Start</label>
-                          <input
-                            type="number"
-                            className="form-control"
-                            value={plotBandStart}
-                            onChange={(e) => setPlotBandStart(Number(e.target.value))}
-                            min="0"
-                            max="1460"
-                          />
-                        </div>
-                        <div className="col-md-4">
-                          <label className="form-label">PB End</label>
-                          <input
-                            type="number"
-                            className="form-control"
-                            value={plotBandEnd}
-                            onChange={(e) => setPlotBandEnd(Number(e.target.value))}
-                            min={plotBandStart}
-                            max="1460"
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Moving Average Section */}
-                  <div className="col-md-6">
-                    <div className="form-check mb-3">
-                      <input
-                        className="form-check-input"
-                        type="checkbox"
-                        checked={showMovingAverage}
-                        onChange={(e) => setShowMovingAverage(e.target.checked)}
-                      />
-                      <label className="form-check-label">Moving Average</label>
-                    </div>
-                    {showMovingAverage && (
-                      <div className="row">
-                        <div className="col-md-6">
-                          <label className="form-label">MA Period</label>
-                          <input
-                            type="number"
-                            className="form-control"
-                            value={maPeriod}
-                            onChange={(e) => setMaPeriod(Number(e.target.value))}
-                            min="1"
-                            max="100"
-                          />
-                        </div>
-                        <div className="col-md-6">
-                          <label className="form-label">MA Width</label>
-                          <input
-                            type="number"
-                            className="form-control"
-                            value={maWidth}
-                            onChange={(e) => setMaWidth(Number(e.target.value))}
-                            min="1"
-                            max="10"
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Option Controls */}
-        <div className="row mb-3">
-          <div className="col-12">
-            <div className="card">
-              <div className="card-header">
-                <h6 className="mb-0">Option Settings</h6>
-              </div>
-              <div className="card-body">
-                <div className="row">
-                  <div className="col-md-2">
-                    <div className="form-check">
-                      <input
-                        className="form-check-input"
-                        type="checkbox"
-                        checked={showCrosshair}
-                        onChange={(e) => setShowCrosshair(e.target.checked)}
-                      />
-                      <label className="form-check-label">Crosshair</label>
-                    </div>
-                  </div>
-                  <div className="col-md-2">
-                    <div className="form-check">
-                      <input
-                        className="form-check-input"
-                        type="checkbox"
-                        checked={showHalving1}
-                        onChange={(e) => setShowHalving1(e.target.checked)}
-                      />
-                      <label className="form-check-label">Halving 1</label>
-                    </div>
-                  </div>
-                  <div className="col-md-2">
-                    <div className="form-check">
-                      <input
-                        className="form-check-input"
-                        type="checkbox"
-                        checked={showHalving2}
-                        onChange={(e) => setShowHalving2(e.target.checked)}
-                      />
-                      <label className="form-check-label">Halving 2</label>
-                    </div>
-                  </div>
-                  <div className="col-md-2">
-                    <div className="form-check">
-                      <input
-                        className="form-check-input"
-                        type="checkbox"
-                        checked={showHalving3}
-                        onChange={(e) => setShowHalving3(e.target.checked)}
-                      />
-                      <label className="form-check-label">Halving 3</label>
-                    </div>
-                  </div>
-                  <div className="col-md-2">
-                    <div className="form-check">
-                      <input
-                        className="form-check-input"
-                        type="checkbox"
-                        checked={showHalving4}
-                        onChange={(e) => setShowHalving4(e.target.checked)}
-                      />
-                      <label className="form-check-label">Halving 4</label>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* Chart Controls */}
-        <ChartControls
-          chartType={lineSplineMode}
-          onChartTypeChange={handleLineSplineToggle}
-          isAreaMode={isAreaMode}
-          onAreaModeToggle={handleAreaModeToggle}
-          showFlags={false}
-          onFlagsToggle={() => {}}
-          useLogScale={useLogScale}
-          onLogScaleToggle={handleLogScaleToggle}
-          colorMode={colorMode}
-          onColorModeChange={setColorMode}
-        />
+        <div className="row justify-content-center mb-3">
+          <div className="col-md-8">
+            <ChartControls
+              chartType={lineSplineMode}
+              onChartTypeChange={handleLineSplineToggle}
+              isAreaMode={isAreaMode}
+              onAreaModeToggle={handleAreaModeToggle}
+              showFlags={showFlags}
+              onFlagsToggle={() => setShowFlags(!showFlags)}
+              useLogScale={useLogScale}
+              onLogScaleToggle={handleLogScaleToggle}
+              colorMode={colorMode}
+              onColorModeChange={setColorMode}
+              showFlagsButton={false} // Halving 차트에서는 플래그 버튼 숨김
+              isHalvingChart={true}
+              halvingStates={{
+                showHalving1,
+                showHalving2,
+                showHalving3,
+                showHalving4
+              }}
+              onHalvingToggle={(id) => {
+                const setters = {
+                  1: setShowHalving1,
+                  2: setShowHalving2,
+                  3: setShowHalving3,
+                  4: setShowHalving4
+                };
+                const states = {
+                  1: showHalving1,
+                  2: showHalving2,
+                  3: showHalving3,
+                  4: showHalving4
+                };
+                setters[id](!states[id]);
+              }}
+              halvingColors={getHalvingColors()}
+            />
+          </div>
+        </div>
 
         {/* 차트 */}
         <div style={{ height: `${height}px` }}>
@@ -916,6 +731,176 @@ const HalvingChart = ({
             ref={chartRef}
           />
         </div>
+
+        {/* Settings Toggle Button */}
+        <div className="row mt-4">
+          <div className="col-12">
+            <button
+              type="button"
+              className="btn btn-outline-secondary btn-sm"
+              onClick={() => setShowSettings(!showSettings)}
+              style={{ width: '100%' }}
+            >
+              {showSettings ? '▼ Option' : '▶ Option'}
+            </button>
+          </div>
+        </div>
+
+        {/* Input Controls and Indicate Controls */}
+        {showSettings && (
+          <div className="row mt-3">
+            {/* Input Settings */}
+            <div className="col-md-6">
+              <div className="card">
+                <div className="card-header">
+                  <h6 className="mb-0">Input Settings</h6>
+                </div>
+                <div className="card-body">
+                  <div className="row">
+                    <div className="col-12 mb-3">
+                      <label className="form-label">Start Price</label>
+                      <div className="input-group">
+                        <input
+                          type="number"
+                          className="form-control"
+                          value={customStartPrice}
+                          onChange={(e) => setCustomStartPrice(Number(e.target.value))}
+                          placeholder="Enter start price"
+                        />
+                        <button
+                          className="btn btn-primary"
+                          onClick={handleExecuteStartPrice}
+                        >
+                          Execute
+                        </button>
+                      </div>
+                    </div>
+                    <div className="col-12">
+                      <div className="d-flex align-items-center gap-3">
+                        <label className="form-label mb-0">Range: {dayRange} Days</label>
+                        <div className="flex-grow-1">
+                          <input
+                            type="range"
+                            className="form-range"
+                            min="0"
+                            max="1460"
+                            value={dayRange}
+                            onChange={(e) => {
+                              const value = Number(e.target.value);
+                              setDayRange(value);
+                            }}
+                          />
+                        </div>
+                        <span className="text-muted">{dayRange} Days</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Indicate Settings */}
+            <div className="col-md-6">
+              <div className="card">
+                <div className="card-header">
+                  <h6 className="mb-0">Indicate Settings</h6>
+                </div>
+                <div className="card-body">
+                  <div className="row">
+                    {/* Plot Bands Section */}
+                    <div className="col-md-6">
+                      <div className="form-check mb-3">
+                        <input
+                          className="form-check-input"
+                          type="checkbox"
+                          checked={showPlotBands}
+                          onChange={(e) => setShowPlotBands(e.target.checked)}
+                        />
+                        <label className="form-check-label">Plot Bands/Lines</label>
+                      </div>
+                      {showPlotBands && (
+                        <div className="row">
+                          <div className="col-md-4">
+                            <label className="form-label">PL Day</label>
+                            <input
+                              type="number"
+                              className="form-control"
+                              value={plotLineDay}
+                              onChange={(e) => setPlotLineDay(Number(e.target.value))}
+                              min="0"
+                              max="1460"
+                            />
+                          </div>
+                          <div className="col-md-4">
+                            <label className="form-label">PB Start</label>
+                            <input
+                              type="number"
+                              className="form-control"
+                              value={plotBandStart}
+                              onChange={(e) => setPlotBandStart(Number(e.target.value))}
+                              min="0"
+                              max="1460"
+                            />
+                          </div>
+                          <div className="col-md-4">
+                            <label className="form-label">PB End</label>
+                            <input
+                              type="number"
+                              className="form-control"
+                              value={plotBandEnd}
+                              onChange={(e) => setPlotBandEnd(Number(e.target.value))}
+                              min={plotBandStart}
+                              max="1460"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Moving Average Section */}
+                    <div className="col-md-6">
+                      <div className="form-check mb-3">
+                        <input
+                          className="form-check-input"
+                          type="checkbox"
+                          checked={showMovingAverage}
+                          onChange={(e) => setShowMovingAverage(e.target.checked)}
+                        />
+                        <label className="form-check-label">Moving Average</label>
+                      </div>
+                      {showMovingAverage && (
+                        <div className="row">
+                          <div className="col-md-6">
+                            <label className="form-label">MA Period</label>
+                            <input
+                              type="number"
+                              className="form-control"
+                              value={maPeriod}
+                              onChange={(e) => setMaPeriod(Number(e.target.value))}
+                              min="1"
+                              max="100"
+                            />
+                          </div>
+                          <div className="col-md-6">
+                            <label className="form-label">MA Width</label>
+                            <input
+                              type="number"
+                              className="form-control"
+                              value={maWidth}
+                              onChange={(e) => setMaWidth(Number(e.target.value))}
+                              min="1"
+                              max="10"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </CCardBody>
     </CCard>
   );
