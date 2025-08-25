@@ -361,3 +361,5 @@ async def get_latest_open_interest(
         logger.error(f"Error in get_latest_open_interest: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
+
+

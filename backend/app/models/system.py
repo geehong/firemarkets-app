@@ -27,7 +27,11 @@ class SchedulerLog(Base):
     start_time = Column(TIMESTAMP, server_default=func.now(), index=True)
     end_time = Column(TIMESTAMP, nullable=True)
     duration_seconds = Column(Integer, nullable=True)
-    status = Column(String(50), index=True, default="running", nullable=True)
+    status = Column(String(50), index=True, default="pending", nullable=False)
+    current_task = Column(String(255), nullable=True)
+    strategy_used = Column(String(100), nullable=True)
+    checkpoint_data = Column(Text, nullable=True)  # JSON as text
+    retry_count = Column(Integer, default=0)
     assets_processed = Column(Integer, nullable=True, default=0)
     data_points_added = Column(Integer, nullable=True, default=0)
     error_message = Column(Text, nullable=True)

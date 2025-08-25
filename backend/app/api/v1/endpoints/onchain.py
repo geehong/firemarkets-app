@@ -547,32 +547,6 @@ async def get_dashboard_summary(
 
 # --- 메트릭 제어 API들 ---
 
-@router.post("/onchain/metrics/{metric_id}/toggle", response_model=OnchainMetricToggleResponse)
-async def toggle_metric(
-    metric_id: str,
-    db: Session = Depends(get_db)
-):
-    """메트릭의 활성화/비활성화를 토글합니다."""
-    try:
-        metric_def = get_metric_definition(metric_id, db)
-        
-        # 실제 구현에서는 설정 테이블에서 메트릭 상태를 토글
-        # 현재는 간단한 응답만 반환
-        current_status = is_metric_enabled(metric_id, db)
-        new_status = not current_status
-        
-        logger.info(f"Toggling metric {metric_id} from {current_status} to {new_status}")
-        
-        return {
-            "success": True,
-            "message": f"Metric '{metric_def.name}' {'enabled' if new_status else 'disabled'} successfully",
-            "metric_id": metric_id,
-            "is_enabled": new_status
-        }
-    except Exception as e:
-        logger.error(f"Failed to toggle metric {metric_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to toggle metric: {str(e)}")
-
 @router.post("/onchain/metrics/{metric_id}/run", response_model=OnchainMetricRunResponse)
 async def run_metric(
     metric_id: str,
@@ -583,13 +557,21 @@ async def run_metric(
     try:
         metric_def = get_metric_definition(metric_id, db)
         
-        # 실제 OnchainCollector를 사용하여 데이터를 수집
-        collector = OnchainCollector(db)
-        data_points_added = await collector.collect_data(
-            metric_id=metric_id,
-            force_update=request.force_update,
-            collection_type=request.collection_type
-        )
+        # Thermo Cap은 특별 처리
+        if metric_id == "thermo_cap":
+            import httpx
+            collector = OnchainCollector(db)
+            
+            async with httpx.AsyncClient() as client:
+                data_points_added = await collector._fetch_thermo_cap_simple(client)
+        else:
+            # 다른 메트릭들은 기존 방식 사용
+            collector = OnchainCollector(db)
+            data_points_added = await collector.collect_data(
+                metric_id=metric_id,
+                force_update=request.force_update,
+                collection_type=request.collection_type
+            )
         
         logger.info(f"Metric {metric_id} run completed. Added {data_points_added} data points.")
         

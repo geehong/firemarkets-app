@@ -29,11 +29,32 @@ const OHLCVTable = ({
   // OHLCV 데이터 로드 - selectedInterval과 showAll 상태에 따라 데이터 양 조절
   const { 
     asset, 
-    ohlcvData, 
+    ohlcvData: rawOhlcvData, 
     loading, 
     error, 
     isSuccess 
   } = useAssetData(assetId, selectedInterval, showAll ? 10000 : 1000) // showAll이 true면 더 많은 데이터
+
+  // 중복 데이터 제거: 같은 날짜의 데이터 중 하나만 선택
+  const ohlcvData = useMemo(() => {
+    if (!rawOhlcvData || rawOhlcvData.length === 0) return [];
+    
+    const uniqueData = new Map();
+    
+    rawOhlcvData.forEach(item => {
+      const dateKey = new Date(item.timestamp_utc).toDateString(); // 날짜만 추출
+      
+      // 이미 같은 날짜의 데이터가 있으면 더 최근 시간대의 데이터로 교체
+      if (!uniqueData.has(dateKey) || 
+          new Date(item.timestamp_utc) > new Date(uniqueData.get(dateKey).timestamp_utc)) {
+        uniqueData.set(dateKey, item);
+      }
+    });
+    
+    return Array.from(uniqueData.values()).sort((a, b) => 
+      new Date(b.timestamp_utc) - new Date(a.timestamp_utc)
+    );
+  }, [rawOhlcvData]);
 
   // 디버깅 로그
   console.log('🔍 OHLCVTable Debug:', {

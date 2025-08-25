@@ -376,6 +376,22 @@ def setup_scheduler_jobs():
         from ..models.system import SchedulerLog
         from ..models.world_assets import ScrapingLogs
         
+        # 중복 실행 방지: 이미 running 상태인 작업이 있는지 확인
+        db = SessionLocal()
+        try:
+            running_jobs = db.query(SchedulerLog).filter(
+                SchedulerLog.job_name == "onchaincollector_collection",
+                SchedulerLog.status == "running"
+            ).count()
+            
+            if running_jobs > 0:
+                logger.warning("Onchain collection is already running, skipping this execution")
+                return
+        except Exception as e:
+            logger.error(f"Error checking for running jobs: {e}")
+        finally:
+            db.close()
+        
         start_time = datetime.now()
         db = SessionLocal()
         

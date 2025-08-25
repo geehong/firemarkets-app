@@ -18,6 +18,10 @@ class CollectorResponse(BaseModel):
     message: str
     job_id: str = None
 
+class AssetTestRequest(BaseModel):
+    asset_id: int
+    test_mode: bool = True
+
 def run_collector_async(collector_class, db: Session):
     """비동기로 collector를 실행하는 함수"""
     try:
@@ -30,6 +34,19 @@ def run_collector_async(collector_class, db: Session):
         logger.info(f"{collector_class.__name__} collection completed successfully")
     except Exception as e:
         logger.error(f"Error in {collector_class.__name__} collection: {e}", exc_info=True)
+
+def run_single_asset_test(asset_id: int, db: Session):
+    """개별 자산 OHLCV 테스트를 실행하는 함수"""
+    try:
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        collector = OHLCVCollector(db)
+        loop.run_until_complete(collector._fetch_and_store_ohlcv_for_asset(asset_id))
+        loop.close()
+        logger.info(f"OHLCV test for asset {asset_id} completed successfully")
+    except Exception as e:
+        logger.error(f"Error in OHLCV test for asset {asset_id}: {e}", exc_info=True)
 
 @router.post("/ohlcv/run", response_model=CollectorResponse)
 async def run_ohlcv_collection(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
@@ -44,6 +61,21 @@ async def run_ohlcv_collection(background_tasks: BackgroundTasks, db: Session = 
     except Exception as e:
         logger.error(f"Failed to start OHLCV collection: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to start OHLCV collection: {str(e)}")
+
+@router.post("/ohlcv/test-asset", response_model=CollectorResponse)
+async def test_ohlcv_asset(request: AssetTestRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """개별 자산 OHLCV 테스트"""
+    try:
+        # 개별 자산 테스트를 위한 특별한 함수 실행
+        background_tasks.add_task(run_single_asset_test, request.asset_id, db)
+        return CollectorResponse(
+            success=True,
+            message=f"OHLCV test for asset {request.asset_id} started in background",
+            job_id=f"ohlcv_test_asset_{request.asset_id}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to start OHLCV test for asset {request.asset_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start OHLCV test: {str(e)}")
 
 @router.post("/onchain/run", response_model=CollectorResponse)
 async def run_onchain_collection(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):

@@ -4,11 +4,13 @@ CRUD operations for Asset model.
 import logging
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, desc
+from sqlalchemy import and_, or_, desc, func
+from sqlalchemy.dialects.mysql import insert as mysql_insert
 from datetime import date, datetime
 
 from .base import CRUDBase
 from ..models.asset import Asset, AssetType, OHLCVData, StockFinancial, StockProfile, StockAnalystEstimate, IndexInfo
+from ..models.crypto import CryptoMetric
 
 logger = logging.getLogger(__name__)
 
@@ -437,3 +439,82 @@ crud_stock_financial = CRUDStockFinancial()
 crud_stock_profile = CRUDStockProfile()
 crud_stock_estimate = CRUDStockEstimate()
 crud_index_info = CRUDIndexInfo()
+
+
+class CRUDCryptoMetric:
+    """CRUD operations for CryptoMetric model."""
+    
+    def __init__(self):
+        pass
+    
+    def bulk_upsert_crypto_metrics(self, db: Session, metrics_list: List[Dict[str, Any]]) -> int:
+        """Bulk upsert crypto metrics data with MySQL ON DUPLICATE KEY UPDATE."""
+        if not metrics_list:
+            return 0
+        
+        try:
+            # MySQL의 ON DUPLICATE KEY UPDATE 사용
+            stmt = mysql_insert(CryptoMetric).values(metrics_list)
+            
+            # 중복 키가 있을 경우 업데이트할 필드들
+            update_stmt = stmt.on_duplicate_key_update(
+                mvrv_z_score=stmt.inserted.mvrv_z_score,
+                realized_price=stmt.inserted.realized_price,
+                hashrate=stmt.inserted.hashrate,
+                difficulty=stmt.inserted.difficulty,
+                miner_reserves=stmt.inserted.miner_reserves,
+                etf_btc_total=stmt.inserted.etf_btc_total,
+                sopr=stmt.inserted.sopr,
+                nupl=stmt.inserted.nupl,
+                realized_cap=stmt.inserted.realized_cap,
+                cdd_90dma=stmt.inserted.cdd_90dma,
+                true_market_mean=stmt.inserted.true_market_mean,
+                nrpl_btc=stmt.inserted.nrpl_btc,
+                aviv=stmt.inserted.aviv,
+                thermo_cap=stmt.inserted.thermo_cap,
+                hodl_waves_supply=stmt.inserted.hodl_waves_supply,
+                etf_btc_flow=stmt.inserted.etf_btc_flow,
+                open_interest_futures=stmt.inserted.open_interest_futures,
+                updated_at=func.now()
+            )
+            
+            result = db.execute(update_stmt)
+            db.commit()
+            
+            # 영향받은 행 수 반환 (INSERT + UPDATE)
+            return result.rowcount
+            
+        except Exception as e:
+            logger.error(f"Bulk crypto metrics upsert failed: {e}")
+            db.rollback()
+            return 0
+    
+    def get_latest_crypto_metric(self, db: Session, asset_id: int) -> Optional[CryptoMetric]:
+        """Get latest crypto metric for an asset."""
+        return (
+            db.query(CryptoMetric)
+            .filter(CryptoMetric.asset_id == asset_id)
+            .order_by(desc(CryptoMetric.timestamp_utc))
+            .first()
+        )
+    
+    def get_crypto_metrics_history(
+        self, 
+        db: Session, 
+        asset_id: int, 
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        limit: int = 100
+    ) -> List[CryptoMetric]:
+        """Get crypto metrics history for an asset."""
+        query = db.query(CryptoMetric).filter(CryptoMetric.asset_id == asset_id)
+        
+        if start_date:
+            query = query.filter(CryptoMetric.timestamp_utc >= start_date)
+        if end_date:
+            query = query.filter(CryptoMetric.timestamp_utc <= end_date)
+        
+        return query.order_by(desc(CryptoMetric.timestamp_utc)).limit(limit).all()
+
+# 인스턴스 생성
+crypto_metric = CRUDCryptoMetric()

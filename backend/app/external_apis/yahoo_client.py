@@ -22,8 +22,8 @@ class YahooFinanceClient:
     @backoff.on_exception(
         backoff.expo,
         (httpx.RequestError, httpx.HTTPStatusError),
-        max_tries=3,
-        max_time=60
+        max_tries=5,  # 3에서 5로 증가
+        max_time=120  # 60에서 120초로 증가
     )
     async def _fetch_async(self, client: httpx.AsyncClient, url: str, ticker: str):
         """Fetch data from Yahoo Finance API with retry logic"""
@@ -32,7 +32,8 @@ class YahooFinanceClient:
         response = await client.get(url, timeout=self.timeout)
         
         if response.status_code == 429:  # Too Many Requests
-            logger.warning(f"[{ticker}] Yahoo Finance API 호출 제한 도달. 재시도합니다.")
+            logger.warning(f"[{ticker}] Yahoo Finance API 호출 제한 도달. 30초 후 재시도합니다.")
+            await asyncio.sleep(30)  # 30초 대기
             response.raise_for_status()
         
         response.raise_for_status()
@@ -137,6 +138,50 @@ class YahooFinanceClient:
             except Exception as e:
                 logger.error(f"[{ticker}] Yahoo Finance quote 수집 오류: {e}")
                 return None
+
+    async def get_current_prices(self, symbols: List[str]) -> Dict[str, float]:
+        """
+        여러 주식 심볼의 현재 가격을 조회합니다.
+        
+        Args:
+            symbols: 주식 심볼 리스트 (예: ['AAPL', 'GOOGL', 'MSFT'])
+            
+        Returns:
+            {symbol: price} 형태의 딕셔너리
+        """
+        if not symbols:
+            return {}
+            
+        async with httpx.AsyncClient() as client:
+            try:
+                # Yahoo Finance API는 여러 심볼을 쉼표로 구분하여 받습니다
+                symbols_str = ','.join(symbols)
+                url = f"{self.base_url}/v7/finance/quote?symbols={symbols_str}"
+                
+                data = await self._fetch_async(client, url, "multiple")
+                
+                if "quoteResponse" not in data or "result" not in data["quoteResponse"]:
+                    logger.error("Yahoo Finance API 응답 형식 오류")
+                    return {}
+                
+                results = data["quoteResponse"]["result"]
+                prices = {}
+                
+                for result in results:
+                    symbol = result.get("symbol")
+                    price = self._safe_float(result.get("regularMarketPrice"))
+                    
+                    if symbol and price is not None:
+                        prices[symbol] = price
+                    else:
+                        logger.warning(f"심볼 {symbol}의 가격 데이터 누락")
+                
+                logger.info(f"Yahoo Finance에서 {len(prices)}개 심볼의 가격 조회 완료")
+                return prices
+                
+            except Exception as e:
+                logger.error(f"Yahoo Finance 다중 가격 조회 오류: {e}")
+                return {}
     
     def _safe_float(self, value: Any) -> Optional[float]:
         """Safely convert value to float"""

@@ -84,6 +84,35 @@ class BinanceClient(BaseAPIClient):
             logger.error(f"Binance Ticker fetch failed for {symbol}: {e}")
         
         return None
+
+    async def get_tickers_price(self, symbols: List[str] = None) -> Dict[str, float]:
+        """
+        여러 암호화폐의 현재 가격을 조회합니다.
+        :param symbols: Binance에서 사용하는 ticker 리스트 (예: ['BTCUSDT', 'ETHUSDT'])
+        :return: {symbol: price} 형태의 딕셔너리
+        """
+        try:
+            async with httpx.AsyncClient() as client:
+                if symbols:
+                    # Binance API는 symbols를 JSON 배열 형식의 문자열로 받습니다.
+                    symbols_json = '["' + '","'.join(symbols) + '"]'
+                    url = f"{self.base_url}/ticker/price?symbols={symbols_json}"
+                else:
+                    # symbols가 None이면 모든 ticker 조회
+                    url = f"{self.base_url}/ticker/price"
+                
+                data = await self._fetch_async(client, url, "Binance Tickers", "multiple")
+                
+                if isinstance(data, list):
+                    # 결과를 {symbol: price} 형태로 변환
+                    return {item['symbol']: self._safe_float(item['price']) for item in data}
+                else:
+                    logger.error(f"Unexpected response format from Binance tickers API: {type(data)}")
+                    return {}
+                    
+        except Exception as e:
+            logger.error(f"Binance Tickers fetch failed: {e}")
+            return {}
     
     async def get_24hr_ticker(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Get 24hr ticker statistics"""

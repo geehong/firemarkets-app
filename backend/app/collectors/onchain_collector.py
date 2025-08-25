@@ -3,6 +3,7 @@ Onchain data collector for Bitcoin metrics from various APIs.
 """
 import logging
 import asyncio
+import json
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 
@@ -14,6 +15,8 @@ from .base_collector import BaseCollector
 from ..core.config import GLOBAL_APP_CONFIGS
 from ..models.asset import Asset
 from ..models.crypto import CryptoMetric
+from ..models.system import SchedulerLog
+from ..crud.asset import crypto_metric
 from ..external_apis.alpha_vantage_client import AlphaVantageClient
 from ..external_apis.fmp_client import FMPClient
 from ..external_apis.coinmarketcap_client import CoinMarketCapClient
@@ -43,8 +46,136 @@ class OnchainCollector(BaseCollector):
         self.coingecko_client = CoinGeckoClient()
         self.coinmarketcap_client = CoinMarketCapClient()
         
-        # API 우선순위 설정
-        self.api_priority = GLOBAL_APP_CONFIGS.get("ONCHAIN_API_PRIORITY", "coingecko,coinmarketcap,bitcoin-data")
+        # API 우선순위 설정 - Thermo Cap은 bitcoin-data에서만 제공되므로 bitcoin-data 우선
+        self.api_priority = GLOBAL_APP_CONFIGS.get("ONCHAIN_API_PRIORITY", "bitcoin-data")
+        
+        # 견고한 로깅을 위한 변수들
+        self.current_scheduler_log_id = None
+        self.current_task = None
+        self.strategy_used = None
+        self.checkpoint_data = {}
+        self.retry_count = 0
+        self.assets_processed = 0
+        self.data_points_added = 0
+    
+    def _create_scheduler_log(self, job_name: str = "onchaincollector_collection") -> int:
+        """스케줄러 로그 엔트리를 생성하고 ID를 반환합니다."""
+        try:
+            db = self.get_db_session()
+            scheduler_log = SchedulerLog(
+                job_name=job_name,
+                status="running",
+                current_task="Initializing collection",
+                strategy_used="standard",
+                retry_count=self.retry_count,
+                assets_processed=0,
+                data_points_added=0
+            )
+            db.add(scheduler_log)
+            db.commit()
+            db.refresh(scheduler_log)
+            return scheduler_log.log_id
+        except Exception as e:
+            logger.error(f"Error creating scheduler log: {e}")
+            return None
+    
+    def _update_scheduler_log(self, 
+                            status: str = None, 
+                            current_task: str = None, 
+                            strategy_used: str = None,
+                            checkpoint_data: Dict = None,
+                            assets_processed: int = None,
+                            data_points_added: int = None,
+                            error_message: str = None,
+                            end_time: bool = False):
+        """스케줄러 로그를 업데이트합니다."""
+        if not self.current_scheduler_log_id:
+            return
+        
+        try:
+            db = self.get_db_session()
+            scheduler_log = db.query(SchedulerLog).filter(
+                SchedulerLog.log_id == self.current_scheduler_log_id
+            ).first()
+            
+            if not scheduler_log:
+                return
+            
+            if status:
+                scheduler_log.status = status
+            if current_task:
+                scheduler_log.current_task = current_task
+            if strategy_used:
+                scheduler_log.strategy_used = strategy_used
+            if checkpoint_data:
+                scheduler_log.checkpoint_data = json.dumps(checkpoint_data)
+            if assets_processed is not None:
+                scheduler_log.assets_processed = assets_processed
+            if data_points_added is not None:
+                scheduler_log.data_points_added = data_points_added
+            if error_message:
+                scheduler_log.error_message = error_message
+            if end_time:
+                scheduler_log.end_time = datetime.now()
+                if scheduler_log.start_time:
+                    scheduler_log.duration_seconds = int((scheduler_log.end_time - scheduler_log.start_time).total_seconds())
+            
+            db.commit()
+            
+        except Exception as e:
+            logger.error(f"Error updating scheduler log: {e}")
+    
+    def _update_checkpoint(self, metric_name: str, last_processed_date: str, records_processed: int):
+        """체크포인트 데이터를 업데이트합니다."""
+        self.checkpoint_data[metric_name] = {
+            "last_processed_date": last_processed_date,
+            "records_processed": records_processed,
+            "timestamp": datetime.now().isoformat()
+        }
+        self._update_scheduler_log(checkpoint_data=self.checkpoint_data)
+    
+    def _log_with_scheduler_update(self, message: str, level: str = "info", 
+                                 current_task: str = None, 
+                                 data_points_added: int = None):
+        """로깅과 스케줄러 업데이트를 동시에 수행합니다."""
+        # 기존 로깅
+        self.log_progress(message, level)
+        
+        # 스케줄러 로그 업데이트
+        update_kwargs = {}
+        if current_task:
+            update_kwargs['current_task'] = current_task
+        if data_points_added is not None:
+            self.data_points_added += data_points_added
+            update_kwargs['data_points_added'] = self.data_points_added
+        
+        if update_kwargs:
+            self._update_scheduler_log(**update_kwargs)
+    
+    def _handle_collection_error(self, error: Exception, metric_name: str = None, context: str = ""):
+        """수집 오류를 처리하고 로깅합니다."""
+        error_msg = f"Collection error {context}: {str(error)}"
+        if metric_name:
+            error_msg = f"{metric_name} - {error_msg}"
+        
+        self.log_progress(error_msg, "error")
+        
+        # 스케줄러 로그에 오류 기록
+        self._update_scheduler_log(
+            status="failed",
+            error_message=error_msg,
+            end_time=True
+        )
+        
+        # 재시도 로직
+        if self.retry_count < 3:  # 최대 3회 재시도
+            self.retry_count += 1
+            self._update_scheduler_log(retry_count=self.retry_count)
+            self.log_progress(f"Retrying collection (attempt {self.retry_count}/3)", "warning")
+            return True  # 재시도 가능
+        else:
+            self.log_progress("Max retry attempts reached", "error")
+            return False  # 재시도 불가
     
     def _get_bitcoin_asset_id(self) -> int:
         """비트코인 자산 ID를 동적으로 찾습니다. BTC 또는 BTCUSDT를 지원합니다."""
@@ -102,11 +233,20 @@ class OnchainCollector(BaseCollector):
             raise
     
     async def _collect_data(self) -> Dict[str, Any]:
-        """Collect onchain data for Bitcoin"""
+        """Collect onchain data for Bitcoin with robust logging"""
         try:
-            self.log_progress(f"Starting onchain data collection for Bitcoin (Asset ID: {self.bitcoin_asset_id})")
+            # 스케줄러 로그 생성
+            self.current_scheduler_log_id = self._create_scheduler_log()
+            if not self.current_scheduler_log_id:
+                self.log_progress("Failed to create scheduler log entry", "error")
+                return {"error": "Failed to create scheduler log", "processed": 0}
             
-            # Define metrics to collect (원본과 동일하게 복원)
+            self._log_with_scheduler_update(
+                f"Starting onchain data collection for Bitcoin (Asset ID: {self.bitcoin_asset_id})",
+                current_task="Initializing collection"
+            )
+            
+            # Define metrics to collect
             metrics = [
                 'mvrv-zscore',
                 'sopr', 
@@ -147,25 +287,46 @@ class OnchainCollector(BaseCollector):
                     for j, result in enumerate(results):
                         metric_name = metric_batch[j]
                         if isinstance(result, Exception):
-                            self.log_progress(f"Error collecting {metric_name}: {result}", "error")
+                            self._handle_collection_error(result, metric_name, "in batch processing")
                         elif result and result > 0:
                             total_fetched += result
                             successful_metrics.append(metric_name)
-                            self.log_progress(f"{metric_name}: Added {result} records")
+                            self._log_with_scheduler_update(
+                                f"{metric_name}: Added {result} records",
+                                current_task=f"Processing {metric_name}",
+                                data_points_added=result
+                            )
+                            # 체크포인트 업데이트
+                            self._update_checkpoint(metric_name, datetime.now().strftime("%Y-%m-%d"), result)
                         else:
-                            self.log_progress(f"No new {metric_name} data was fetched", "warning")
+                            self._log_with_scheduler_update(
+                                f"No new {metric_name} data was fetched",
+                                "warning",
+                                current_task=f"Processing {metric_name}"
+                            )
                     
-                    # API 제한 고려한 긴 지연 (시간당 10회 = 6분 간격)
+                    # API 제한 고려한 긴 지연
                     if i + batch_size < len(metrics):
-                        delay_seconds = GLOBAL_APP_CONFIGS.get("ONCHAIN_API_DELAY_SECONDS", 360)  # 기본 6분
-                        self.log_progress(f"Waiting {delay_seconds} seconds before next API call...", "info")
+                        delay_seconds = GLOBAL_APP_CONFIGS.get("ONCHAIN_API_DELAY_SECONDS", 480)  # 기본 8분
+                        self._log_with_scheduler_update(
+                            f"Waiting {delay_seconds} seconds before next API call...",
+                            current_task="API rate limiting"
+                        )
                         await asyncio.sleep(delay_seconds)
                 
                 # Update asset's last collection time
                 await self._update_asset_collection_time()
             
             if total_fetched > 0:
-                self.log_progress(f"Onchain data collection completed: {total_fetched} records from {len(successful_metrics)} metrics")
+                self._log_with_scheduler_update(
+                    f"Onchain data collection completed: {total_fetched} records from {len(successful_metrics)} metrics",
+                    current_task="Collection completed"
+                )
+                # 성공적으로 완료
+                self._update_scheduler_log(
+                    status="completed",
+                    end_time=True
+                )
                 return {
                     "total_records": total_fetched,
                     "total_added_records": total_fetched,  # 스케줄러 로그용
@@ -173,16 +334,26 @@ class OnchainCollector(BaseCollector):
                     "message": f"Successfully collected {total_fetched} records from {len(successful_metrics)} metrics"
                 }
             else:
-                self.log_progress("No onchain data was collected", "warning")
+                self._log_with_scheduler_update(
+                    "No onchain data was collected",
+                    "warning",
+                    current_task="Collection completed (no data)"
+                )
+                # 실패로 마킹
+                self._update_scheduler_log(
+                    status="completed",
+                    end_time=True
+                )
                 return {
                     "total_records": 0,
-                    "total_added_records": 0,  # 스케줄러 로그용
+                    "total_added_records": 0,
                     "successful_metrics": [],
                     "message": "No onchain data was collected"
                 }
                 
         except Exception as e:
-            self.log_progress(f"Onchain data collection failed: {e}", "error")
+            # 오류 처리 및 로깅
+            self._handle_collection_error(e, context="in main collection")
             raise
     
     async def _process_single_metric(self, client: httpx.AsyncClient, metric_name: str) -> int:
@@ -191,10 +362,16 @@ class OnchainCollector(BaseCollector):
             # Check if metric collection is enabled
             config_key = f"ONCHAIN_COLLECT_{metric_name.replace('-', '_').upper()}"
             if not GLOBAL_APP_CONFIGS.get(config_key, True):
-                self.log_progress(f"Skipping {metric_name} (disabled)")
+                self._log_with_scheduler_update(
+                    f"Skipping {metric_name} (disabled)",
+                    current_task=f"Skipping {metric_name}"
+                )
                 return 0
             
-            self.log_progress(f"Collecting {metric_name} data")
+            self._log_with_scheduler_update(
+                f"Collecting {metric_name} data",
+                current_task=f"Starting {metric_name} collection"
+            )
             
             # MVRV Z-Score 특별 처리
             if metric_name == 'mvrv-zscore':
@@ -212,7 +389,7 @@ class OnchainCollector(BaseCollector):
             return added_count
             
         except Exception as e:
-            self.log_progress(f"Error collecting {metric_name}: {e}", "error")
+            self._handle_collection_error(e, metric_name, "in single metric processing")
             return 0
 
     async def _fetch_and_store_onchain_metric(self, client: httpx.AsyncClient, metric_name: str, endpoint: str, field_map: dict, collection_type: str = "recent", force_update: bool = False) -> int:
@@ -278,6 +455,7 @@ class OnchainCollector(BaseCollector):
         if collection_type == "all":
             params = {}
         else:
+            # recent인 경우 파라미터 없이 전체 데이터를 가져온 후 필터링
             params = {}
         
         async def api_call():
@@ -315,7 +493,7 @@ class OnchainCollector(BaseCollector):
             # 데이터 처리 및 저장
             try:
                 self.log_progress(f"DEBUG: About to call _process_onchain_data for {metric_name}", "info")
-                result = await self._process_onchain_data(metric_name, data, field_map)
+                result = await self._process_onchain_data(metric_name, data, field_map, collection_type)
                 self.log_progress(f"DEBUG: _process_onchain_data returned {result} for {metric_name}", "info")
                 return result
             except Exception as e:
@@ -334,17 +512,28 @@ class OnchainCollector(BaseCollector):
             self.log_progress(f"Unexpected error for {metric_name}: {e}", "error")
             return 0
 
-    async def _process_onchain_data(self, metric_name: str, data: dict, field_map: dict) -> int:
-        """온체인 데이터 처리 및 저장"""
+    async def _process_onchain_data(self, metric_name: str, data: dict, field_map: dict, collection_type: str = "all") -> int:
+        """온체인 데이터 처리 및 저장 (UPSERT 로직 적용)"""
         # 디버깅 로그 추가
-        self.log_progress(f"DEBUG: Processing {metric_name} data, type: {type(data)}, length: {len(data) if isinstance(data, (list, dict)) else 'N/A'}", "info")
+        self._log_with_scheduler_update(
+            f"Processing {metric_name} data, type: {type(data)}, length: {len(data) if isinstance(data, (list, dict)) else 'N/A'}",
+            current_task=f"Processing {metric_name} data"
+        )
         
         if not data:
-            self.log_progress(f"DEBUG: No data for {metric_name}", "warning")
+            self._log_with_scheduler_update(
+                f"No data for {metric_name}",
+                "warning",
+                current_task=f"No data for {metric_name}"
+            )
             return 0
             
         if not isinstance(data, (list, dict)):
-            self.log_progress(f"DEBUG: Invalid data type for {metric_name}: {type(data)}", "warning")
+            self._log_with_scheduler_update(
+                f"Invalid data type for {metric_name}: {type(data)}",
+                "warning",
+                current_task=f"Invalid data type for {metric_name}"
+            )
             return 0
         
         db = self.get_db_session()
@@ -354,54 +543,88 @@ class OnchainCollector(BaseCollector):
             # 데이터 구조에 따라 처리
             if 'data' in data:
                 records = data['data']
-                self.log_progress(f"DEBUG: Using data['data'] for {metric_name}, records count: {len(records)}", "info")
+                self._log_with_scheduler_update(
+                    f"Processing {metric_name} data, records count: {len(records)}",
+                    current_task=f"Processing {metric_name} data"
+                )
             elif isinstance(data, list):
                 records = data
-                self.log_progress(f"DEBUG: Using data as list for {metric_name}, records count: {len(records)}", "info")
+                self._log_with_scheduler_update(
+                    f"Processing {metric_name} data, records count: {len(records)}",
+                    current_task=f"Processing {metric_name} data"
+                )
             else:
                 records = [data]
-                self.log_progress(f"DEBUG: Using data as single record for {metric_name}", "info")
+                self._log_with_scheduler_update(
+                    f"Processing {metric_name} data as single record",
+                    current_task=f"Processing {metric_name} data"
+                )
             
-            if metric_name == 'realized-cap':
-                self.log_progress(f"DEBUG: About to process {len(records)} records", "info")
-                self.log_progress(f"DEBUG: First record sample: {records[0] if records else 'No records'}", "info")
+            # collection_type이 "recent"인 경우 최신 30일 데이터만 필터링
+            if collection_type == "recent" and records:
+                from datetime import datetime, timedelta
+                cutoff_date = datetime.now() - timedelta(days=30)
+                filtered_records = []
+                
+                for record in records:
+                    if isinstance(record, dict) and 'd' in record:
+                        try:
+                            record_date = datetime.strptime(record['d'], '%Y-%m-%d')
+                            if record_date >= cutoff_date:
+                                filtered_records.append(record)
+                        except (ValueError, TypeError):
+                            continue
+                
+                records = filtered_records
+                self._log_with_scheduler_update(
+                    f"Filtered to {len(records)} recent records for {metric_name}",
+                    current_task=f"Filtering {metric_name} data"
+                )
+            
+            # 간단한 디버깅: 첫 번째 레코드 확인
+            if records and len(records) > 0:
+                first_record = records[0]
+                self._log_with_scheduler_update(
+                    f"DEBUG: First record for {metric_name}: {first_record}",
+                    current_task=f"Debugging {metric_name}"
+                )
+            
+            # 배치 처리를 위한 데이터 수집
+            batch_data = []
             
             for i, record in enumerate(records):
-                if metric_name == 'realized-cap' and i < 3:  # 처음 3개만 로그
-                    self.log_progress(f"DEBUG: Processing record {i}: {record}", "info")
-                
                 # realized-cap 메트릭을 cap-real-usd로 처리
+                current_metric_name = metric_name
                 if metric_name == 'realized-cap':
-                    metric_name = 'cap-real-usd'
+                    current_metric_name = 'cap-real-usd'
+                
                 if not isinstance(record, dict):
-                    if metric_name == 'realized-cap':
-                        self.log_progress(f"DEBUG: Skipping non-dict record {i}: {record}", "warning")
                     continue
                 
                 # 필드 매핑 적용 (API별 필드명 변환 고려)
-                field_key = metric_name.replace('-', '_')
+                field_key = current_metric_name.replace('-', '_')
                 value = record.get(field_key) or record.get('value')
                 
                 # API별 특별한 필드명 처리
-                if metric_name == 'mvrv-zscore' and value is None:
+                if current_metric_name == 'mvrv-zscore' and value is None:
                     value = record.get('mvrvZscore')  # Bitcoin-Data API 필드명
-                elif metric_name == 'difficulty-BTC' and value is None:
+                elif current_metric_name == 'difficulty-BTC' and value is None:
                     value = record.get('difficultyBtc')  # Bitcoin-Data API 필드명
-                elif metric_name == 'realized-price' and value is None:
+                elif current_metric_name == 'realized-price' and value is None:
                     value = record.get('realizedPrice')  # Bitcoin-Data API 필드명
-                elif metric_name == 'miner-reserves' and value is None:
+                elif current_metric_name == 'miner-reserves' and value is None:
                     value = record.get('reserves')  # Bitcoin-Data API 필드명
-                elif metric_name == 'etf-btc-total' and value is None:
+                elif current_metric_name == 'etf-btc-total' and value is None:
                     value = record.get('etfBtcTotal')  # Bitcoin-Data API 필드명
-                elif metric_name == 'etf-btc-flow' and value is None:
+                elif current_metric_name == 'etf-btc-flow' and value is None:
                     value = record.get('etfFlow')  # Bitcoin-Data API 필드명
-                elif metric_name == 'true-market-mean' and value is None:
+                elif current_metric_name == 'true-market-mean' and value is None:
                     value = record.get('trueMarketMean')  # Bitcoin-Data API 필드명
-                elif metric_name == 'cdd-90dma' and value is None:
+                elif current_metric_name == 'cdd-90dma' and value is None:
                     value = record.get('cdd90dma')  # Bitcoin-Data API 필드명
-                elif metric_name == 'nrpl-btc' and value is None:
+                elif current_metric_name == 'nrpl-btc' and value is None:
                     value = record.get('nrplBtc')  # Bitcoin-Data API 필드명
-                elif metric_name == 'cap-real-usd' and value is None:
+                elif current_metric_name == 'cap-real-usd' and value is None:
                     value = record.get('capRealUSD')  # Bitcoin-Data API 필드명
                     # 과학적 표기법 문자열을 일반 문자열로 변환
                     if value and isinstance(value, str) and 'E' in value:
@@ -409,10 +632,15 @@ class OnchainCollector(BaseCollector):
                             value = f"{float(value):.2f}"
                         except (ValueError, TypeError):
                             pass
-                    # 디버깅 로그 추가
-                    if i < 3:  # 처음 3개만 로그
-                        self.log_progress(f"DEBUG: cap-real-usd record {i}: value={value}, type={type(value)}", "info")
-                elif metric_name == 'open-interest-futures' and value is None:
+                elif current_metric_name == 'thermo-cap' and value is None:
+                    value = record.get('thermoCap')  # Bitcoin-Data API 필드명
+                    # 문자열을 숫자로 변환
+                    if value and isinstance(value, str):
+                        try:
+                            value = float(value)
+                        except (ValueError, TypeError):
+                            value = None
+                elif current_metric_name == 'open-interest-futures' and value is None:
                     # JSON 형식으로 거래소별 데이터 저장
                     exchanges = ['binance', 'bybit', 'okx', 'bitget', 'deribit', 'bitmex', 'huobi', 'bitfinex', 'gateIo', 'kucoin', 'kraken', 'cryptoCom', 'dydx', 'deltaExchange']
                     exchange_data = {}
@@ -435,7 +663,7 @@ class OnchainCollector(BaseCollector):
                         "timestamp": record.get('d'),
                         "unix_ts": record.get('unixTs')
                     }
-                elif metric_name == 'cap-real-usd':
+                elif current_metric_name == 'cap-real-usd':
                     # capRealUSD 필드에서 값 추출
                     value = record.get('capRealUSD')
                     if value and isinstance(value, str) and 'E' in value:
@@ -446,136 +674,152 @@ class OnchainCollector(BaseCollector):
                 
                 # 값 검증
                 if value is None:
-                    if metric_name in ['aviv', 'cap-real-usd']:
-                        self.log_progress(f"DEBUG: Skipping record with None value: {record}", "warning")
                     continue
                 
                 # 중복 체크 및 저장 (날짜 필드 처리)
-                timestamp_field = 'theDay' if metric_name in ['realized-price', 'cap-real-usd'] else 'd'
+                timestamp_field = 'theDay' if current_metric_name in ['realized-price', 'cap-real-usd'] else 'd'
                 timestamp_value = record.get(timestamp_field)
                 
-                # 디버깅 로그
-                if metric_name in ['aviv', 'cap-real-usd', 'realized-cap']:
-                    self.log_progress(f"DEBUG: metric_name={metric_name}, record={record}, field_key={field_key}, value={value}", "info")
-                    self.log_progress(f"DEBUG: timestamp_field={timestamp_field}, timestamp_value={timestamp_value}", "info")
+                # 디버깅: thermo-cap 데이터 확인
+                if current_metric_name == 'thermo-cap' and i < 3:
+                    self._log_with_scheduler_update(
+                        f"DEBUG: thermo-cap record {i}: value={value}, timestamp={timestamp_value}, record={record}",
+                        current_task=f"Debugging {current_metric_name}"
+                    )
                 
-                existing = db.query(CryptoMetric).filter(
-                    CryptoMetric.asset_id == self.bitcoin_asset_id,
-                    CryptoMetric.timestamp_utc == timestamp_value
-                ).first()
+                # UPSERT 로직을 위한 데이터 준비
+                metric_data = {
+                    'asset_id': self.bitcoin_asset_id,
+                    'timestamp_utc': timestamp_value,
+                    'created_at': datetime.now()
+                }
                 
-                # UPSERT 로직: 기존 레코드가 있으면 업데이트, 없으면 새로 생성
+                # 메트릭별 필드 설정
+                if current_metric_name == 'aviv':
+                    metric_data['aviv'] = value
+                elif current_metric_name == 'mvrv-zscore':
+                    metric_data['mvrv_z_score'] = value
+                elif current_metric_name == 'sopr':
+                    metric_data['sopr'] = value
+                elif current_metric_name == 'nupl':
+                    metric_data['nupl'] = value
+                elif current_metric_name == 'realized-price':
+                    metric_data['realized_price'] = value
+                elif current_metric_name == 'hashrate':
+                    metric_data['hashrate'] = value
+                elif current_metric_name == 'difficulty-BTC':
+                    metric_data['difficulty'] = value
+                elif current_metric_name == 'miner-reserves':
+                    metric_data['miner_reserves'] = value
+                elif current_metric_name == 'etf-btc-total':
+                    metric_data['etf_btc_total'] = value
+                elif current_metric_name == 'open-interest-futures':
+                    metric_data['open_interest_futures'] = value
+                elif current_metric_name == 'cap-real-usd':
+                    metric_data['realized_cap'] = value
+                elif current_metric_name == 'cdd-90dma':
+                    metric_data['cdd_90dma'] = value
+                elif current_metric_name == 'true-market-mean':
+                    metric_data['true_market_mean'] = value
+                elif current_metric_name == 'nrpl-btc':
+                    metric_data['nrpl_btc'] = value
+                elif current_metric_name == 'thermo-cap':
+                    metric_data['thermo_cap'] = value
+                elif current_metric_name == 'hodl-waves-supply':
+                    metric_data['hodl_waves_supply'] = value
+                elif current_metric_name == 'etf-btc-flow':
+                    metric_data['etf_btc_flow'] = value
+                
+                batch_data.append(metric_data)
+            
+            # 디버깅: 배치 데이터 상태 확인
+            if current_metric_name == 'thermo-cap' and len(batch_data) % 1000 == 0:
+                self._log_with_scheduler_update(
+                    f"DEBUG: Collected {len(batch_data)} records for {current_metric_name}",
+                    current_task=f"Collecting {current_metric_name}"
+                )
+            
+            # 배치 UPSERT 실행
+            self._log_with_scheduler_update(
+                f"Final batch_data count: {len(batch_data)} for {metric_name}",
+                current_task=f"Final batch count for {metric_name}"
+            )
+            
+            # 디버깅: batch_data가 비어있는 이유 확인
+            if len(batch_data) == 0:
+                self._log_with_scheduler_update(
+                    f"DEBUG: batch_data is empty for {metric_name}. Records processed: {len(records)}",
+                    "warning",
+                    current_task=f"Empty batch for {metric_name}"
+                )
+            
+            if batch_data:
+                self._log_with_scheduler_update(
+                    f"Preparing to batch upsert {len(batch_data)} records for {metric_name}",
+                    current_task=f"Preparing batch upsert for {metric_name}"
+                )
                 try:
-                    # 기존 레코드 확인
-                    existing = db.query(CryptoMetric).filter(
-                        CryptoMetric.asset_id == self.bitcoin_asset_id,
-                        CryptoMetric.timestamp_utc == timestamp_value
-                    ).first()
+                    # result = crypto_metric.bulk_upsert_crypto_metrics(db, batch_data)
+                    # added_count = result
+                    # UPSERT 로직 주석처리 - 개별 INSERT로 변경
+                    for record_data in batch_data:
+                        try:
+                            # 중복 체크
+                            existing = db.query(CryptoMetric).filter(
+                                CryptoMetric.asset_id == record_data['asset_id'],
+                                CryptoMetric.timestamp_utc == record_data['timestamp_utc']
+                            ).first()
+                            
+                            if not existing:
+                                new_metric = CryptoMetric(**record_data)
+                                db.add(new_metric)
+                                added_count += 1
+                        except Exception as e:
+                            self._log_with_scheduler_update(
+                                f"Error inserting individual record for {metric_name}: {e}",
+                                "warning",
+                                current_task=f"Error inserting record for {metric_name}"
+                            )
+                            continue
                     
-                    if existing:
-                        # 기존 레코드 업데이트
-                        if metric_name == 'aviv':
-                            existing.aviv = value
-                        elif metric_name == 'mvrv-zscore':
-                            existing.mvrv_z_score = value
-                        elif metric_name == 'sopr':
-                            existing.sopr = value
-                        elif metric_name == 'nupl':
-                            existing.nupl = value
-                        elif metric_name == 'realized-price':
-                            existing.realized_price = value
-                        elif metric_name == 'hashrate':
-                            existing.hashrate = value
-                        elif metric_name == 'difficulty-BTC':
-                            existing.difficulty = value
-                        elif metric_name == 'miner-reserves':
-                            existing.miner_reserves = value
-                        elif metric_name == 'etf-btc-total':
-                            existing.etf_btc_total = value
-                        elif metric_name == 'open-interest-futures':
-                            existing.open_interest_futures = value
-                        elif metric_name == 'cap-real-usd':
-                            existing.realized_cap = value
-                        elif metric_name == 'cdd-90dma':
-                            existing.cdd_90dma = value
-                        elif metric_name == 'true-market-mean':
-                            existing.true_market_mean = value
-                        elif metric_name == 'nrpl-btc':
-                            existing.nrpl_btc = value
-                        elif metric_name == 'thermo-cap':
-                            existing.thermo_cap = value
-                        elif metric_name == 'hodl-waves-supply':
-                            existing.hodl_waves_supply = value
-                        elif metric_name == 'etf-btc-flow':
-                            existing.etf_btc_flow = value
-                        
-                        existing.updated_at = datetime.now()
-                        self.log_progress(f"Updated existing record for {metric_name} on {timestamp_value}", "info")
-                    else:
-                        # 새로운 레코드 생성
-                        new_metric = CryptoMetric(
-                            asset_id=self.bitcoin_asset_id,
-                            timestamp_utc=timestamp_value,
-                            created_at=datetime.now()
-                        )
-                        
-                        # 메트릭별 필드 설정
-                        if metric_name == 'aviv':
-                            new_metric.aviv = value
-                        elif metric_name == 'mvrv-zscore':
-                            new_metric.mvrv_z_score = value
-                        elif metric_name == 'sopr':
-                            new_metric.sopr = value
-                        elif metric_name == 'nupl':
-                            new_metric.nupl = value
-                        elif metric_name == 'realized-price':
-                            new_metric.realized_price = value
-                        elif metric_name == 'hashrate':
-                            new_metric.hashrate = value
-                        elif metric_name == 'difficulty-BTC':
-                            new_metric.difficulty = value
-                        elif metric_name == 'miner-reserves':
-                            new_metric.miner_reserves = value
-                        elif metric_name == 'etf-btc-total':
-                            new_metric.etf_btc_total = value
-                        elif metric_name == 'open-interest-futures':
-                            new_metric.open_interest_futures = value
-                        elif metric_name == 'cap-real-usd':
-                            new_metric.realized_cap = value
-                        elif metric_name == 'cdd-90dma':
-                            new_metric.cdd_90dma = value
-                        elif metric_name == 'true-market-mean':
-                            new_metric.true_market_mean = value
-                        elif metric_name == 'nrpl-btc':
-                            new_metric.nrpl_btc = value
-                        elif metric_name == 'thermo-cap':
-                            new_metric.thermo_cap = value
-                        elif metric_name == 'hodl-waves-supply':
-                            new_metric.hodl_waves_supply = value
-                        elif metric_name == 'etf-btc-flow':
-                            new_metric.etf_btc_flow = value
-                        
-                        db.add(new_metric)
-                        self.log_progress(f"Created new record for {metric_name} on {timestamp_value}", "info")
-                    
-                    # 각 레코드마다 커밋 (중복 키 오류 방지)
-                    db.commit()
-                    
+                    self._log_with_scheduler_update(
+                        f"Inserted {added_count} new records for {metric_name}",
+                        current_task=f"Completed {metric_name} batch processing"
+                    )
                 except Exception as e:
-                    db.rollback()
-                    self.log_progress(f"Error saving {metric_name} data for {timestamp_value}: {e}", "error")
-                    continue
-                
-                added_count += 1
+                    self._log_with_scheduler_update(
+                        f"Error processing {metric_name} data: {e}",
+                        "error",
+                        current_task=f"Error processing {metric_name}"
+                    )
+                    return 0
+            else:
+                self._log_with_scheduler_update(
+                    f"No valid data to upsert for {metric_name}",
+                    "warning",
+                    current_task=f"No data for {metric_name}"
+                )
             
             db.commit()
+            self._log_with_scheduler_update(
+                f"Successfully processed {added_count} records for {metric_name}",
+                current_task=f"Completed {metric_name} processing"
+            )
             return added_count
             
         except Exception as e:
             db.rollback()
-            self.log_progress(f"Error processing {metric_name} data: {e}", "error")
+            self._log_with_scheduler_update(
+                f"Exception in _process_onchain_data for {metric_name}: {e}",
+                "error",
+                current_task=f"Exception in {metric_name}"
+            )
             import traceback
-            self.log_progress(f"Traceback: {traceback.format_exc()}", "error")
+            self._log_with_scheduler_update(
+                f"Traceback: {traceback.format_exc()}",
+                "error",
+                current_task=f"Traceback for {metric_name}"
+            )
             return 0
     
     async def _update_asset_collection_time(self):
@@ -586,9 +830,16 @@ class OnchainCollector(BaseCollector):
             if asset:
                 asset.last_onchain_collection = datetime.now()
                 db.commit()
-                self.log_progress("Updated asset last onchain collection time")
+                self._log_with_scheduler_update(
+                    "Updated asset last onchain collection time",
+                    current_task="Updating asset collection time"
+                )
         except Exception as e:
-            self.log_progress(f"Error updating asset collection time: {e}", "error")
+            self._log_with_scheduler_update(
+                f"Error updating asset collection time: {e}",
+                "error",
+                current_task="Error updating asset collection time"
+            )
     
 
     
@@ -719,6 +970,91 @@ class OnchainCollector(BaseCollector):
         except Exception as e:
             db.rollback()
             self.log_progress(f"Error processing CoinGecko data for {metric_name}: {e}", "error")
+            return 0
+    
+    async def _fetch_thermo_cap_simple(self, client: httpx.AsyncClient) -> int:
+        """Thermo Cap 데이터를 단순하게 수집하고 저장"""
+        try:
+            url = f"{self.base_url}/v1/thermo-cap"
+            
+            self.log_progress(f"Fetching Thermo Cap data from: {url}", "info")
+            
+            response = await client.get(url, timeout=30)
+            response.raise_for_status()
+            
+            data = response.json()
+            
+            if not data or not isinstance(data, list):
+                self.log_progress("No valid Thermo Cap data received", "warning")
+                return 0
+            
+            self.log_progress(f"Received {len(data)} Thermo Cap records", "info")
+            
+            # 데이터베이스에 저장
+            db = self.get_db_session()
+            added_count = 0
+            
+            for record in data:
+                try:
+                    # 데이터 파싱
+                    date_str = record.get('d')
+                    thermo_cap_str = record.get('thermoCap')
+                    
+                    if not date_str or not thermo_cap_str:
+                        continue
+                    
+                    # 날짜 파싱
+                    try:
+                        timestamp = datetime.strptime(date_str, "%Y-%m-%d").date()
+                    except ValueError:
+                        continue
+                    
+                    # thermo_cap 값을 숫자로 변환
+                    try:
+                        thermo_cap = float(thermo_cap_str)
+                    except (ValueError, TypeError):
+                        continue
+                    
+                    # 간단한 UPSERT: 기존 데이터 확인 후 INSERT 또는 UPDATE
+                    existing = db.query(CryptoMetric).filter(
+                        CryptoMetric.asset_id == self.bitcoin_asset_id,
+                        CryptoMetric.timestamp_utc == timestamp
+                    ).first()
+                    
+                    if existing:
+                        # 기존 데이터 업데이트
+                        existing.thermo_cap = thermo_cap
+                        existing.updated_at = datetime.now()
+                        self.log_progress(f"Updated existing record for {date_str}: {thermo_cap}", "info")
+                    else:
+                        # 새 데이터 생성
+                        new_metric = CryptoMetric(
+                            asset_id=self.bitcoin_asset_id,
+                            timestamp_utc=timestamp,
+                            thermo_cap=thermo_cap
+                        )
+                        db.add(new_metric)
+                        self.log_progress(f"Inserted new record for {date_str}: {thermo_cap}", "info")
+                    
+                    added_count += 1
+                    
+                    # 100개마다 커밋
+                    if added_count % 100 == 0:
+                        db.commit()
+                        self.log_progress(f"Processed {added_count} Thermo Cap records", "info")
+                
+                except Exception as e:
+                    self.log_progress(f"Error processing Thermo Cap record: {e}", "error")
+                    continue
+            
+            # 최종 커밋
+            db.commit()
+            
+            self.log_progress(f"Successfully saved {added_count} Thermo Cap records", "success")
+            return added_count
+            
+        except Exception as e:
+            self.log_progress(f"Error fetching Thermo Cap data: {e}", "error")
             return 0
     
     def _safe_float(self, value: Any) -> Optional[float]:

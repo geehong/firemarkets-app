@@ -15,7 +15,8 @@ from .endpoints import (
     collectors,
     admin,
     metrics,
-    open_interest
+    open_interest,
+    prices
 )
 from .external_apis import router as external_apis_router
 from app.schemas.common import ApiV1RootResponse
@@ -34,7 +35,8 @@ async def api_v1_root():
             "assets": "/api/v1/assets",
             "crypto": "/api/v1/crypto",
             "dashboard": "/api/v1/dashboard",
-            "metrics": "/api/v1/metrics"
+            "metrics": "/api/v1/metrics",
+            "prices": "/api/v1/prices"
         }
     }
 
@@ -53,6 +55,7 @@ api_router.include_router(collectors.router, tags=["collectors"])
 api_router.include_router(admin.router, tags=["admin"])
 api_router.include_router(metrics.router, tags=["metrics"])
 api_router.include_router(open_interest.router, tags=["open-interest"])
+api_router.include_router(prices.router, prefix="/prices", tags=["prices"])
 
 # External APIs router
 api_router.include_router(external_apis_router, tags=["external-apis"])

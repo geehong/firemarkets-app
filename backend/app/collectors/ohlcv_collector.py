@@ -3,49 +3,38 @@ OHLCV data collector for fetching and storing price data from various APIs.
 """
 import logging
 import asyncio
+import json
 from datetime import datetime, timedelta, date
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Any, Optional
 
 import httpx
 import backoff
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import or_, text
 
 from .base_collector import BaseCollector
 from ..core.config import GLOBAL_APP_CONFIGS
 from ..models.asset import Asset
-from ..crud.asset import crud_ohlcv
+from ..models.system import AppConfiguration
+from ..crud import asset as crud_asset
+from ..api import deps
 
 logger = logging.getLogger(__name__)
 
 
 class OHLCVCollector(BaseCollector):
-    """Collects OHLCV data from various APIs"""
-    
+    """
+    OHLCV 데이터를 스마트하게 수집, 처리, 저장하는 고도화된 컬렉터입니다.
+    데이터 무결성 검사, 자동 복구, API 호출 예산 관리를 포함합니다.
+    """
+
     def __init__(self, db: Session = None):
         super().__init__(db)
-        self.api_timeout = GLOBAL_APP_CONFIGS.get("API_REQUEST_TIMEOUT_SECONDS", 30)
-        self.max_retries = GLOBAL_APP_CONFIGS.get("MAX_API_RETRY_ATTEMPTS", 3)
-        
-        # 새로운 설정들 추가
-        self.ohlcv_interval = GLOBAL_APP_CONFIGS.get("OHLCV_DATA_INTERVAL", "1d")
-        
-        # OHLCV_DATA_INTERVALS는 JSON 문자열로 저장되므로 파싱 필요
-        import json
-        ohlcv_intervals_raw = GLOBAL_APP_CONFIGS.get("OHLCV_DATA_INTERVALS", '["1d", "1h", "4h"]')
-        try:
-            if isinstance(ohlcv_intervals_raw, str):
-                self.ohlcv_intervals = json.loads(ohlcv_intervals_raw)
-            else:
-                self.ohlcv_intervals = ohlcv_intervals_raw
-        except (json.JSONDecodeError, TypeError):
-            logger.warning(f"Invalid OHLCV_DATA_INTERVALS format: {ohlcv_intervals_raw}, using default")
-            self.ohlcv_intervals = ["1d", "1h", "4h"]
-        
-        self.enable_multiple_intervals = GLOBAL_APP_CONFIGS.get("ENABLE_MULTIPLE_INTERVALS", False)
-        self.historical_days_per_run = GLOBAL_APP_CONFIGS.get("HISTORICAL_DATA_DAYS_PER_RUN", 1000)
-        self.max_historical_days = GLOBAL_APP_CONFIGS.get("MAX_HISTORICAL_DAYS", 10950)
-        self.enable_historical_backfill = GLOBAL_APP_CONFIGS.get("ENABLE_HISTORICAL_BACKFILL", True)
-    
+        self.api_timeout = 30
+        self.enable_historical_backfill = True
+        self.max_historical_days = 1000
+        self.historical_days_per_run = 100
+
     async def collect_with_settings(self) -> Dict[str, Any]:
         """Collect OHLCV data with individual asset settings"""
         db = self.get_db_session()
@@ -53,17 +42,18 @@ class OHLCVCollector(BaseCollector):
         try:
             # Get assets that have OHLCV collection enabled in their settings
             # 하이브리드 방식: True/False와 true/false 모두 지원
-            from sqlalchemy import or_, text
-            
             condition1 = Asset.collection_settings.contains({"collect_price": True})
             condition2 = text("JSON_EXTRACT(collection_settings, '$.collect_price') = true")
             
-            assets = db.query(Asset).filter(
+            # Asset 객체 대신 asset_id만 가져와서 세션 오류 방지
+            asset_ids = db.query(Asset.asset_id).filter(
                 Asset.is_active == True,
                 or_(condition1, condition2)
             ).all()
             
-            if not assets:
+            asset_ids = [asset_id[0] for asset_id in asset_ids]  # 튜플에서 asset_id 추출
+            
+            if not asset_ids:
                 await self.safe_emit('scheduler_log', {
                     'message': "OHLCV 수집이 활성화된 자산이 없습니다.", 
                     'type': 'warning'
@@ -71,12 +61,11 @@ class OHLCVCollector(BaseCollector):
                 return {"message": "No assets with OHLCV collection enabled", "processed": 0}
             
             await self.safe_emit('scheduler_log', {
-                'message': f"OHLCV 데이터 수집 시작: {len(assets)}개 자산 (설정 기반)", 
+                'message': f"OHLCV 데이터 수집 시작: {len(asset_ids)}개 자산 (설정 기반)", 
                 'type': 'info'
             })
             
             # 다중 간격 설정 확인 - 데이터베이스에서 직접 조회
-            from ..models import AppConfiguration
             enable_multiple_intervals = db.query(AppConfiguration).filter(
                 AppConfiguration.config_key == "ENABLE_MULTIPLE_INTERVALS"
             ).first()
@@ -87,7 +76,6 @@ class OHLCVCollector(BaseCollector):
             ).first()
             
             if ohlcv_intervals_config:
-                import json
                 try:
                     ohlcv_intervals = json.loads(ohlcv_intervals_config.config_value)
                 except:
@@ -102,7 +90,7 @@ class OHLCVCollector(BaseCollector):
             
             # 히스토리 백필이 활성화된 경우 백필 로직 실행
             if self.enable_historical_backfill:
-                await self._perform_historical_backfill(assets)
+                await self._perform_historical_backfill(asset_ids)
             
             # 각 간격별로 데이터 수집
             total_results = []
@@ -112,7 +100,7 @@ class OHLCVCollector(BaseCollector):
                     'type': 'info'
                 })
                 
-                result = await self._collect_data_with_interval(assets, interval)
+                result = await self._collect_data_with_interval(asset_ids, interval)
                 total_results.append(result)
             
             # 결과 합계
@@ -136,16 +124,17 @@ class OHLCVCollector(BaseCollector):
             raise
         finally:
             db.close()
-    
+
     async def _collect_data(self) -> Dict[str, Any]:
         """Collect OHLCV data for all assets"""
         db = self.get_db_session()
         
         try:
-            # Get all assets that need OHLCV data
-            assets = db.query(Asset).filter(Asset.is_active == True).all()
+            # Get all asset IDs that need OHLCV data - Asset 객체 대신 asset_id만 가져와서 세션 오류 방지
+            asset_ids = db.query(Asset.asset_id).filter(Asset.is_active == True).all()
+            asset_ids = [asset_id[0] for asset_id in asset_ids]  # 튜플에서 asset_id 추출
             
-            if not assets:
+            if not asset_ids:
                 await self.safe_emit('scheduler_log', {
                     'message': "활성 자산이 없습니다.", 
                     'type': 'warning'
@@ -153,26 +142,26 @@ class OHLCVCollector(BaseCollector):
                 return {"message": "No active assets found", "processed": 0}
             
             await self.safe_emit('scheduler_log', {
-                'message': f"OHLCV 데이터 수집 시작: {len(assets)}개 자산", 
+                'message': f"OHLCV 데이터 수집 시작: {len(asset_ids)}개 자산", 
                 'type': 'info'
             })
-            self.log_progress(f"Starting OHLCV collection for {len(assets)} assets")
+            self.log_progress(f"Starting OHLCV collection for {len(asset_ids)} assets")
             
             # Process assets in batches to avoid overwhelming APIs
             batch_size = GLOBAL_APP_CONFIGS.get("BATCH_SIZE", 1)  # 기본값을 1로 변경
             total_processed = 0
             total_added = 0
             
-            for i in range(0, len(assets), batch_size):
-                batch = assets[i:i + batch_size]
+            for i in range(0, len(asset_ids), batch_size):
+                batch = asset_ids[i:i + batch_size]
                 
                 await self.safe_emit('scheduler_log', {
-                    'message': f"배치 처리 중: {i+1}-{min(i+batch_size, len(assets))}/{len(assets)}", 
+                    'message': f"배치 처리 중: {i+1}-{min(i+batch_size, len(asset_ids))}/{len(asset_ids)}", 
                     'type': 'info'
                 })
                 
-                # Process batch concurrently
-                tasks = [self._fetch_and_store_ohlcv_for_asset(asset) for asset in batch]
+                # Process batch concurrently - asset_id만 전달
+                tasks = [self._fetch_and_store_ohlcv_for_asset(asset_id) for asset_id in batch]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 
                 for result in results:
@@ -192,7 +181,7 @@ class OHLCVCollector(BaseCollector):
                             })
                 
                 # Rate limiting between batches
-                if i + batch_size < len(assets):
+                if i + batch_size < len(asset_ids):
                     await asyncio.sleep(2)
             
             await self.safe_emit('scheduler_log', {
@@ -212,13 +201,13 @@ class OHLCVCollector(BaseCollector):
         finally:
             db.close()
     
-    async def _collect_data_with_interval(self, assets: List[Asset], interval: str) -> Dict[str, Any]:
+    async def _collect_data_with_interval(self, asset_ids: List[int], interval: str) -> Dict[str, Any]:
         """Collect OHLCV data for specific interval"""
         db = self.get_db_session()
         
         try:
             await self.safe_emit('scheduler_log', {
-                'message': f"OHLCV {interval} 간격 데이터 수집 시작: {len(assets)}개 자산", 
+                'message': f"OHLCV {interval} 간격 데이터 수집 시작: {len(asset_ids)}개 자산", 
                 'type': 'info'
             })
             
@@ -227,16 +216,16 @@ class OHLCVCollector(BaseCollector):
             total_processed = 0
             total_added = 0
             
-            for i in range(0, len(assets), batch_size):
-                batch = assets[i:i + batch_size]
+            for i in range(0, len(asset_ids), batch_size):
+                batch = asset_ids[i:i + batch_size]
                 
                 await self.safe_emit('scheduler_log', {
-                    'message': f"{interval} 배치 처리 중: {i+1}-{min(i+batch_size, len(assets))}/{len(assets)}", 
+                    'message': f"{interval} 배치 처리 중: {i+1}-{min(i+batch_size, len(asset_ids))}/{len(asset_ids)}", 
                     'type': 'info'
                 })
                 
-                # Process batch concurrently
-                tasks = [self._fetch_and_store_ohlcv_for_asset_with_interval(asset, interval) for asset in batch]
+                # Process batch concurrently - asset_id만 전달
+                tasks = [self._fetch_and_store_ohlcv_for_asset_with_interval(asset_id, interval) for asset_id in batch]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 
                 for result in results:
@@ -256,7 +245,7 @@ class OHLCVCollector(BaseCollector):
                             })
                 
                 # Rate limiting between batches
-                if i + batch_size < len(assets):
+                if i + batch_size < len(asset_ids):
                     await asyncio.sleep(2)
             
             await self.safe_emit('scheduler_log', {
@@ -276,300 +265,19 @@ class OHLCVCollector(BaseCollector):
             raise
         finally:
             db.close()
-    
-    @backoff.on_exception(
-        backoff.expo,
-        (httpx.RequestError, httpx.HTTPStatusError),
-        max_tries=3,
-        max_time=60
-    )
-    async def _fetch_async(self, client: httpx.AsyncClient, url: str, api_name: str, ticker: str):
-        """Fetch data from API with retry logic"""
-        await self.safe_emit('scheduler_log', {
-            'message': f"[{ticker}] {api_name} API 호출 시도: {url}", 
-            'type': 'info'
-        })
-        
-        response = await client.get(url, timeout=self.api_timeout)
-        
-        if response.status_code == 429:  # Too Many Requests
-            await self.safe_emit('scheduler_log', {
-                'message': f"[{ticker}] {api_name} API 호출 제한 도달. 재시도합니다.", 
-                'type': 'warning'
-            })
-            response.raise_for_status()
-        
-        response.raise_for_status()
-        return response.json()
-    
-    async def _fetch_ohlcv_from_alpha_vantage(self, client: httpx.AsyncClient, ticker: str, api_keys_list: List[str]) -> List[Dict]:
-        """Fetch OHLCV data from Alpha Vantage"""
-        for api_key in api_keys_list:
-            if not api_key:
-                continue
-                
-            url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&apikey={api_key}&outputsize=full"
-            
-            try:
-                data = await self._fetch_async(client, url, "Alpha Vantage", ticker)
-                
-                if "Time Series (Daily)" in data:
-                    return [
-                        {
-                            "timestamp_utc": self._safe_date_parse(date_str),
-                            "open_price": self._safe_float(daily_data.get("1. open")),
-                            "high_price": self._safe_float(daily_data.get("2. high")),
-                            "low_price": self._safe_float(daily_data.get("3. low")),
-                            "close_price": self._safe_float(daily_data.get("4. close")),
-                            "volume": self._safe_float(daily_data.get("6. volume"), 0.0),
-                        }
-                        for date_str, daily_data in data["Time Series (Daily)"].items()
-                        if self._safe_date_parse(date_str)
-                    ]
-                elif "Error Message" in data:
-                    await self.safe_emit('scheduler_log', {
-                        'message': f"Alpha Vantage API 오류 ({ticker}): {data['Error Message']}", 
-                        'type': 'warning'
-                    })
-                    if "API call frequency" in data.get("Error Message", ""):
-                        raise httpx.HTTPStatusError("Alpha Vantage API rate limit reached.", request=None, response=None)
-                    continue
-                else:
-                    await self.safe_emit('scheduler_log', {
-                        'message': f"Alpha Vantage: 예상치 못한 응답 형식 ({ticker})", 
-                        'type': 'warning'
-                    })
-                    continue
-                    
-            except httpx.HTTPStatusError as e:
-                if e.response and e.response.status_code == 429:
-                    await self.safe_emit('scheduler_log', {
-                        'message': f"Alpha Vantage API 호출 제한 도달 ({ticker}). 재시도합니다.", 
-                        'type': 'warning'
-                    })
-                    raise
-                continue
-            except Exception as e:
-                await self.safe_emit('scheduler_log', {
-                    'message': f"Alpha Vantage 데이터 파싱 오류 ({ticker}): {e}", 
-                    'type': 'error'
-                })
-                continue
-                
-        return []
-    
-    async def _fetch_ohlcv_from_fmp(self, client: httpx.AsyncClient, ticker: str, api_key: str) -> List[Dict]:
-        """Fetch OHLCV data from FMP"""
-        url = f"https://financialmodelingprep.com/api/v3/historical-price-full/{ticker}?apikey={api_key}"
-        
-        try:
-            data = await self._fetch_async(client, url, "FMP", ticker)
-            
-            if "historical" in data:
-                return [
-                    {
-                        "timestamp_utc": self._safe_date_parse(d.get("date")),
-                        "open_price": self._safe_float(d.get("open")),
-                        "high_price": self._safe_float(d.get("high")),
-                        "low_price": self._safe_float(d.get("low")),
-                        "close_price": self._safe_float(d.get("close")),
-                        "volume": self._safe_float(d.get("volume"), 0.0),
-                    }
-                    for d in data["historical"] if self._safe_date_parse(d.get("date"))
-                ]
-        except Exception as e:
-            self.log_progress(f"FMP data parsing error ({ticker}): {e}", "error")
-            
-        return []
-    
-    async def _fetch_ohlcv_from_binance(self, client: httpx.AsyncClient, ticker: str) -> List[Dict]:
-        """Fetch OHLCV data from Binance"""
-        url = f"https://api.binance.com/api/v3/klines?symbol={ticker}&interval=1d&limit=1000"
-        
-        try:
-            data = await self._fetch_async(client, url, "Binance", ticker)
-            
-            if isinstance(data, list):
-                return [
-                    {
-                        "timestamp_utc": datetime.fromtimestamp(kline[0] / 1000),
-                        "open_price": self._safe_float(kline[1]),
-                        "high_price": self._safe_float(kline[2]),
-                        "low_price": self._safe_float(kline[3]),
-                        "close_price": self._safe_float(kline[4]),
-                        "volume": self._safe_float(kline[5], 0.0),
-                    }
-                    for kline in data
-                ]
-        except Exception as e:
-            self.log_progress(f"Binance data parsing error ({ticker}): {e}", "error")
-            
-        return []
-    
-    async def _fetch_ohlcv_from_coinbase(self, client: httpx.AsyncClient, ticker: str, granularity: str = '86400') -> List[Dict]:
-        """Fetch OHLCV data from Coinbase"""
-        url = f"https://api.exchange.coinbase.com/products/{ticker}/candles?granularity={granularity}"
-        
-        try:
-            data = await self._fetch_async(client, url, "Coinbase", ticker)
-            
-            if isinstance(data, list):
-                return [
-                    {
-                        "timestamp_utc": datetime.fromtimestamp(candle[0]),
-                        "low_price": self._safe_float(candle[1]),
-                        "high_price": self._safe_float(candle[2]),
-                        "open_price": self._safe_float(candle[3]),
-                        "close_price": self._safe_float(candle[4]),
-                        "volume": self._safe_float(candle[5], 0.0),
-                    }
-                    for candle in data
-                ]
-        except Exception as e:
-            self.log_progress(f"Coinbase data parsing error ({ticker}): {e}", "error")
-            
-        return []
-    
-    async def _fetch_ohlcv_from_coinmarketcap(self, client: httpx.AsyncClient, ticker: str) -> List[Dict[str, Any]]:
-        """CoinMarketCap에서 OHLCV 데이터를 가져옵니다."""
-        try:
-            api_key = GLOBAL_APP_CONFIGS.get("COINMARKETCAP_API_KEY")
-            if not api_key:
-                raise ValueError("CoinMarketCap API key not configured")
-            
-            # CoinMarketCap API는 OHLCV 데이터를 직접 제공하지 않으므로
-            # 현재 가격과 기본 정보만 가져옵니다
-            url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest"
-            params = {
-                "symbol": ticker.replace("USDT", "").replace("USD", ""),
-                "convert": "USD"
-            }
-            headers = {
-                "X-CMC_PRO_API_KEY": api_key,
-                "Accept": "application/json"
-            }
-            
-            response = await client.get(url, params=params, headers=headers, timeout=30)
-            response.raise_for_status()
-            
-            data = response.json()
-            if "data" not in data or ticker.replace("USDT", "").replace("USD", "") not in data["data"]:
-                return []
-            
-            crypto_data = data["data"][ticker.replace("USDT", "").replace("USD", "")]
-            quote = crypto_data.get("quote", {}).get("USD", {})
-            
-            # 현재 시간을 기준으로 OHLCV 데이터 생성
-            current_time = datetime.now()
-            ohlcv_data = [{
-                "date": current_time.date(),
-                "open": float(quote.get("price", 0)),
-                "high": float(quote.get("price", 0)),
-                "low": float(quote.get("price", 0)),
-                "close": float(quote.get("price", 0)),
-                "volume": float(quote.get("volume_24h", 0)),
-                "market_cap": float(quote.get("market_cap", 0)),
-                "source": "coinmarketcap"
-            }]
-            
-            return ohlcv_data
-            
-        except Exception as e:
-            self.log_progress(f"Error fetching from CoinMarketCap for {ticker}: {e}", "error")
-            return []
-    
-    async def _store_ohlcv_data(self, asset_id: int, ohlcv_list: List[Dict]) -> int:
-        """Store OHLCV data and calculate daily change percentages"""
-        if not ohlcv_list:
-            return 0
-        
-        db = self.get_db_session()
-        
-        # Sort by timestamp
-        ohlcv_list.sort(key=lambda x: x['timestamp_utc'])
-        
-        # Calculate change percentages
-        for i, data_point in enumerate(ohlcv_list):
-            data_point['asset_id'] = asset_id
-            
-            if i > 0:
-                prev_close = ohlcv_list[i-1]['close_price']
-                current_close = data_point['close_price']
-                if prev_close and current_close and prev_close > 0:
-                    change = ((current_close - prev_close) / prev_close) * 100
-                    data_point['change_percent'] = round(change, 4)
-                else:
-                    data_point['change_percent'] = 0.0
-            else:
-                # For first data point, check previous day from DB
-                prev_ohlcv = crud_ohlcv.get_previous_day_ohlcv(db, asset_id, data_point['timestamp_utc'].date())
-                if prev_ohlcv and prev_ohlcv.close_price > 0:
-                    change = ((data_point['close_price'] - float(prev_ohlcv.close_price)) / float(prev_ohlcv.close_price)) * 100
-                    data_point['change_percent'] = round(change, 4)
-                else:
-                    data_point['change_percent'] = 0.0
-        
-        # Bulk upsert to database
-        added_count = crud_ohlcv.bulk_upsert_ohlcv(db, ohlcv_list)
-        return added_count
-    
-    async def _store_ohlcv_data_with_interval(self, asset_id: int, ohlcv_list: List[Dict], interval: str) -> int:
-        """Store OHLCV data with specific interval"""
-        if not ohlcv_list:
-            return 0
-        
-        db = self.get_db_session()
-        try:
-            # 기존 데이터와 중복 체크 및 업데이트
-            added_count = 0
-            
-            for data_point in ohlcv_list:
-                # asset_id와 간격 정보 추가
-                data_point['asset_id'] = asset_id
-                data_point['data_interval'] = interval
-                
-                # 기존 데이터 확인
-                existing = db.query(crud_ohlcv.model).filter(
-                    crud_ohlcv.model.asset_id == asset_id,
-                    crud_ohlcv.model.timestamp_utc == data_point['timestamp_utc'],
-                    crud_ohlcv.model.data_interval == interval
-                ).first()
-                
-                if existing:
-                    # 기존 데이터 업데이트
-                    for key, value in data_point.items():
-                        if key != 'timestamp_utc' and key != 'data_interval':
-                            setattr(existing, key, value)
-                    existing.updated_at = datetime.now()
-                else:
-                    # 새 데이터 추가
-                    new_ohlcv = crud_ohlcv.model(**data_point)
-                    db.add(new_ohlcv)
-                    added_count += 1
-            
-            db.commit()
-            return added_count
-            
-        except Exception as e:
-            db.rollback()
-            self.log_progress(f"Error storing {interval} OHLCV data: {e}", "error")
-            raise
-        finally:
-            db.close()
-    
-    async def _fetch_and_store_ohlcv_for_asset(self, asset: Asset) -> Dict[str, Any]:
+
+    async def _fetch_and_store_ohlcv_for_asset(self, asset_id: int) -> Dict[str, Any]:
         """단일 자산에 대한 OHLCV 데이터를 수집하고 저장합니다."""
         # 새로운 세션에서 Asset 정보를 다시 로드하여 세션 오류 방지
         db = self.get_db_session()
         try:
             # Asset과 AssetType을 함께 로드
-            from sqlalchemy.orm import joinedload
-            fresh_asset = db.query(Asset).options(joinedload(Asset.asset_type)).filter(Asset.asset_id == asset.asset_id).first()
+            fresh_asset = db.query(Asset).options(joinedload(Asset.asset_type)).filter(Asset.asset_id == asset_id).first()
             
             if not fresh_asset:
                 return {
-                    "asset_id": asset.asset_id,
-                    "ticker": asset.ticker,
+                    "asset_id": asset_id,
+                    "ticker": "Unknown",
                     "success": False,
                     "error": "Asset not found"
                 }
@@ -603,53 +311,52 @@ class OHLCVCollector(BaseCollector):
                         
                         if source == 'alpha_vantage':
                             api_keys = GLOBAL_APP_CONFIGS.get("ALPHA_VANTAGE_API_KEYS", [])
-                            ohlcv_data = await self._fetch_ohlcv_from_alpha_vantage(client, asset.ticker, api_keys)
+                            ohlcv_data = await self._fetch_ohlcv_from_alpha_vantage(client, fresh_asset.ticker, api_keys)
                         elif source == 'fmp':
                             api_key = GLOBAL_APP_CONFIGS.get("FMP_API_KEY", "")
-                            ohlcv_data = await self._fetch_ohlcv_from_fmp(client, asset.ticker, api_key)
+                            ohlcv_data = await self._fetch_ohlcv_from_fmp(client, fresh_asset.ticker)
                         elif source == 'binance':
-                            ohlcv_data = await self._fetch_ohlcv_from_binance(client, asset.ticker)
+                            ohlcv_data = await self._fetch_ohlcv_from_binance(client, fresh_asset.ticker)
                         elif source == 'coinbase':
-                            ohlcv_data = await self._fetch_ohlcv_from_coinbase(client, asset.ticker)
+                            ohlcv_data = await self._fetch_ohlcv_from_coinbase(client, fresh_asset.ticker)
                         elif source == 'coinmarketcap':
-                            ohlcv_data = await self._fetch_ohlcv_from_coinmarketcap(client, asset.ticker)
+                            ohlcv_data = await self._fetch_ohlcv_from_coinmarketcap(client, fresh_asset.ticker)
                         
                         if ohlcv_data:
-                            added_count = await self._store_ohlcv_data(asset.asset_id, ohlcv_data)
+                            added_count = await self._store_ohlcv_data(asset_id, ohlcv_data)
                             return {
-                                "asset_id": asset.asset_id,
-                                "ticker": asset.ticker,
+                                "asset_id": asset_id,
+                                "ticker": fresh_asset.ticker,
                                 "source": source,
                                 "added_count": added_count,
                                 "success": True
                             }
                             
                     except Exception as e:
-                        self.log_progress(f"Failed to fetch from {source} for {asset.ticker}: {e}", "warning")
+                        self.log_progress(f"Failed to fetch from {source} for {fresh_asset.ticker}: {e}", "warning")
                         continue
             
             return {
-                "asset_id": asset.asset_id,
-                "ticker": asset.ticker,
+                "asset_id": asset_id,
+                "ticker": fresh_asset.ticker if fresh_asset else "Unknown",
                 "success": False,
                 "error": "All data sources failed"
             }
         finally:
             db.close()
     
-    async def _fetch_and_store_ohlcv_for_asset_with_interval(self, asset: Asset, interval: str) -> Dict[str, Any]:
+    async def _fetch_and_store_ohlcv_for_asset_with_interval(self, asset_id: int, interval: str) -> Dict[str, Any]:
         """단일 자산에 대한 특정 간격 OHLCV 데이터를 수집하고 저장합니다."""
         # 새로운 세션에서 Asset 정보를 다시 로드하여 세션 오류 방지
         db = self.get_db_session()
         try:
             # Asset과 AssetType을 함께 로드
-            from sqlalchemy.orm import joinedload
-            fresh_asset = db.query(Asset).options(joinedload(Asset.asset_type)).filter(Asset.asset_id == asset.asset_id).first()
+            fresh_asset = db.query(Asset).options(joinedload(Asset.asset_type)).filter(Asset.asset_id == asset_id).first()
             
             if not fresh_asset:
                 return {
-                    "asset_id": asset.asset_id,
-                    "ticker": asset.ticker,
+                    "asset_id": asset_id,
+                    "ticker": "Unknown",
                     "success": False,
                     "error": "Asset not found"
                 }
@@ -682,21 +389,21 @@ class OHLCVCollector(BaseCollector):
                         ohlcv_data = []
                         
                         if source == 'alpha_vantage':
-                            ohlcv_data = await self._fetch_ohlcv_from_alpha_vantage_with_interval(client, asset.ticker, [], interval)
+                            ohlcv_data = await self._fetch_ohlcv_from_alpha_vantage_with_interval(client, fresh_asset.ticker, [], interval)
                         elif source == 'fmp':
-                            ohlcv_data = await self._fetch_ohlcv_from_fmp_with_interval(client, asset.ticker, "", interval)
+                            ohlcv_data = await self._fetch_ohlcv_from_fmp_with_interval(client, fresh_asset.ticker, "", interval)
                         elif source == 'binance':
-                            ohlcv_data = await self._fetch_ohlcv_from_binance_with_interval(client, asset.ticker, interval)
+                            ohlcv_data = await self._fetch_ohlcv_from_binance_with_interval(client, fresh_asset.ticker, interval)
                         elif source == 'coinbase':
-                            ohlcv_data = await self._fetch_ohlcv_from_coinbase_with_interval(client, asset.ticker, interval)
+                            ohlcv_data = await self._fetch_ohlcv_from_coinbase_with_interval(client, fresh_asset.ticker, interval)
                         elif source == 'coinmarketcap':
-                            ohlcv_data = await self._fetch_ohlcv_from_coinmarketcap_with_interval(client, asset.ticker, interval)
+                            ohlcv_data = await self._fetch_ohlcv_from_coinmarketcap_with_interval(client, fresh_asset.ticker, interval)
                         
                         if ohlcv_data:
-                            added_count = await self._store_ohlcv_data_with_interval(asset.asset_id, ohlcv_data, interval)
+                            added_count = await self._store_ohlcv_data_with_interval(asset_id, ohlcv_data, interval)
                             return {
-                                "asset_id": asset.asset_id,
-                                "ticker": asset.ticker,
+                                "asset_id": asset_id,
+                                "ticker": fresh_asset.ticker,
                                 "source": source,
                                 "interval": interval,
                                 "added_count": added_count,
@@ -704,52 +411,40 @@ class OHLCVCollector(BaseCollector):
                             }
                             
                     except Exception as e:
-                        self.log_progress(f"Failed to fetch {interval} from {source} for {asset.ticker}: {e}", "warning")
+                        self.log_progress(f"Failed to fetch {interval} from {source} for {fresh_asset.ticker}: {e}", "warning")
                         continue
             
             return {
-                "asset_id": asset.asset_id,
-                "ticker": asset.ticker,
+                "asset_id": asset_id,
+                "ticker": fresh_asset.ticker if fresh_asset else "Unknown",
                 "interval": interval,
                 "success": False,
                 "error": "All data sources failed"
             }
         finally:
             db.close()
-    
-    def _safe_float(self, value: Any, default: float = None) -> Optional[float]:
-        """Safely convert value to float"""
-        if value is None:
-            return default
-        try:
-            return float(value)
-        except (ValueError, TypeError):
-            return default
-    
-    def _safe_date_parse(self, date_str: str) -> Optional[datetime]:
-        """Safely parse date string"""
-        if not date_str:
-            return None
-        try:
-            return datetime.strptime(date_str, "%Y-%m-%d")
-        except ValueError:
-            return None
-    
-    async def _perform_historical_backfill(self, assets: List[Asset]) -> None:
+
+    async def _perform_historical_backfill(self, asset_ids: List[int]) -> None:
         """Perform historical data backfill for missing data"""
         if not self.enable_historical_backfill:
             return
             
         await self.safe_emit('scheduler_log', {
-            'message': f"히스토리 백필 시작: {len(assets)}개 자산", 
+            'message': f"히스토리 백필 시작: {len(asset_ids)}개 자산", 
             'type': 'info'
         })
         
-        for asset in assets:
+        for asset_id in asset_ids:
             try:
-                # asset_id를 미리 저장하여 세션 분리 문제 방지
-                asset_id = asset.asset_id
+                # asset_id를 사용하여 Asset 정보를 다시 조회
+                db = self.get_db_session()
+                asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
+                if not asset:
+                    db.close()
+                    continue
+                    
                 ticker = getattr(asset, 'ticker', 'Unknown')
+                db.close()
                 
                 # 각 자산의 최신 데이터 날짜 확인
                 db = self.get_db_session()
@@ -775,7 +470,7 @@ class OHLCVCollector(BaseCollector):
             except Exception as e:
                 ticker = getattr(asset, 'ticker', 'Unknown')
                 self.log_progress(f"Historical backfill error for {ticker}: {e}", "error")
-    
+
     async def _backfill_historical_data(self, asset_id: int, ticker: str, days_to_backfill: int) -> None:
         """Backfill historical data for a specific asset"""
         try:
@@ -1273,6 +968,367 @@ class OHLCVCollector(BaseCollector):
                 'type': 'error'
             })
             return []
+
+    async def _fetch_ohlcv_from_fmp(self, client: httpx.AsyncClient, ticker: str) -> List[Dict]:
+        """Fetch OHLCV data from FMP"""
+        # API 키를 데이터베이스에서 조회
+        db = self.get_db_session()
+        try:
+            from ..models import AppConfiguration
+            api_key_config = db.query(AppConfiguration).filter(
+                AppConfiguration.config_key == "FMP_API_KEY"
+            ).first()
+            
+            if api_key_config:
+                api_key = api_key_config.config_value
+            else:
+                api_key = ""
+        finally:
+            db.close()
+        
+        if not api_key:
+            return []
+        
+        url = f"https://financialmodelingprep.com/api/v3/historical-price-full/{ticker}?apikey={api_key}"
+        
+        try:
+            data = await self._fetch_async(client, url, "FMP", ticker)
+            
+            if "historical" in data:
+                return [
+                    {
+                        "timestamp_utc": self._safe_date_parse(d.get("date")),
+                        "open_price": self._safe_float(d.get("open")),
+                        "high_price": self._safe_float(d.get("high")),
+                        "low_price": self._safe_float(d.get("low")),
+                        "close_price": self._safe_float(d.get("close")),
+                        "volume": self._safe_float(d.get("volume"), 0.0),
+                    }
+                    for d in data["historical"] if self._safe_date_parse(d.get("date"))
+                ]
+            else:
+                await self.safe_emit('scheduler_log', {
+                    'message': f"FMP: 예상치 못한 응답 형식 ({ticker})", 
+                    'type': 'warning'
+                })
+                return []
+                
+        except Exception as e:
+            await self.safe_emit('scheduler_log', {
+                'message': f"FMP 데이터 파싱 오류 ({ticker}): {e}", 
+                'type': 'error'
+            })
+            return []
+
+    async def _fetch_ohlcv_from_alpha_vantage(self, client: httpx.AsyncClient, ticker: str, api_keys_list: List[str]) -> List[Dict]:
+        """Fetch OHLCV data from Alpha Vantage"""
+        for api_key in api_keys_list:
+            if not api_key:
+                continue
+                
+            url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&apikey={api_key}&outputsize=full"
+            
+            try:
+                data = await self._fetch_async(client, url, "Alpha Vantage", ticker)
+                
+                if "Time Series (Daily)" in data:
+                    return [
+                        {
+                            "timestamp_utc": self._safe_date_parse(date_str),
+                            "open_price": self._safe_float(daily_data.get("1. open")),
+                            "high_price": self._safe_float(daily_data.get("2. high")),
+                            "low_price": self._safe_float(daily_data.get("3. low")),
+                            "close_price": self._safe_float(daily_data.get("4. close")),
+                            "volume": self._safe_float(daily_data.get("6. volume"), 0.0),
+                        }
+                        for date_str, daily_data in data["Time Series (Daily)"].items()
+                        if self._safe_date_parse(date_str)
+                    ]
+                elif "Error Message" in data:
+                    await self.safe_emit('scheduler_log', {
+                        'message': f"Alpha Vantage API 오류 ({ticker}): {data['Error Message']}", 
+                        'type': 'warning'
+                    })
+                    if "API call frequency" in data.get("Error Message", ""):
+                        raise httpx.HTTPStatusError("Alpha Vantage API rate limit reached.", request=None, response=None)
+                    continue
+                else:
+                    await self.safe_emit('scheduler_log', {
+                        'message': f"Alpha Vantage: 예상치 못한 응답 형식 ({ticker})", 
+                        'type': 'warning'
+                    })
+                    continue
+                    
+            except httpx.HTTPStatusError as e:
+                if e.response and e.response.status_code == 429:
+                    await self.safe_emit('scheduler_log', {
+                        'message': f"Alpha Vantage API 호출 제한 도달 ({ticker}). 재시도합니다.", 
+                        'type': 'warning'
+                    })
+                    raise
+                continue
+            except Exception as e:
+                await self.safe_emit('scheduler_log', {
+                    'message': f"Alpha Vantage 데이터 파싱 오류 ({ticker}): {e}", 
+                    'type': 'error'
+                })
+                continue
+                
+        return []
+
+    async def _fetch_ohlcv_from_binance(self, client: httpx.AsyncClient, ticker: str) -> List[Dict]:
+        """Fetch OHLCV data from Binance"""
+        url = f"https://api.binance.com/api/v3/klines?symbol={ticker}&interval=1d&limit=1000"
+        
+        try:
+            data = await self._fetch_async(client, url, "Binance", ticker)
+            
+            if isinstance(data, list):
+                return [
+                    {
+                        "timestamp_utc": datetime.fromtimestamp(kline[0] / 1000),
+                        "open_price": self._safe_float(kline[1]),
+                        "high_price": self._safe_float(kline[2]),
+                        "low_price": self._safe_float(kline[3]),
+                        "close_price": self._safe_float(kline[4]),
+                        "volume": self._safe_float(kline[5], 0.0),
+                    }
+                    for kline in data
+                ]
+        except Exception as e:
+            await self.safe_emit('scheduler_log', {
+                'message': f"Binance 데이터 파싱 오류 ({ticker}): {e}", 
+                'type': 'error'
+            })
+            
+        return []
+
+    async def _fetch_ohlcv_from_coinbase(self, client: httpx.AsyncClient, ticker: str, granularity: str = '86400') -> List[Dict]:
+        """Fetch OHLCV data from Coinbase"""
+        url = f"https://api.exchange.coinbase.com/products/{ticker}/candles?granularity={granularity}"
+        
+        try:
+            data = await self._fetch_async(client, url, "Coinbase", ticker)
+            
+            if isinstance(data, list):
+                return [
+                    {
+                        "timestamp_utc": datetime.fromtimestamp(candle[0]),
+                        "low_price": self._safe_float(candle[1]),
+                        "high_price": self._safe_float(candle[2]),
+                        "open_price": self._safe_float(candle[3]),
+                        "close_price": self._safe_float(candle[4]),
+                        "volume": self._safe_float(candle[5], 0.0),
+                    }
+                    for candle in data
+                ]
+        except Exception as e:
+            await self.safe_emit('scheduler_log', {
+                'message': f"Coinbase 데이터 파싱 오류 ({ticker}): {e}", 
+                'type': 'error'
+            })
+            
+        return []
+
+    async def _fetch_ohlcv_from_coinmarketcap(self, client: httpx.AsyncClient, ticker: str) -> List[Dict[str, Any]]:
+        """CoinMarketCap에서 OHLCV 데이터를 가져옵니다."""
+        try:
+            # API 키를 데이터베이스에서 조회
+            db = self.get_db_session()
+            try:
+                from ..models import AppConfiguration
+                api_key_config = db.query(AppConfiguration).filter(
+                    AppConfiguration.config_key == "COINMARKETCAP_API_KEY"
+                ).first()
+                
+                if api_key_config:
+                    api_key = api_key_config.config_value
+                else:
+                    api_key = ""
+            finally:
+                db.close()
+            
+            if not api_key:
+                raise ValueError("CoinMarketCap API key not configured")
+            
+            # CoinMarketCap API는 OHLCV 데이터를 직접 제공하지 않으므로
+            # 현재 가격과 기본 정보만 가져옵니다
+            url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest"
+            params = {
+                "symbol": ticker.replace("USDT", "").replace("USD", ""),
+                "convert": "USD"
+            }
+            headers = {
+                "X-CMC_PRO_API_KEY": api_key,
+                "Accept": "application/json"
+            }
+            
+            response = await client.get(url, params=params, headers=headers, timeout=30)
+            response.raise_for_status()
+            
+            data = response.json()
+            if "data" not in data or ticker.replace("USDT", "").replace("USD", "") not in data["data"]:
+                return []
+            
+            crypto_data = data["data"][ticker.replace("USDT", "").replace("USD", "")]
+            quote = crypto_data.get("quote", {}).get("USD", {})
+            
+            # 현재 시간을 기준으로 OHLCV 데이터 생성
+            current_time = datetime.now()
+            ohlcv_data = [{
+                "timestamp_utc": current_time,
+                "open_price": float(quote.get("price", 0)),
+                "high_price": float(quote.get("price", 0)),
+                "low_price": float(quote.get("price", 0)),
+                "close_price": float(quote.get("price", 0)),
+                "volume": float(quote.get("volume_24h", 0)),
+            }]
+            
+            return ohlcv_data
+            
+        except Exception as e:
+            await self.safe_emit('scheduler_log', {
+                'message': f"Error fetching from CoinMarketCap for {ticker}: {e}", 
+                'type': 'error'
+            })
+            return []
+
+    def _safe_float(self, value: Any, default: float = None) -> Optional[float]:
+        """Safely convert value to float"""
+        if value is None:
+            return default
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return default
+
+    def _safe_date_parse(self, date_str: str) -> Optional[datetime]:
+        """Safely parse date string"""
+        if not date_str:
+            return None
+        try:
+            return datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            return None
+
+    def _safe_datetime_parse(self, date_str: str, format_str: str) -> Optional[datetime]:
+        """Safely parse datetime string with custom format"""
+        if not date_str:
+            return None
+        try:
+            return datetime.strptime(date_str, format_str)
+        except ValueError:
+            return None
+
+    @backoff.on_exception(
+        backoff.expo,
+        (httpx.RequestError, httpx.HTTPStatusError),
+        max_tries=3,
+        max_time=60
+    )
+    async def _fetch_async(self, client: httpx.AsyncClient, url: str, api_name: str, ticker: str):
+        """Fetch data from API with retry logic"""
+        await self.safe_emit('scheduler_log', {
+            'message': f"[{ticker}] {api_name} API 호출 시도: {url}", 
+            'type': 'info'
+        })
+        
+        response = await client.get(url, timeout=self.api_timeout)
+        
+        if response.status_code == 429:  # Too Many Requests
+            await self.safe_emit('scheduler_log', {
+                'message': f"[{ticker}] {api_name} API 호출 제한 도달. 재시도합니다.", 
+                'type': 'warning'
+            })
+            response.raise_for_status()
+        
+        response.raise_for_status()
+        return response.json()
+
+    async def _store_ohlcv_data(self, asset_id: int, ohlcv_list: List[Dict]) -> int:
+        """Store OHLCV data and calculate daily change percentages"""
+        if not ohlcv_list:
+            return 0
+        
+        db = self.get_db_session()
+        
+        try:
+            # Sort by timestamp
+            ohlcv_list.sort(key=lambda x: x['timestamp_utc'])
+            
+            # Calculate change percentages
+            for i, data_point in enumerate(ohlcv_list):
+                data_point['asset_id'] = asset_id
+                
+                if i > 0:
+                    prev_close = ohlcv_list[i-1]['close_price']
+                    current_close = data_point['close_price']
+                    if prev_close and current_close and prev_close > 0:
+                        change = ((current_close - prev_close) / prev_close) * 100
+                        data_point['change_percent'] = round(change, 4)
+                    else:
+                        data_point['change_percent'] = 0.0
+                else:
+                    # For first data point, check previous day from DB
+                    from ..crud.asset import crud_ohlcv
+                    prev_ohlcv = crud_ohlcv.get_previous_day_ohlcv(db, asset_id, data_point['timestamp_utc'].date())
+                    if prev_ohlcv and prev_ohlcv.close_price > 0:
+                        change = ((data_point['close_price'] - float(prev_ohlcv.close_price)) / float(prev_ohlcv.close_price)) * 100
+                        data_point['change_percent'] = round(change, 4)
+                    else:
+                        data_point['change_percent'] = 0.0
+            
+            # Bulk upsert to database
+            from ..crud.asset import crud_ohlcv
+            added_count = crud_ohlcv.bulk_upsert_ohlcv(db, ohlcv_list)
+            return added_count
+        finally:
+            db.close()
+
+    async def _store_ohlcv_data_with_interval(self, asset_id: int, ohlcv_list: List[Dict], interval: str) -> int:
+        """Store OHLCV data with specific interval"""
+        if not ohlcv_list:
+            return 0
+        
+        db = self.get_db_session()
+        try:
+            # 기존 데이터와 중복 체크 및 업데이트
+            added_count = 0
+            from ..crud.asset import crud_ohlcv
+            
+            for data_point in ohlcv_list:
+                # asset_id와 간격 정보 추가
+                data_point['asset_id'] = asset_id
+                data_point['data_interval'] = interval
+                
+                # 기존 데이터 확인
+                existing = db.query(crud_ohlcv.model).filter(
+                    crud_ohlcv.model.asset_id == asset_id,
+                    crud_ohlcv.model.timestamp_utc == data_point['timestamp_utc'],
+                    crud_ohlcv.model.data_interval == interval
+                ).first()
+                
+                if existing:
+                    # 기존 데이터 업데이트
+                    for key, value in data_point.items():
+                        if key != 'timestamp_utc' and key != 'data_interval':
+                            setattr(existing, key, value)
+                    existing.updated_at = datetime.now()
+                else:
+                    # 새 데이터 추가
+                    new_ohlcv = crud_ohlcv.model(**data_point)
+                    db.add(new_ohlcv)
+                    added_count += 1
+            
+            db.commit()
+            return added_count
+            
+        except Exception as e:
+            db.rollback()
+            self.log_progress(f"Error storing {interval} OHLCV data: {e}", "error")
+            raise
+        finally:
+            db.close()
 
 
 

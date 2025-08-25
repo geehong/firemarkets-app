@@ -2,11 +2,17 @@
   "data_collection": {
     "interval_minutes": 1440,
     "interval_daily": 30,
-    "enable_immediate_execution": true
+    "enable_immediate_execution": false
   },
-  "onchain_collection": {
-    "interval_hours": 24
-  },
+      "onchain_collection": {
+        "interval_hours": 24
+    },
+    "api_limits": {
+        "onchain_delay_seconds": 480,
+        "hourly_limit": 8,
+        "retry_delay_base": 60,
+        "retry_delay_max": 300
+    },
   "concurrency": {
     "enable_semaphore": true,
     "semaphore_limit": 1,

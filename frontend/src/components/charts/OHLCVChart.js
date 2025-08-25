@@ -83,7 +83,7 @@ const OHLCVChart = ({
         startDate.setMonth(startDate.getMonth() - 2)
         
         const response = await axios.get(
-          `/api/v1/ohlcv/${assetIdentifier}?data_interval=${dataInterval}&start_date=${startDate.toISOString().split('T')[0]}&end_date=${endDate.toISOString().split('T')[0]}&limit=${maxDataPoints}`,
+          `/api/v1/ohlcv/${assetIdentifier}?data_interval=1d&start_date=${startDate.toISOString().split('T')[0]}&end_date=${endDate.toISOString().split('T')[0]}&limit=${maxDataPoints}`,
         )
         console.log('API Response:', response.data)
 

@@ -250,6 +250,9 @@ def get_assets_optimized(db: Session, type_name: Optional[str] = None, has_ohlcv
 
 def get_ohlcv_data_optimized(db: Session, asset_id: int, data_interval: str = '1d', start_date: Optional[str] = None, end_date: Optional[str] = None, limit: int = 50000):
     """최적화된 OHLCV 데이터 조회"""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"get_ohlcv_data_optimized called with asset_id={asset_id}, data_interval={data_interval}")
     query = text("""
         SELECT 
             ohlcv_id,
@@ -287,4 +290,6 @@ def get_ohlcv_data_optimized(db: Session, asset_id: int, data_interval: str = '1
     """)
     
     result = db.execute(query, params)
-    return [dict(row) for row in result] 
+    data = [dict(row) for row in result]
+    logger.info(f"get_ohlcv_data_optimized returned {len(data)} records with data_interval={data_interval}")
+    return data 

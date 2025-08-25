@@ -105,6 +105,53 @@ export const cryptoAPI = {
   getCryptoData: (assetId) => api.get(`/crypto/data/asset/${assetId}`),
 }
 
+// 실시간 가격 관련 API
+export const realtimePriceAPI = {
+  /**
+   * 여러 자산의 실시간 가격을 백엔드에서 가져옵니다.
+   * @param {string[]} symbols - 가격을 조회할 심볼 배열 (e.g., ['BTC', 'ETH'])
+   * @param {'crypto' | 'stock'} assetType - 자산 유형
+   * @returns {Promise<Object>} - { SYMBOL: price } 형태의 객체
+   */
+  fetchRealtimePrices: async (symbols, assetType = 'crypto') => {
+    if (!symbols || symbols.length === 0) {
+      return {};
+    }
+    
+    const params = new URLSearchParams();
+    symbols.forEach(symbol => params.append('symbols', symbol));
+    
+    // assetType에 따라 다른 엔드포인트를 호출
+    const endpoint = assetType === 'crypto' ? '/prices/crypto' : '/prices/stock';
+    
+    try {
+      const response = await api.get(`${endpoint}?${params.toString()}`);
+      return response.data.prices || {};
+    } catch (error) {
+      console.error(`Failed to fetch ${assetType} prices:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * 암호화폐 실시간 가격 조회
+   * @param {string[]} symbols - 암호화폐 심볼 배열
+   * @returns {Promise<Object>} - { SYMBOL: price } 형태의 객체
+   */
+  fetchCryptoPrices: async (symbols) => {
+    return realtimePriceAPI.fetchRealtimePrices(symbols, 'crypto');
+  },
+
+  /**
+   * 주식 실시간 가격 조회
+   * @param {string[]} symbols - 주식 심볼 배열
+   * @returns {Promise<Object>} - { SYMBOL: price } 형태의 객체
+   */
+  fetchStockPrices: async (symbols) => {
+    return realtimePriceAPI.fetchRealtimePrices(symbols, 'stock');
+  }
+}
+
 // 기술적 분석 API
 export const technicalAPI = {
   // 기술적 지표
