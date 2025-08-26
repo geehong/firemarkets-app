@@ -15,3 +15,6 @@ CREATE INDEX idx_scheduler_logs_status ON scheduler_logs(status);
 CREATE INDEX idx_scheduler_logs_job_name ON scheduler_logs(job_name);
 CREATE INDEX idx_scheduler_logs_start_time ON scheduler_logs(start_time);
 
+
+
+

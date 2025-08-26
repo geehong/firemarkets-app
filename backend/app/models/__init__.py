@@ -29,6 +29,12 @@ from .onchain import (
     OnchainMetricsInfo,
 )
 
+# Real-time data models
+from .realtime import (
+    RealtimeQuote,
+    SparklineData,
+)
+
 # System related models
 from .system import (
     AppConfiguration,
@@ -67,6 +73,10 @@ __all__ = [
     
     # Onchain models
     "OnchainMetricsInfo",
+    
+    # Real-time models
+    "RealtimeQuote",
+    "SparklineData",
     
     # System models
     "AppConfiguration",

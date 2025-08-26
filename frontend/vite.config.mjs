@@ -89,7 +89,9 @@ export default defineConfig(() => {
       host: '0.0.0.0', // Docker 컨테이너에서 외부 접근을 위해 필요
       // 리버스 프록시(예: firemarkets.net)를 통해 접속하는 경우, 해당 호스트를 허용해야 합니다.
       allowedHosts: ['firemarkets.net', 'localhost', 'fire_markets_frontend', '172.20.0.0/16', '172.21.0.0/16'],
-      hmr: false, // WebSocket 연결 문제로 인한 로딩 지연 방지
+      hmr: {
+        overlay: false, // HMR 오버레이 비활성화 (URI malformed 에러 방지)
+      },
       proxy: {
         '/api': {
           target: 'http://backend:8000', // Docker 네트워크 내의 백엔드 서비스
@@ -97,6 +99,15 @@ export default defineConfig(() => {
           rewrite: (path) => path.replace(/^\/api\/v1/, '/api'), // '/api/v1'을 '/api'로 변경
           secure: false, // 개발 환경에서 HTTPS 문제가 있다면 추가 (선택 사항)
           ws: true, // 웹소켓 프록시가 필요하다면 추가 (FastAPI SocketIO 구현 시 필요)
+          configure: (proxy, options) => {
+            // 프록시 에러 핸들링
+            proxy.on('error', (err, req, res) => {
+              console.error('Proxy error:', err);
+              if (err.message && err.message.includes('URI malformed')) {
+                console.error('URI malformed error in proxy:', err);
+              }
+            });
+          }
         },
       },
     },

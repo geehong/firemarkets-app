@@ -4,7 +4,19 @@ import cacheService from './cacheService'
 // API 기본 설정
 const api = axios.create({
   baseURL: '/api/v1',
-  timeout: 10000,
+  timeout: 30000, // 30초로 증가
+  paramsSerializer: {
+    // URL 파라미터 직렬화 설정 (URI malformed 에러 방지)
+    serialize: (params) => {
+      const searchParams = new URLSearchParams();
+      for (const [key, value] of Object.entries(params)) {
+        if (value !== null && value !== undefined && value !== '') {
+          searchParams.append(key, value);
+        }
+      }
+      return searchParams.toString();
+    }
+  }
 })
 
 // 캐싱이 적용된 API 클라이언트
@@ -12,20 +24,37 @@ const cachedApi = {
   get: async (endpoint, params = {}, options = {}) => {
     const { useCache = true, cacheTtl = 60000 } = options
     
+    // 파라미터 정리 및 검증
+    const cleanParams = {};
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== null && value !== undefined && value !== '') {
+        // 문자열인 경우 공백 제거 및 특수문자 처리
+        if (typeof value === 'string') {
+          const trimmedValue = value.trim();
+          if (trimmedValue) {
+            // URL 인코딩 문제를 방지하기 위해 특수문자 처리
+            cleanParams[key] = trimmedValue;
+          }
+        } else {
+          cleanParams[key] = value;
+        }
+      }
+    }
+    
     if (useCache) {
       // 캐시에서 데이터 확인
-      const cachedData = cacheService.get(endpoint, params)
+      const cachedData = cacheService.get(endpoint, cleanParams)
       if (cachedData) {
         return cachedData
       }
     }
     
     // API 호출
-    const response = await api.get(endpoint, { params })
+    const response = await api.get(endpoint, { params: cleanParams })
     
     if (useCache) {
       // 캐시에 저장
-      cacheService.set(endpoint, params, response.data, { 
+      cacheService.set(endpoint, cleanParams, response.data, { 
         memoryTtl: cacheTtl, 
         storageTtl: cacheTtl * 5 
       })
@@ -44,6 +73,17 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     console.error('API Error:', error)
+    
+    // URI malformed 에러 특별 처리
+    if (error.message && error.message.includes('URI malformed')) {
+      console.error('URI malformed error detected. This might be due to invalid characters in URL parameters.')
+      console.error('Error details:', {
+        config: error.config,
+        url: error.config?.url,
+        params: error.config?.params
+      })
+    }
+    
     return Promise.reject(error)
   },
 )
@@ -69,6 +109,9 @@ export const assetAPI = {
 
   // 자산 market_cap 데이터 (TreeMap용, 캐싱 적용)
   getAssetsMarketCaps: async (params = {}) => cachedApi.get('/assets/market-caps', params, { cacheTtl: 300000 }), // 5분 캐시로 증가
+
+  // 새로운 Assets Table API (캐싱 적용)
+  getAssetsTable: async (params = {}) => cachedApi.get('/assets-table/', params, { cacheTtl: 300000 }), // 5분 캐시
 }
 
 // 주식 관련 API (실제 엔드포인트)
@@ -122,7 +165,7 @@ export const realtimePriceAPI = {
     symbols.forEach(symbol => params.append('symbols', symbol));
     
     // assetType에 따라 다른 엔드포인트를 호출
-    const endpoint = assetType === 'crypto' ? '/prices/crypto' : '/prices/stock';
+    const endpoint = assetType === 'crypto' ? '/realtime-prices/crypto' : '/realtime-prices/stock';
     
     try {
       const response = await api.get(`${endpoint}?${params.toString()}`);

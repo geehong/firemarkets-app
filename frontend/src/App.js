@@ -9,7 +9,8 @@ import './scss/style.scss'
 // We use those styles to show code examples, you should remove them in your application.
 import './scss/examples.scss'
 
-// AG Grid CSS - 성능 최적화를 위해 제거 (Theming API 사용)
+// AG Grid CSS - 새로운 Theming API 사용으로 제거
+// import 'ag-grid-community/styles/ag-grid.css'
 // import 'ag-grid-community/styles/ag-theme-alpine.css'
 
 // React Query 설정 - 성능 최적화 강화

@@ -72,9 +72,6 @@ const DerivativesMetrics = React.lazy(() => import('./views/onchain/DerivativesM
 // OnChain Data Overviews
 const OnchainDataOverviews = React.lazy(() => import('./views/overviews/OnchainDataOverviews'))
 
-// Open Interest Analysis
-const OpenInterest = React.lazy(() => import('./views/charts/OpenInterest'))
-
 // Test Pages
 const Test1 = React.lazy(() => import('./views/Test/Test1'))
 const Test2 = React.lazy(() => import('./views/Test/Test2'))
@@ -115,7 +112,6 @@ const routes = [
 
   // OnChain Data Overviews
   { path: '/onchain/overviews', name: 'OnChain Data Overviews', element: OnchainDataOverviews },
-  { path: '/onchain/open-interest', name: 'Open Interest Analysis', element: OpenInterest },
 
   // Test Pages
   { path: '/test/test1', name: 'Test 1', element: Test1 },

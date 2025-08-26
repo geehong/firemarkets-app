@@ -7,13 +7,14 @@ from pydantic import BaseModel
 
 from app.services import price_service
 from app.core.cache import cache_with_invalidation
+from app.external_apis.tiingo_client import tiingo_client
 
 router = APIRouter()
 
 
 class PriceResponse(BaseModel):
     """실시간 가격 응답 모델"""
-    prices: dict[str, float]
+    prices: dict[str, dict[str, float | None]]
     asset_type: str
     symbol_count: int
 
@@ -45,7 +46,7 @@ async def get_crypto_prices(
 
 
 @router.get("/stock", response_model=PriceResponse)
-@cache_with_invalidation(expire=300)  # 주식은 5분 캐싱 (60초에서 증가)
+# @cache_with_invalidation(expire=300)  # 주식은 5분 캐싱 (60초에서 증가) - 임시 비활성화
 async def get_stock_prices(
     symbols: List[str] = Query(..., description="주식 심볼 리스트 (예: AAPL, GOOGL)")
 ):
@@ -68,6 +69,42 @@ async def get_stock_prices(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch stock prices: {str(e)}")
+
+
+@router.get("/tiingo", response_model=PriceResponse)
+@cache_with_invalidation(expire=900)  # Tiingo는 15분 지연이므로 15분 캐싱
+async def get_tiingo_prices(
+    symbols: List[str] = Query(..., description="주식/ETF 심볼 리스트 (예: AAPL, SPY)")
+):
+    """
+    여러 주식/ETF 심볼에 대한 가격을 Tiingo에서 조회합니다.
+    
+    Args:
+        symbols: 주식/ETF 심볼 리스트
+        
+    Returns:
+        가격 데이터 (15분 지연)
+    """
+    try:
+        quotes = await tiingo_client.get_batch_quotes(symbols)
+        
+        # 응답 형식 변환
+        prices = {}
+        for symbol, quote_data in quotes.items():
+            prices[symbol] = {
+                'price': quote_data.get('last'),
+                'change_percent': quote_data.get('changePercent'),
+                'market_cap': None,  # Tiingo 무료 플랜에서는 제공하지 않음
+                'volume': quote_data.get('volume')
+            }
+        
+        return PriceResponse(
+            prices=prices,
+            asset_type="tiingo",
+            symbol_count=len(prices)
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch Tiingo prices: {str(e)}")
 
 
 @router.get("/{asset_type}", response_model=PriceResponse)

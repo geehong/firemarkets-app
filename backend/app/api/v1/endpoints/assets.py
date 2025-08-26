@@ -315,6 +315,10 @@ def get_ohlcv_data(
                 OHLCVData.data_interval == '1d'
             ).order_by(OHLCVData.timestamp_utc.asc()).limit(limit).all()
             
+            # 월별 데이터의 data_interval을 '1M'으로 설정
+            for ohlcv in ohlcv_data:
+                ohlcv.data_interval = '1M'
+            
         elif data_interval.upper() == '1W':
             # 주별 마지막 거래일 데이터
             last_day_subquery = db.query(
@@ -346,20 +350,17 @@ def get_ohlcv_data(
                 OHLCVData.data_interval == '1d'
             ).order_by(OHLCVData.timestamp_utc.asc()).limit(limit).all()
             
+            # 주별 데이터의 data_interval을 '1W'로 설정
+            for ohlcv in ohlcv_data:
+                ohlcv.data_interval = '1W'
+            
         else:
             # 일반적인 간격 데이터
             ohlcv_data = db_get_ohlcv_data(db, asset_id, start_date, end_date, data_interval, limit)
         
         # SQLAlchemy 모델을 Pydantic 스키마로 변환
         ohlcv_data_points = []
-        logger.info(f"Processing {len(ohlcv_data)} records from database")
-        
         for ohlcv in ohlcv_data:
-            # data_interval 필터링 강화
-            if ohlcv.data_interval != data_interval:
-                logger.warning(f"Skipping record with wrong data_interval: expected {data_interval}, got {ohlcv.data_interval}")
-                continue
-                
             ohlcv_dict = {
                 'timestamp_utc': ohlcv.timestamp_utc,
                 'open_price': float(ohlcv.open_price) if ohlcv.open_price else None,
@@ -371,8 +372,6 @@ def get_ohlcv_data(
                 'data_interval': ohlcv.data_interval,
             }
             ohlcv_data_points.append(ohlcv_dict)
-        
-        logger.info(f"Final result: {len(ohlcv_data_points)} records with data_interval={data_interval}")
         
         # Asset 정보 가져오기
         asset = get_asset_by_ticker(db, asset_identifier) if not asset_identifier.isdigit() else db.query(Asset).filter(Asset.asset_id == int(asset_identifier)).first()
@@ -794,8 +793,6 @@ def get_latest_ohlcv(db: Session, asset_id: int):
 
 def db_get_ohlcv_data(db: Session, asset_id: int, start_date: Optional[date], end_date: Optional[date], data_interval: str, limit: int = 50000):
     """OHLCV 데이터 조회 (데이터베이스 함수)"""
-    logger.info(f"db_get_ohlcv_data called with asset_id={asset_id}, data_interval={data_interval}")
-    
     query = db.query(OHLCVData).filter(
         OHLCVData.asset_id == asset_id,
         OHLCVData.data_interval == data_interval
@@ -806,44 +803,7 @@ def db_get_ohlcv_data(db: Session, asset_id: int, start_date: Optional[date], en
     if end_date:
         query = query.filter(OHLCVData.timestamp_utc <= end_date)
     
-    # 시간대 중복 제거: 같은 날짜의 데이터 중 하나만 선택
-    if data_interval == '1d':
-        # 날짜별로 그룹화하여 중복 제거 (MySQL DATE 함수 사용)
-        from sqlalchemy import func, text
-        subquery = db.query(
-            OHLCVData.asset_id,
-            func.date(OHLCVData.timestamp_utc).label('date_only'),
-            func.max(OHLCVData.timestamp_utc).label('max_timestamp')
-        ).filter(
-            OHLCVData.asset_id == asset_id,
-            OHLCVData.data_interval == data_interval
-        )
-        
-        if start_date:
-            subquery = subquery.filter(OHLCVData.timestamp_utc >= start_date)
-        if end_date:
-            subquery = subquery.filter(OHLCVData.timestamp_utc <= end_date)
-        
-        subquery = subquery.group_by(
-            OHLCVData.asset_id,
-            func.date(OHLCVData.timestamp_utc)
-        ).subquery()
-        
-        query = db.query(OHLCVData).join(
-            subquery,
-            (OHLCVData.asset_id == subquery.c.asset_id) &
-            (OHLCVData.timestamp_utc == subquery.c.max_timestamp) &
-            (OHLCVData.data_interval == data_interval)
-        )
-    
-    result = query.order_by(OHLCVData.timestamp_utc.desc()).limit(limit).all()
-    logger.info(f"db_get_ohlcv_data returned {len(result)} records with data_interval={data_interval}")
-    
-    # 결과 데이터의 data_interval 확인
-    intervals = [r.data_interval for r in result]
-    logger.info(f"Returned data intervals: {intervals}")
-    
-    return result
+    return query.order_by(OHLCVData.timestamp_utc.desc()).limit(limit).all()
 
 def get_stock_profile(db: Session, asset_id: int):
     """주식 프로필 조회"""

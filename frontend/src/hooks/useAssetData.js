@@ -33,6 +33,9 @@ export const useAssetData = (assetId, interval = '1d', limit = 1000) => {
       console.log('🔍 Fetching OHLCV data for assetId:', assetId, 'interval:', interval, 'limit:', limit);
       const response = await assetAPI.getOHLCV(assetId, interval, limit) // limit 전달
       console.log('🔍 OHLCV API raw response:', response);
+      console.log('🔍 OHLCV API response.data:', response.data);
+      console.log('🔍 OHLCV API response.data.data:', response.data?.data);
+      console.log('🔍 OHLCV API response.data.data length:', response.data?.data?.length);
       
       const data = Array.isArray(response.data) ? response.data : response.data.data || [];
       console.log('🔍 OHLCV data before processing:', data.slice(0, 2));

@@ -400,6 +400,47 @@ class TechnicalIndicatorsResponse(BaseModel):
     total_count: int = Field(..., description="Total number of indicators")
 
 
+# New schemas for Assets Table API
+class AssetTableItem(BaseModel):
+    """Individual asset item for the table view"""
+    asset_id: int = Field(..., description="Unique asset ID")
+    rank: Optional[int] = Field(None, description="Rank within the asset type (if applicable)")
+    ticker: str = Field(..., description="Asset ticker symbol")
+    name: str = Field(..., description="Asset name")
+    asset_type: str = Field(..., description="Asset type")
+    exchange: Optional[str] = Field(None, description="Exchange where asset is traded")
+    currency: Optional[str] = Field(None, description="Asset currency")
+    
+    # Real-time/delayed data
+    price: Optional[float] = Field(None, description="Current price")
+    change_percent_today: Optional[float] = Field(None, description="Today's price change percentage")
+    
+    # Market data
+    market_cap: Optional[float] = Field(None, description="Market capitalization")
+    volume_today: Optional[float] = Field(None, description="Today's trading volume")
+    change_52w_percent: Optional[float] = Field(None, description="52-week price change percentage")
+    
+    # Sparkline data (30-day price history)
+    sparkline_30d: Optional[List[float]] = Field(None, description="30-day price history for sparkline chart")
+    
+    # Metadata
+    data_source: Optional[str] = Field(None, description="Source of the data (e.g., 'twelvedata', 'binance', 'db')")
+    last_updated: Optional[datetime] = Field(None, description="Last data update timestamp")
+
+
+class AssetsTableResponse(BaseModel):
+    """Response model for /assets/table endpoint"""
+    data: List[AssetTableItem] = Field(..., description="List of assets with table data")
+    total: int = Field(..., description="Total number of assets")
+    page: int = Field(..., description="Current page number")
+    size: int = Field(..., description="Number of assets per page")
+    pages: int = Field(..., description="Total number of pages")
+    asset_type: Optional[str] = Field(None, description="Filtered asset type")
+    sort_by: Optional[str] = Field(None, description="Sort field")
+    order: Optional[str] = Field(None, description="Sort order (asc/desc)")
+    search: Optional[str] = Field(None, description="Search term")
+
+
 
 
 
