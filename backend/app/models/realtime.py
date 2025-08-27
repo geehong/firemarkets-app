@@ -81,3 +81,6 @@ class SparklineData(Base):
         UniqueConstraint('ticker', 'asset_type', name='uq_ticker_asset_type_sparkline'),
     )
 
+
+
+

@@ -104,11 +104,64 @@ const SchedulerControls = ({
   const [isTriggering, setIsTriggering] = useState(false)
   const [showStatusDetails, setShowStatusDetails] = useState(false)
   const [showJobDetails, setShowJobDetails] = useState(false)
+  const [diagnostics, setDiagnostics] = useState(null)
+  const [rtBusy, setRtBusy] = useState(false)
+  const [rtSchedule, setRtSchedule] = useState({
+    timezone: 'America/New_York',
+    open_time: '09:30',
+    close_time: '16:00',
+    weekdays_only: true,
+  })
+
+  // 간단한 대기 유틸
+  const delay = (ms) => new Promise((res) => setTimeout(res, ms))
+
+  // 잡 등록 여부 확인 (백엔드 초기화 레이스 회피)
+  const waitForJobsRegistered = async (timeoutMs = 5000) => {
+    const startedAt = Date.now()
+    while (Date.now() - startedAt < timeoutMs) {
+      try {
+        const resp = await fetch('/api/v1/scheduler/jobs', { headers: { accept: 'application/json' } })
+        if (resp.ok) {
+          const data = await resp.json()
+          if (data?.jobs && data.jobs.length > 0) return true
+        }
+      } catch (e) {
+        // ignore and retry
+      }
+      await delay(500)
+    }
+    return false
+  }
+
+  const ensureSchedulerRunning = async () => {
+    try {
+      const statusResp = await fetch('/api/v1/scheduler/status', { headers: { accept: 'application/json' } })
+      const status = statusResp.ok ? await statusResp.json() : null
+      if (!status?.isRunning) {
+        const resp = await fetch('/api/v1/scheduler/start?include_diagnostics=true&fix_running=true', { method: 'POST' })
+        if (resp.ok) {
+          const data = await resp.json()
+          if (data?.diagnostics) setDiagnostics(data.diagnostics)
+        }
+        await delay(1000)
+      }
+    } catch (e) {
+      await fetch('/api/v1/scheduler/start?include_diagnostics=true&fix_running=true', { method: 'POST' })
+      await delay(1000)
+    }
+  }
 
   const handleStart = async () => {
     setIsCollecting(true)
     try {
-      await onStart()
+      const resp = await fetch('/api/v1/scheduler/start?include_diagnostics=true&fix_running=true', { method: 'POST' })
+      if (resp.ok) {
+        const data = await resp.json()
+        if (data?.diagnostics) setDiagnostics(data.diagnostics)
+      }
+      await delay(800)
+      await waitForJobsRegistered(4000)
     } finally {
       setIsCollecting(false)
     }
@@ -126,10 +179,36 @@ const SchedulerControls = ({
   const handleTrigger = async () => {
     setIsTriggering(true)
     try {
-      await onTrigger()
+      await ensureSchedulerRunning()
+      const hasJobs = await waitForJobsRegistered(5000)
+      if (!hasJobs) {
+        await delay(1000)
+      }
+      await fetch('/api/v1/collectors/ohlcv/run', { method: 'POST', headers: { accept: 'application/json' } })
     } finally {
       setIsTriggering(false)
     }
+  }
+
+  const handleRealtimeStart = async () => {
+    setRtBusy(true)
+    try {
+      await fetch('/api/v1/realtime/start', { method: 'POST' })
+    } finally { setRtBusy(false) }
+  }
+
+  const handleRealtimeStop = async () => {
+    setRtBusy(true)
+    try {
+      await fetch('/api/v1/realtime/stop', { method: 'POST' })
+    } finally { setRtBusy(false) }
+  }
+
+  const handleRealtimeSchedule = async () => {
+    setRtBusy(true)
+    try {
+      await fetch('/api/v1/realtime/schedule', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rtSchedule) })
+    } finally { setRtBusy(false) }
   }
 
   return (
@@ -220,6 +299,8 @@ const SchedulerControls = ({
               {isStopping ? <StopCircleIcon className="me-2" /> : <StopIcon className="me-2" />}
               {isStopping ? 'Stopping...' : 'Stop'}
             </CButton>
+            <CButton color="secondary" onClick={handleRealtimeStart} disabled={rtBusy} size="sm" className="px-3 py-2" style={{ fontSize: '0.85rem', fontWeight: '500', borderRadius: '6px', minWidth: '110px' }}>RT Start</CButton>
+            <CButton color="secondary" onClick={handleRealtimeStop} disabled={rtBusy} size="sm" className="px-3 py-2" style={{ fontSize: '0.85rem', fontWeight: '500', borderRadius: '6px', minWidth: '110px' }}>RT Stop</CButton>
           </CButtonGroup>
         </div>
       </div>
@@ -313,6 +394,38 @@ const SchedulerControls = ({
                 <small className="text-muted">
                   <strong>Next Run:</strong> {new Date(schedulerStatus.nextRun).toLocaleString()}
                 </small>
+              </div>
+            )}
+            {diagnostics && (
+              <div className="mt-3">
+                <h6 className="mb-2">Diagnostics</h6>
+                <div className="small text-muted">Jobs: {(diagnostics.jobs || []).map((j) => (j.id || j)).join(', ') || 'N/A'}</div>
+                {Array.isArray(diagnostics.recent_logs) && diagnostics.recent_logs.length > 0 && (
+                  <div className="mt-2" style={{ maxHeight: 180, overflowY: 'auto' }}>
+                    {diagnostics.recent_logs.map((l, i) => (
+                      <div key={i} className="border-bottom py-1">
+                        <div className="d-flex justify-content-between">
+                          <span>{l.job_name}</span>
+                          <span className={`badge bg-${l.status === 'failed' ? 'danger' : l.status === 'completed' ? 'success' : 'secondary'}`}>{l.status}</span>
+                        </div>
+                        <div className="small text-muted">{l.error || ''}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-3">
+                  <h6 className="mb-2">Realtime Schedule</h6>
+                  <div className="d-flex align-items-center gap-2 flex-wrap">
+                    <input className="form-control form-control-sm" style={{ width: 220 }} value={rtSchedule.timezone} onChange={(e) => setRtSchedule({ ...rtSchedule, timezone: e.target.value })} />
+                    <input className="form-control form-control-sm" style={{ width: 100 }} value={rtSchedule.open_time} onChange={(e) => setRtSchedule({ ...rtSchedule, open_time: e.target.value })} />
+                    <input className="form-control form-control-sm" style={{ width: 100 }} value={rtSchedule.close_time} onChange={(e) => setRtSchedule({ ...rtSchedule, close_time: e.target.value })} />
+                    <div className="form-check form-switch">
+                      <input className="form-check-input" type="checkbox" checked={rtSchedule.weekdays_only} onChange={(e) => setRtSchedule({ ...rtSchedule, weekdays_only: e.target.checked })} />
+                      <label className="form-check-label small">Weekdays only</label>
+                    </div>
+                    <CButton color="secondary" size="sm" onClick={handleRealtimeSchedule} disabled={rtBusy}>Set Schedule</CButton>
+                  </div>
+                </div>
               </div>
             )}
           </>

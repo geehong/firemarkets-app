@@ -16,8 +16,7 @@ from .endpoints import (
     admin,
     metrics,
     open_interest,
-    realtime_prices,
-    assets_table
+    realtime
 )
 from .external_apis import router as external_apis_router
 from app.schemas.common import ApiV1RootResponse
@@ -37,7 +36,7 @@ async def api_v1_root():
             "crypto": "/api/v1/crypto",
             "dashboard": "/api/v1/dashboard",
             "metrics": "/api/v1/metrics",
-            "realtime_prices": "/api/v1/realtime-prices"
+            "realtime": "/api/v1/realtime"
         }
     }
 
@@ -56,8 +55,7 @@ api_router.include_router(collectors.router, tags=["collectors"])
 api_router.include_router(admin.router, tags=["admin"])
 api_router.include_router(metrics.router, tags=["metrics"])
 api_router.include_router(open_interest.router, tags=["open-interest"])
-api_router.include_router(realtime_prices.router, prefix="/realtime-prices", tags=["realtime-prices"])
-api_router.include_router(assets_table.router, prefix="/assets-table", tags=["assets-table"])
+api_router.include_router(realtime.router, prefix="/realtime", tags=["realtime"])
 
 # External APIs router
 api_router.include_router(external_apis_router, tags=["external-apis"])

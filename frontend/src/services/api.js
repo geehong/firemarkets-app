@@ -195,6 +195,30 @@ export const realtimePriceAPI = {
   }
 }
 
+// 실시간 데이터 관리 API
+export const realtimeAPI = {
+  // 자산 테이블 데이터 조회
+  getAssetsTable: (params) => api.get('/realtime/table', { params }),
+  
+  // 실시간 가격 데이터 조회
+  getCryptoPrices: (symbols) => api.get('/realtime/prices/crypto', { params: { symbols } }),
+  getStockPrices: (symbols) => api.get('/realtime/prices/stock', { params: { symbols } }),
+  getTiingoPrices: (symbols) => api.get('/realtime/prices/tiingo', { params: { symbols } }),
+  getPricesByType: (assetType, symbols) => api.get(`/realtime/prices/${assetType}`, { params: { symbols } }),
+  
+  // 실시간 데이터 수집기 시작/중지
+  startCollectors: (assetTypes) => api.post('/realtime/collectors/run', { asset_types: assetTypes }),
+  stopCollectors: (assetTypes) => api.post('/realtime/collectors/stop', { asset_types: assetTypes }),
+  
+  // 실시간 데이터 수집기 상태 조회
+  getCollectorsStatus: () => api.get('/realtime/collectors/status'),
+  
+  // WebSocket 구독 관리
+  getWSSubscriptions: () => api.get('/realtime/ws/subscriptions'),
+  addWSSubscriptions: (tickers) => api.post('/realtime/ws/subscriptions/add', { tickers }),
+  removeWSSubscriptions: (tickers) => api.post('/realtime/ws/subscriptions/remove', { tickers }),
+}
+
 // 기술적 분석 API
 export const technicalAPI = {
   // 기술적 지표

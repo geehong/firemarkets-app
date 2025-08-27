@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { AgGridReact } from 'ag-grid-react'
-import { assetAPI } from '../../services/api'
+import { realtimeAPI } from '../../services/api'
 import { 
   ModuleRegistry, 
   AllCommunityModule, 
@@ -170,8 +170,6 @@ const AssetsListTables = ({
   const [totalRows, setTotalRows] = useState(0)
   const [currentPage, setCurrentPage] = useState(page)
   const [currentPageSize, setCurrentPageSize] = useState(pageSize)
-  const [lastUpdated, setLastUpdated] = useState(null)
-  const [isRefreshing, setIsRefreshing] = useState(false)
 
   // 디버깅 로그
   console.log('🔍 AssetsListTables Debug:', {
@@ -371,7 +369,6 @@ const AssetsListTables = ({
   // 데이터 로드 함수 (새로운 API 사용)
   const loadData = useCallback(async () => {
     try {
-      setIsRefreshing(true)
       const params = {
         type_name: typeName,
         page: currentPage,
@@ -388,11 +385,11 @@ const AssetsListTables = ({
       console.log('🔍 AssetsListTables: Calling API with params:', params);
       console.log('🔍 AssetsListTables: Original search parameter:', search);
       console.log('🔍 AssetsListTables: Sanitized search parameter:', sanitizedSearch);
-      console.log('🔍 AssetsListTables: About to call assetAPI.getAssetsTable...');
+      console.log('🔍 AssetsListTables: About to call realtimeAPI.getAssetsTable...');
       
       let result;
       try {
-        result = await assetAPI.getAssetsTable(params);
+        result = await realtimeAPI.getAssetsTable(params);
         console.log('🔍 AssetsListTables: API response:', result);
       } catch (apiError) {
         console.error('🔍 AssetsListTables: API call failed:', apiError);
@@ -406,7 +403,6 @@ const AssetsListTables = ({
       
       setRowData(result.data || []);
       setTotalRows(result.total || 0);
-      setLastUpdated(new Date())
       
       console.log('🔍 AssetsListTables: Data loaded successfully:', {
         dataLength: result.data?.length,
@@ -425,48 +421,12 @@ const AssetsListTables = ({
       setRowData([]);
       setTotalRows(0);
     }
-    finally {
-      setIsRefreshing(false)
-    }
   }, [typeName, currentPage, currentPageSize, sortBy, order, search]);
 
   // 데이터 로드 효과
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  // 자산유형별 자동 새로고침 간격
-  const refreshIntervalMs = useMemo(() => {
-    if (typeName === 'Crypto') return 60 * 1000; // 1m
-    if (typeName === 'Stocks') return 5 * 60 * 1000; // 5m
-    if (typeName === 'ETFs' || typeName === 'Funds') return 10 * 60 * 1000; // 10m
-    if (typeName === 'Commodities') return 60 * 60 * 1000; // 1h
-    return 5 * 60 * 1000;
-  }, [typeName]);
-
-  // 자동 새로고침
-  useEffect(() => {
-    const id = setInterval(() => {
-      loadData();
-    }, refreshIntervalMs);
-    return () => clearInterval(id);
-  }, [loadData, refreshIntervalMs]);
-
-  const handleManualRefresh = useCallback(() => {
-    loadData();
-  }, [loadData]);
-
-  const formatLastUpdated = (dt) => {
-    if (!dt) return '-';
-    try {
-      const d = typeof dt === 'string' ? new Date(dt) : dt;
-      const hh = String(d.getHours()).padStart(2, '0');
-      const mm = String(d.getMinutes()).padStart(2, '0');
-      return `${hh}:${mm}`;
-    } catch (e) {
-      return '-';
-    }
-  }
 
   // 로딩 상태 표시
   if (loading) {
@@ -513,33 +473,8 @@ const AssetsListTables = ({
     <div style={{ 
       width: '100%', 
       height: `${height}px`,
-      display: 'flex',
-      flexDirection: 'column',
       ...style
     }}>
-      {/* Toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px' }}>
-        <div style={{ color: '#666', fontSize: '.875rem' }}>
-          Last updated: <strong>{formatLastUpdated(lastUpdated)}</strong>
-          {typeName === 'Stocks' && <span style={{ marginLeft: 8, color: '#888' }}>(auto 5m)</span>}
-          {typeName === 'Crypto' && <span style={{ marginLeft: 8, color: '#888' }}>(auto 1m)</span>}
-        </div>
-        <button
-          onClick={handleManualRefresh}
-          disabled={isRefreshing}
-          style={{
-            padding: '6px 10px',
-            fontSize: '.875rem',
-            border: '1px solid #cbd5e1',
-            borderRadius: 4,
-            backgroundColor: isRefreshing ? '#e5e7eb' : '#f8fafc',
-            color: '#111827',
-            cursor: isRefreshing ? 'not-allowed' : 'pointer'
-          }}
-        >
-          {isRefreshing ? 'Refreshing...' : 'Refresh'}
-        </button>
-      </div>
       <AgGridReact
         ref={gridRef}
         getRowId={getRowId}

@@ -1,5 +1,6 @@
 # backend_temp/app/api/v1/endpoints/scheduler.py
 import logging
+import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
@@ -10,6 +11,8 @@ from ....core.database import get_db
 from ....models import SchedulerLog
 from ....core.websocket import scheduler
 from ....core.config import setup_scheduler_jobs, GLOBAL_APP_CONFIGS
+from ....services.tiingo_ws_consumer import get_consumer as get_tiingo_ws_consumer
+from ....services.scheduler_service import get_scheduler as get_realtime_scheduler
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +71,17 @@ class JobDetail(BaseModel):
 class SchedulerJobsResponse(BaseModel):
     jobs: List[JobDetail]
     total_count: int
+
+class RealtimeActionResponse(BaseModel):
+    success: bool
+    message: str
+    details: Optional[Dict[str, Any]] = None
+
+class RealtimeScheduleRequest(BaseModel):
+    timezone: str = "America/New_York"
+    open_time: str = "09:30"  # HH:MM
+    close_time: str = "16:00"
+    weekdays_only: bool = True
 
 def get_scheduler_status() -> SchedulerStatus:
     """실제 스케줄러 상태를 반환합니다."""
@@ -162,13 +176,25 @@ def get_scheduler_status_endpoint(db: Session = Depends(get_db)):
             status.failedJobs = failed_jobs
             status.pendingJobs = pending_jobs
             
-            # 현재 실행 중인 작업 정보
+            # 현재 실행 중인 작업 정보 (실제 진행률 계산 시도)
             if pending_jobs > 0:
                 running_jobs = [log for log in recent_logs if log.status == "running"]
                 current_job = running_jobs[0] if running_jobs else None
                 if current_job:
                     status.currentJob = current_job.job_name
-                    status.currentJobProgress = 50
+                    progress = None
+                    try:
+                        checkpoint = current_job.checkpoint_data if hasattr(current_job, 'checkpoint_data') else None
+                        if isinstance(checkpoint, str) and checkpoint:
+                            checkpoint = json.loads(checkpoint)
+                        if isinstance(checkpoint, dict):
+                            processed = checkpoint.get('processed_so_far') or checkpoint.get('assets_processed') or current_job.assets_processed
+                            total = checkpoint.get('total_assets')
+                            if processed is not None and total:
+                                progress = max(0, min(100, int((processed / max(1, total)) * 100)))
+                    except Exception:
+                        progress = None
+                    status.currentJobProgress = progress if progress is not None else None
             
             # 상세 작업 정보 추가
             status.priceAssetsProcessed = sum(log.assets_processed or 0 for log in recent_logs if log.job_name and 'price' in log.job_name.lower())
@@ -234,12 +260,24 @@ def get_scheduler_status_by_period(period: str, db: Session = Depends(get_db)):
             status.failedJobs = failed_jobs
             status.pendingJobs = pending_jobs
             
-            # 현재 실행 중인 작업 정보
+            # 현재 실행 중인 작업 정보 (실제 진행률 계산 시도)
             if pending_jobs > 0:
                 current_job = running_jobs[0] if running_jobs else None
                 if current_job:
                     status.currentJob = current_job.job_name
-                    status.currentJobProgress = 50
+                    progress = None
+                    try:
+                        checkpoint = current_job.checkpoint_data if hasattr(current_job, 'checkpoint_data') else None
+                        if isinstance(checkpoint, str) and checkpoint:
+                            checkpoint = json.loads(checkpoint)
+                        if isinstance(checkpoint, dict):
+                            processed = checkpoint.get('processed_so_far') or checkpoint.get('assets_processed') or current_job.assets_processed
+                            total = checkpoint.get('total_assets')
+                            if processed is not None and total:
+                                progress = max(0, min(100, int((processed / max(1, total)) * 100)))
+                    except Exception:
+                        progress = None
+                    status.currentJobProgress = progress if progress is not None else None
             
             # 상세 작업 정보 추가
             status.priceAssetsProcessed = sum(log.assets_processed or 0 for log in recent_logs if log.job_name and 'price' in log.job_name.lower())
@@ -257,18 +295,42 @@ def get_scheduler_status_by_period(period: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to get scheduler status for period {period}")
 
 @router.post("/scheduler/start", response_model=SchedulerActionResponse)
-def start_scheduler(db: Session = Depends(get_db)):
+def start_scheduler(db: Session = Depends(get_db), include_diagnostics: bool = False, fix_running: bool = False):
     """스케줄러를 시작합니다."""
     try:
         logger.info("Starting scheduler")
+        diagnostics: Dict[str, Any] = {}
+
+        # 요청 시 running 로그 정리
+        if fix_running:
+            try:
+                running_jobs = db.query(SchedulerLog).filter(
+                    SchedulerLog.status == "running"
+                ).all()
+                for job in running_jobs:
+                    job.status = "completed"
+                    job.end_time = datetime.now()
+                db.commit()
+                diagnostics["fixed_running_jobs"] = len(running_jobs)
+            except Exception as e:
+                diagnostics["fix_running_error"] = str(e)
         
         # 스케줄러가 이미 실행 중인지 확인
         if scheduler and scheduler.running:
-            return SchedulerActionResponse(
+            resp = SchedulerActionResponse(
                 success=True,
                 message="Scheduler is already running",
                 job_count=len(scheduler.get_jobs())
             )
+            if include_diagnostics:
+                diagnostics.update({
+                    "is_running": True,
+                    "jobs": [job.id for job in scheduler.get_jobs()],
+                })
+                resp_dict = resp.model_dump()
+                resp_dict["diagnostics"] = diagnostics
+                return SchedulerActionResponse(**resp_dict)
+            return resp
         
         # 작업 등록 (스케줄러 시작 전에 등록)
         setup_scheduler_jobs()
@@ -283,6 +345,28 @@ def start_scheduler(db: Session = Depends(get_db)):
         if not scheduler.running:
             raise Exception("Failed to start scheduler")
         
+        # 실시간 데이터 수집기 자동 시작
+        try:
+            from ....services.tiingo_ws_consumer import get_consumer
+            from ....services.scheduler_service import get_scheduler as get_realtime_scheduler
+            
+            # Tiingo WebSocket 시작
+            consumer = get_consumer()
+            default_tickers = ["AAPL", "MSFT", "GOOGL"]
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(consumer.start(default_tickers))
+            logger.info("Tiingo WebSocket auto-started")
+            
+            # 실시간 스케줄러 시작
+            realtime_scheduler = get_realtime_scheduler()
+            loop.run_until_complete(realtime_scheduler.start())
+            logger.info("Realtime scheduler auto-started")
+            
+        except Exception as e:
+            logger.warning(f"Failed to auto-start realtime collectors: {e}")
+        
         # 로그 기록
         log = SchedulerLog(
             job_name="scheduler_start",
@@ -296,12 +380,34 @@ def start_scheduler(db: Session = Depends(get_db)):
         db.commit()
         
         job_count = len(scheduler.get_jobs()) if scheduler else 0
-        
-        return SchedulerActionResponse(
+
+        resp = SchedulerActionResponse(
             success=True,
             message="Scheduler started successfully",
             job_count=job_count
         )
+        if include_diagnostics:
+            diagnostics.update({
+                "is_running": scheduler.running if scheduler else False,
+                "jobs": [{"id": job.id, "next_run_time": job.next_run_time} for job in scheduler.get_jobs()] if scheduler else [],
+            })
+            # 최근 로그 10개 포함
+            try:
+                recent = db.query(SchedulerLog).order_by(SchedulerLog.start_time.desc()).limit(10).all()
+                diagnostics["recent_logs"] = [
+                    {
+                        "job_name": r.job_name,
+                        "status": r.status,
+                        "error": r.error_message,
+                        "created_at": r.created_at,
+                    } for r in recent
+                ]
+            except Exception as e:
+                diagnostics["logs_error"] = str(e)
+            resp_dict = resp.model_dump()
+            resp_dict["diagnostics"] = diagnostics
+            return SchedulerActionResponse(**resp_dict)
+        return resp
     except Exception as e:
         logger.error(f"Failed to start scheduler: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to start scheduler: {str(e)}")
@@ -329,6 +435,28 @@ def restart_scheduler(db: Session = Depends(get_db)):
         # 스케줄러가 실제로 실행 중인지 확인
         if not scheduler.running:
             raise Exception("Failed to start scheduler")
+        
+        # 실시간 데이터 수집기 자동 시작
+        try:
+            from ....services.tiingo_ws_consumer import get_consumer
+            from ....services.scheduler_service import get_scheduler as get_realtime_scheduler
+            
+            # Tiingo WebSocket 시작
+            consumer = get_consumer()
+            default_tickers = ["AAPL", "MSFT", "GOOGL"]
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(consumer.start(default_tickers))
+            logger.info("Tiingo WebSocket auto-started")
+            
+            # 실시간 스케줄러 시작
+            realtime_scheduler = get_realtime_scheduler()
+            loop.run_until_complete(realtime_scheduler.start())
+            logger.info("Realtime scheduler auto-started")
+            
+        except Exception as e:
+            logger.warning(f"Failed to auto-start realtime collectors: {e}")
         
         # 로그 기록
         log = SchedulerLog(
@@ -581,4 +709,82 @@ def get_scheduler_jobs_history(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Failed to get scheduler jobs history")
 
 
+
+# Realtime control endpoints
+@router.post("/realtime/start", response_model=RealtimeActionResponse)
+def realtime_start():
+    try:
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        consumer = get_tiingo_ws_consumer()
+        default_tickers = ["AAPL", "MSFT", "GOOGL"]
+        loop.run_until_complete(consumer.start(default_tickers))
+        rt_sched = get_realtime_scheduler()
+        loop.run_until_complete(rt_sched.start())
+        return RealtimeActionResponse(success=True, message="Realtime collectors started")
+    except Exception as e:
+        logger.error(f"Failed to start realtime collectors: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start realtime collectors: {str(e)}")
+
+
+@router.post("/realtime/stop", response_model=RealtimeActionResponse)
+def realtime_stop():
+    try:
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        consumer = get_tiingo_ws_consumer()
+        loop.run_until_complete(consumer.stop())
+        rt_sched = get_realtime_scheduler()
+        loop.run_until_complete(rt_sched.stop())
+        return RealtimeActionResponse(success=True, message="Realtime collectors stopped")
+    except Exception as e:
+        logger.error(f"Failed to stop realtime collectors: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to stop realtime collectors: {str(e)}")
+
+
+@router.post("/realtime/schedule", response_model=RealtimeActionResponse)
+def realtime_schedule(req: RealtimeScheduleRequest):
+    try:
+        from pytz import timezone
+        from apscheduler.triggers.cron import CronTrigger
+
+        tz = timezone(req.timezone)
+        # Cancel existing realtime schedule jobs if any
+        existing = [job for job in scheduler.get_jobs() if job.id in ("realtime_open", "realtime_close")] if scheduler else []
+        for job in existing:
+            scheduler.remove_job(job.id)
+
+        # Parse HH:MM
+        open_h, open_m = map(int, req.open_time.split(":"))
+        close_h, close_m = map(int, req.close_time.split(":"))
+
+        dow = "mon-fri" if req.weekdays_only else "*"
+
+        # Schedule start at open
+        scheduler.add_job(
+            func=lambda: realtime_start(),
+            trigger=CronTrigger(hour=open_h, minute=open_m, day_of_week=dow, timezone=tz),
+            id="realtime_open",
+            replace_existing=True,
+        )
+
+        # Schedule stop at close
+        scheduler.add_job(
+            func=lambda: realtime_stop(),
+            trigger=CronTrigger(hour=close_h, minute=close_m, day_of_week=dow, timezone=tz),
+            id="realtime_close",
+            replace_existing=True,
+        )
+
+        return RealtimeActionResponse(success=True, message="Realtime schedule set", details={
+            "timezone": req.timezone,
+            "open": req.open_time,
+            "close": req.close_time,
+            "weekdays_only": req.weekdays_only,
+        })
+    except Exception as e:
+        logger.error(f"Failed to set realtime schedule: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to set realtime schedule: {str(e)}")
 

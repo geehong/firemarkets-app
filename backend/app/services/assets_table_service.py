@@ -550,7 +550,32 @@ class AssetsTableService:
                 asset_item['data_source'] = realtime_quote.data_source
                 asset_item['last_updated'] = realtime_quote.fetched_at
             else:
-                # 실시간 데이터가 없으면 OHLCV 데이터를 기본값으로 사용
+                # 실시간 데이터가 없으면 data_source에 따라 API에서 직접 조회
+                asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
+                if asset and asset.data_source:
+                    try:
+                        if asset.data_source == 'twelvedata':
+                            quote_data = await twelvedata_client.get_quote(ticker)
+                            if quote_data:
+                                asset_item['price'] = quote_data.get('close')
+                                asset_item['change_percent_today'] = quote_data.get('percent_change')
+                                asset_item['volume_today'] = quote_data.get('volume')
+                                asset_item['data_source'] = 'twelvedata'
+                                asset_item['last_updated'] = datetime.now()
+                        elif asset.data_source == 'tiingo':
+                            from ..external_apis.tiingo_client import TiingoClient
+                            tiingo_client = TiingoClient()
+                            quote_data = await tiingo_client.get_quote(ticker)
+                            if quote_data:
+                                asset_item['price'] = quote_data.get('last')
+                                asset_item['change_percent_today'] = quote_data.get('changePercent')
+                                asset_item['volume_today'] = quote_data.get('volume')
+                                asset_item['data_source'] = 'tiingo'
+                                asset_item['last_updated'] = datetime.now()
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch real-time data for {ticker} from {asset.data_source}: {e}")
+                
+                # API 조회가 실패하거나 data_source가 없는 경우 OHLCV 데이터를 기본값으로 사용
                 if asset_item['price'] is None:
                     # OHLCV에서 최신 가격 조회
                     latest_ohlcv = db.query(OHLCVData).filter(
@@ -773,8 +798,16 @@ class AssetsTableService:
     async def _update_crypto_quotes(db: Session, tickers: List[str]) -> None:
         """암호화폐 실시간 가격 업데이트 (Binance)"""
         try:
+            # Binance API 호출을 위한 올바른 형식으로 변환
+            binance_tickers = []
+            for ticker in tickers:
+                if not ticker.endswith("USDT"):
+                    binance_tickers.append(f"{ticker}USDT")
+                else:
+                    binance_tickers.append(ticker)
+            
             # Binance에서 데이터 조회
-            prices = await binance_client.get_tickers_price(tickers)
+            prices = await binance_client.get_tickers_price(binance_tickers)
             
             for ticker, price in prices.items():
                 # DB에 저장

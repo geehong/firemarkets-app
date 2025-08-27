@@ -4,6 +4,9 @@ Twelve Data API client for real-time market prices.
 import logging
 from typing import Dict, List, Optional, Any
 import httpx
+import asyncio
+import time
+from collections import deque
 
 from .base_client import BaseAPIClient
 from ..core.config import GLOBAL_APP_CONFIGS
@@ -17,14 +20,36 @@ class TwelveDataClient(BaseAPIClient):
     def __init__(self):
         super().__init__()
         self.base_url = "https://api.twelvedata.com"
-        self.api_key = GLOBAL_APP_CONFIGS.get("TWELVEDATA_API_KEY", "")
+        # 직접 환경 변수에서 API 키를 읽도록 수정
+        import os
+        self.api_key = os.getenv("TWELVEDATA_API_KEY") or GLOBAL_APP_CONFIGS.get("TWELVEDATA_API_KEY", "")
         if not self.api_key:
             logger.warning("TWELVEDATA_API_KEY is not configured.")
+        else:
+            logger.info(f"TwelveData API key configured: {self.api_key[:8]}...")
+
+        # Simple per-process rate limiter: 8 requests per 60 seconds
+        if not hasattr(TwelveDataClient, "_rl_times"):
+            TwelveDataClient._rl_times = deque(maxlen=16)
+        self._rl_lock = asyncio.Lock()
+
+    async def _rate_limit(self):
+        # Ensure <=8 calls in last 60 seconds
+        async with self._rl_lock:
+            now = time.monotonic()
+            # Remove old entries
+            while TwelveDataClient._rl_times and (now - TwelveDataClient._rl_times[0]) > 60:
+                TwelveDataClient._rl_times.popleft()
+            if len(TwelveDataClient._rl_times) >= 8:
+                wait_for = 60 - (now - TwelveDataClient._rl_times[0])
+                await asyncio.sleep(max(0.05, wait_for))
+            TwelveDataClient._rl_times.append(time.monotonic())
 
     async def _request(self, path: str, params: Dict[str, Any]) -> Any:
         """Internal helper to perform GET requests with api key injected."""
         query = {"apikey": self.api_key, **params}
         url = f"{self.base_url}{path}"
+        await self._rate_limit()
         async with httpx.AsyncClient() as client:
             resp = await client.get(url, params=query, timeout=self.api_timeout)
             resp.raise_for_status()
@@ -76,6 +101,12 @@ class TwelveDataClient(BaseAPIClient):
                 continue
         return prices
 
+    async def get_current_prices(self, symbols: List[str], exchange: Optional[str] = None) -> Dict[str, float]:
+        """
+        Alias for get_realtime_prices to maintain consistency with other API clients.
+        """
+        return await self.get_realtime_prices(symbols, exchange)
+
     async def get_realtime_quotes(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
         """
         Fetch realtime quote (price, change, volume, etc.) for multiple symbols using /quote (batched sequentially).
@@ -92,3 +123,57 @@ class TwelveDataClient(BaseAPIClient):
                 logger.warning(f"TwelveData quote fetch failed for {symbol}: {e}")
                 continue
         return quotes
+
+    async def get_historical_prices(
+        self,
+        symbol: str,
+        interval: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        exchange: Optional[str] = None,
+        outputsize: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch historical OHLCV data using TwelveData time_series endpoint.
+
+        Args:
+            symbol: Ticker symbol (e.g., 'AAPL')
+            interval: e.g., '1day', '1h', '4h'
+            start_date: 'YYYY-MM-DD' (optional)
+            end_date: 'YYYY-MM-DD' (optional)
+            exchange: Exchange code (optional)
+            outputsize: Max number of data points (optional)
+
+        Returns:
+            List of bars in reverse-chronological order as provided by API.
+        """
+        try:
+            # Normalize interval: 1d -> 1day, 1w -> 1week
+            interval_map = {"1d": "1day", "1w": "1week"}
+            norm_interval = interval_map.get(interval, interval)
+
+            params: Dict[str, Any] = {
+                "symbol": symbol,
+                "interval": norm_interval,
+                "format": "JSON",
+            }
+            if start_date:
+                params["start_date"] = start_date
+            if end_date:
+                params["end_date"] = end_date
+            if exchange:
+                params["exchange"] = exchange
+            if outputsize:
+                params["outputsize"] = outputsize
+
+            data = await self._request("/time_series", params)
+
+            # Normalize response
+            if isinstance(data, dict) and isinstance(data.get("values"), list):
+                return data["values"]
+            if isinstance(data, list):
+                return data
+            return []
+        except Exception as e:
+            logger.error(f"TwelveData historical fetch failed for {symbol} ({interval}): {e}")
+            return []

@@ -21,6 +21,8 @@ const dataSources = [
   { value: 'binance', label: 'Binance' },
   { value: 'coinbase', label: 'Coinbase' },
   { value: 'coinmarketcap', label: 'CoinMarketCap' },
+  { value: 'twelvedata', label: 'TwelveData' },
+  { value: 'tiingo', label: 'Tiingo' },
 ]
 
 const TickerTableAgGrid = ({

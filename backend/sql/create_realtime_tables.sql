@@ -65,3 +65,6 @@ CREATE TABLE IF NOT EXISTS sparkline_data (
     UNIQUE KEY uq_ticker_asset_type_sparkline (ticker, asset_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='스파크라인 차트용 30일 가격 데이터';
 
+
+
+

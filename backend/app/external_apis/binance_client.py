@@ -94,9 +94,11 @@ class BinanceClient(BaseAPIClient):
         try:
             async with httpx.AsyncClient() as client:
                 if symbols:
-                    # Binance API는 symbols를 JSON 배열 형식의 문자열로 받습니다.
+                    # 심볼 리스트를 올바른 JSON 배열 형식으로 변환
+                    # 각 심볼을 개별적으로 처리하여 올바른 형식 보장
                     symbols_json = '["' + '","'.join(symbols) + '"]'
                     url = f"{self.base_url}/ticker/price?symbols={symbols_json}"
+                    logger.debug(f"Binance API URL: {url}")
                 else:
                     # symbols가 None이면 모든 ticker 조회
                     url = f"{self.base_url}/ticker/price"

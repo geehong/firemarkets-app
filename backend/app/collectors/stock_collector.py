@@ -11,6 +11,7 @@ import backoff
 from sqlalchemy.orm import Session
 
 from .base_collector import BaseCollector
+from .logging_helper import CollectorLoggingHelper, BatchProcessor
 from ..core.config import GLOBAL_APP_CONFIGS
 from ..models.asset import Asset
 from ..utils.retry import retry_with_backoff, classify_api_error, TransientAPIError, PermanentAPIError
@@ -28,6 +29,9 @@ class StockCollector(BaseCollector):
         from ..core.config import GLOBAL_APP_CONFIGS
         self.api_timeout = GLOBAL_APP_CONFIGS.get("API_REQUEST_TIMEOUT_SECONDS", 30)
         self.max_retries = GLOBAL_APP_CONFIGS.get("MAX_API_RETRY_ATTEMPTS", 3)
+        
+        # 로깅 헬퍼 초기화
+        self.logging_helper = CollectorLoggingHelper("StockCollector", self)
     
     async def collect_with_settings(self) -> Dict[str, Any]:
         """Collect stock data with individual asset settings"""
@@ -46,11 +50,21 @@ class StockCollector(BaseCollector):
             ).all()
             
             if not assets:
+                self.logging_helper.log_assets_filtered(0, {"collect_assets_info": True})
                 await self.safe_emit('scheduler_log', {
                     'message': "주식 데이터 수집이 활성화된 자산이 없습니다.", 
                     'type': 'warning'
                 })
                 return {"message": "No assets with stock collection enabled", "processed": 0}
+            
+            # 수집 시작 로그
+            self.logging_helper.start_collection("stock data", len(assets), {
+                "collection_type": "settings_based",
+                "filter_criteria": {"collect_assets_info": True}
+            })
+            
+            # 자산 필터링 결과 로그
+            self.logging_helper.log_assets_filtered(len(assets), {"collect_assets_info": True})
             
             await self.safe_emit('scheduler_log', {
                 'message': f"주식 데이터 수집 시작: {len(assets)}개 자산 (설정 기반)", 
@@ -89,43 +103,38 @@ class StockCollector(BaseCollector):
             ).all()
             
             if not stock_assets:
+                self.logging_helper.log_assets_filtered(0, {"asset_type": "stock"})
                 return {"message": "No active stock assets found", "processed": 0}
+            
+            # 자산 필터링 결과 로그
+            self.logging_helper.log_assets_filtered(len(stock_assets), {
+                "asset_type": "stock",
+                "collection_types": ["assets_info", "estimates", "financials"]
+            })
             
             self.log_progress(f"Starting stock data collection for {len(stock_assets)} stocks")
             
-            # Process stocks in batches
-            batch_size = 3
-            total_processed = 0
-            total_updated = 0
+            # 배치 프로세서를 사용한 처리
+            batch_processor = BatchProcessor(self.logging_helper, batch_size=3)
             
-            for i in range(0, len(stock_assets), batch_size):
-                batch = stock_assets[i:i + batch_size]
-                
-                # Process batch concurrently with semaphore control
-                async def process_stock_with_semaphore(asset):
-                    return await self.process_with_semaphore(
-                        self._fetch_and_store_stock_data_for_asset(asset)
-                    )
-                
-                tasks = [process_stock_with_semaphore(asset) for asset in batch]
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                
-                for result in results:
-                    if isinstance(result, Exception):
-                        self.log_progress(f"Stock processing error: {result}", "error")
-                    else:
-                        total_processed += 1
-                        if result.get("success", False):
-                            total_updated += 1
-                
-                # Rate limiting between batches
-                if i + batch_size < len(stock_assets):
-                    await asyncio.sleep(2)
+            async def process_stock_asset(asset):
+                return await self.process_with_semaphore(
+                    self._fetch_and_store_stock_data_for_asset(asset)
+                )
+            
+            result = await batch_processor.process_assets(stock_assets, process_stock_asset)
+            
+            # 수집 완료 로그
+            self.logging_helper.log_collection_completion(
+                result["processed_assets"], 
+                result["total_added_records"],
+                {"collection_type": "stock_data"}
+            )
             
             return {
-                "processed_stocks": total_processed,
-                "updated_stocks": total_updated,
-                "message": f"Successfully processed {total_processed} stocks, updated {total_updated}"
+                "processed_stocks": result["processed_assets"],
+                "updated_stocks": result["total_added_records"],
+                "message": f"Successfully processed {result['processed_assets']} stocks, updated {result['total_added_records']}"
             }
             
         except Exception as e:
@@ -223,32 +232,211 @@ class StockCollector(BaseCollector):
             self.log_progress(f"FMP quote fetch failed for {ticker}: {e}", "error")
             return None
     
+    async def _fetch_twelvedata_profile(self, client: httpx.AsyncClient, ticker: str) -> Optional[dict]:
+        """Fetch company profile from TwelveData"""
+        try:
+            from ..external_apis.twelvedata_client import TwelveDataClient
+            
+            twelvedata_client = TwelveDataClient()
+            
+            # TwelveData API에서 회사 정보 조회
+            profile_data = await twelvedata_client.get_metadata(ticker)
+            
+            if profile_data:
+                return {
+                    'company_name': profile_data.get('name'),
+                    'description': profile_data.get('description'),
+                    'sector': profile_data.get('sector'),
+                    'industry': profile_data.get('industry'),
+                    'country': profile_data.get('country'),
+                    'exchange': profile_data.get('exchange'),
+                    'currency': profile_data.get('currency'),
+                    'market_cap': profile_data.get('market_cap'),
+                    'pe_ratio': profile_data.get('pe_ratio'),
+                    'beta': profile_data.get('beta')
+                }
+            
+            return None
+            
+        except Exception as e:
+            self.log_progress(f"TwelveData profile fetch failed for {ticker}: {e}", "error")
+            return None
+
+    async def _fetch_twelvedata_quote(self, client: httpx.AsyncClient, ticker: str) -> Optional[dict]:
+        """Fetch real-time quote from TwelveData"""
+        try:
+            from ..external_apis.twelvedata_client import TwelveDataClient
+            
+            twelvedata_client = TwelveDataClient()
+            
+            # TwelveData API에서 실시간 가격 조회
+            quote_data = await twelvedata_client.get_quote(ticker)
+            
+            if quote_data:
+                return {
+                    'price': quote_data.get('close'),
+                    'change': quote_data.get('change'),
+                    'change_percent': quote_data.get('percent_change'),
+                    'volume': quote_data.get('volume'),
+                    'high': quote_data.get('high'),
+                    'low': quote_data.get('low'),
+                    'open': quote_data.get('open'),
+                    'previous_close': quote_data.get('previous_close')
+                }
+            
+            return None
+            
+        except Exception as e:
+            self.log_progress(f"TwelveData quote fetch failed for {ticker}: {e}", "error")
+            return None
+
+    async def _fetch_tiingo_profile(self, client: httpx.AsyncClient, ticker: str) -> Optional[dict]:
+        """Fetch company profile from Tiingo"""
+        try:
+            from ..external_apis.tiingo_client import TiingoClient
+            
+            tiingo_client = TiingoClient()
+            
+            # Tiingo API에서 회사 정보 조회
+            metadata = await tiingo_client.get_metadata(ticker)
+            
+            if metadata:
+                return {
+                    'company_name': metadata.get('name'),
+                    'description': metadata.get('description'),
+                    'sector': metadata.get('sector'),
+                    'industry': metadata.get('industry'),
+                    'country': metadata.get('country'),
+                    'exchange': metadata.get('exchange'),
+                    'currency': metadata.get('currency'),
+                    'market_cap': metadata.get('market_cap'),
+                    'pe_ratio': metadata.get('pe_ratio'),
+                    'beta': metadata.get('beta')
+                }
+            
+            return None
+            
+        except Exception as e:
+            self.log_progress(f"Tiingo profile fetch failed for {ticker}: {e}", "error")
+            return None
+
+    async def _fetch_tiingo_quote(self, client: httpx.AsyncClient, ticker: str) -> Optional[dict]:
+        """Fetch real-time quote from Tiingo"""
+        try:
+            from ..external_apis.tiingo_client import TiingoClient
+            
+            tiingo_client = TiingoClient()
+            
+            # Tiingo API에서 실시간 가격 조회
+            quote_data = await tiingo_client.get_quote(ticker)
+            
+            if quote_data:
+                return {
+                    'price': quote_data.get('last'),
+                    'change': quote_data.get('change'),
+                    'change_percent': quote_data.get('changePercent'),
+                    'volume': quote_data.get('volume'),
+                    'high': quote_data.get('high'),
+                    'low': quote_data.get('low'),
+                    'open': quote_data.get('open'),
+                    'previous_close': quote_data.get('prevClose')
+                }
+            
+            return None
+            
+        except Exception as e:
+            self.log_progress(f"Tiingo quote fetch failed for {ticker}: {e}", "error")
+            return None
+
     async def _fetch_and_store_stock_data_for_asset(self, asset: Asset) -> Dict[str, Any]:
         """Fetch and store comprehensive stock data for a single asset"""
         try:
             self.log_progress(f"[{asset.ticker}] Starting comprehensive stock data collection")
             
-            # Get API keys
+            # Get API keys and determine data source
             from ..core.config import GLOBAL_APP_CONFIGS
             fmp_api_key = GLOBAL_APP_CONFIGS.get("FMP_API_KEY")
             av_api_key = GLOBAL_APP_CONFIGS.get("ALPHA_VANTAGE_API_KEY_1")
+            twelvedata_api_key = GLOBAL_APP_CONFIGS.get("TWELVEDATA_API_KEY")
+            tiingo_api_key = GLOBAL_APP_CONFIGS.get("TIINGO_API_KEY")
             
-            if not fmp_api_key and not av_api_key:
-                self.log_progress(f"[{asset.ticker}] No API keys configured", "error")
-                return {"success": False, "error": "No API keys configured"}
+            # Determine which API to use based on asset's data_source
+            data_source = asset.data_source or 'fmp'
             
-            # Fetch data from all sources concurrently
+            if data_source == 'fmp' and not fmp_api_key:
+                self.log_progress(f"[{asset.ticker}] FMP API key not configured", "error")
+                return {"success": False, "error": "FMP API key not configured"}
+            elif data_source == 'alpha_vantage' and not av_api_key:
+                self.log_progress(f"[{asset.ticker}] Alpha Vantage API key not configured", "error")
+                return {"success": False, "error": "Alpha Vantage API key not configured"}
+            elif data_source == 'twelvedata' and not twelvedata_api_key:
+                self.log_progress(f"[{asset.ticker}] TwelveData API key not configured", "error")
+                return {"success": False, "error": "TwelveData API key not configured"}
+            elif data_source == 'tiingo' and not tiingo_api_key:
+                self.log_progress(f"[{asset.ticker}] Tiingo API key not configured", "error")
+                return {"success": False, "error": "Tiingo API key not configured"}
+            
+            # Fetch data based on data_source with fallback strategy
             tasks = []
+            fallback_sources = []
             
-            if fmp_api_key:
+            # Fallback 전략 정의
+            if data_source == 'fmp':
+                fallback_sources = ['alpha_vantage', 'twelvedata', 'tiingo']
+            elif data_source == 'alpha_vantage':
+                fallback_sources = ['fmp', 'twelvedata', 'tiingo']
+            elif data_source == 'twelvedata':
+                fallback_sources = ['fmp', 'alpha_vantage', 'tiingo']
+            elif data_source == 'tiingo':
+                fallback_sources = ['fmp', 'alpha_vantage', 'twelvedata']
+            else:
+                fallback_sources = ['fmp', 'alpha_vantage', 'twelvedata', 'tiingo']
+            
+            # Primary source 시도
+            if data_source == 'fmp' and fmp_api_key:
                 tasks.extend([
                     self._fetch_fmp_profile(httpx.AsyncClient(), asset.ticker, fmp_api_key),
                     self._fetch_fmp_estimates(httpx.AsyncClient(), asset.ticker, fmp_api_key),
                     self._fetch_fmp_quote(httpx.AsyncClient(), asset.ticker, fmp_api_key)
                 ])
-            
-            if av_api_key:
+            elif data_source == 'alpha_vantage' and av_api_key:
                 tasks.append(self._fetch_alpha_vantage_overview(httpx.AsyncClient(), asset.ticker, av_api_key))
+            elif data_source == 'twelvedata' and twelvedata_api_key:
+                tasks.extend([
+                    self._fetch_twelvedata_profile(httpx.AsyncClient(), asset.ticker),
+                    self._fetch_twelvedata_quote(httpx.AsyncClient(), asset.ticker)
+                ])
+            elif data_source == 'tiingo' and tiingo_api_key:
+                tasks.extend([
+                    self._fetch_tiingo_profile(httpx.AsyncClient(), asset.ticker),
+                    self._fetch_tiingo_quote(httpx.AsyncClient(), asset.ticker)
+                ])
+            
+            # Primary source가 실패하면 fallback 시도
+            if not tasks:
+                for fallback_source in fallback_sources:
+                    if fallback_source == 'fmp' and fmp_api_key:
+                        tasks.extend([
+                            self._fetch_fmp_profile(httpx.AsyncClient(), asset.ticker, fmp_api_key),
+                            self._fetch_fmp_estimates(httpx.AsyncClient(), asset.ticker, fmp_api_key),
+                            self._fetch_fmp_quote(httpx.AsyncClient(), asset.ticker, fmp_api_key)
+                        ])
+                        break
+                    elif fallback_source == 'alpha_vantage' and av_api_key:
+                        tasks.append(self._fetch_alpha_vantage_overview(httpx.AsyncClient(), asset.ticker, av_api_key))
+                        break
+                    elif fallback_source == 'twelvedata' and twelvedata_api_key:
+                        tasks.extend([
+                            self._fetch_twelvedata_profile(httpx.AsyncClient(), asset.ticker),
+                            self._fetch_twelvedata_quote(httpx.AsyncClient(), asset.ticker)
+                        ])
+                        break
+                    elif fallback_source == 'tiingo' and tiingo_api_key:
+                        tasks.extend([
+                            self._fetch_tiingo_profile(httpx.AsyncClient(), asset.ticker),
+                            self._fetch_tiingo_quote(httpx.AsyncClient(), asset.ticker)
+                        ])
+                        break
             
             results = await asyncio.gather(*tasks, return_exceptions=True)
             

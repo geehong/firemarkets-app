@@ -14,6 +14,7 @@ import time
 import re
 
 from .base_collector import BaseCollector
+from .logging_helper import CollectorLoggingHelper, BatchProcessor
 from ..models.world_assets import WorldAssetsRanking, BondMarketData, ScrapingLogs
 from ..models.asset import Asset
 from ..utils.retry import retry_with_backoff, classify_api_error, TransientAPIError, PermanentAPIError
@@ -48,10 +49,16 @@ class WorldAssetsCollector(BaseCollector):
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
+        
+        # 로깅 헬퍼 초기화
+        self.logging_helper = CollectorLoggingHelper("WorldAssetsCollector", self)
 
     async def collect_with_settings(self) -> Dict[str, Any]:
         """Collect world assets data with individual asset settings"""
         try:
+            # 수집 시작 로그
+            self.logging_helper.start_collection("world assets data", 0, collection_type="global", description="World assets ranking and bond market data")
+            
             # World assets collection은 전역적으로 실행 (개별 자산 설정 없음)
             # 하지만 향후 개별 설정이 필요할 수 있으므로 구조는 유지
             await self.safe_emit('scheduler_log', {
@@ -64,6 +71,13 @@ class WorldAssetsCollector(BaseCollector):
             # BaseCollector에서 사용하는 키로 변환
             if result.get('success'):
                 result['total_added_records'] = result.get('assets_updated', 0) + result.get('bonds_updated', 0)
+                
+                # 수집 완료 로그
+                self.logging_helper.log_collection_completion(
+                    result.get('assets_updated', 0) + result.get('bonds_updated', 0),
+                    result.get('assets_updated', 0) + result.get('bonds_updated', 0),
+                    {"assets_updated": result.get('assets_updated', 0), "bonds_updated": result.get('bonds_updated', 0)}
+                )
             else:
                 result['total_added_records'] = 0
                 
@@ -85,12 +99,41 @@ class WorldAssetsCollector(BaseCollector):
             scraping_log = self._create_scraping_log("world_assets_ranking", "running")
             
             # 1. 자산 데이터 수집
+            self.logging_helper.log_task_progress("Scraping companies marketcap data", {
+                "task": "scraping_companies_marketcap",
+                "url": self.companies_marketcap_url
+            })
             assets_data = await self.scrape_companies_marketcap()
             
+            # 자산 데이터 수집 완료 로그
+            self.logging_helper.log_task_progress("Companies marketcap scraping completed", {
+                "assets_scraped": len(assets_data),
+                "status": "scraping_completed"
+            })
+            
             # 2. 채권 시장 데이터 수집
+            self.logging_helper.log_task_progress("Fetching BIS bond market data", {
+                "task": "fetching_bis_data",
+                "url": self.bis_url
+            })
             bond_data = await self.get_bis_bond_data()
             
+            if bond_data:
+                self.logging_helper.log_task_progress("BIS bond data fetched successfully", {
+                    "bond_data_available": True,
+                    "market_size_usd": bond_data.get('market_size_usd'),
+                    "quarter": bond_data.get('quarter')
+                })
+            else:
+                self.logging_helper.log_task_progress("BIS bond data fetch failed", {
+                    "bond_data_available": False
+                })
+            
             # 3. 데이터베이스 업데이트
+            self.logging_helper.log_task_progress("Updating assets database", {
+                "task": "database_update",
+                "assets_to_update": len(assets_data)
+            })
             assets_updated = self._update_assets_database(assets_data)
             
             if bond_data:

@@ -1,8 +1,8 @@
 {
   "data_collection": {
-    "interval_minutes": 1440,
-    "interval_daily": 30,
-    "enable_immediate_execution": false
+    "interval_minutes": 60,
+    "interval_daily": 1,
+    "enable_immediate_execution": true
   },
       "onchain_collection": {
         "interval_hours": 24

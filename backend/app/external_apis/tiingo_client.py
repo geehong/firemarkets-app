@@ -139,7 +139,13 @@ class TiingoClient(BaseAPIClient):
         
         return results
 
-    async def get_historical_prices(self, symbol: str, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+    async def get_historical_prices(
+        self,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+        interval: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         """
         Get historical price data for a symbol.
         
@@ -152,10 +158,14 @@ class TiingoClient(BaseAPIClient):
             List of historical price data
         """
         try:
-            data = await self._request(f"/tiingo/daily/{symbol.lower()}/prices", {
-                "startDate": start_date,
-                "endDate": end_date
-            })
+            # Tiingo supports daily candles at /tiingo/daily/{ticker}/prices
+            # Intraday candles are via IEX and require different endpoint/plan. For now, ignore interval.
+            params: Dict[str, Any] = {}
+            if start_date:
+                params["startDate"] = start_date
+            if end_date:
+                params["endDate"] = end_date
+            data = await self._request(f"/tiingo/daily/{symbol.lower()}/prices", params)
             
             return data if isinstance(data, list) else []
             

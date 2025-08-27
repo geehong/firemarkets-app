@@ -35,6 +35,7 @@ async def get_realtime_crypto_prices(symbols: List[str]) -> Dict[str, Dict[str, 
     binance_tickers = [f"{symbol.upper()}USDT" for symbol in symbols]
     
     try:
+        # Binance API 호출 시 올바른 형식으로 전달
         price_data = await binance_client.get_tickers_price(symbols=binance_tickers)
         
         # 결과를 다시 원래 심볼 키로 매핑 {BTC: price}
