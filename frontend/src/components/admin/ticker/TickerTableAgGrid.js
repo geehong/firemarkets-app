@@ -777,13 +777,13 @@ const TickerTableAgGrid = ({
 
   // 현재 페이지 표시 중인 티커들 가져오기
   const getVisiblePageTickers = () => {
-    if (!gridApi || !gridApi.getDisplayedRowCount || !gridApi.getDisplayedRowAtIndex) {
+    if (!gridApi || !gridApi.getRenderedNodes) {
       return []
     }
-    const count = gridApi.getDisplayedRowCount()
+    // getRenderedNodes()를 사용하여 현재 렌더링된 노드들만 가져옴
+    const renderedNodes = gridApi.getRenderedNodes()
     const rows = []
-    for (let i = 0; i < count; i += 1) {
-      const node = gridApi.getDisplayedRowAtIndex(i)
+    for (const node of renderedNodes) {
       if (node && node.data) {
         rows.push(node.data)
       }

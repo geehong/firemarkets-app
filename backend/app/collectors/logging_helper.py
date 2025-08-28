@@ -63,8 +63,9 @@ class CollectorLoggingHelper:
     
     def log_asset_processing_start(self, asset, source: str = None):
         """개별 자산 처리 시작 로그"""
-        ticker = asset.ticker if hasattr(asset, 'ticker') else str(asset)
-        asset_type = asset.asset_type.type_name if hasattr(asset, 'asset_type') else 'unknown'
+        # Avoid touching relationship fields that may trigger lazy loads
+        ticker = getattr(asset, 'ticker', None) or str(asset)
+        asset_type = 'unknown'
         
         self.base_collector.log_task_progress(f"Processing asset: {ticker}", {
             "ticker": ticker,

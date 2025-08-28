@@ -3,9 +3,9 @@ import { useReactTable, getCoreRowModel, getFilteredRowModel, getPaginationRowMo
 import { CTable, CTableHead, CTableRow, CTableHeaderCell, CTableBody, CTableDataCell, CFormCheck, CFormSelect, CButton, CSpinner, CPagination, CPaginationItem, CCard, CCardBody, CBadge } from '@coreui/react'
 import CIcon from '@coreui/icons-react'
 import { cilMediaPlay, cilTrash, cilSave, cilCheckCircle } from '@coreui/icons'
-import { useGlobalTickerData } from '../../../hooks/useGlobalTickerData'
-import useAssetTypes from '../../../hooks/useAssetTypes'
-import { useTickerMutations } from '../../../hooks/useTickerMutations'
+import { useGlobalTickerData } from '../../../../hooks/useGlobalTickerData'
+import useAssetTypes from '../../../../hooks/useAssetTypes'
+import { useTickerMutations } from '../../../../hooks/useTickerMutations'
 
 // 데이터 소스 옵션
 const dataSources = [

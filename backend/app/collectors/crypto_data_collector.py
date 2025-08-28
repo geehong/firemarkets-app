@@ -9,7 +9,6 @@ from datetime import datetime, date
 from sqlalchemy.orm import Session
 
 from .base_collector import BaseCollector
-from .logging_helper import CollectorLoggingHelper, BatchProcessor
 from ..models.asset import Asset, AssetType
 from ..models.crypto import CryptoData
 from ..core.config import GLOBAL_APP_CONFIGS
@@ -25,9 +24,6 @@ class CryptoDataCollector(BaseCollector):
     def __init__(self):
         super().__init__()
         self.collection_type = "crypto_data"
-        
-        # 로깅 헬퍼 초기화
-        self.logging_helper = CollectorLoggingHelper("CryptoDataCollector", self)
     
     async def collect_with_settings(self) -> Dict[str, Any]:
         """Collect crypto data with individual asset settings"""
@@ -46,21 +42,11 @@ class CryptoDataCollector(BaseCollector):
             ).all()
             
             if not assets:
-                self.logging_helper.log_assets_filtered(0, {"collect_crypto_data": True})
                 await self.safe_emit('scheduler_log', {
                     'message': "크립토 데이터 수집이 활성화된 자산이 없습니다.", 
                     'type': 'warning'
                 })
                 return {"message": "No assets with crypto collection enabled", "processed": 0}
-            
-            # 수집 시작 로그
-            self.logging_helper.start_collection("crypto data", len(assets), {
-                "collection_type": "settings_based",
-                "filter_criteria": {"collect_crypto_data": True}
-            })
-            
-            # 자산 필터링 결과 로그
-            self.logging_helper.log_assets_filtered(len(assets), {"collect_crypto_data": True})
             
             await self.safe_emit('scheduler_log', {
                 'message': f"크립토 데이터 수집 시작: {len(assets)}개 자산 (설정 기반)", 
@@ -86,40 +72,59 @@ class CryptoDataCollector(BaseCollector):
             ).all()
             
             if not crypto_assets:
-                self.logging_helper.log_assets_filtered(0, {"asset_type": "Crypto"})
                 logger.info("No active cryptocurrency assets found")
                 return {"success": True, "message": "No crypto assets to collect", "processed": 0}
             
-            # 자산 필터링 결과 로그
-            self.logging_helper.log_assets_filtered(len(crypto_assets), {
-                "asset_type": "Crypto",
-                "collection_types": ["crypto_data"]
-            })
+            total_processed = 0
+            total_updated = 0
+            errors = []
             
-            # 배치 프로세서를 사용한 처리
-            batch_processor = BatchProcessor(self.logging_helper, batch_size=3)
+            async with httpx.AsyncClient() as client:
+                # 배치 처리로 개선
+                batch_size = 3
+                for i in range(0, len(crypto_assets), batch_size):
+                    batch = crypto_assets[i:i + batch_size]
+                    
+                    async def process_crypto_with_semaphore(asset):
+                        return await self.process_with_semaphore(
+                            self._collect_crypto_data_for_asset(client, asset, db)
+                        )
+                    
+                    tasks = [process_crypto_with_semaphore(asset) for asset in batch]
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+                    
+                    for j, result in enumerate(results):
+                        asset = batch[j]
+                        if isinstance(result, Exception):
+                            error_msg = f"Error processing {asset.ticker}: {str(result)}"
+                            logger.error(error_msg)
+                            errors.append(error_msg)
+                            total_processed += 1
+                        else:
+                            if result["success"]:
+                                total_updated += result["updated_count"]
+                            total_processed += 1
+                            
+                            # Log progress
+                            self.log_progress(
+                                f"Processed {asset.ticker}: {result['message']}", 
+                                "info" if result["success"] else "warning"
+                            )
+                    
+                    # 배치 간 지연
+                    if i + batch_size < len(crypto_assets):
+                        await asyncio.sleep(1)
             
-            async def process_crypto_asset(asset):
-                return await self.process_with_semaphore(
-                    self._collect_crypto_data_for_asset(httpx.AsyncClient(), asset, db)
-                )
-            
-            result = await batch_processor.process_assets(crypto_assets, process_crypto_asset)
-            
-            # 수집 완료 로그
-            self.logging_helper.log_collection_completion(
-                result["processed_assets"], 
-                result["total_added_records"],
-                {"collection_type": "crypto_data"}
-            )
-            
-            success_message = f"Crypto data collection completed. Processed: {result['processed_assets']}, Updated: {result['total_added_records']}"
+            success_message = f"Crypto data collection completed. Processed: {total_processed}, Updated: {total_updated}"
+            if errors:
+                success_message += f", Errors: {len(errors)}"
             
             return {
                 "success": True,
                 "message": success_message,
-                "processed": result["processed_assets"],
-                "updated": result["total_added_records"]
+                "processed": total_processed,
+                "updated": total_updated,
+                "errors": errors
             }
             
         except Exception as e:

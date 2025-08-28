@@ -12,7 +12,6 @@ import backoff
 from sqlalchemy.orm import Session
 
 from .base_collector import BaseCollector
-from .logging_helper import CollectorLoggingHelper, BatchProcessor
 from ..core.config import GLOBAL_APP_CONFIGS
 from ..models.asset import Asset
 from ..models.crypto import CryptoMetric
@@ -50,10 +49,7 @@ class OnchainCollector(BaseCollector):
         # API 우선순위 설정 - Thermo Cap은 bitcoin-data에서만 제공되므로 bitcoin-data 우선
         self.api_priority = GLOBAL_APP_CONFIGS.get("ONCHAIN_API_PRIORITY", "bitcoin-data")
         
-        # 로깅 헬퍼 초기화
-        self.logging_helper = CollectorLoggingHelper("OnchainCollector", self)
-        
-        # 견고한 로깅을 위한 변수들 (기존 호환성 유지)
+        # 견고한 로깅을 위한 변수들
         self.current_scheduler_log_id = None
         self.current_task = None
         self.strategy_used = None
@@ -219,22 +215,11 @@ class OnchainCollector(BaseCollector):
             ).all()
             
             if not assets:
-                self.logging_helper.log_assets_filtered(0, {"collect_onchain": True})
                 await self.safe_emit('scheduler_log', {
                     'message': "온체인 데이터 수집이 활성화된 자산이 없습니다.", 
                     'type': 'warning'
                 })
                 return {"message": "No assets with onchain collection enabled", "processed": 0}
-            
-            # 수집 시작 로그
-            self.logging_helper.start_collection("onchain data", len(assets), {
-                "collection_type": "settings_based",
-                "filter_criteria": {"collect_onchain": True},
-                "bitcoin_asset_id": self.bitcoin_asset_id
-            })
-            
-            # 자산 필터링 결과 로그
-            self.logging_helper.log_assets_filtered(len(assets), {"collect_onchain": True})
             
             await self.safe_emit('scheduler_log', {
                 'message': f"온체인 데이터 수집 시작: {len(assets)}개 자산 (설정 기반)", 
@@ -250,17 +235,11 @@ class OnchainCollector(BaseCollector):
     async def _collect_data(self) -> Dict[str, Any]:
         """Collect onchain data for Bitcoin with robust logging"""
         try:
-            # 스케줄러 로그 생성 (기존 호환성 유지)
+            # 스케줄러 로그 생성
             self.current_scheduler_log_id = self._create_scheduler_log()
             if not self.current_scheduler_log_id:
                 self.log_progress("Failed to create scheduler log entry", "error")
                 return {"error": "Failed to create scheduler log", "processed": 0}
-            
-            # 로깅 헬퍼를 사용한 초기화 로그
-            self.logging_helper.log_task_progress("Starting onchain data collection", {
-                "bitcoin_asset_id": self.bitcoin_asset_id,
-                "task": "initializing_collection"
-            })
             
             self._log_with_scheduler_update(
                 f"Starting onchain data collection for Bitcoin (Asset ID: {self.bitcoin_asset_id})",
@@ -288,14 +267,6 @@ class OnchainCollector(BaseCollector):
                 'etf-btc-flow'
             ]
             
-            # 메트릭 설정 로그
-            self.logging_helper.log_configuration_loaded({
-                "metrics_count": len(metrics),
-                "metrics": metrics,
-                "batch_size": 1,
-                "api_delay_seconds": GLOBAL_APP_CONFIGS.get("ONCHAIN_API_DELAY_SECONDS", 480)
-            })
-            
             total_fetched = 0
             successful_metrics = []
             
@@ -305,15 +276,6 @@ class OnchainCollector(BaseCollector):
                 for i in range(0, len(metrics), batch_size):
                     metric_batch = metrics[i:i + batch_size]
                     
-                    # 배치 처리 시작 로그
-                    self.logging_helper.start_batch_processing(
-                        (i // batch_size) + 1, 
-                        (len(metrics) + batch_size - 1) // batch_size, 
-                        batch_size, 
-                        metric_batch,
-                        {"metric_type": "onchain"}
-                    )
-                    
                     async def process_metric_with_semaphore(metric_name):
                         return await self.process_with_semaphore(
                             self._process_single_metric(client, metric_name)
@@ -322,31 +284,13 @@ class OnchainCollector(BaseCollector):
                     tasks = [process_metric_with_semaphore(metric_name) for metric_name in metric_batch]
                     results = await asyncio.gather(*tasks, return_exceptions=True)
                     
-                    batch_processed = 0
-                    batch_added = 0
-                    
                     for j, result in enumerate(results):
                         metric_name = metric_batch[j]
                         if isinstance(result, Exception):
                             self._handle_collection_error(result, metric_name, "in batch processing")
-                            # 로깅 헬퍼를 사용한 에러 로그
-                            self.logging_helper.log_asset_processing_failure(
-                                type('Metric', (), {'ticker': metric_name})(), 
-                                result
-                            )
                         elif result and result > 0:
                             total_fetched += result
                             successful_metrics.append(metric_name)
-                            batch_processed += 1
-                            batch_added += result
-                            
-                            # 로깅 헬퍼를 사용한 성공 로그
-                            self.logging_helper.log_asset_processing_success(
-                                type('Metric', (), {'ticker': metric_name})(),
-                                "onchain_api",
-                                result
-                            )
-                            
                             self._log_with_scheduler_update(
                                 f"{metric_name}: Added {result} records",
                                 current_task=f"Processing {metric_name}",
@@ -361,13 +305,6 @@ class OnchainCollector(BaseCollector):
                                 current_task=f"Processing {metric_name}"
                             )
                     
-                    # 배치 완료 로그
-                    self.logging_helper.log_batch_completion(
-                        (i // batch_size) + 1,
-                        batch_processed,
-                        batch_added
-                    )
-                    
                     # API 제한 고려한 긴 지연
                     if i + batch_size < len(metrics):
                         delay_seconds = GLOBAL_APP_CONFIGS.get("ONCHAIN_API_DELAY_SECONDS", 480)  # 기본 8분
@@ -381,13 +318,6 @@ class OnchainCollector(BaseCollector):
                 await self._update_asset_collection_time()
             
             if total_fetched > 0:
-                # 수집 완료 로그
-                self.logging_helper.log_collection_completion(
-                    len(successful_metrics),
-                    total_fetched,
-                    {"successful_metrics": successful_metrics, "collection_type": "onchain_data"}
-                )
-                
                 self._log_with_scheduler_update(
                     f"Onchain data collection completed: {total_fetched} records from {len(successful_metrics)} metrics",
                     current_task="Collection completed"

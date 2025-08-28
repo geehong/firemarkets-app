@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.security import security_manager
 # from app.models.user import User
 # from app.models.session import TokenBlacklist
-from app.database import get_db
+from app.core.database import get_db
 from datetime import datetime
 
 reusable_oauth2 = HTTPBearer(auto_error=False)

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { CCard, CCardBody, CCardHeader, CCol, CRow } from '@coreui/react'
-import TickerTableReactTable from '../../components/admin/ticker/TickerTableReactTable'
+import TickerTableReactTable from '../../components/admin/ticker/temp/TickerTableReactTable'
 
 const Test5 = () => {
   const [selectedAssetType, setSelectedAssetType] = useState('Stocks')

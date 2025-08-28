@@ -1,7 +1,7 @@
 import React from 'react'
 import { CNav, CNavItem, CNavLink } from '@coreui/react'
 import CIcon from '@coreui/icons-react'
-import { CATEGORY_ICONS } from '../../../constants/tickerSettings'
+import { CATEGORY_ICONS } from '../../../../constants/tickerSettings'
 
 const TickerTabs = ({ categories, activeTab, onTabChange }) => {
   return (

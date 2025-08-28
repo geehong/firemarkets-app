@@ -11,7 +11,6 @@ import backoff
 from sqlalchemy.orm import Session
 
 from .base_collector import BaseCollector
-from .logging_helper import CollectorLoggingHelper, BatchProcessor
 from ..core.config import GLOBAL_APP_CONFIGS
 from ..models.asset import Asset
 from ..models.etf import EtfInfo
@@ -27,9 +26,6 @@ class ETFCollector(BaseCollector):
         super().__init__(db)
         self.api_timeout = GLOBAL_APP_CONFIGS.get("API_REQUEST_TIMEOUT_SECONDS", 30)
         self.max_retries = GLOBAL_APP_CONFIGS.get("MAX_API_RETRY_ATTEMPTS", 3)
-        
-        # 로깅 헬퍼 초기화
-        self.logging_helper = CollectorLoggingHelper("ETFCollector", self)
     
     async def collect_with_settings(self) -> Dict[str, Any]:
         """Collect ETF data with individual asset settings"""
@@ -48,21 +44,11 @@ class ETFCollector(BaseCollector):
             ).all()
             
             if not assets:
-                self.logging_helper.log_assets_filtered(0, {"collect_assets_info": True})
                 await self.safe_emit('scheduler_log', {
                     'message': "ETF 데이터 수집이 활성화된 자산이 없습니다.", 
                     'type': 'warning'
                 })
                 return {"message": "No assets with ETF collection enabled", "processed": 0}
-            
-            # 수집 시작 로그
-            self.logging_helper.start_collection("ETF data", len(assets), {
-                "collection_type": "settings_based",
-                "filter_criteria": {"collect_assets_info": True}
-            })
-            
-            # 자산 필터링 결과 로그
-            self.logging_helper.log_assets_filtered(len(assets), {"collect_assets_info": True})
             
             await self.safe_emit('scheduler_log', {
                 'message': f"ETF 데이터 수집 시작: {len(assets)}개 자산 (설정 기반)", 
@@ -96,38 +82,43 @@ class ETFCollector(BaseCollector):
             ).all()
             
             if not etf_assets:
-                self.logging_helper.log_assets_filtered(0, {"asset_type": "ETF"})
                 return {"message": "No active ETF assets found", "processed": 0}
-            
-            # 자산 필터링 결과 로그
-            self.logging_helper.log_assets_filtered(len(etf_assets), {
-                "asset_type": "ETF",
-                "collection_types": ["assets_info"]
-            })
             
             self.log_progress(f"Starting ETF info collection for {len(etf_assets)} ETFs")
             
-            # 배치 프로세서를 사용한 처리
-            batch_processor = BatchProcessor(self.logging_helper, batch_size=3)
+            # Process ETFs in batches
+            batch_size = 3
+            total_processed = 0
+            total_updated = 0
             
-            async def process_etf_asset(asset):
-                return await self.process_with_semaphore(
-                    self._fetch_and_store_etf_info_for_asset(asset)
-                )
-            
-            result = await batch_processor.process_assets(etf_assets, process_etf_asset)
-            
-            # 수집 완료 로그
-            self.logging_helper.log_collection_completion(
-                result["processed_assets"], 
-                result["total_added_records"],
-                {"collection_type": "ETF_data"}
-            )
+            for i in range(0, len(etf_assets), batch_size):
+                batch = etf_assets[i:i + batch_size]
+                
+                # Process batch concurrently with semaphore control
+                async def process_etf_with_semaphore(asset):
+                    return await self.process_with_semaphore(
+                        self._fetch_and_store_etf_info_for_asset(asset)
+                    )
+                
+                tasks = [process_etf_with_semaphore(asset) for asset in batch]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                for result in results:
+                    if isinstance(result, Exception):
+                        self.log_progress(f"ETF processing error: {result}", "error")
+                    else:
+                        total_processed += 1
+                        if result.get("success", False):
+                            total_updated += 1
+                
+                # Rate limiting between batches
+                if i + batch_size < len(etf_assets):
+                    await asyncio.sleep(2)
             
             return {
-                "processed_etfs": result["processed_assets"],
-                "updated_etfs": result["total_added_records"],
-                "message": f"Successfully processed {result['processed_assets']} ETFs, updated {result['total_added_records']}"
+                "processed_etfs": total_processed,
+                "updated_etfs": total_updated,
+                "message": f"Successfully processed {total_processed} ETFs, updated {total_updated}"
             }
             
         except Exception as e:

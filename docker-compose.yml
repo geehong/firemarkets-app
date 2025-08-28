@@ -70,7 +70,6 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./backend:/app:delegated
       - ./.env:/app/.env:ro
       #healthcheck:
       #test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]

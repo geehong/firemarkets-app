@@ -6,7 +6,7 @@ from app.database import engine
 from app.models.user import User
 from app.models.session import UserSession, TokenBlacklist, AuditLog
 from app.core.websocket import sio
-from app.core.config import load_and_set_global_configs, initialize_bitcoin_asset_id, setup_scheduler_jobs
+from app.core.config import load_and_set_global_configs, initialize_bitcoin_asset_id
 import socketio
 
 # 전역 설정 로드

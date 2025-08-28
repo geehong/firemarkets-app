@@ -62,10 +62,10 @@ import CardTools from '../../components/common/CardTools'
 import '../../components/common/CardTools.css'
 
 // Ticker Management Components
-import TickerTabs from '../../components/admin/ticker/TickerTabs'
-import TickerTable from '../../components/admin/ticker/TickerTable'
+import TickerTabs from '../../components/admin/ticker/temp/TickerTabs'
+//import TickerTable from '../../components/admin/ticker/TickerTable'
 import TickerTableAgGrid from '../../components/admin/ticker/TickerTableAgGrid'
-import TickerTableReactTable from '../../components/admin/ticker/TickerTableReactTable'
+//import TickerTableReactTable from '../../components/admin/ticker/temp/TickerTableReactTable'
 import useAssetTypes from '../../hooks/useAssetTypes'
 
 const AdminManage = () => {

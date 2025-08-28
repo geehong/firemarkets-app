@@ -89,7 +89,8 @@ class CRUDAsset(CRUDBase[Asset]):
     def update_asset_settings(self, db: Session, asset_id: int, update_data: Dict[str, Any]) -> bool:
         """Update asset settings."""
         try:
-            asset = db.query(Asset).filter(Asset.id == asset_id).first()
+            # Use correct primary key column name
+            asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
             if not asset:
                 return False
             

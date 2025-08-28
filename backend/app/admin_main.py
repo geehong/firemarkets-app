@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import auth
 from app.api.v1.api import api_router as api_v1_router
-from app.database import engine
+from app.core.database import engine
 from app.models.user import User
 from app.models.session import UserSession, TokenBlacklist, AuditLog
 from app.core.cache import setup_cache
