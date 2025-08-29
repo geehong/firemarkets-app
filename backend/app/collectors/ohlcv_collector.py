@@ -13,11 +13,13 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, text
 
 from .base_collector import BaseCollector
+from .logging_helper import CollectorLoggingHelper, create_collection_summary_log
 from ..core.config import GLOBAL_APP_CONFIGS
 from ..models.asset import Asset
 from ..models.system import AppConfiguration
 from ..crud import asset as crud_asset
 from ..api import deps
+from ..services.api_strategy_manager import api_manager
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,8 @@ class OHLCVCollector(BaseCollector):
         self.enable_historical_backfill = True
         self.max_historical_days = 1000
         self.historical_days_per_run = 100
+        # 로깅 헬퍼 초기화
+        self.logging_helper = CollectorLoggingHelper("OHLCVCollector", self)
 
     async def collect_with_settings(self) -> Dict[str, Any]:
         """Collect OHLCV data with individual asset settings"""
@@ -59,6 +63,9 @@ class OHLCVCollector(BaseCollector):
                     'type': 'warning'
                 })
                 return {"message": "No assets with OHLCV collection enabled", "processed": 0}
+            
+            # 상세 로깅 시작
+            self.logging_helper.start_collection("OHLCV", len(asset_ids), api_provider="FMP")
             
             await self.safe_emit('scheduler_log', {
                 'message': f"OHLCV 데이터 수집 시작: {len(asset_ids)}개 자산 (설정 기반)", 
@@ -106,6 +113,15 @@ class OHLCVCollector(BaseCollector):
             # 결과 합계
             total_processed = sum(r.get("processed_assets", 0) for r in total_results)
             total_added = sum(r.get("total_added_records", 0) for r in total_results)
+            
+            # 상세 로깅 완료
+            self.logging_helper.log_collection_completion(
+                total_processed, 
+                total_added,
+                api_provider="FMP",
+                collection_type="OHLCV",
+                intervals_processed=len(ohlcv_intervals)
+            )
             
             await self.safe_emit('scheduler_log', {
                 'message': f"OHLCV 다중 간격 수집 완료: {total_processed}개 자산 처리, {total_added}개 레코드 추가", 
@@ -275,12 +291,20 @@ class OHLCVCollector(BaseCollector):
             fresh_asset = db.query(Asset).options(joinedload(Asset.asset_type)).filter(Asset.asset_id == asset_id).first()
             
             if not fresh_asset:
+                # 상세 로깅 - 자산을 찾을 수 없는 경우
+                self.logging_helper.log_asset_processing_failure(
+                    {"asset_id": asset_id, "ticker": "Unknown"}, 
+                    Exception("Asset not found")
+                )
                 return {
                     "asset_id": asset_id,
                     "ticker": "Unknown",
                     "success": False,
                     "error": "Asset not found"
                 }
+            
+            # 상세 로깅 - 자산 처리 시작
+            self.logging_helper.log_asset_processing_start(fresh_asset)
             
             # 데이터 소스별 fallback 전략 정의
             asset_type_name_lower = fresh_asset.asset_type.type_name.lower()
@@ -311,6 +335,9 @@ class OHLCVCollector(BaseCollector):
             async with httpx.AsyncClient() as client:
                 for source in sources_to_try:
                     try:
+                        # 상세 로깅 - API 호출 시작
+                        self.logging_helper.log_api_call_start(source, fresh_asset.ticker)
+                        
                         ohlcv_data = []
                         
                         if source == 'tiingo':
@@ -330,6 +357,11 @@ class OHLCVCollector(BaseCollector):
                         
                         if ohlcv_data:
                             added_count = await self._store_ohlcv_data(asset_id, ohlcv_data)
+                            
+                            # 상세 로깅 - 성공
+                            self.logging_helper.log_api_call_success(source, fresh_asset.ticker, len(ohlcv_data))
+                            self.logging_helper.log_asset_processing_success(fresh_asset, source, added_count)
+                            
                             return {
                                 "asset_id": asset_id,
                                 "ticker": fresh_asset.ticker,
@@ -337,10 +369,19 @@ class OHLCVCollector(BaseCollector):
                                 "added_count": added_count,
                                 "success": True
                             }
+                        else:
+                            # 상세 로깅 - API 호출은 성공했지만 데이터가 없는 경우
+                            self.logging_helper.log_api_call_failure(source, fresh_asset.ticker, Exception("No data returned"))
                             
                     except Exception as e:
+                        # 상세 로깅 - API 호출 실패
+                        self.logging_helper.log_api_call_failure(source, fresh_asset.ticker, e)
                         self.log_progress(f"Failed to fetch from {source} for {fresh_asset.ticker}: {e}", "warning")
                         continue
+            
+            # 상세 로깅 - 모든 소스 실패
+            self.logging_helper.log_all_sources_failed(fresh_asset.ticker, sources_to_try)
+            self.logging_helper.log_asset_processing_failure(fresh_asset, Exception("All data sources failed"), sources_to_try)
             
             return {
                 "asset_id": asset_id,
@@ -367,71 +408,51 @@ class OHLCVCollector(BaseCollector):
                     "error": "Asset not found"
                 }
             
-            # 데이터 소스별 fallback 전략 정의
-            asset_type_name_lower = fresh_asset.asset_type.type_name.lower()
-            primary_source = fresh_asset.data_source
-            fallback_sources = []
+            # API 전략 관리자를 사용하여 데이터 수집
+            ticker = fresh_asset.ticker
+            asset_type_name_lower = fresh_asset.asset_type.type_name.lower() if fresh_asset.asset_type else ""
             
-            if asset_type_name_lower in ['stocks', 'etfs', 'bonds', 'funds']:
-                if primary_source == 'tiingo':
-                    fallback_sources = ['fmp', 'alpha_vantage']
-                elif primary_source == 'fmp':
-                    fallback_sources = ['tiingo', 'alpha_vantage']
-                elif primary_source == 'alpha_vantage':
-                    fallback_sources = ['tiingo', 'fmp']
-                else:
-                    fallback_sources = ['tiingo', 'fmp', 'alpha_vantage']
-            elif asset_type_name_lower == 'cryptocurrency':
-                if primary_source == 'binance':
-                    fallback_sources = ['coinbase', 'coinmarketcap']
-                elif primary_source == 'coinbase':
-                    fallback_sources = ['binance', 'coinmarketcap']
-                elif primary_source == 'coinmarketcap':
-                    fallback_sources = ['binance', 'coinbase']
-                else:
-                    fallback_sources = ['binance', 'coinbase', 'coinmarketcap']
+            # 자산 타입에 따라 적절한 API 전략 사용
+            if 'crypto' in asset_type_name_lower:
+                # 암호화폐 데이터 수집
+                data = api_manager.get_crypto_data(ticker, interval=interval, limit=100)
+            else:
+                # 주식/ETF 데이터 수집
+                data = api_manager.get_ohlcv(ticker, interval=interval, limit=100)
             
-            sources_to_try = [primary_source] + [s for s in fallback_sources if s != primary_source]
-            
-            async with httpx.AsyncClient() as client:
-                for source in sources_to_try:
-                    try:
-                        ohlcv_data = []
-                        
-                        if source == 'tiingo':
-                            ohlcv_data = await self._fetch_ohlcv_from_tiingo_with_interval(client, fresh_asset.ticker, interval)
-                        elif source == 'alpha_vantage':
-                            ohlcv_data = await self._fetch_ohlcv_from_alpha_vantage_with_interval(client, fresh_asset.ticker, [], interval)
-                        elif source == 'fmp':
-                            ohlcv_data = await self._fetch_ohlcv_from_fmp_with_interval(client, fresh_asset.ticker, "", interval)
-                        elif source == 'binance':
-                            ohlcv_data = await self._fetch_ohlcv_from_binance_with_interval(client, fresh_asset.ticker, interval)
-                        elif source == 'coinbase':
-                            ohlcv_data = await self._fetch_ohlcv_from_coinbase_with_interval(client, fresh_asset.ticker, interval)
-                        elif source == 'coinmarketcap':
-                            ohlcv_data = await self._fetch_ohlcv_from_coinmarketcap_with_interval(client, fresh_asset.ticker, interval)
-                        
-                        if ohlcv_data:
-                            added_count = await self._store_ohlcv_data_with_interval(asset_id, ohlcv_data, interval)
-                            return {
-                                "asset_id": asset_id,
-                                "ticker": fresh_asset.ticker,
-                                "source": source,
-                                "interval": interval,
-                                "added_count": added_count,
-                                "success": True
-                            }
-                            
-                    except Exception as e:
-                        self.log_progress(f"Failed to fetch {interval} from {source} for {fresh_asset.ticker}: {e}", "warning")
-                        continue
+            if data is not None and not data.empty:
+                # DataFrame을 OHLCV 형식으로 변환
+                ohlcv_data = []
+                for index, row in data.iterrows():
+                    ohlcv_record = {
+                        "timestamp_utc": index if hasattr(index, 'to_pydatetime') else index,
+                        "open_price": self._safe_float(row.get('open', row.get('Open', 0))),
+                        "high_price": self._safe_float(row.get('high', row.get('High', 0))),
+                        "low_price": self._safe_float(row.get('low', row.get('Low', 0))),
+                        "close_price": self._safe_float(row.get('close', row.get('Close', 0))),
+                        "volume": self._safe_float(row.get('volume', row.get('Volume', 0)), 0.0),
+                        "asset_id": asset_id,
+                        "data_interval": interval
+                    }
+                    ohlcv_data.append(ohlcv_record)
+                
+                if ohlcv_data:
+                    added_count = await self._store_ohlcv_data_with_interval(asset_id, ohlcv_data, interval)
+                    return {
+                        "asset_id": asset_id,
+                        "ticker": ticker,
+                        "source": "API Strategy Manager",
+                        "interval": interval,
+                        "added_count": added_count,
+                        "success": True
+                    }
             
             return {
                 "asset_id": asset_id,
-                "ticker": fresh_asset.ticker if fresh_asset else "Unknown",
+                "ticker": ticker,
                 "interval": interval,
                 "success": False,
-                "error": "All data sources failed"
+                "error": "No data available from any API source"
             }
         finally:
             db.close()
@@ -927,31 +948,27 @@ class OHLCVCollector(BaseCollector):
             return []
 
     async def _fetch_ohlcv_from_tiingo(self, client: httpx.AsyncClient, ticker: str) -> List[Dict]:
-        """Fetch OHLCV data from Tiingo"""
+        """Fetch OHLCV data from Tiingo using api_manager"""
         try:
-            from ..external_apis.tiingo_client import TiingoClient
-            
-            tiingo_client = TiingoClient()
-            
-            # Tiingo API에서 히스토리 데이터 조회
+            # api_manager를 사용하여 OHLCV 데이터 조회
             from datetime import datetime, timedelta
             end_date = datetime.now().strftime("%Y-%m-%d")
             start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
             
-            data = await tiingo_client.get_historical_prices(ticker, start_date, end_date)
+            data = await api_manager.get_ohlcv(ticker, "1d")
             
-            if data:
+            if data is not None and not data.empty:
                 return [
                     {
-                        "timestamp_utc": datetime.strptime(item.get("date"), "%Y-%m-%d"),
-                        "open_price": self._safe_float(item.get("open")),
-                        "high_price": self._safe_float(item.get("high")),
-                        "low_price": self._safe_float(item.get("low")),
-                        "close_price": self._safe_float(item.get("close")),
-                        "volume": self._safe_float(item.get("volume"), 0.0),
+                        "timestamp_utc": row.name.to_pydatetime() if hasattr(row.name, 'to_pydatetime') else datetime.now(),
+                        "open_price": self._safe_float(row.get("open", 0)),
+                        "high_price": self._safe_float(row.get("high", 0)),
+                        "low_price": self._safe_float(row.get("low", 0)),
+                        "close_price": self._safe_float(row.get("close", 0)),
+                        "volume": self._safe_float(row.get("volume", 0), 0.0),
                     }
-                    for item in data
-                    if item.get("date") and item.get("close")
+                    for _, row in data.iterrows()
+                    if row.get("close", 0) is not None
                 ]
             else:
                 await self.safe_emit('scheduler_log', {
@@ -968,42 +985,23 @@ class OHLCVCollector(BaseCollector):
             return []
 
     async def _fetch_ohlcv_from_tiingo_with_interval(self, client: httpx.AsyncClient, ticker: str, interval: str) -> List[Dict]:
-        """Fetch OHLCV data from Tiingo with specific interval"""
+        """Fetch OHLCV data from Tiingo with specific interval using api_manager"""
         try:
-            from ..external_apis.tiingo_client import TiingoClient
+            # api_manager를 사용하여 OHLCV 데이터 조회
+            data = await api_manager.get_ohlcv(ticker, interval)
             
-            tiingo_client = TiingoClient()
-            
-            # Tiingo는 주로 일간 데이터를 제공하므로 간격에 따라 조정
-            from datetime import datetime, timedelta
-            
-            # 간격별 조회 기간 설정
-            interval_days_map = {
-                '1d': 30,
-                '4h': 7,
-                '1h': 3,
-                '1w': 90,
-                '1m': 365
-            }
-            
-            days_to_fetch = interval_days_map.get(interval, 30)
-            end_date = datetime.now().strftime("%Y-%m-%d")
-            start_date = (datetime.now() - timedelta(days=days_to_fetch)).strftime("%Y-%m-%d")
-            
-            data = await tiingo_client.get_historical_prices(ticker, start_date, end_date)
-            
-            if data:
+            if data is not None and not data.empty:
                 return [
                     {
-                        "timestamp_utc": datetime.strptime(item.get("date"), "%Y-%m-%d"),
-                        "open_price": self._safe_float(item.get("open")),
-                        "high_price": self._safe_float(item.get("high")),
-                        "low_price": self._safe_float(item.get("low")),
-                        "close_price": self._safe_float(item.get("close")),
-                        "volume": self._safe_float(item.get("volume"), 0.0),
+                        "timestamp_utc": row.name.to_pydatetime() if hasattr(row.name, 'to_pydatetime') else datetime.now(),
+                        "open_price": self._safe_float(row.get("open", 0)),
+                        "high_price": self._safe_float(row.get("high", 0)),
+                        "low_price": self._safe_float(row.get("low", 0)),
+                        "close_price": self._safe_float(row.get("close", 0)),
+                        "volume": self._safe_float(row.get("volume", 0), 0.0),
                     }
-                    for item in data
-                    if item.get("date") and item.get("close")
+                    for _, row in data.iterrows()
+                    if row.get("close", 0) is not None
                 ]
             else:
                 await self.safe_emit('scheduler_log', {
@@ -1109,7 +1107,8 @@ class OHLCVCollector(BaseCollector):
                         "close_price": self._safe_float(d.get("close")),
                         "volume": self._safe_float(d.get("volume"), 0.0),
                     }
-                    for d in data["historical"] if self._safe_date_parse(d.get("date"))
+                    for d in data["historical"] 
+                    if d.get("date") and self._safe_date_parse(d.get("date")) is not None
                 ]
             else:
                 await self.safe_emit('scheduler_log', {
@@ -1298,57 +1297,16 @@ class OHLCVCollector(BaseCollector):
             })
             return []
 
-    def _safe_float(self, value: Any, default: float = None) -> Optional[float]:
-        """Safely convert value to float"""
-        if value is None:
-            return default
-        try:
-            return float(value)
-        except (ValueError, TypeError):
-            return default
+    # BaseCollector의 공통 메소드 사용하므로 제거
 
-    def _safe_date_parse(self, date_str: str) -> Optional[datetime]:
-        """Safely parse date string"""
-        if not date_str:
-            return None
-        try:
-            return datetime.strptime(date_str, "%Y-%m-%d")
-        except ValueError:
-            return None
-
-    def _safe_datetime_parse(self, date_str: str, format_str: str) -> Optional[datetime]:
-        """Safely parse datetime string with custom format"""
-        if not date_str:
-            return None
-        try:
-            return datetime.strptime(date_str, format_str)
-        except ValueError:
-            return None
-
-    @backoff.on_exception(
-        backoff.expo,
-        (httpx.RequestError, httpx.HTTPStatusError),
-        max_tries=3,
-        max_time=60
-    )
     async def _fetch_async(self, client: httpx.AsyncClient, url: str, api_name: str, ticker: str):
-        """Fetch data from API with retry logic"""
-        await self.safe_emit('scheduler_log', {
-            'message': f"[{ticker}] {api_name} API 호출 시도: {url}", 
-            'type': 'info'
-        })
-        
-        response = await client.get(url, timeout=self.api_timeout)
-        
-        if response.status_code == 429:  # Too Many Requests
-            await self.safe_emit('scheduler_log', {
-                'message': f"[{ticker}] {api_name} API 호출 제한 도달. 재시도합니다.", 
-                'type': 'warning'
-            })
-            response.raise_for_status()
-        
-        response.raise_for_status()
-        return response.json()
+        """Fetch data from API using common request method"""
+        return await self._make_request(
+            client=client,
+            url=url,
+            api_name=api_name,
+            ticker=ticker
+        )
 
     async def _store_ohlcv_data(self, asset_id: int, ohlcv_list: List[Dict]) -> int:
         """Store OHLCV data and calculate daily change percentages"""

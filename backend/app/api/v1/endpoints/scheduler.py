@@ -9,10 +9,11 @@ from datetime import datetime
 
 from ....core.database import get_db
 from ....models import SchedulerLog
+from ....models.system import AppConfiguration
 from ....core.websocket import scheduler
 from ....core.config import setup_scheduler_jobs, GLOBAL_APP_CONFIGS
 from ....services.tiingo_ws_consumer import get_consumer as get_tiingo_ws_consumer
-from ....services.scheduler_service import get_scheduler as get_realtime_scheduler
+from ....services.scheduler_service import scheduler_service as get_realtime_scheduler
 
 logger = logging.getLogger(__name__)
 
@@ -332,40 +333,20 @@ def start_scheduler(db: Session = Depends(get_db), include_diagnostics: bool = F
                 return SchedulerActionResponse(**resp_dict)
             return resp
         
-        # 작업 등록 (스케줄러 시작 전에 등록)
-        setup_scheduler_jobs()
-        logger.info("Scheduler jobs configured")
-        
-        # 스케줄러 시작
-        if not scheduler.running:
-            scheduler.start()
-            logger.info("Scheduler started")
-        
-        # 스케줄러가 실제로 실행 중인지 확인
-        if not scheduler.running:
-            raise Exception("Failed to start scheduler")
-        
-        # 실시간 데이터 수집기 자동 시작
-        try:
-            from ....services.tiingo_ws_consumer import get_consumer
-            from ....services.scheduler_service import get_scheduler as get_realtime_scheduler
-            
-            # Tiingo WebSocket 시작
-            consumer = get_consumer()
-            default_tickers = ["AAPL", "MSFT", "GOOGL"]
-            import asyncio
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(consumer.start(default_tickers))
-            logger.info("Tiingo WebSocket auto-started")
-            
-            # 실시간 스케줄러 시작
-            realtime_scheduler = get_realtime_scheduler()
-            loop.run_until_complete(realtime_scheduler.start())
-            logger.info("Realtime scheduler auto-started")
-            
-        except Exception as e:
-            logger.warning(f"Failed to auto-start realtime collectors: {e}")
+        # DB에 스케줄러 활성화 플래그 설정
+        config = db.query(AppConfiguration).filter(AppConfiguration.config_key == 'scheduler_enabled').first()
+        if config:
+            config.config_value = 'true'
+        else:
+            config = AppConfiguration(
+                config_key='scheduler_enabled',
+                config_value='true',
+                data_type='string',
+                is_active=True
+            )
+            db.add(config)
+        db.commit()
+        logger.info("Scheduler enabled flag set to True")
         
         # 로그 기록
         log = SchedulerLog(
@@ -378,13 +359,11 @@ def start_scheduler(db: Session = Depends(get_db), include_diagnostics: bool = F
         )
         db.add(log)
         db.commit()
-        
-        job_count = len(scheduler.get_jobs()) if scheduler else 0
 
         resp = SchedulerActionResponse(
             success=True,
-            message="Scheduler started successfully",
-            job_count=job_count
+            message="Scheduler start signal sent to worker process",
+            job_count=0  # 실제 작업 수는 워커 프로세스에서 관리
         )
         if include_diagnostics:
             diagnostics.update({
@@ -414,49 +393,30 @@ def start_scheduler(db: Session = Depends(get_db), include_diagnostics: bool = F
 
 @router.post("/scheduler/restart", response_model=SchedulerActionResponse)
 def restart_scheduler(db: Session = Depends(get_db)):
-    """스케줄러를 재시작합니다."""
+    """스케줄러 워커에 재시작 신호를 보냅니다 (stop 후 start)."""
     try:
-        logger.info("Restarting scheduler")
+        logger.info("Sending scheduler restart signal")
         
-        # 기존 스케줄러 중지
-        if scheduler and scheduler.running:
-            scheduler.shutdown()
-            logger.info("Existing scheduler stopped")
+        # 먼저 중지 신호
+        config = db.query(AppConfiguration).filter(AppConfiguration.config_key == 'scheduler_enabled').first()
+        if config:
+            config.config_value = 'false'
+        else:
+            config = AppConfiguration(
+                config_key='scheduler_enabled',
+                config_value='false',
+                data_type='string',
+                is_active=True
+            )
+            db.add(config)
+        db.commit()
         
-        # 작업 등록 (스케줄러 시작 전에 등록)
-        setup_scheduler_jobs()
-        logger.info("Scheduler jobs configured")
+        # 잠시 대기 후 시작 신호
+        import time
+        time.sleep(2)
         
-        # 스케줄러 시작
-        if not scheduler.running:
-            scheduler.start()
-            logger.info("Scheduler started")
-        
-        # 스케줄러가 실제로 실행 중인지 확인
-        if not scheduler.running:
-            raise Exception("Failed to start scheduler")
-        
-        # 실시간 데이터 수집기 자동 시작
-        try:
-            from ....services.tiingo_ws_consumer import get_consumer
-            from ....services.scheduler_service import get_scheduler as get_realtime_scheduler
-            
-            # Tiingo WebSocket 시작
-            consumer = get_consumer()
-            default_tickers = ["AAPL", "MSFT", "GOOGL"]
-            import asyncio
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(consumer.start(default_tickers))
-            logger.info("Tiingo WebSocket auto-started")
-            
-            # 실시간 스케줄러 시작
-            realtime_scheduler = get_realtime_scheduler()
-            loop.run_until_complete(realtime_scheduler.start())
-            logger.info("Realtime scheduler auto-started")
-            
-        except Exception as e:
-            logger.warning(f"Failed to auto-start realtime collectors: {e}")
+        config.config_value = 'true'
+        db.commit()
         
         # 로그 기록
         log = SchedulerLog(
@@ -470,27 +430,33 @@ def restart_scheduler(db: Session = Depends(get_db)):
         db.add(log)
         db.commit()
         
-        job_count = len(scheduler.get_jobs()) if scheduler else 0
-        
         return SchedulerActionResponse(
             success=True,
-            message="Scheduler restarted successfully",
-            job_count=job_count
+            message="Scheduler restart signal sent to worker process"
         )
     except Exception as e:
-        logger.error(f"Failed to restart scheduler: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to restart scheduler: {str(e)}")
+        logger.error(f"Failed to send scheduler restart signal: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to send scheduler restart signal: {str(e)}")
 
 @router.post("/scheduler/stop", response_model=SchedulerActionResponse)
 def stop_scheduler(db: Session = Depends(get_db)):
-    """스케줄러를 중지합니다."""
+    """DB 플래그를 'disabled'로 설정하여 스케줄러 워커의 중지를 지시합니다."""
     try:
-        logger.info("Stopping scheduler")
+        logger.info("Setting scheduler enabled flag to False")
         
-        # 스케줄러 중지
-        if scheduler and scheduler.running:
-            scheduler.shutdown()
-            logger.info("Scheduler stopped")
+        # DB에 스케줄러 비활성화 플래그 설정
+        config = db.query(AppConfiguration).filter(AppConfiguration.config_key == 'scheduler_enabled').first()
+        if config:
+            config.config_value = 'false'
+        else:
+            config = AppConfiguration(
+                config_key='scheduler_enabled',
+                config_value='false',
+                data_type='string',
+                is_active=True
+            )
+            db.add(config)
+        db.commit()
         
         # 로그 기록
         log = SchedulerLog(
@@ -506,11 +472,11 @@ def stop_scheduler(db: Session = Depends(get_db)):
         
         return SchedulerActionResponse(
             success=True,
-            message="Scheduler stopped successfully"
+            message="Scheduler stop signal sent to worker process"
         )
     except Exception as e:
-        logger.error(f"Failed to stop scheduler: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to stop scheduler: {str(e)}")
+        logger.error(f"Failed to set scheduler disabled flag: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to set scheduler disabled flag: {str(e)}")
 
 @router.post("/scheduler/pause", response_model=SchedulerActionResponse)
 def pause_scheduler(db: Session = Depends(get_db)):

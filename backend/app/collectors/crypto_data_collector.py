@@ -11,9 +11,10 @@ from sqlalchemy.orm import Session
 from .base_collector import BaseCollector
 from ..models.asset import Asset, AssetType
 from ..models.crypto import CryptoData
+from ..models.system import AppConfiguration
 from ..core.config import GLOBAL_APP_CONFIGS
 from ..core.database import SessionLocal
-from ..utils.retry import retry_with_backoff, classify_api_error, TransientAPIError, PermanentAPIError
+from ..services.api_strategy_manager import api_manager
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,20 @@ class CryptoDataCollector(BaseCollector):
     def __init__(self):
         super().__init__()
         self.collection_type = "crypto_data"
+        # CoinMarketCap API 설정 - 데이터베이스에서 직접 조회
+        self.coinmarketcap_base_url = "https://pro-api.coinmarketcap.com"
+        db = SessionLocal()
+        try:
+            api_key_config = db.query(AppConfiguration).filter(
+                AppConfiguration.config_key == "COINMARKETCAP_API_KEY"
+            ).first()
+            self.api_key = api_key_config.config_value if api_key_config else None
+        finally:
+            db.close()
+        
+        # 로깅 헬퍼 초기화
+        from .logging_helper import CollectorLoggingHelper
+        self.logging_helper = CollectorLoggingHelper("CryptoDataCollector", self)
     
     async def collect_with_settings(self) -> Dict[str, Any]:
         """Collect crypto data with individual asset settings"""
@@ -48,12 +63,25 @@ class CryptoDataCollector(BaseCollector):
                 })
                 return {"message": "No assets with crypto collection enabled", "processed": 0}
             
+            # 상세 로깅 시작
+            self.logging_helper.start_collection("crypto_data", len(assets), api_provider="CoinMarketCap")
+            
             await self.safe_emit('scheduler_log', {
                 'message': f"크립토 데이터 수집 시작: {len(assets)}개 자산 (설정 기반)", 
                 'type': 'info'
             })
             
-            return await self._collect_data()
+            result = await self._collect_data()
+            
+            # 상세 로깅 완료
+            self.logging_helper.log_collection_completion(
+                len(assets), 
+                result.get("updated", 0),
+                api_provider="CoinMarketCap",
+                collection_type="crypto_data"
+            )
+            
+            return result
             
         except Exception as e:
             self.log_progress(f"Crypto collection with settings failed: {e}", "error")
@@ -148,9 +176,8 @@ class CryptoDataCollector(BaseCollector):
                     "updated_count": 0
                 }
             
-            # Get CoinMarketCap API key
-            api_key = GLOBAL_APP_CONFIGS.get("COINMARKETCAP_API_KEY")
-            if not api_key:
+            # Check if API key is configured
+            if not self.api_key:
                 return {
                     "success": False,
                     "message": "CoinMarketCap API key not configured",
@@ -158,7 +185,7 @@ class CryptoDataCollector(BaseCollector):
                 }
             
             # Fetch crypto data from CoinMarketCap
-            crypto_data = await self._fetch_crypto_data_from_coinmarketcap(client, asset.ticker, api_key)
+            crypto_data = await self._fetch_crypto_data_from_coinmarketcap(client, asset.ticker)
             if not crypto_data:
                 return {
                     "success": False,
@@ -187,86 +214,60 @@ class CryptoDataCollector(BaseCollector):
                 "updated_count": 0
             }
     
-    async def _fetch_crypto_data_from_coinmarketcap(self, client: httpx.AsyncClient, ticker: str, api_key: str) -> Optional[Dict[str, Any]]:
-        """Fetch crypto data from CoinMarketCap API"""
+    async def _fetch_crypto_data_from_coinmarketcap(self, client: httpx.AsyncClient, ticker: str) -> Optional[Dict[str, Any]]:
+        """Fetch crypto data from CoinMarketCap API using common request method"""
         try:
             # Clean ticker symbol for CoinMarketCap API
             symbol = ticker.replace("USDT", "").replace("USD", "").replace("BTC", "")
             
-            # Get quotes data
-            quotes_url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest"
+            # Skip if symbol is empty after cleaning
+            if not symbol:
+                logger.warning(f"Empty symbol after cleaning ticker: {ticker}")
+                return None
+            
+            # Common headers for CoinMarketCap API
+            headers = {
+                "X-CMC_PRO_API_KEY": self.api_key,
+                "Accept": "application/json"
+            }
+            
+            # Get quotes data using common request method
+            quotes_url = f"{self.coinmarketcap_base_url}/v1/cryptocurrency/quotes/latest"
             quotes_params = {
                 "symbol": symbol,
                 "convert": "USD"
             }
-            headers = {
-                "X-CMC_PRO_API_KEY": api_key,
-                "Accept": "application/json"
-            }
             
-            async def fetch_quotes():
-                quotes_response = await client.get(quotes_url, params=quotes_params, headers=headers, timeout=30)
-                
-                # API 응답 상태 코드에 따른 오류 분류
-                if quotes_response.status_code == 429:
-                    raise TransientAPIError(f"Rate limit exceeded for CoinMarketCap quotes API")
-                elif quotes_response.status_code >= 500:
-                    raise TransientAPIError(f"Server error {quotes_response.status_code} for CoinMarketCap quotes API")
-                elif quotes_response.status_code == 404:
-                    raise PermanentAPIError(f"Symbol {symbol} not found in CoinMarketCap quotes API")
-                elif quotes_response.status_code in [401, 403]:
-                    raise PermanentAPIError(f"Authentication failed for CoinMarketCap quotes API")
-                
-                quotes_response.raise_for_status()
-                return quotes_response.json()
-            
-            # 고도화된 재시도 로직 적용
-            max_retries = GLOBAL_APP_CONFIGS.get("MAX_API_RETRY_ATTEMPTS", 3)
-            quotes_data = await retry_with_backoff(
-                fetch_quotes,
-                max_retries=max_retries,
-                base_delay=1.0,
-                max_delay=30.0,
-                jitter=True
+            quotes_data = await self._make_request(
+                client=client,
+                url=quotes_url,
+                api_name="CoinMarketCap Quotes",
+                params=quotes_params,
+                headers=headers,
+                ticker=ticker
             )
             
-            if "data" not in quotes_data or symbol not in quotes_data["data"]:
+            if not quotes_data or "data" not in quotes_data or symbol not in quotes_data["data"]:
                 logger.warning(f"Symbol {symbol} not found in CoinMarketCap quotes data")
                 return None
             
             crypto_info = quotes_data["data"][symbol]
             quote = crypto_info.get("quote", {}).get("USD", {})
             
-            # Get additional info data
-            info_url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/info"
+            # Get additional info data using common request method
+            info_url = f"{self.coinmarketcap_base_url}/v1/cryptocurrency/info"
             info_params = {"symbol": symbol}
             
-            async def fetch_info():
-                info_response = await client.get(info_url, params=info_params, headers=headers, timeout=30)
-                
-                # API 응답 상태 코드에 따른 오류 분류
-                if info_response.status_code == 429:
-                    raise TransientAPIError(f"Rate limit exceeded for CoinMarketCap info API")
-                elif info_response.status_code >= 500:
-                    raise TransientAPIError(f"Server error {info_response.status_code} for CoinMarketCap info API")
-                elif info_response.status_code == 404:
-                    raise PermanentAPIError(f"Symbol {symbol} not found in CoinMarketCap info API")
-                elif info_response.status_code in [401, 403]:
-                    raise PermanentAPIError(f"Authentication failed for CoinMarketCap info API")
-                
-                info_response.raise_for_status()
-                return info_response.json()
-            
-            # 고도화된 재시도 로직 적용
-            info_data = await retry_with_backoff(
-                fetch_info,
-                max_retries=max_retries,
-                base_delay=1.0,
-                max_delay=30.0,
-                jitter=True
+            info_data = await self._make_request(
+                client=client,
+                url=info_url,
+                api_name="CoinMarketCap Info",
+                params=info_params,
+                headers=headers,
+                ticker=ticker
             )
             
-            if "data" not in info_data or symbol not in info_data["data"]:
+            if not info_data or "data" not in info_data or symbol not in info_data["data"]:
                 logger.warning(f"Symbol {symbol} not found in CoinMarketCap info data")
                 return None
             
@@ -276,17 +277,17 @@ class CryptoDataCollector(BaseCollector):
             crypto_data = {
                 "symbol": symbol,
                 "name": crypto_info.get("name", ""),
-                "market_cap": float(quote.get("market_cap", 0)),
-                "current_price": float(quote.get("price", 0)),
-                "price": float(quote.get("price", 0)),
-                "volume_24h": float(quote.get("volume_24h", 0)),
-                "circulating_supply": float(crypto_info.get("circulating_supply", 0)),
-                "total_supply": float(crypto_info.get("total_supply", 0)) if crypto_info.get("total_supply") else None,
-                "max_supply": float(crypto_info.get("max_supply", 0)) if crypto_info.get("max_supply") else None,
-                "percent_change_1h": float(quote.get("percent_change_1h", 0)),
-                "percent_change_24h": float(quote.get("percent_change_24h", 0)),
-                "percent_change_7d": float(quote.get("percent_change_7d", 0)),
-                "percent_change_30d": float(quote.get("percent_change_30d", 0)),
+                "market_cap": self._safe_float(quote.get("market_cap"), 0),
+                "current_price": self._safe_float(quote.get("price"), 0),
+                "price": self._safe_float(quote.get("price"), 0),
+                "volume_24h": self._safe_float(quote.get("volume_24h"), 0),
+                "circulating_supply": self._safe_float(crypto_info.get("circulating_supply"), 0),
+                "total_supply": self._safe_float(crypto_info.get("total_supply")) if crypto_info.get("total_supply") else None,
+                "max_supply": self._safe_float(crypto_info.get("max_supply")) if crypto_info.get("max_supply") else None,
+                "percent_change_1h": self._safe_float(quote.get("percent_change_1h"), 0),
+                "percent_change_24h": self._safe_float(quote.get("percent_change_24h"), 0),
+                "percent_change_7d": self._safe_float(quote.get("percent_change_7d"), 0),
+                "percent_change_30d": self._safe_float(quote.get("percent_change_30d"), 0),
                 "cmc_rank": crypto_info.get("cmc_rank"),
                 "category": info.get("category", ""),
                 "description": info.get("description", ""),
@@ -295,8 +296,8 @@ class CryptoDataCollector(BaseCollector):
                 "slug": crypto_info.get("slug", ""),
                 "date_added": datetime.fromisoformat(info.get("date_added", "").replace("Z", "+00:00")) if info.get("date_added") else None,
                 "platform": info.get("platform", {}).get("name") if info.get("platform") else None,
-                "explorer": info.get("urls", {}).get("explorer", [""])[0] if info.get("urls", {}).get("explorer") else None,
-                "source_code": info.get("urls", {}).get("source_code", [""])[0] if info.get("urls", {}).get("source_code") else None,
+                "explorer": info.get("urls", {}).get("explorer", [""])[0] if info.get("urls", {}).get("explorer") else "",
+                "source_code": info.get("urls", {}).get("source_code", [""])[0] if info.get("urls", {}).get("source_code") else "",
                 "tags": ",".join(info.get("tags", [])),
                 "is_active": True,
                 "last_updated": datetime.now(),

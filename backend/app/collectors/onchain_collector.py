@@ -22,6 +22,7 @@ from ..external_apis.fmp_client import FMPClient
 from ..external_apis.coinmarketcap_client import CoinMarketCapClient
 from ..external_apis.coingecko_client import CoinGeckoClient
 from ..utils.retry import retry_with_backoff, classify_api_error, TransientAPIError, PermanentAPIError
+from ..services.api_strategy_manager import api_manager
 
 from ..core.websocket import scheduler
 
@@ -424,19 +425,16 @@ class OnchainCollector(BaseCollector):
                         self.log_progress(f"CoinMarketCap does not support {metric_name}, skipping", "info")
                 
                 elif api_name == "bitcoin-data":
-                    self.log_progress(f"Bitcoin-Data supports all metrics, attempting fetch", "info")
-                    # client가 None인 경우 새로운 client 생성
-                    if client is None:
-                        async with httpx.AsyncClient() as new_client:
-                            result = await self._fetch_from_bitcoin_data(new_client, metric_name, endpoint, field_map, collection_type, force_update)
-                            if result > 0:
-                                self.log_progress(f"Successfully collected {result} records from Bitcoin-Data for {metric_name}", "success")
-                                return result
-                    else:
-                        result = await self._fetch_from_bitcoin_data(client, metric_name, endpoint, field_map, collection_type, force_update)
+                    self.log_progress(f"Bitcoin-Data supports all metrics, attempting fetch via api_manager", "info")
+                    try:
+                        # api_manager를 사용하여 Bitcoin Data API 호출
+                        result = await self._fetch_from_bitcoin_data_via_manager(metric_name, collection_type, force_update)
                         if result > 0:
                             self.log_progress(f"Successfully collected {result} records from Bitcoin-Data for {metric_name}", "success")
                             return result
+                    except Exception as e:
+                        self.log_progress(f"Failed to fetch from Bitcoin-Data via api_manager for {metric_name}: {e}", "warning")
+                        continue
                 
             except Exception as e:
                 self.log_progress(f"Failed to fetch from {api_name} for {metric_name}: {e}", "warning")
@@ -446,6 +444,58 @@ class OnchainCollector(BaseCollector):
         return 0
         
         pass
+    
+    async def _fetch_from_bitcoin_data_via_manager(self, metric_name: str, collection_type: str, force_update: bool) -> int:
+        """Fetch data from Bitcoin Data API using api_manager"""
+        try:
+            # Bitcoin Data API 클라이언트 직접 사용
+            from ..external_apis.bitcoin_data_client import BitcoinDataClient
+            client = BitcoinDataClient()
+            
+            # 메트릭에 따라 적절한 메서드 호출
+            if metric_name == "mvrv":
+                data = await client.get_mvrv_ratio(30)
+            elif metric_name == "difficulty":
+                data = await client.get_difficulty(30)
+            elif metric_name == "hashrate":
+                data = await client.get_hashrate(30)
+            elif metric_name == "sopr":
+                data = await client.get_sopr_ratio(30)
+            elif metric_name == "nupl":
+                data = await client.get_nupl_ratio(30)
+            else:
+                # 기본적으로 가격 데이터 사용
+                data = await client.get_btc_price(30)
+            
+            if data is not None and not data.empty:
+                # 데이터를 기존 형식에 맞게 변환
+                field_map = self._get_field_map_for_metric(metric_name)
+                result = await self._process_onchain_data(metric_name, {"data": data.to_dict('records')}, field_map, collection_type)
+                return result
+            else:
+                self.log_progress(f"No data returned from Bitcoin Data API for {metric_name}", "warning")
+                return 0
+                
+        except Exception as e:
+            self.log_progress(f"Error fetching from Bitcoin Data API via manager for {metric_name}: {e}", "error")
+            return 0
+    
+    def _get_field_map_for_metric(self, metric_name: str) -> dict:
+        """메트릭별 필드 매핑 반환"""
+        field_maps = {
+            "mvrv": {"mvrvZscore": "mvrv"},
+            "difficulty": {"difficultyBtc": "difficulty"},
+            "realized_price": {"realizedPrice": "realized_price"},
+            "reserves": {"reserves": "reserves"},
+            "etf_btc_total": {"etfBtcTotal": "etf_btc_total"},
+            "etf_flow": {"etfFlow": "etf_flow"},
+            "true_market_mean": {"trueMarketMean": "true_market_mean"},
+            "cdd_90dma": {"cdd90dma": "cdd_90dma"},
+            "nrpl_btc": {"nrplBtc": "nrpl_btc"},
+            "cap_real_usd": {"capRealUSD": "cap_real_usd"},
+            "thermo_cap": {"thermoCap": "thermo_cap"}
+        }
+        return field_maps.get(metric_name, {})
     
     async def _fetch_from_bitcoin_data(self, client: httpx.AsyncClient, metric_name: str, endpoint: str, field_map: dict, collection_type: str, force_update: bool) -> int:
         """Fetch data from bitcoin-data.com API"""
@@ -1057,14 +1107,7 @@ class OnchainCollector(BaseCollector):
             self.log_progress(f"Error fetching Thermo Cap data: {e}", "error")
             return 0
     
-    def _safe_float(self, value: Any) -> Optional[float]:
-        """Safely convert value to float"""
-        if value is None:
-            return None
-        try:
-            return float(value)
-        except (ValueError, TypeError):
-            return None
+    # BaseCollector의 공통 메소드 사용하므로 제거
     
     async def collect_specific_metric(self, metric_name: str) -> Dict[str, Any]:
         """Collect data for a specific metric"""

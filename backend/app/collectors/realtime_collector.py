@@ -9,12 +9,12 @@ from datetime import datetime, timedelta
 
 from .base_collector import BaseCollector
 from ..services.tiingo_ws_consumer import get_consumer
-from ..services.scheduler_service import get_scheduler
+from ..services.scheduler_service import scheduler_service as get_scheduler
 from ..core.database import SessionLocal
 from ..models.realtime import RealtimeQuote, SparklineData
 from ..external_apis.twelvedata_client import TwelveDataClient
 from ..external_apis.binance_client import BinanceClient
-from ..external_apis.tiingo_client import TiingoClient
+from ..services.api_strategy_manager import api_manager
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +25,10 @@ class RealtimeCollector(BaseCollector):
     def __init__(self):
         super().__init__()
         self.consumer = get_consumer()
-        self.scheduler = get_scheduler()
+        self.scheduler = get_scheduler
         self.twelvedata_client = TwelveDataClient()
         self.binance_client = BinanceClient()
-        self.tiingo_client = TiingoClient()
+        # api_manager를 통해 Tiingo API 사용
         
         # 수집 설정
         self.default_tickers = {
@@ -140,7 +140,7 @@ class RealtimeCollector(BaseCollector):
                 else:
                     binance_tickers.append(ticker)
             
-            # Binance에서 데이터 조회
+            # Binance에서 데이터 조회 (공통 API 요청 메소드 사용)
             prices = await self.binance_client.get_tickers_price(binance_tickers)
             
             for ticker, price in prices.items():
@@ -187,13 +187,13 @@ class RealtimeCollector(BaseCollector):
                 data_source = asset.data_source if asset else 'twelvedata'
                 
                 if data_source == 'twelvedata':
-                    # TwelveData에서 데이터 조회
+                    # TwelveData에서 데이터 조회 (공통 API 요청 메소드 사용)
                     price_data = await self.twelvedata_client.get_quote(ticker)
                 elif data_source == 'tiingo':
-                    # Tiingo에서 데이터 조회
-                    price_data = await self.tiingo_client.get_quote(ticker)
+                    # Tiingo에서 데이터 조회 (api_manager 사용)
+                    price_data = await api_manager.get_stock_data(ticker)
                 else:
-                    # 기본값으로 TwelveData 사용
+                    # 기본값으로 TwelveData 사용 (공통 API 요청 메소드 사용)
                     price_data = await self.twelvedata_client.get_quote(ticker)
                 
                 if price_data:
@@ -231,8 +231,12 @@ class RealtimeCollector(BaseCollector):
     async def _collect_commodity_data(self, db, tickers: List[str]):
         """상품 데이터 수집"""
         try:
-            # Tiingo에서 데이터 조회
-            quotes = await self.tiingo_client.get_batch_quotes(tickers)
+            # api_manager를 사용하여 데이터 조회
+            quotes = {}
+            for ticker in tickers:
+                quote_data = await api_manager.get_stock_data(ticker)
+                if quote_data:
+                    quotes[ticker] = quote_data
             
             for ticker, quote_data in quotes.items():
                 quote = RealtimeQuote(

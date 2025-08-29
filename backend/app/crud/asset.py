@@ -5,7 +5,7 @@ import logging
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc, func
-from sqlalchemy.dialects.mysql import insert as mysql_insert
+# ORM 사용으로 mysql_insert 제거
 from datetime import date, datetime
 
 from .base import CRUDBase
@@ -22,32 +22,20 @@ class CRUDAsset(CRUDBase[Asset]):
         super().__init__(Asset)
     
     def get_by_ticker(self, db: Session, ticker: str) -> Optional[Asset]:
-        """Get asset by ticker symbol."""
-        return db.query(Asset).filter(Asset.ticker == ticker).first()
+        """Get asset by ticker symbol using ORM."""
+        return self.get_by_field(db, "ticker", ticker)
     
     def get_by_name(self, db: Session, name: str) -> Optional[Asset]:
-        """Get asset by name."""
-        return db.query(Asset).filter(Asset.name == name).first()
+        """Get asset by name using ORM."""
+        return self.get_by_field(db, "name", name)
     
     def get_active_assets(self, db: Session, skip: int = 0, limit: int = 100) -> List[Asset]:
-        """Get all active assets."""
-        return (
-            db.query(Asset)
-            .filter(Asset.is_active == True)
-            .offset(skip)
-            .limit(limit)
-            .all()
-        )
+        """Get all active assets using ORM."""
+        return self.get_multi_by_field(db, "is_active", True, skip, limit)
     
     def get_assets_by_type(self, db: Session, asset_type_id: int, skip: int = 0, limit: int = 100) -> List[Asset]:
-        """Get assets by asset type ID."""
-        return (
-            db.query(Asset)
-            .filter(Asset.asset_type_id == asset_type_id)
-            .offset(skip)
-            .limit(limit)
-            .all()
-        )
+        """Get assets by asset type ID using ORM."""
+        return self.get_multi_by_field(db, "asset_type_id", asset_type_id, skip, limit)
     
     def get_assets_by_type_name(self, db: Session, type_name: str, skip: int = 0, limit: int = 100) -> List[Asset]:
         """Get assets by asset type name."""
@@ -72,19 +60,8 @@ class CRUDAsset(CRUDBase[Asset]):
         )
     
     def search_assets(self, db: Session, search_term: str, skip: int = 0, limit: int = 100) -> List[Asset]:
-        """Search assets by name or ticker."""
-        return (
-            db.query(Asset)
-            .filter(
-                or_(
-                    Asset.name.ilike(f"%{search_term}%"),
-                    Asset.ticker.ilike(f"%{search_term}%")
-                )
-            )
-            .offset(skip)
-            .limit(limit)
-            .all()
-        )
+        """Search assets by name or ticker using ORM."""
+        return self.search(db, ["name", "ticker"], search_term, skip, limit)
     
     def update_asset_settings(self, db: Session, asset_id: int, update_data: Dict[str, Any]) -> bool:
         """Update asset settings."""
@@ -449,41 +426,36 @@ class CRUDCryptoMetric:
         pass
     
     def bulk_upsert_crypto_metrics(self, db: Session, metrics_list: List[Dict[str, Any]]) -> int:
-        """Bulk upsert crypto metrics data with MySQL ON DUPLICATE KEY UPDATE."""
+        """Bulk upsert crypto metrics data using ORM."""
         if not metrics_list:
             return 0
         
         try:
-            # MySQL의 ON DUPLICATE KEY UPDATE 사용
-            stmt = mysql_insert(CryptoMetric).values(metrics_list)
+            added_count = 0
             
-            # 중복 키가 있을 경우 업데이트할 필드들
-            update_stmt = stmt.on_duplicate_key_update(
-                mvrv_z_score=stmt.inserted.mvrv_z_score,
-                realized_price=stmt.inserted.realized_price,
-                hashrate=stmt.inserted.hashrate,
-                difficulty=stmt.inserted.difficulty,
-                miner_reserves=stmt.inserted.miner_reserves,
-                etf_btc_total=stmt.inserted.etf_btc_total,
-                sopr=stmt.inserted.sopr,
-                nupl=stmt.inserted.nupl,
-                realized_cap=stmt.inserted.realized_cap,
-                cdd_90dma=stmt.inserted.cdd_90dma,
-                true_market_mean=stmt.inserted.true_market_mean,
-                nrpl_btc=stmt.inserted.nrpl_btc,
-                aviv=stmt.inserted.aviv,
-                thermo_cap=stmt.inserted.thermo_cap,
-                hodl_waves_supply=stmt.inserted.hodl_waves_supply,
-                etf_btc_flow=stmt.inserted.etf_btc_flow,
-                open_interest_futures=stmt.inserted.open_interest_futures,
-                updated_at=func.now()
-            )
+            for metric_data in metrics_list:
+                # Check if record already exists
+                existing = db.query(CryptoMetric).filter(
+                    and_(
+                        CryptoMetric.asset_id == metric_data['asset_id'],
+                        CryptoMetric.timestamp_utc == metric_data['timestamp_utc']
+                    )
+                ).first()
+                
+                if existing:
+                    # Update existing record
+                    for key, value in metric_data.items():
+                        if hasattr(existing, key):
+                            setattr(existing, key, value)
+                    existing.updated_at = datetime.now()
+                else:
+                    # Create new record
+                    new_metric = CryptoMetric(**metric_data)
+                    db.add(new_metric)
+                    added_count += 1
             
-            result = db.execute(update_stmt)
             db.commit()
-            
-            # 영향받은 행 수 반환 (INSERT + UPDATE)
-            return result.rowcount
+            return added_count
             
         except Exception as e:
             logger.error(f"Bulk crypto metrics upsert failed: {e}")

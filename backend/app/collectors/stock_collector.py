@@ -15,6 +15,7 @@ from .logging_helper import CollectorLoggingHelper, BatchProcessor
 from ..core.config import GLOBAL_APP_CONFIGS
 from ..models.asset import Asset
 from ..utils.retry import retry_with_backoff, classify_api_error, TransientAPIError, PermanentAPIError
+from ..services.api_strategy_manager import api_manager
 
 from ..crud.asset import crud_stock_financial, crud_stock_profile, crud_stock_estimate, crud_asset
 
@@ -55,7 +56,8 @@ class StockCollector(BaseCollector):
             # 하이브리드 방식: True/False와 true/false 모두 지원
             from sqlalchemy import or_, text
             
-            async with self.get_db_session() as db:
+            db = self.get_db_session()
+            try:
                 condition1 = Asset.collection_settings.contains({"collect_assets_info": True})
                 condition2 = text("JSON_EXTRACT(collection_settings, '$.collect_assets_info') = true")
                 
@@ -73,10 +75,7 @@ class StockCollector(BaseCollector):
                     return {"message": "No assets with stock collection enabled", "processed": 0}
                 
                 # 수집 시작 로그
-                self.logging_helper.start_collection("stock data", len(assets), {
-                    "collection_type": "settings_based",
-                    "filter_criteria": {"collect_assets_info": True}
-                })
+                self.logging_helper.start_collection("stock_data", len(assets), api_provider="FMP")
                 
                 # 자산 필터링 결과 로그
                 self.logging_helper.log_assets_filtered(len(assets), {"collect_assets_info": True})
@@ -87,6 +86,8 @@ class StockCollector(BaseCollector):
                 })
                 
                 return await self._collect_data()
+            finally:
+                db.close()
             
         except Exception as e:
             self.log_progress(f"Stock collection with settings failed: {e}", "error")
@@ -146,7 +147,8 @@ class StockCollector(BaseCollector):
                 self.logging_helper.log_collection_completion(
                     result["processed_assets"], 
                     result["total_added_records"],
-                    {"collection_type": "stock_data"}
+                    api_provider="FMP",
+                    collection_type="stock_data"
                 )
                 
                 return {
@@ -160,36 +162,12 @@ class StockCollector(BaseCollector):
                 raise
     
     async def _fetch_async(self, client: httpx.AsyncClient, url: str, api_name: str, ticker: str):
-        """Fetch data from API with advanced retry logic"""
-        async def api_call():
-            await self.safe_emit('scheduler_log', {
-                'message': f"[{ticker}] {api_name} API 호출 시도: {url}", 
-                'type': 'info'
-            })
-            
-            response = await client.get(url, timeout=self.api_timeout)
-            
-            # API 응답 상태 코드에 따른 오류 분류
-            if response.status_code == 429:
-                raise TransientAPIError(f"Rate limit exceeded for {api_name}")
-            elif response.status_code >= 500:
-                raise TransientAPIError(f"Server error {response.status_code} for {api_name}")
-            elif response.status_code == 404:
-                raise PermanentAPIError(f"Resource not found for {ticker} in {api_name}")
-            elif response.status_code in [401, 403]:
-                raise PermanentAPIError(f"Authentication failed for {api_name}")
-            
-            response.raise_for_status()
-            return response.json()
-        
-        # 고도화된 재시도 로직 적용
-        max_retries = GLOBAL_APP_CONFIGS.get("MAX_API_RETRY_ATTEMPTS", 3)
-        return await retry_with_backoff(
-            api_call,
-            max_retries=max_retries,
-            base_delay=1.0,
-            max_delay=30.0,
-            jitter=True
+        """Fetch data from API using common request method"""
+        return await self._make_request(
+            client=client,
+            url=url,
+            api_name=api_name,
+            ticker=ticker
         )
     
     async def _fetch_fmp_profile(self, client: httpx.AsyncClient, ticker: str, api_key: str) -> Optional[dict]:
@@ -339,69 +317,51 @@ class StockCollector(BaseCollector):
             return None
 
     async def _fetch_tiingo_profile(self, client: httpx.AsyncClient, ticker: str) -> Optional[dict]:
-        """Fetch company profile from Tiingo"""
+        """Fetch company profile from Tiingo using api_manager"""
         try:
-            from ..external_apis.tiingo_client import TiingoClient
+            # api_manager를 사용하여 회사 정보 조회
+            stock_data = await api_manager.get_stock_data(ticker)
             
-            tiingo_client = TiingoClient()
-            
-            # Tiingo API에서 회사 정보 조회
-            metadata = await tiingo_client.get_metadata(ticker)
-            
-            if metadata:
+            if stock_data and isinstance(stock_data, dict):
                 return {
-                    'company_name': metadata.get('name'),
-                    'description': metadata.get('description'),
-                    'sector': metadata.get('sector'),
-                    'industry': metadata.get('industry'),
-                    'country': metadata.get('country'),
-                    'exchange': metadata.get('exchange'),
-                    'currency': metadata.get('currency'),
-                    'market_cap': metadata.get('market_cap'),
-                    'pe_ratio': metadata.get('pe_ratio'),
-                    'beta': metadata.get('beta')
+                    'company_name': stock_data.get('name'),
+                    'description': stock_data.get('description'),
+                    'sector': stock_data.get('sector'),
+                    'industry': stock_data.get('industry'),
+                    'country': stock_data.get('country'),
+                    'exchange': stock_data.get('exchange'),
+                    'currency': stock_data.get('currency'),
+                    'market_cap': stock_data.get('market_cap'),
+                    'pe_ratio': stock_data.get('pe_ratio'),
+                    'beta': stock_data.get('beta')
                 }
             
             return None
             
-        except TransientAPIError as e:
-            if "Rate limit exceeded" in str(e):
-                self._mark_rate_limited("tiingo")
-            self.log_progress(f"Tiingo profile fetch failed for {ticker}: {e}", "error")
-            return None
         except Exception as e:
             self.log_progress(f"Tiingo profile fetch failed for {ticker}: {e}", "error")
             return None
 
     async def _fetch_tiingo_quote(self, client: httpx.AsyncClient, ticker: str) -> Optional[dict]:
-        """Fetch real-time quote from Tiingo"""
+        """Fetch real-time quote from Tiingo using api_manager"""
         try:
-            from ..external_apis.tiingo_client import TiingoClient
+            # api_manager를 사용하여 실시간 가격 조회
+            stock_data = await api_manager.get_stock_data(ticker)
             
-            tiingo_client = TiingoClient()
-            
-            # Tiingo API에서 실시간 가격 조회
-            quote_data = await tiingo_client.get_quote(ticker)
-            
-            if quote_data:
+            if stock_data and isinstance(stock_data, dict):
                 return {
-                    'price': quote_data.get('last'),
-                    'change': quote_data.get('change'),
-                    'change_percent': quote_data.get('changePercent'),
-                    'volume': quote_data.get('volume'),
-                    'high': quote_data.get('high'),
-                    'low': quote_data.get('low'),
-                    'open': quote_data.get('open'),
-                    'previous_close': quote_data.get('prevClose')
+                    'price': stock_data.get('last'),
+                    'change': stock_data.get('change'),
+                    'change_percent': stock_data.get('changePercent'),
+                    'volume': stock_data.get('volume'),
+                    'high': stock_data.get('high'),
+                    'low': stock_data.get('low'),
+                    'open': stock_data.get('open'),
+                    'previous_close': stock_data.get('prevClose')
                 }
             
             return None
             
-        except TransientAPIError as e:
-            if "Rate limit exceeded" in str(e):
-                self._mark_rate_limited("tiingo")
-            self.log_progress(f"Tiingo quote fetch failed for {ticker}: {e}", "error")
-            return None
         except Exception as e:
             self.log_progress(f"Tiingo quote fetch failed for {ticker}: {e}", "error")
             return None

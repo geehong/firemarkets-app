@@ -336,6 +336,10 @@ def log_business_event(
         logger.info("Business event", **log_data)
 
 
+# Create a default logger instance for direct import
+logger = get_logger("finance_app")
+
+
 
 
 

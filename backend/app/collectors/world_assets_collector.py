@@ -17,6 +17,7 @@ from .base_collector import BaseCollector
 from ..models.world_assets import WorldAssetsRanking, BondMarketData, ScrapingLogs
 from ..models.asset import Asset
 from ..utils.retry import retry_with_backoff, classify_api_error, TransientAPIError, PermanentAPIError
+from ..services.api_strategy_manager import api_manager
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +133,8 @@ class WorldAssetsCollector(BaseCollector):
         try:
             self.log_progress("Scraping main page from companiesmarketcap.com")
             
+            # HTML 응답을 위한 별도 처리
+            import requests
             response = requests.get(self.companies_marketcap_url, headers=self.headers, timeout=30)
             response.raise_for_status()
                 

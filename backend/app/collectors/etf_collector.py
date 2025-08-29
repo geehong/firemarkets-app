@@ -15,6 +15,7 @@ from ..core.config import GLOBAL_APP_CONFIGS
 from ..models.asset import Asset
 from ..models.etf import EtfInfo
 from ..utils.retry import retry_with_backoff, classify_api_error, TransientAPIError, PermanentAPIError
+from ..services.api_strategy_manager import api_manager
 
 logger = logging.getLogger(__name__)
 
@@ -126,36 +127,12 @@ class ETFCollector(BaseCollector):
             raise
     
     async def _fetch_async(self, client: httpx.AsyncClient, url: str, api_name: str, ticker: str):
-        """Fetch data from API with advanced retry logic"""
-        async def api_call():
-            await self.safe_emit('scheduler_log', {
-                'message': f"[{ticker}] {api_name} API 호출 시도: {url}", 
-                'type': 'info'
-            })
-            
-            response = await client.get(url, timeout=self.api_timeout)
-            
-            # API 응답 상태 코드에 따른 오류 분류
-            if response.status_code == 429:
-                raise TransientAPIError(f"Rate limit exceeded for {api_name}")
-            elif response.status_code >= 500:
-                raise TransientAPIError(f"Server error {response.status_code} for {api_name}")
-            elif response.status_code == 404:
-                raise PermanentAPIError(f"Resource not found for {ticker} in {api_name}")
-            elif response.status_code in [401, 403]:
-                raise PermanentAPIError(f"Authentication failed for {api_name}")
-            
-            response.raise_for_status()
-            return response.json()
-        
-        # 고도화된 재시도 로직 적용
-        max_retries = GLOBAL_APP_CONFIGS.get("MAX_API_RETRY_ATTEMPTS", 3)
-        return await retry_with_backoff(
-            api_call,
-            max_retries=max_retries,
-            base_delay=1.0,
-            max_delay=30.0,
-            jitter=True
+        """Fetch data from API using common request method"""
+        return await self._make_request(
+            client=client,
+            url=url,
+            api_name=api_name,
+            ticker=ticker
         )
     
     async def _fetch_etf_info_from_fmp(self, client: httpx.AsyncClient, ticker: str, api_key: str) -> Dict:
@@ -285,23 +262,7 @@ class ETFCollector(BaseCollector):
             "error": "All data sources failed"
         }
     
-    def _safe_float(self, value: Any) -> Optional[float]:
-        """Safely convert value to float"""
-        if value is None:
-            return None
-        try:
-            return float(value)
-        except (ValueError, TypeError):
-            return None
-    
-    def _safe_date_parse(self, date_str: str) -> Optional[datetime]:
-        """Safely parse date string"""
-        if not date_str:
-            return None
-        try:
-            return datetime.strptime(date_str, "%Y-%m-%d")
-        except ValueError:
-            return None
+    # BaseCollector의 공통 메소드 사용하므로 제거
 
 
 

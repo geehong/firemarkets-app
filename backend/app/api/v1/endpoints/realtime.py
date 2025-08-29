@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from ....core.database import get_db
 from ....services.tiingo_ws_consumer import get_consumer
-from ....services.scheduler_service import get_scheduler
+from ....services.scheduler_service import scheduler_service as get_scheduler
 from ....services import price_service
 from ....core.cache import cache_with_invalidation
 from ....external_apis.tiingo_client import tiingo_client

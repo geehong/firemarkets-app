@@ -58,7 +58,11 @@ class Asset(Base):
         """마지막 수집 시간을 설정합니다."""
         if not self.last_collections:
             self.last_collections = {}
-        self.last_collections[collection_type] = timestamp
+        # datetime 객체를 ISO 문자열로 변환하여 JSON 직렬화 가능하게 함
+        if hasattr(timestamp, 'isoformat'):
+            self.last_collections[collection_type] = timestamp.isoformat()
+        else:
+            self.last_collections[collection_type] = timestamp
     
     # 편의 메서드들
     def get_collect_price(self):

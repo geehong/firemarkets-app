@@ -1,6 +1,6 @@
 # backend_temp/app/models/system.py
 from sqlalchemy import (BIGINT, DECIMAL, TIMESTAMP, Boolean, Column, Date,
-                        DateTime, ForeignKey, Integer, String, Text, func)
+                        DateTime, ForeignKey, Integer, String, Text, func, JSON)
 from sqlalchemy.orm import relationship
 
 from ..core.database import Base
@@ -35,6 +35,8 @@ class SchedulerLog(Base):
     assets_processed = Column(Integer, nullable=True, default=0)
     data_points_added = Column(Integer, nullable=True, default=0)
     error_message = Column(Text, nullable=True)
+    # 상세 로그 정보를 저장할 JSON 컬럼 추가
+    details = Column(JSON, nullable=True)  # 구조화된 상세 정보
     created_at = Column(TIMESTAMP, server_default=func.now())
 
 

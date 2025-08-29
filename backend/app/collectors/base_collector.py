@@ -3,6 +3,7 @@ Base collector class providing common functionality for all data collectors.
 """
 import logging
 import asyncio
+import httpx
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 from ..core.database import get_db
 from ..core.config import GLOBAL_APP_CONFIGS
 from ..models.system import SchedulerLog
+from ..utils.retry import retry_with_backoff, classify_api_error, TransientAPIError, PermanentAPIError
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +23,10 @@ class BaseCollector(ABC):
     def __init__(self, db: Session = None):
         self.db = db
         self.collector_name = self.__class__.__name__
+        
+        # API 설정
+        self.api_timeout = GLOBAL_APP_CONFIGS.get("API_REQUEST_TIMEOUT_SECONDS", 30)
+        self.max_retries = GLOBAL_APP_CONFIGS.get("MAX_API_RETRY_ATTEMPTS", 3)
         
         # 세마포어 기능 설정 기반 활성화
         self.enable_semaphore = GLOBAL_APP_CONFIGS.get("ENABLE_SEMAPHORE", True)
@@ -174,6 +180,228 @@ class BaseCollector(ABC):
             "error_type": type(error).__name__,
         }
         asyncio.create_task(self.safe_emit('scheduler_log', payload))
+
+    # --- 공통 API 요청 메소드들 ---
+    async def _make_request(
+        self, 
+        client: httpx.AsyncClient, 
+        url: str, 
+        api_name: str, 
+        params: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, Any]] = None,
+        ticker: str = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        공통 API 요청 메소드 - 재시도 로직과 예외 처리 포함
+        
+        Args:
+            client: httpx.AsyncClient 인스턴스
+            url: 요청할 URL
+            api_name: API 이름 (로깅용)
+            params: URL 파라미터
+            headers: HTTP 헤더
+            ticker: 자산 티커 (로깅용)
+            
+        Returns:
+            API 응답 JSON 데이터 또는 None (실패 시)
+        """
+        async def api_call():
+            response = await client.get(
+                url, 
+                params=params, 
+                headers=headers, 
+                timeout=self.api_timeout
+            )
+            
+            # API 응답 상태 코드에 따른 오류 분류
+            if response.status_code == 429:
+                raise TransientAPIError(f"Rate limit exceeded for {api_name}")
+            elif response.status_code >= 500:
+                raise TransientAPIError(f"Server error {response.status_code} for {api_name}")
+            elif response.status_code == 404:
+                raise PermanentAPIError(f"Resource not found for {api_name}")
+            elif response.status_code in [401, 403]:
+                raise PermanentAPIError(f"Authentication failed for {api_name}")
+            
+            response.raise_for_status()
+            return response.json()
+        
+        try:
+            # 고도화된 재시도 로직 적용
+            return await retry_with_backoff(
+                api_call,
+                max_retries=self.max_retries,
+                base_delay=1.0,
+                max_delay=30.0,
+                jitter=True
+            )
+        except Exception as e:
+            ticker_info = f"[{ticker}] " if ticker else ""
+            logger.error(f"{ticker_info}{api_name} API 호출 실패: {e}")
+            return None
+
+    async def _make_request_with_retry(
+        self, 
+        client: httpx.AsyncClient, 
+        url: str, 
+        api_name: str, 
+        params: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, Any]] = None,
+        ticker: str = None,
+        max_retries: int = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        커스텀 재시도 횟수로 API 요청하는 메소드
+        
+        Args:
+            client: httpx.AsyncClient 인스턴스
+            url: 요청할 URL
+            api_name: API 이름 (로깅용)
+            params: URL 파라미터
+            headers: HTTP 헤더
+            ticker: 자산 티커 (로깅용)
+            max_retries: 최대 재시도 횟수 (None이면 기본값 사용)
+            
+        Returns:
+            API 응답 JSON 데이터 또는 None (실패 시)
+        """
+        if max_retries is None:
+            max_retries = self.max_retries
+            
+        async def api_call():
+            response = await client.get(
+                url, 
+                params=params, 
+                headers=headers, 
+                timeout=self.api_timeout
+            )
+            
+            # API 응답 상태 코드에 따른 오류 분류
+            if response.status_code == 429:
+                raise TransientAPIError(f"Rate limit exceeded for {api_name}")
+            elif response.status_code >= 500:
+                raise TransientAPIError(f"Server error {response.status_code} for {api_name}")
+            elif response.status_code == 404:
+                raise PermanentAPIError(f"Resource not found for {api_name}")
+            elif response.status_code in [401, 403]:
+                raise PermanentAPIError(f"Authentication failed for {api_name}")
+            
+            response.raise_for_status()
+            return response.json()
+        
+        try:
+            return await retry_with_backoff(
+                api_call,
+                max_retries=max_retries,
+                base_delay=1.0,
+                max_delay=30.0,
+                jitter=True
+            )
+        except Exception as e:
+            ticker_info = f"[{ticker}] " if ticker else ""
+            logger.error(f"{ticker_info}{api_name} API 호출 실패: {e}")
+            return None
+
+    def _safe_float(self, value: Any, default: float = None) -> Optional[float]:
+        """Safely convert value to float"""
+        if value is None:
+            return default
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return default
+    
+    def _safe_int(self, value: Any, default: int = None) -> Optional[int]:
+        """Safely convert value to integer"""
+        if value is None:
+            return default
+        try:
+            return int(float(value))
+        except (ValueError, TypeError):
+            return default
+    
+    def _safe_date_parse(self, date_str: str) -> Optional[datetime]:
+        """Safely parse date string"""
+        if not date_str:
+            return None
+        try:
+            # 다양한 날짜 형식 지원
+            date_formats = [
+                '%Y-%m-%d',
+                '%Y-%m-%d %H:%M:%S',
+                '%Y-%m-%dT%H:%M:%S',
+                '%Y-%m-%dT%H:%M:%SZ',
+                '%Y-%m-%dT%H:%M:%S.%fZ'
+            ]
+            
+            for fmt in date_formats:
+                try:
+                    return datetime.strptime(date_str, fmt)
+                except ValueError:
+                    continue
+            
+            # 모든 형식이 실패하면 None 반환
+            return None
+        except Exception:
+            return None
+
+    async def _make_html_request(
+        self, 
+        client: httpx.AsyncClient, 
+        url: str, 
+        api_name: str, 
+        params: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, Any]] = None,
+        ticker: str = None
+    ) -> Optional[str]:
+        """
+        HTML 응답을 위한 공통 API 요청 메소드
+        
+        Args:
+            client: httpx.AsyncClient 인스턴스
+            url: 요청할 URL
+            api_name: API 이름 (로깅용)
+            params: URL 파라미터
+            headers: HTTP 헤더
+            ticker: 자산 티커 (로깅용)
+            
+        Returns:
+            HTML 응답 텍스트 또는 None (실패 시)
+        """
+        async def api_call():
+            response = await client.get(
+                url, 
+                params=params, 
+                headers=headers, 
+                timeout=self.api_timeout
+            )
+            
+            # API 응답 상태 코드에 따른 오류 분류
+            if response.status_code == 429:
+                raise TransientAPIError(f"Rate limit exceeded for {api_name}")
+            elif response.status_code >= 500:
+                raise TransientAPIError(f"Server error {response.status_code} for {api_name}")
+            elif response.status_code == 404:
+                raise PermanentAPIError(f"Resource not found for {api_name}")
+            elif response.status_code in [401, 403]:
+                raise PermanentAPIError(f"Authentication failed for {api_name}")
+            
+            response.raise_for_status()
+            return response.text
+        
+        try:
+            # 고도화된 재시도 로직 적용
+            return await retry_with_backoff(
+                api_call,
+                max_retries=self.max_retries,
+                base_delay=1.0,
+                max_delay=30.0,
+                jitter=True
+            )
+        except Exception as e:
+            ticker_info = f"[{ticker}] " if ticker else ""
+            logger.error(f"{ticker_info}{api_name} API 호출 실패: {e}")
+            return None
 
 
 def json_safe(obj: dict) -> str:
