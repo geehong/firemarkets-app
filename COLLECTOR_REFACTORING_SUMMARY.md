@@ -165,3 +165,4 @@ def _safe_float(self, value: Any, default: float = None) -> Optional[float]:
 
 모든 collector가 BaseCollector의 공통 메소드를 활용하여 더 견고하고 유지보수하기 쉬운 코드베이스가 되었습니다.
 
+

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from app.services.scheduler_service import scheduler_service
 from app.utils.logger import logger
 from app.core.database import SessionLocal
-from app.models.system import AppConfiguration
+from ..models.system import AppConfiguration
 
 def get_db_config(db, key, default_value):
     """DB에서 설정값을 가져옵니다."""
@@ -50,6 +50,8 @@ def graceful_shutdown(signum, frame):
 
 def main_loop():
     """메인 루프: DB 플래그를 주기적으로 확인하여 스케줄러를 제어합니다."""
+    global scheduler_service
+    
     # SIGTERM 신호에 대한 핸들러 등록
     signal.signal(signal.SIGTERM, graceful_shutdown)
     signal.signal(signal.SIGINT, graceful_shutdown)
@@ -59,23 +61,28 @@ def main_loop():
     while True:
         try:
             db = SessionLocal()
-            should_run = get_db_config(db, 'scheduler_enabled', 'true').lower() == 'true'
+            should_run = get_db_config(db, 'scheduler_enabled', 'false').lower() == 'true'
             db.close()
 
             if should_run:
                 if not scheduler_service.scheduler.running:
                     logger.info("Control flag is ON. Starting scheduler...")
-                    scheduler_service.start_scheduler(run_immediately=True)
+                    scheduler_service.start_scheduler(run_immediately=False)
                 # 스케줄러가 실행 중일 때만 헬스 체크 수행
                 elif not check_health():
                     logger.warning("Health check failed. Restarting scheduler...")
                     scheduler_service.stop_scheduler() # 문제가 있는 스케줄러 중지
                     time.sleep(5) # 재시작 전 잠시 대기
-                    scheduler_service.start_scheduler(run_immediately=True)
-
+                    # 새로운 스케줄러 인스턴스 생성
+                    from app.services.scheduler_service import SchedulerService
+                    scheduler_service = SchedulerService()
+                    scheduler_service.start_scheduler(run_immediately=False)
             elif not should_run and scheduler_service.scheduler.running:
                 logger.info("Control flag is OFF. Stopping scheduler...")
                 scheduler_service.stop_scheduler()
+            else:
+                # 스케줄러가 실행 중이지 않을 때는 헬스 체크를 하지 않음
+                pass
                 
         except Exception as e:
             logger.error(f"An error occurred in the main scheduler loop: {e}")
@@ -84,4 +91,5 @@ def main_loop():
 
 if __name__ == "__main__":
     main_loop()
+
 

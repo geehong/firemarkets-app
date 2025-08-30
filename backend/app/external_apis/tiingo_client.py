@@ -184,7 +184,7 @@ class TiingoClient(BaseAPIClient):
             Symbol metadata
         """
         try:
-            data = await self._request(f"/tiingo/daily/{symbol.lower()}")
+            data = await self._request(f"/tiingo/daily/{symbol.upper()}")
             return data if isinstance(data, dict) else {}
             
         except Exception as e:

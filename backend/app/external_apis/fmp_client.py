@@ -19,7 +19,18 @@ class FMPClient(BaseAPIClient):
     def __init__(self):
         super().__init__()
         self.base_url = "https://financialmodelingprep.com/api/v3"
-        self.api_key = FMP_API_KEY
+        # 데이터베이스에서 API 키를 직접 가져오기
+        try:
+            from ..core.database import SessionLocal
+            from ..models.system import AppConfiguration
+            
+            db = SessionLocal()
+            config = db.query(AppConfiguration).filter(AppConfiguration.config_key == 'FMP_API_KEY').first()
+            self.api_key = config.config_value if config else FMP_API_KEY
+            db.close()
+        except Exception as e:
+            logger.warning(f"Failed to get FMP API key from database: {e}")
+            self.api_key = FMP_API_KEY
     
     async def test_connection(self) -> bool:
         """Test FMP API connection"""
@@ -49,28 +60,36 @@ class FMPClient(BaseAPIClient):
             }
         }
     
-    async def get_ohlcv_data(self, ticker: str) -> List[Dict[str, Any]]:
+    async def get_ohlcv_data(self, ticker: str, limit: int = 1000) -> List[Dict[str, Any]]:
         """Get OHLCV data from FMP"""
         if not self.api_key:
             raise ValueError("No FMP API key configured")
         
         try:
             async with httpx.AsyncClient() as client:
-                url = f"{self.base_url}/historical-price-full/{ticker}?apikey={self.api_key}"
+                url = f"{self.base_url}/historical-price-full/{ticker}?apikey={self.api_key}&limit={limit}"
                 data = await self._fetch_async(client, url, "FMP", ticker)
                 
                 if "historical" in data:
-                    return [
-                        {
-                            "timestamp_utc": self._safe_date_parse(d.get("date")),
-                            "open_price": self._safe_float(d.get("open")),
-                            "high_price": self._safe_float(d.get("high")),
-                            "low_price": self._safe_float(d.get("low")),
-                            "close_price": self._safe_float(d.get("close")),
-                            "volume": self._safe_float(d.get("volume"), 0.0),
-                        }
-                        for d in data["historical"] if self._safe_date_parse(d.get("date"))
-                    ]
+                    result = []
+                    for d in data["historical"]:
+                        date_str = d.get("date")
+                        # date가 0이거나 None인 경우 건너뛰기
+                        if not date_str or date_str == "0" or date_str == 0:
+                            continue
+                        
+                        timestamp = self._safe_date_parse(date_str)
+                        if timestamp is not None:  # None이 아닌 경우만 추가
+                            record = {
+                                "timestamp_utc": timestamp,
+                                "open_price": self._safe_float(d.get("open")),
+                                "high_price": self._safe_float(d.get("high")),
+                                "low_price": self._safe_float(d.get("low")),
+                                "close_price": self._safe_float(d.get("close")),
+                                "volume": self._safe_float(d.get("volume"), 0.0),
+                            }
+                            result.append(record)
+                    return result
         except Exception as e:
             logger.error(f"FMP OHLCV fetch failed for {ticker}: {e}")
         

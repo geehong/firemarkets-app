@@ -17,7 +17,7 @@ from .logging_helper import CollectorLoggingHelper, create_collection_summary_lo
 from ..core.config import GLOBAL_APP_CONFIGS
 from ..models.asset import Asset
 from ..models.system import AppConfiguration
-from ..crud import asset as crud_asset
+from ..crud import asset as crud_asset, crud_ohlcv
 from ..api import deps
 from ..services.api_strategy_manager import api_manager
 
@@ -50,9 +50,12 @@ class OHLCVCollector(BaseCollector):
             condition2 = text("JSON_EXTRACT(collection_settings, '$.collect_price') = true")
             
             # Asset 객체 대신 asset_id만 가져와서 세션 오류 방지
-            asset_ids = db.query(Asset.asset_id).filter(
+            # 암호화폐는 제외하고 주식/ETF/채권/펀드만 포함
+            from ..models.asset import AssetType
+            asset_ids = db.query(Asset.asset_id).join(AssetType).filter(
                 Asset.is_active == True,
-                or_(condition1, condition2)
+                or_(condition1, condition2),
+                AssetType.type_name.in_(['Stocks', 'ETFs', 'Bonds', 'Funds', 'Commodities'])
             ).all()
             
             asset_ids = [asset_id[0] for asset_id in asset_ids]  # 튜플에서 asset_id 추출
@@ -95,11 +98,7 @@ class OHLCVCollector(BaseCollector):
                 'type': 'info'
             })
             
-            # 히스토리 백필이 활성화된 경우 백필 로직 실행
-            if self.enable_historical_backfill:
-                await self._perform_historical_backfill(asset_ids)
-            
-            # 각 간격별로 데이터 수집
+            # 각 간격별로 데이터 수집 (최신 데이터 먼저)
             total_results = []
             for interval in ohlcv_intervals:
                 await self.safe_emit('scheduler_log', {
@@ -109,6 +108,14 @@ class OHLCVCollector(BaseCollector):
                 
                 result = await self._collect_data_with_interval(asset_ids, interval)
                 total_results.append(result)
+            
+            # 히스토리 백필이 활성화된 경우 백필 로직 실행 (최신 데이터 수집 후)
+            if self.enable_historical_backfill:
+                await self.safe_emit('scheduler_log', {
+                    'message': "최신 데이터 수집 완료. 히스토리 백필 시작", 
+                    'type': 'info'
+                })
+                await self._perform_historical_backfill(asset_ids)
             
             # 결과 합계
             total_processed = sum(r.get("processed_assets", 0) for r in total_results)
@@ -196,9 +203,9 @@ class OHLCVCollector(BaseCollector):
                                 'type': 'success'
                             })
                 
-                # Rate limiting between batches
+                # Rate limiting between batches - API 제한을 피하기 위해 더 긴 대기 시간
                 if i + batch_size < len(asset_ids):
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(5)  # 2초에서 5초로 증가
             
             await self.safe_emit('scheduler_log', {
                 'message': f"OHLCV 데이터 수집 완료: {total_processed}개 자산 처리, {total_added}개 레코드 추가", 
@@ -260,9 +267,9 @@ class OHLCVCollector(BaseCollector):
                                 'type': 'success'
                             })
                 
-                # Rate limiting between batches
+                # Rate limiting between batches - API 제한을 피하기 위해 더 긴 대기 시간
                 if i + batch_size < len(asset_ids):
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(5)  # 2초에서 5초로 증가
             
             await self.safe_emit('scheduler_log', {
                 'message': f"OHLCV {interval} 간격 데이터 수집 완료: {total_processed}개 자산 처리, {total_added}개 레코드 추가", 
@@ -413,12 +420,15 @@ class OHLCVCollector(BaseCollector):
             asset_type_name_lower = fresh_asset.asset_type.type_name.lower() if fresh_asset.asset_type else ""
             
             # 자산 타입에 따라 적절한 API 전략 사용
-            if 'crypto' in asset_type_name_lower:
+            if 'commodities' in asset_type_name_lower:
+                # 커머디티 데이터 수집 (FMP 우선순위)
+                data = await api_manager.get_commodity_ohlcv(ticker, interval=interval, limit=165)
+            elif 'crypto' in asset_type_name_lower:
                 # 암호화폐 데이터 수집
-                data = api_manager.get_crypto_data(ticker, interval=interval, limit=100)
+                data = await api_manager.get_crypto_data(ticker, interval=interval, limit=165)
             else:
                 # 주식/ETF 데이터 수집
-                data = api_manager.get_ohlcv(ticker, interval=interval, limit=100)
+                data = await api_manager.get_ohlcv(ticker, interval=interval, limit=165)
             
             if data is not None and not data.empty:
                 # DataFrame을 OHLCV 형식으로 변환
@@ -456,6 +466,42 @@ class OHLCVCollector(BaseCollector):
             }
         finally:
             db.close()
+
+    async def _get_latest_data_date(self, asset_id: int, interval: str) -> Optional[date]:
+        """Get the latest data date for a specific asset and interval"""
+        db = self.get_db_session()
+        try:
+            from ..crud.asset import crud_ohlcv
+            
+            latest_data = db.query(crud_ohlcv.model).filter(
+                crud_ohlcv.model.asset_id == asset_id,
+                crud_ohlcv.model.data_interval == interval
+            ).order_by(crud_ohlcv.model.timestamp_utc.desc()).first()
+            
+            if latest_data:
+                return latest_data.timestamp_utc.date()
+            return None
+        finally:
+            db.close()
+    
+    def _calculate_days_needed(self, latest_date: Optional[date]) -> int:
+        """Calculate how many days of data are needed based on latest date"""
+        if latest_date is None:
+            # 데이터가 없으면 HISTORICAL_DATA_DAYS_PER_RUN만큼 수집
+            return self.historical_days_per_run
+        
+        current_date = datetime.now().date()
+        days_diff = (current_date - latest_date).days
+        
+        if days_diff <= 0:
+            # 최신 데이터가 있으면 1일만 수집 (최신 데이터 업데이트)
+            return 1
+        elif days_diff > self.historical_days_per_run:
+            # 너무 오래된 데이터면 HISTORICAL_DATA_DAYS_PER_RUN만큼 수집
+            return self.historical_days_per_run
+        else:
+            # 빠진 일수만큼 수집
+            return days_diff
 
     async def _perform_historical_backfill(self, asset_ids: List[int]) -> None:
         """Perform historical data backfill for missing data"""
@@ -582,31 +628,12 @@ class OHLCVCollector(BaseCollector):
                 ]
                 
                 if ohlcv_data:
-                    # 데이터베이스에 저장
-                    db = self.get_db_session()
-                    try:
-                        for ohlcv_record in ohlcv_data:
-                            # 중복 데이터 확인
-                            existing = db.query(crud_ohlcv.model).filter(
-                                crud_ohlcv.model.asset_id == asset_id,
-                                crud_ohlcv.model.timestamp_utc == ohlcv_record["timestamp_utc"],
-                                crud_ohlcv.model.data_interval == "1d"
-                            ).first()
-                            
-                            if not existing:
-                                new_ohlcv = crud_ohlcv.model(**ohlcv_record)
-                                db.add(new_ohlcv)
-                        
-                        db.commit()
-                        await self.safe_emit('scheduler_log', {
-                            'message': f"[{ticker}] 히스토리 데이터 {len(ohlcv_data)}개 저장 완료", 
-                            'type': 'success'
-                        })
-                    except Exception as e:
-                        db.rollback()
-                        self.log_progress(f"Database error for {ticker}: {e}", "error")
-                    finally:
-                        db.close()
+                    # 통일된 저장 함수 사용
+                    await self._store_ohlcv_data_with_interval(asset_id, ohlcv_data, "1d")
+                    await self.safe_emit('scheduler_log', {
+                        'message': f"[{ticker}] 히스토리 데이터 {len(ohlcv_data)}개 저장 완료", 
+                        'type': 'success'
+                    })
                         
         except Exception as e:
             self.log_progress(f"Crypto historical data fetch error for {ticker}: {e}", "error")
@@ -644,31 +671,12 @@ class OHLCVCollector(BaseCollector):
                         continue
                 
                 if ohlcv_data:
-                    # 데이터베이스에 저장
-                    db = self.get_db_session()
-                    try:
-                        for ohlcv_record in ohlcv_data:
-                            # 중복 데이터 확인
-                            existing = db.query(crud_ohlcv.model).filter(
-                                crud_ohlcv.model.asset_id == asset_id,
-                                crud_ohlcv.model.timestamp_utc == ohlcv_record["timestamp_utc"],
-                                crud_ohlcv.model.data_interval == "1d"
-                            ).first()
-                            
-                            if not existing:
-                                new_ohlcv = crud_ohlcv.model(**ohlcv_record)
-                                db.add(new_ohlcv)
-                        
-                        db.commit()
-                        await self.safe_emit('scheduler_log', {
-                            'message': f"[{ticker}] 히스토리 데이터 {len(ohlcv_data)}개 저장 완료", 
-                            'type': 'success'
-                        })
-                    except Exception as e:
-                        db.rollback()
-                        self.log_progress(f"Database error for {ticker}: {e}", "error")
-                    finally:
-                        db.close()
+                    # 통일된 저장 함수 사용
+                    await self._store_ohlcv_data_with_interval(asset_id, ohlcv_data, "1d")
+                    await self.safe_emit('scheduler_log', {
+                        'message': f"[{ticker}] 히스토리 데이터 {len(ohlcv_data)}개 저장 완료", 
+                        'type': 'success'
+                    })
                         
         except Exception as e:
             self.log_progress(f"Stock historical data fetch error for {ticker}: {e}", "error")

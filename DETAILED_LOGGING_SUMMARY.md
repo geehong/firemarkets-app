@@ -292,3 +292,4 @@ class OHLCVCollector(BaseCollector):
 
 Firemarkets 앱의 데이터 수집 시스템이 더욱 투명하고 관리하기 쉬운 구조로 개선되었습니다.
 
+

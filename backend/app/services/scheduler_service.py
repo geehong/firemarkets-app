@@ -183,95 +183,95 @@ class SchedulerService:
                     next_run_time=datetime.now() if enable_immediate_execution else None
                 )
             
-            # 세계 자산 데이터 수집 (자주 수집)
-            world_assets_func = self._create_collection_function(WorldAssetsCollector, "worldassetscollector_collection")
-            if use_hours:
-                self.scheduler.add_job(
-                    world_assets_func,
-                    'interval',
-                    hours=frequent_interval_hours,
-                    minutes=frequent_interval_minutes,
-                    id='periodic_world_assets_fetch',
-                    replace_existing=True,
-                    misfire_grace_time=300,
-                    next_run_time=datetime.now() if enable_immediate_execution else None
-                )
-            else:
-                self.scheduler.add_job(
-                    world_assets_func,
-                    'interval',
-                    minutes=frequent_interval_minutes,
-                    id='periodic_world_assets_fetch',
-                    replace_existing=True,
-                    misfire_grace_time=300,
-                    next_run_time=datetime.now() if enable_immediate_execution else None
-                )
+            # 세계 자산 데이터 수집 (비활성화 - OHLCV만 테스트)
+            # world_assets_func = self._create_collection_function(WorldAssetsCollector, "worldassetscollector_collection")
+            # if use_hours:
+            #     self.scheduler.add_job(
+            #         world_assets_func,
+            #         'interval',
+            #         hours=frequent_interval_hours,
+            #         minutes=frequent_interval_minutes,
+            #         id='periodic_world_assets_fetch',
+            #         replace_existing=True,
+            #         misfire_grace_time=300,
+            #         next_run_time=datetime.now() if enable_immediate_execution else None
+            #     )
+            # else:
+            #     self.scheduler.add_job(
+            #         world_assets_func,
+            #         'interval',
+            #         minutes=frequent_interval_minutes,
+            #         id='periodic_world_assets_fetch',
+            #         replace_existing=True,
+            #         misfire_grace_time=300,
+            #         next_run_time=datetime.now() if enable_immediate_execution else None
+            #     )
             
-            # 온체인 데이터 수집 (DATA_COLLECTION_INTERVAL_MINUTES 설정 따름)
-            onchain_func = self._create_collection_function(OnchainCollector, "onchaincollector_collection")
-            if use_hours:
-                self.scheduler.add_job(
-                    onchain_func,
-                    'interval',
-                    hours=frequent_interval_hours,
-                    minutes=frequent_interval_minutes,
-                    id='periodic_onchain_fetch',
-                    replace_existing=True,
-                    misfire_grace_time=300,
-                    next_run_time=datetime.now() if enable_immediate_execution else None
-                )
-            else:
-                self.scheduler.add_job(
-                    onchain_func,
-                    'interval',
-                    minutes=frequent_interval_minutes,
-                    id='periodic_onchain_fetch',
-                    replace_existing=True,
-                    misfire_grace_time=300,
-                    next_run_time=datetime.now() if enable_immediate_execution else None
-                )
+            # 온체인 데이터 수집 (비활성화 - 가격 데이터가 아님)
+            # onchain_func = self._create_collection_function(OnchainCollector, "onchaincollector_collection")
+            # if use_hours:
+            #     self.scheduler.add_job(
+            #         onchain_func,
+            #         'interval',
+            #         hours=frequent_interval_hours,
+            #         minutes=frequent_interval_minutes,
+            #         id='periodic_onchain_fetch',
+            #         replace_existing=True,
+            #         misfire_grace_time=300,
+            #         next_run_time=datetime.now() if enable_immediate_execution else None
+            #     )
+            # else:
+            #     self.scheduler.add_job(
+            #         onchain_func,
+            #         'interval',
+            #         minutes=frequent_interval_minutes,
+            #         id='periodic_onchain_fetch',
+            #         replace_existing=True,
+            #         misfire_grace_time=300,
+            #         next_run_time=datetime.now() if enable_immediate_execution else None
+            #     )
             
-            # 주식 데이터 수집 (덜 자주 수집)
-            stock_func = self._create_collection_function(StockCollector, "stockcollector_collection")
-            self.scheduler.add_job(
-                stock_func,
-                'interval',
-                days=daily_interval_days,
-                id='periodic_stock_fetch',
-                replace_existing=True,
-                misfire_grace_time=300,
-                next_run_time=datetime.now() if enable_immediate_execution else None
-            )
+            # 주식 데이터 수집 (비활성화 - OHLCV만 테스트)
+            # stock_func = self._create_collection_function(StockCollector, "stockcollector_collection")
+            # self.scheduler.add_job(
+            #     stock_func,
+            #     'interval',
+            #     days=daily_interval_days,
+            #     id='periodic_stock_fetch',
+            #     replace_existing=True,
+            #     misfire_grace_time=300,
+            #     next_run_time=datetime.now() if enable_immediate_execution else None
+            # )
             
-            # ETF 데이터 수집 (덜 자주 수집)
-            etf_func = self._create_collection_function(ETFCollector, "etfcollector_collection")
-            self.scheduler.add_job(
-                etf_func,
-                'interval',
-                days=daily_interval_days,
-                id='periodic_etf_fetch',
-                replace_existing=True,
-                misfire_grace_time=300,
-                next_run_time=datetime.now() if enable_immediate_execution else None
-            )
+            # ETF 데이터 수집 (비활성화 - 가격 데이터가 아님)
+            # etf_func = self._create_collection_function(ETFCollector, "etfcollector_collection")
+            # self.scheduler.add_job(
+            #     etf_func,
+            #     'interval',
+            #     days=daily_interval_days,
+            #     id='periodic_etf_fetch',
+            #     replace_existing=True,
+            #     misfire_grace_time=300,
+            #     next_run_time=datetime.now() if enable_immediate_execution else None
+            # )
             
-            # 크립토 데이터 수집 (덜 자주 수집)
-            crypto_func = self._create_collection_function(CryptoDataCollector, "cryptocollector_collection")
-            self.scheduler.add_job(
-                crypto_func,
-                'interval',
-                days=daily_interval_days,
-                id='periodic_crypto_fetch',
-                replace_existing=True,
-                misfire_grace_time=300,
-                next_run_time=datetime.now() if enable_immediate_execution else None
-            )
+            # 크립토 데이터 수집 (비활성화 - OHLCV만 테스트)
+            # crypto_func = self._create_collection_function(CryptoDataCollector, "cryptocollector_collection")
+            # self.scheduler.add_job(
+            #     crypto_func,
+            #     'interval',
+            #     days=daily_interval_days,
+            #     id='periodic_crypto_fetch',
+            #     replace_existing=True,
+            #     misfire_grace_time=300,
+            #     next_run_time=datetime.now() if enable_immediate_execution else None
+            # )
             
             # 하트비트 작업 추가
             self.scheduler.add_job(self._update_heartbeat, 'interval', minutes=1, id='scheduler_heartbeat')
             self.logger.info("Scheduler heartbeat job added.")
             
-            self.logger.info(f"Scheduler jobs configured with {frequent_interval_minutes} minute intervals for frequent jobs and {daily_interval_days} days for daily jobs")
+            self.logger.info(f"OHLCV Collector only configured - interval: {frequent_interval_minutes} minutes")
             
         except Exception as e:
             self.logger.error(f"Error setting up scheduler jobs: {e}", exc_info=True)
