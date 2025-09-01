@@ -184,11 +184,20 @@ class YahooFinanceClient:
                 return {}
     
     def _safe_float(self, value: Any) -> Optional[float]:
-        """Safely convert value to float"""
+        """Safely convert value to float, treating 0 values as invalid"""
         if value is None:
             return None
+        
+        # 0, "0", 0.0 등은 None으로 처리 (가격 데이터에서 0은 유효하지 않음)
+        if value == 0 or value == "0" or value == 0.0:
+            return None
+            
         try:
-            return float(value)
+            result = float(value)
+            # 변환된 결과가 0이면 None 반환
+            if result == 0:
+                return None
+            return result
         except (ValueError, TypeError):
             return None
 

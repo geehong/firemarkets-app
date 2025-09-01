@@ -125,11 +125,20 @@ class BaseAPIClient(ABC):
             raise
     
     def _safe_float(self, value: Any, default: float = None) -> Optional[float]:
-        """Safely convert value to float"""
+        """Safely convert value to float, treating 0 values as invalid"""
         if value is None:
             return default
+        
+        # 0, "0", 0.0 등은 None으로 처리 (가격 데이터에서 0은 유효하지 않음)
+        if value == 0 or value == "0" or value == 0.0:
+            return None
+            
         try:
-            return float(value)
+            result = float(value)
+            # 변환된 결과가 0이면 None 반환
+            if result == 0:
+                return None
+            return result
         except (ValueError, TypeError):
             return default
     
@@ -143,13 +152,27 @@ class BaseAPIClient(ABC):
             return default
     
     def _safe_date_parse(self, date_str: str) -> Optional[datetime]:
-        """Safely parse date string"""
+        """Safely parse date string with multiple format support"""
         if not date_str:
             return None
-        try:
-            return datetime.strptime(date_str, '%Y-%m-%d')
-        except ValueError:
-            return None
+        
+        # 여러 날짜 형식 지원
+        formats = [
+            '%Y-%m-%d',  # 2025-08-22
+            '%Y-%m-%dT%H:%M:%S.%fZ',  # 2025-08-22T00:00:00.000Z (Tiingo)
+            '%Y-%m-%dT%H:%M:%SZ',     # 2025-08-22T00:00:00Z
+            '%Y-%m-%d %H:%M:%S',      # 2025-08-22 00:00:00
+        ]
+        
+        for fmt in formats:
+            try:
+                return datetime.strptime(date_str, fmt)
+            except ValueError:
+                continue
+        
+        # 모든 형식 실패 시 None 반환
+        logger.warning(f"Unable to parse date: {date_str}")
+        return None
     
     @abstractmethod
     async def test_connection(self) -> bool:

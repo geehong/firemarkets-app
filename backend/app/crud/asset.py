@@ -127,6 +127,20 @@ class CRUDOHLCV(CRUDBase[OHLCVData]):
             .first()
         )
     
+    def get_latest_timestamp(self, db: Session, asset_id: int, interval: str = '1d') -> Optional[datetime]:
+        """Get latest timestamp for a specific asset and interval."""
+        return (
+            db.query(OHLCVData.timestamp_utc)
+            .filter(
+                and_(
+                    OHLCVData.asset_id == asset_id,
+                    OHLCVData.data_interval == interval
+                )
+            )
+            .order_by(desc(OHLCVData.timestamp_utc))
+            .first()
+        )
+    
     def get_ohlcv_data(
         self, 
         db: Session, 

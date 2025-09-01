@@ -50,12 +50,11 @@ class OHLCVCollector(BaseCollector):
             condition2 = text("JSON_EXTRACT(collection_settings, '$.collect_price') = true")
             
             # Asset 객체 대신 asset_id만 가져와서 세션 오류 방지
-            # 암호화폐는 제외하고 주식/ETF/채권/펀드만 포함
+            # 모든 자산 타입 포함 (크립토 포함)
             from ..models.asset import AssetType
             asset_ids = db.query(Asset.asset_id).join(AssetType).filter(
                 Asset.is_active == True,
-                or_(condition1, condition2),
-                AssetType.type_name.in_(['Stocks', 'ETFs', 'Bonds', 'Funds', 'Commodities'])
+                or_(condition1, condition2)
             ).all()
             
             asset_ids = [asset_id[0] for asset_id in asset_ids]  # 튜플에서 asset_id 추출
@@ -400,7 +399,10 @@ class OHLCVCollector(BaseCollector):
             db.close()
     
     async def _fetch_and_store_ohlcv_for_asset_with_interval(self, asset_id: int, interval: str) -> Dict[str, Any]:
-        """단일 자산에 대한 특정 간격 OHLCV 데이터를 수집하고 저장합니다."""
+        """
+        [IMPROVED] 단일 자산에 대한 특정 간격 OHLCV 데이터를 수집하고 저장합니다.
+        이제 api_strategy_manager의 지능적인 파라미터 계산 기능을 활용합니다.
+        """
         # 새로운 세션에서 Asset 정보를 다시 로드하여 세션 오류 방지
         db = self.get_db_session()
         try:
@@ -419,28 +421,74 @@ class OHLCVCollector(BaseCollector):
             ticker = fresh_asset.ticker
             asset_type_name_lower = fresh_asset.asset_type.type_name.lower() if fresh_asset.asset_type else ""
             
-            # 자산 타입에 따라 적절한 API 전략 사용
+            # [IMPROVED] asset_id를 전달하여 DB 상태 기반 최적 파라미터 자동 계산
             if 'commodities' in asset_type_name_lower:
                 # 커머디티 데이터 수집 (FMP 우선순위)
-                data = await api_manager.get_commodity_ohlcv(ticker, interval=interval, limit=165)
+                data = await api_manager.get_commodity_ohlcv(ticker, interval=interval, asset_id=asset_id)
             elif 'crypto' in asset_type_name_lower:
-                # 암호화폐 데이터 수집
-                data = await api_manager.get_crypto_data(ticker, interval=interval, limit=165)
+                # 암호화폐 데이터 수집 - 자산 타입과 asset_id 전달
+                data = await api_manager.get_ohlcv(ticker, interval=interval, asset_type=asset_type_name_lower, asset_id=asset_id)
             else:
-                # 주식/ETF 데이터 수집
-                data = await api_manager.get_ohlcv(ticker, interval=interval, limit=165)
+                # 주식/ETF 데이터 수집 - 자산 타입과 asset_id 전달
+                data = await api_manager.get_ohlcv(ticker, interval=interval, asset_type=asset_type_name_lower, asset_id=asset_id)
             
             if data is not None and not data.empty:
                 # DataFrame을 OHLCV 형식으로 변환
                 ohlcv_data = []
+                
+                # 디버깅: DataFrame 정보 로깅
+                self.log_progress(f"Processing DataFrame for {ticker}: shape={data.shape}, columns={list(data.columns)}", "info")
+                
                 for index, row in data.iterrows():
+                    # timestamp가 유효한지 확인
+                    if index is None or (hasattr(index, '__int__') and int(index) == 0):
+                        continue
+                    
+                    # timestamp를 datetime으로 변환
+                    if hasattr(index, 'to_pydatetime'):
+                        timestamp = index.to_pydatetime()
+                    elif isinstance(index, (datetime, pd.Timestamp)):
+                        timestamp = index
+                    else:
+                        continue
+                    
+                    # 디버깅: 각 행의 데이터 확인
+                    open_price = self._safe_float(row.get('open', row.get('open_price', row.get('Open', 0))))
+                    high_price = self._safe_float(row.get('high', row.get('high_price', row.get('High', 0))))
+                    low_price = self._safe_float(row.get('low', row.get('low_price', row.get('Low', 0))))
+                    close_price = self._safe_float(row.get('close', row.get('close_price', row.get('Close', 0))))
+                    volume = self._safe_float(row.get('volume', row.get('Volume', 0)), 0.0)
+                    
+                    # 디버깅: 가격 데이터 로깅 (처음 3개만)
+                    if len(ohlcv_data) < 3:
+                        self.log_progress(f"Row data for {ticker}: open={open_price}, high={high_price}, low={low_price}, close={close_price}", "info")
+                    
+                    # 최종 검증: 모든 가격 데이터가 유효한지 확인
+                    if (close_price is None or close_price <= 0 or 
+                        open_price is None or open_price <= 0 or
+                        high_price is None or high_price <= 0 or
+                        low_price is None or low_price <= 0):
+                        if len(ohlcv_data) < 3:  # 처음 3개만 로깅
+                            self.log_progress(f"Skipping row for {ticker}: open={open_price}, high={high_price}, low={low_price}, close={close_price} (invalid prices)", "warning")
+                        continue
+                    
+                    # 추가 검증: 가격 데이터의 논리적 일관성 확인
+                    if (high_price < low_price or 
+                        high_price < open_price or 
+                        high_price < close_price or
+                        low_price > open_price or 
+                        low_price > close_price):
+                        if len(ohlcv_data) < 3:  # 처음 3개만 로깅
+                            self.log_progress(f"Skipping row for {ticker}: price logic error (high={high_price}, low={low_price}, open={open_price}, close={close_price})", "warning")
+                        continue
+                    
                     ohlcv_record = {
-                        "timestamp_utc": index if hasattr(index, 'to_pydatetime') else index,
-                        "open_price": self._safe_float(row.get('open', row.get('Open', 0))),
-                        "high_price": self._safe_float(row.get('high', row.get('High', 0))),
-                        "low_price": self._safe_float(row.get('low', row.get('Low', 0))),
-                        "close_price": self._safe_float(row.get('close', row.get('Close', 0))),
-                        "volume": self._safe_float(row.get('volume', row.get('Volume', 0)), 0.0),
+                        "timestamp_utc": timestamp,
+                        "open_price": open_price,
+                        "high_price": high_price,
+                        "low_price": low_price,
+                        "close_price": close_price,
+                        "volume": volume,
                         "asset_id": asset_id,
                         "data_interval": interval
                     }
@@ -584,102 +632,50 @@ class OHLCVCollector(BaseCollector):
             asset_type_name = asset.asset_type.type_name.lower() if asset.asset_type else ""
             db.close()
             
-            async with httpx.AsyncClient() as client:
-                if 'crypto' in asset_type_name:
-                    # 코인은 Binance API 사용
-                    await self._fetch_crypto_historical_data(client, asset_id, ticker, start_date, end_date)
-                else:
-                    # 주식/ETF는 FMP API 사용
-                    await self._fetch_stock_historical_data(client, asset_id, ticker, start_date, end_date)
+            # [IMPROVED] api_strategy_manager를 사용하여 백필 데이터 수집
+            # 이제 우선순위가 올바르게 적용됩니다 (Tiingo 1순위)
+            if 'crypto' in asset_type_name:
+                data = await api_manager.get_ohlcv(ticker, "1d", asset_type=asset_type_name, asset_id=asset_id)
+            else:
+                data = await api_manager.get_ohlcv(ticker, "1d", asset_type=asset_type_name, asset_id=asset_id)
+            
+            if data is not None and not data.empty:
+                # DataFrame을 OHLCV 레코드로 변환
+                ohlcv_data = []
+                for index, row in data.iterrows():
+                    # timestamp 검증 및 변환
+                    if not isinstance(index, (datetime, pd.Timestamp)):
+                        continue
+                    
+                    close_price = self._safe_float(row.get('close', row.get('close_price')))
+                    
+                    # 최종 검증: 0이 아닌 close_price만 저장
+                    if close_price is not None and close_price > 0:
+                        ohlcv_record = {
+                            "timestamp_utc": index.to_pydatetime() if hasattr(index, 'to_pydatetime') else index,
+                            "open_price": self._safe_float(row.get('open', row.get('open_price'))),
+                            "high_price": self._safe_float(row.get('high', row.get('high_price'))),
+                            "low_price": self._safe_float(row.get('low', row.get('low_price'))),
+                            "close_price": close_price,
+                            "volume": self._safe_float(row.get('volume', 0.0)),
+                            "asset_id": asset_id,
+                            "data_interval": "1d"
+                        }
+                        ohlcv_data.append(ohlcv_record)
+                
+                if ohlcv_data:
+                    await self._store_ohlcv_data_with_interval(asset_id, ohlcv_data, "1d")
+                    await self.safe_emit('scheduler_log', {
+                        'message': f"[{ticker}] 히스토리 데이터 {len(ohlcv_data)}개 저장 완료 (API Manager 사용)", 
+                        'type': 'success'
+                    })
                     
         except Exception as e:
             self.log_progress(f"Historical data fetch error for {ticker}: {e}", "error")
     
-    async def _fetch_crypto_historical_data(self, client: httpx.AsyncClient, asset_id: int, ticker: str, start_date: date, end_date: date) -> None:
-        """Fetch historical crypto data from Binance"""
-        try:
-            # Binance API로 히스토리 데이터 수집
-            start_timestamp = int(datetime.combine(start_date, datetime.min.time()).timestamp() * 1000)
-            end_timestamp = int(datetime.combine(end_date, datetime.max.time()).timestamp() * 1000)
-            
-            url = f"https://api.binance.com/api/v3/klines?symbol={ticker}&interval=1d&startTime={start_timestamp}&endTime={end_timestamp}&limit=1000"
-            
-            await self.safe_emit('scheduler_log', {
-                'message': f"[{ticker}] Binance Historical API 호출 시도: {url}", 
-                'type': 'info'
-            })
-            
-            data = await self._fetch_async(client, url, "Binance Historical", ticker)
-            
-            if data:
-                ohlcv_data = [
-                    {
-                        "timestamp_utc": datetime.fromtimestamp(item[0] / 1000),
-                        "open_price": self._safe_float(item[1]),
-                        "high_price": self._safe_float(item[2]),
-                        "low_price": self._safe_float(item[3]),
-                        "close_price": self._safe_float(item[4]),
-                        "volume": self._safe_float(item[5], 0.0),
-                        "asset_id": asset_id,
-                        "data_interval": "1d"
-                    }
-                    for item in data
-                    if len(item) >= 6
-                ]
-                
-                if ohlcv_data:
-                    # 통일된 저장 함수 사용
-                    await self._store_ohlcv_data_with_interval(asset_id, ohlcv_data, "1d")
-                    await self.safe_emit('scheduler_log', {
-                        'message': f"[{ticker}] 히스토리 데이터 {len(ohlcv_data)}개 저장 완료", 
-                        'type': 'success'
-                    })
-                        
-        except Exception as e:
-            self.log_progress(f"Crypto historical data fetch error for {ticker}: {e}", "error")
-    
-    async def _fetch_stock_historical_data(self, client: httpx.AsyncClient, asset_id: int, ticker: str, start_date: date, end_date: date) -> None:
-        """Fetch historical stock data from FMP"""
-        try:
-            # FMP API 키 가져오기
-            fmp_api_key = GLOBAL_APP_CONFIGS.get("FMP_API_KEY")
-            if not fmp_api_key:
-                self.log_progress(f"FMP API key not configured for {ticker}", "error")
-                return
-            
-            url = f"https://financialmodelingprep.com/api/v3/historical-price-full/{ticker}?from={start_date}&to={end_date}&apikey={fmp_api_key}"
-            
-            data = await self._fetch_async(client, url, "FMP Historical", ticker)
-            
-            if data and "historical" in data:
-                ohlcv_data = []
-                for item in data["historical"]:
-                    try:
-                        timestamp = datetime.strptime(item["date"], "%Y-%m-%d")
-                        ohlcv_data.append({
-                            "timestamp_utc": timestamp,
-                            "open_price": self._safe_float(item.get("open")),
-                            "high_price": self._safe_float(item.get("high")),
-                            "low_price": self._safe_float(item.get("low")),
-                            "close_price": self._safe_float(item.get("close")),
-                            "volume": self._safe_float(item.get("volume"), 0.0),
-                            "asset_id": asset_id,
-                            "data_interval": "1d"
-                        })
-                    except (KeyError, ValueError) as e:
-                        self.log_progress(f"Data parsing error for {ticker}: {e}", "error")
-                        continue
-                
-                if ohlcv_data:
-                    # 통일된 저장 함수 사용
-                    await self._store_ohlcv_data_with_interval(asset_id, ohlcv_data, "1d")
-                    await self.safe_emit('scheduler_log', {
-                        'message': f"[{ticker}] 히스토리 데이터 {len(ohlcv_data)}개 저장 완료", 
-                        'type': 'success'
-                    })
-                        
-        except Exception as e:
-            self.log_progress(f"Stock historical data fetch error for {ticker}: {e}", "error")
+    # [REMOVED] 직접 API 호출 메서드들 - api_strategy_manager로 대체됨
+    # _fetch_crypto_historical_data와 _fetch_stock_historical_data 메서드는 제거됨
+    # 이제 모든 API 호출은 api_strategy_manager를 통해 우선순위에 따라 처리됩니다
 
     async def _fetch_ohlcv_from_alpha_vantage_with_interval(self, client: httpx.AsyncClient, ticker: str, api_keys_list: List[str], interval: str) -> List[Dict]:
         """Fetch OHLCV data from Alpha Vantage with specific interval"""

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from app.services.scheduler_service import scheduler_service
 from app.utils.logger import logger
 from app.core.database import SessionLocal
-from ..models.system import AppConfiguration
+from app.models.system import AppConfiguration
 
 def get_db_config(db, key, default_value):
     """DB에서 설정값을 가져옵니다."""

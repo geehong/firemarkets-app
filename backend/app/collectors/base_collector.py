@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 from sqlalchemy.orm import Session
 
-from ..core.database import get_db
+from app.core.database import get_db
 from ..core.config import GLOBAL_APP_CONFIGS
 from ..models.system import SchedulerLog
 from ..utils.retry import retry_with_backoff, classify_api_error, TransientAPIError, PermanentAPIError
@@ -303,11 +303,20 @@ class BaseCollector(ABC):
             return None
 
     def _safe_float(self, value: Any, default: float = None) -> Optional[float]:
-        """Safely convert value to float"""
+        """Safely convert value to float, treating 0 values as invalid"""
         if value is None:
             return default
+        
+        # 0, "0", 0.0 등은 None으로 처리 (가격 데이터에서 0은 유효하지 않음)
+        if value == 0 or value == "0" or value == 0.0:
+            return None
+            
         try:
-            return float(value)
+            result = float(value)
+            # 변환된 결과가 0이면 None 반환
+            if result == 0:
+                return None
+            return result
         except (ValueError, TypeError):
             return default
     

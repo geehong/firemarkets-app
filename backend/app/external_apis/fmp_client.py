@@ -19,18 +19,11 @@ class FMPClient(BaseAPIClient):
     def __init__(self):
         super().__init__()
         self.base_url = "https://financialmodelingprep.com/api/v3"
-        # 데이터베이스에서 API 키를 직접 가져오기
-        try:
-            from ..core.database import SessionLocal
-            from ..models.system import AppConfiguration
-            
-            db = SessionLocal()
-            config = db.query(AppConfiguration).filter(AppConfiguration.config_key == 'FMP_API_KEY').first()
-            self.api_key = config.config_value if config else FMP_API_KEY
-            db.close()
-        except Exception as e:
-            logger.warning(f"Failed to get FMP API key from database: {e}")
-            self.api_key = FMP_API_KEY
+        # 환경 변수에서 직접 API 키 가져오기
+        import os
+        self.api_key = os.getenv("FMP_API_KEY", FMP_API_KEY)
+        if not self.api_key:
+            logger.warning("FMP_API_KEY is not configured.")
     
     async def test_connection(self) -> bool:
         """Test FMP API connection"""
@@ -60,8 +53,8 @@ class FMPClient(BaseAPIClient):
             }
         }
     
-    async def get_ohlcv_data(self, ticker: str, limit: int = 1000) -> List[Dict[str, Any]]:
-        """Get OHLCV data from FMP"""
+    async def get_ohlcv_data(self, ticker: str, limit: int = 1000) -> Optional[List[Dict[str, Any]]]:
+        """Get OHLCV data from FMP for both stocks and commodities."""
         if not self.api_key:
             raise ValueError("No FMP API key configured")
         
@@ -70,16 +63,25 @@ class FMPClient(BaseAPIClient):
                 url = f"{self.base_url}/historical-price-full/{ticker}?apikey={self.api_key}&limit={limit}"
                 data = await self._fetch_async(client, url, "FMP", ticker)
                 
-                if "historical" in data:
+                # 응답 데이터가 리스트인지, 딕셔너리 안에 'historical' 키가 있는지 확인
+                historical_data = []
+                if isinstance(data, dict) and "historical" in data:
+                    historical_data = data["historical"]
+                elif isinstance(data, list):
+                    historical_data = data  # 원자재 데이터처럼 바로 리스트로 오는 경우
+                else:
+                    logger.warning(f"Unexpected FMP data format for {ticker}: {type(data)}")
+                    return None
+                
+                if historical_data:
                     result = []
-                    for d in data["historical"]:
+                    for d in historical_data:
                         date_str = d.get("date")
-                        # date가 0이거나 None인 경우 건너뛰기
-                        if not date_str or date_str == "0" or date_str == 0:
+                        if not date_str or date_str in ["0", 0]:
                             continue
                         
                         timestamp = self._safe_date_parse(date_str)
-                        if timestamp is not None:  # None이 아닌 경우만 추가
+                        if timestamp is not None:
                             record = {
                                 "timestamp_utc": timestamp,
                                 "open_price": self._safe_float(d.get("open")),
@@ -89,11 +91,13 @@ class FMPClient(BaseAPIClient):
                                 "volume": self._safe_float(d.get("volume"), 0.0),
                             }
                             result.append(record)
-                    return result
+                    # result가 비어있으면 None을 반환하도록 수정
+                    return result if result else None
+                    
         except Exception as e:
             logger.error(f"FMP OHLCV fetch failed for {ticker}: {e}")
         
-        return []
+        return None
     
     async def get_company_profile(self, ticker: str) -> Optional[Dict[str, Any]]:
         """Get company profile from FMP"""

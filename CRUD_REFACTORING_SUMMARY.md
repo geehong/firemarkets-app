@@ -190,3 +190,6 @@ db.refresh(new_asset)
 모든 CRUD 모듈이 SQLAlchemy ORM을 적극 활용하여 Python 객체 지향적으로 데이터베이스를 조작하는 견고하고 안전한 구조로 개선되었습니다.
 
 
+
+
+

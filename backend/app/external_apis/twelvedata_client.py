@@ -170,10 +170,10 @@ class TwelveDataClient(BaseAPIClient):
 
             # Normalize response
             if isinstance(data, dict) and isinstance(data.get("values"), list):
-                return data["values"]
+                return data["values"] if data["values"] else None
             if isinstance(data, list):
-                return data
-            return []
+                return data if data else None
+            return None
         except Exception as e:
             logger.error(f"TwelveData historical fetch failed for {symbol} ({interval}): {e}")
-            return []
+            return None

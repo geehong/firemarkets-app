@@ -5,6 +5,7 @@ import logging
 from typing import Dict, List, Optional, Any
 import httpx
 import asyncio
+from datetime import datetime, timedelta
 
 from .base_client import BaseAPIClient
 from ..core.config import GLOBAL_APP_CONFIGS
@@ -17,7 +18,7 @@ class TiingoClient(BaseAPIClient):
 
     def __init__(self):
         super().__init__()
-        self.base_url = "https://api.tiingo.com/api"
+        self.base_url = "https://api.tiingo.com"
         # 직접 환경 변수에서 읽기
         import os
         self.api_key = os.getenv("TIINGO_API_KEY", "")
@@ -35,7 +36,11 @@ class TiingoClient(BaseAPIClient):
         
         # API 키 추가
         params["token"] = self.api_key
-        url = f"{self.base_url}{path}"
+        # 경로 정규화: 잘못된 "/api/tiingo"가 포함된 경우 교정
+        normalized_path = path
+        if normalized_path.startswith("/api/tiingo"):
+            normalized_path = normalized_path.replace("/api/tiingo", "/tiingo", 1)
+        url = f"{self.base_url}{normalized_path}"
         
         try:
             async with httpx.AsyncClient() as client:
@@ -52,9 +57,10 @@ class TiingoClient(BaseAPIClient):
     async def test_connection(self) -> bool:
         """Test connectivity to Tiingo API"""
         try:
-            # 간단한 API 호출로 연결 테스트
-            data = await self._request("/tiingo/daily/aapl/prices", {"startDate": "2025-08-25", "endDate": "2025-08-25"})
-            return isinstance(data, list) and len(data) > 0
+            # 하드코딩된 미래 날짜 대신 어제 날짜를 사용하도록 수정
+            yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+            data = await self._request("/tiingo/daily/aapl/prices", {"startDate": yesterday, "endDate": yesterday})
+            return isinstance(data, list)
         except Exception as e:
             logger.error(f"Tiingo connection test failed: {e}")
             return False
@@ -72,37 +78,34 @@ class TiingoClient(BaseAPIClient):
     async def get_quote(self, symbol: str) -> Dict[str, Any]:
         """
         Get real-time quote for a single symbol.
-        
-        Args:
-            symbol: Stock symbol (e.g., 'AAPL')
-            
-        Returns:
-            Quote data including price, change, volume, etc.
         """
         try:
-            # Tiingo daily prices endpoint (15분 지연)
-            data = await self._request(f"/tiingo/daily/{symbol.lower()}/prices", {
-                "startDate": "2025-08-25",  # 오늘 날짜
-                "endDate": "2025-08-25"
-            })
+            # 오늘 날짜 기준으로 최근 5일 데이터를 요청하여 휴일 등에도 데이터 공백 방지
+            end_date = datetime.now().strftime('%Y-%m-%d')
+            start_date = (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d')
             
-            if not data or len(data) == 0:
+            data = await self.get_historical_prices(symbol, start_date, end_date)
+            
+            if not data:
                 logger.warning(f"No data returned for symbol: {symbol}")
                 return {}
             
-            # 최신 데이터 반환
+            # 가장 최신 데이터 반환
             latest = data[-1]
             
+            open_price = latest.get("open_price")
+            close_price = latest.get("close_price")
+
             return {
                 "symbol": symbol,
-                "last": latest.get("close"),
-                "open": latest.get("open"),
-                "high": latest.get("high"),
-                "low": latest.get("low"),
+                "last": close_price,
+                "open": open_price,
+                "high": latest.get("high_price"),
+                "low": latest.get("low_price"),
                 "volume": latest.get("volume"),
-                "change": latest.get("close") - latest.get("open") if latest.get("close") and latest.get("open") else None,
-                "changePercent": self._calculate_change_percent(latest.get("close"), latest.get("open")),
-                "date": latest.get("date")
+                "change": close_price - open_price if close_price is not None and open_price is not None else None,
+                "changePercent": self._calculate_change_percent(close_price, open_price),
+                "date": latest.get("timestamp_utc")
             }
             
         except Exception as e:
@@ -112,12 +115,6 @@ class TiingoClient(BaseAPIClient):
     async def get_batch_quotes(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
         """
         Get quotes for multiple symbols in batch.
-        
-        Args:
-            symbols: List of stock symbols
-            
-        Returns:
-            Dictionary of quotes keyed by symbol
         """
         if not symbols:
             return {}
@@ -145,21 +142,11 @@ class TiingoClient(BaseAPIClient):
         start_date: str,
         end_date: str,
         interval: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> Optional[List[Dict[str, Any]]]:
         """
         Get historical price data for a symbol.
-        
-        Args:
-            symbol: Stock symbol
-            start_date: Start date (YYYY-MM-DD)
-            end_date: End date (YYYY-MM-DD)
-            
-        Returns:
-            List of historical price data
         """
         try:
-            # Tiingo supports daily candles at /tiingo/daily/{ticker}/prices
-            # Intraday candles are via IEX and require different endpoint/plan. For now, ignore interval.
             params: Dict[str, Any] = {}
             if start_date:
                 params["startDate"] = start_date
@@ -167,21 +154,47 @@ class TiingoClient(BaseAPIClient):
                 params["endDate"] = end_date
             data = await self._request(f"/tiingo/daily/{symbol.lower()}/prices", params)
             
-            return data if isinstance(data, list) else []
+            if not isinstance(data, list) or not data:
+                return None
             
+            # 다른 API 클라이언트와 데이터 형식을 통일
+            result = []
+            for item in data:
+                # 디버깅: 원본 데이터 확인
+                if len(result) < 3:  # 처음 3개만 로깅
+                    logger.info(f"Tiingo raw item for {symbol}: {item}")
+                
+                timestamp = self._safe_date_parse(item.get("date"))
+                if timestamp is None:
+                    logger.warning(f"Tiingo: Invalid date format for {symbol}: {item.get('date')}")
+                    continue
+                
+                record = {
+                    "timestamp_utc": timestamp,
+                    "open_price": self._safe_float(item.get("open")),
+                    "high_price": self._safe_float(item.get("high")),
+                    "low_price": self._safe_float(item.get("low")),
+                    "close_price": self._safe_float(item.get("close")),
+                    "volume": self._safe_float(item.get("volume"), 0.0),
+                }
+                result.append(record)
+            
+            logger.info(f"Tiingo processed {len(result)} records for {symbol}")
+            return result
+            
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                logger.warning(f"Tiingo API returned 404 Not Found for {symbol}. Ticker may be invalid or data unavailable for the dates.")
+            else:
+                logger.error(f"Tiingo API error for {symbol}: {e.response.status_code} - {e.response.text}")
+            return None
         except Exception as e:
             logger.error(f"Failed to get historical prices for {symbol}: {e}")
-            return []
+            return None
 
     async def get_metadata(self, symbol: str) -> Dict[str, Any]:
         """
         Get metadata for a symbol.
-        
-        Args:
-            symbol: Stock symbol
-            
-        Returns:
-            Symbol metadata
         """
         try:
             data = await self._request(f"/tiingo/daily/{symbol.upper()}")
@@ -201,7 +214,6 @@ class TiingoClient(BaseAPIClient):
     async def get_market_cap(self, symbol: str) -> Optional[float]:
         """
         Get market cap for a symbol (if available).
-        Note: Tiingo free plan may not include market cap data.
         """
         try:
             metadata = await self.get_metadata(symbol)

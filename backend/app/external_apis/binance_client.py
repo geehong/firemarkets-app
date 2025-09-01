@@ -50,7 +50,7 @@ class BinanceClient(BaseAPIClient):
                 url = f"{self.base_url}/klines?symbol={symbol}&interval={interval}&limit={limit}"
                 data = await self._fetch_async(client, url, "Binance", symbol)
                 
-                if isinstance(data, list):
+                if isinstance(data, list) and data:  # 데이터가 비어있지 않은지 확인
                     return [
                         {
                             "timestamp_utc": datetime.fromtimestamp(kline[0] / 1000),
@@ -65,7 +65,7 @@ class BinanceClient(BaseAPIClient):
         except Exception as e:
             logger.error(f"Binance OHLCV fetch failed for {symbol}: {e}")
         
-        return []
+        return None
     
     async def get_ticker_price(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Get current price for a symbol"""

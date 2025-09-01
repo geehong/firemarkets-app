@@ -16,6 +16,7 @@ from app.external_apis.coinmarketcap_client import CoinMarketCapClient
 from app.external_apis.tiingo_client import TiingoClient
 from app.external_apis.coingecko_client import CoinGeckoClient
 from app.external_apis.bitcoin_data_client import BitcoinDataClient
+from app.crud.asset import crud_ohlcv
 
 class ApiStrategyManager:
     """API 전략 관리자: 여러 API를 순서대로 시도하고 실패 시 자동 전환"""
@@ -90,42 +91,56 @@ class ApiStrategyManager:
         else:
             return "max"
     
-    async def get_ohlcv(self, ticker: str, interval: str = "1d", limit: int = 100, asset_type: str = None) -> Optional[pd.DataFrame]:
+    async def get_ohlcv(self, ticker: str, interval: str = "1d", limit: int = 100, asset_type: str = None, asset_id: int = None) -> Optional[pd.DataFrame]:
         """
-        OHLCV 데이터를 여러 API에서 순서대로 시도하여 가져옵니다.
+        [IMPROVED] OHLCV 데이터를 여러 API에서 순서대로 시도하여 가져옵니다.
+        이제 DB 상태를 확인하여 최적의 파라미터를 자동으로 결정합니다.
         
         Args:
             ticker: 주식/암호화폐 티커
             interval: 시간 간격 (1d, 4h, 1h 등)
-            limit: 가져올 데이터 개수
+            limit: 가져올 데이터 개수 (기본값, asset_id가 있으면 무시됨)
             asset_type: 자산 타입 (crypto, stock, commodity 등)
+            asset_id: 자산 ID (DB 상태 확인용, 있으면 최적 파라미터 자동 계산)
             
         Returns:
             DataFrame 또는 None (모든 API 실패 시)
         """
-        # HISTORICAL_DATA_DAYS_PER_RUN 설정값 동적으로 조회
-        from ..models import AppConfiguration
-        from ..database import get_db
-        
-        db = next(get_db())
-        try:
-            historical_days_config = db.query(AppConfiguration).filter(
-                AppConfiguration.config_key == "HISTORICAL_DATA_DAYS_PER_RUN"
-            ).first()
-            historical_days = int(historical_days_config.config_value) if historical_days_config else 165
-        finally:
-            db.close()
-        
-        # 간격별 limit 조정
-        if interval == '4h':
-            # 4h 데이터는 HISTORICAL_DATA_DAYS_PER_RUN 사용
-            adjusted_limit = historical_days  # 동적으로 조회한 값
+        # asset_id가 있으면 DB 상태를 확인하여 최적 파라미터 결정
+        if asset_id:
+            params = await self._get_fetch_parameters(asset_id, interval)
+            start_date = params["start_date"]
+            end_date = params["end_date"]
+            adjusted_limit = params["limit"]
+            self.logger.info(f"Using optimized parameters for asset {asset_id}: {start_date} to {end_date}, limit={adjusted_limit}")
         else:
-            adjusted_limit = limit
+            # 기존 로직 유지 (하위 호환성)
+            from app.models import AppConfiguration
+            from app.core.database import get_db
+            
+            db = next(get_db())
+            try:
+                historical_days_config = db.query(AppConfiguration).filter(
+                    AppConfiguration.config_key == "HISTORICAL_DATA_DAYS_PER_RUN"
+                ).first()
+                historical_days = int(historical_days_config.config_value) if historical_days_config else 165
+            finally:
+                db.close()
+            
+            # 간격별 limit 조정
+            if interval == '4h':
+                adjusted_limit = historical_days
+            else:
+                adjusted_limit = limit
+            
+            # 날짜 범위 계산 (지원하는 API용)
+            start_date, end_date = self._calculate_date_range(adjusted_limit)
+        
         # 4h 인터벌의 경우 특별 처리
         if interval == "4h":
             self.logger.info(f"4h interval requested for {ticker}. Some APIs may not support 4h data well.")
-            # 4h 데이터가 실패하면 1d 데이터로 대체하는 로직 추가 가능
+        
+        yahoo_period = self._calculate_yahoo_period(adjusted_limit)
         last_exception = None
         
         # 자산 타입에 따라 적절한 클라이언트 선택
@@ -137,17 +152,13 @@ class ApiStrategyManager:
             # 주식, ETF, 지수, 통화 등은 모두 ohlcv_clients 사용
             clients_to_use = self.ohlcv_clients
         
-        # 날짜 범위 계산 (지원하는 API용)
-        start_date, end_date = self._calculate_date_range(adjusted_limit)
-        yahoo_period = self._calculate_yahoo_period(adjusted_limit)
-        
         for i, client in enumerate(clients_to_use):
             try:
                 self.logger.info(f"Attempting to fetch OHLCV for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(clients_to_use)})")
                 
                 # 각 클라이언트의 메서드명이 다를 수 있으므로 적응적으로 호출
-                if hasattr(client, 'get_ohlcv_data'):
-                    # FMP, Alpha Vantage, Binance, Coinbase 클라이언트
+                if hasattr(client, 'get_ohlcv_data') and not isinstance(client, TiingoClient):
+                    # FMP, Alpha Vantage, Binance, Coinbase 클라이언트 (Tiingo 제외)
                     if hasattr(client, '__class__') and 'FMPClient' in str(client.__class__):
                         # FMP 클라이언트의 경우 limit 파라미터 전달
                         data = await client.get_ohlcv_data(ticker, limit=adjusted_limit)
@@ -157,20 +168,41 @@ class ApiStrategyManager:
                     if data:
                         # List[Dict]를 DataFrame으로 변환
                         data = pd.DataFrame(data)
-                        # timestamp_utc를 index로 설정하고 유효하지 않은 timestamp 제거
-                        if 'timestamp_utc' in data.columns:
+                        self.logger.info(f"{client.__class__.__name__} raw data shape: {data.shape}, columns: {list(data.columns)}")
+                        
+                        # timestamp 컬럼 찾기 (다양한 이름 지원)
+                        timestamp_col = None
+                        for col in ['timestamp_utc', 'timestamp', 'datetime', 'date', 'time']:
+                            if col in data.columns:
+                                timestamp_col = col
+                                break
+                        
+                        if timestamp_col:
+                            self.logger.info(f"Found timestamp column: {timestamp_col}")
+                            # timestamp 컬럼을 timestamp_utc로 변환
+                            if timestamp_col != 'timestamp_utc':
+                                data['timestamp_utc'] = pd.to_datetime(data[timestamp_col])
+                                data = data.drop(timestamp_col, axis=1)
+                            
                             # 기본적인 null 체크만 수행
                             data = data[data['timestamp_utc'].notna()]
+                            self.logger.info(f"After null check: {len(data)} records")
                             
                             # 숫자 값이 아닌 datetime 객체만 허용
                             data = data[data['timestamp_utc'].apply(lambda x: isinstance(x, (datetime, pd.Timestamp)))]
+                            self.logger.info(f"After datetime check: {len(data)} records")
                             
                             if not data.empty:
                                 # 중복 제거 (같은 timestamp가 있으면 마지막 것만 유지)
                                 data = data.reset_index().drop_duplicates(subset='timestamp_utc', keep='last').set_index('timestamp_utc')
-                                data.set_index('timestamp_utc', inplace=True)
+                                data.index.name = 'timestamp_utc'  # 인덱스 이름 통일
+                                self.logger.info(f"Final {client.__class__.__name__} data: {len(data)} records")
                             else:
+                                self.logger.warning(f"{client.__class__.__name__} data became empty after processing for {ticker}")
                                 data = None
+                        else:
+                            self.logger.warning(f"No timestamp column found in data from {client.__class__.__name__} for {ticker}")
+                            data = None
                 elif hasattr(client, 'get_historical_prices'):
                     # Tiingo, TwelveData 클라이언트
                     if isinstance(client, TiingoClient):
@@ -182,24 +214,41 @@ class ApiStrategyManager:
                     if data:
                         # List[Dict]를 DataFrame으로 변환
                         data = pd.DataFrame(data)
-                        # Tiingo 데이터의 경우 date 컬럼을 timestamp_utc로 변환
-                        if 'date' in data.columns:
-                            data['timestamp_utc'] = pd.to_datetime(data['date'])
-                            data = data.drop('date', axis=1)
-                        # timestamp_utc를 index로 설정하고 유효하지 않은 timestamp 제거
-                        if 'timestamp_utc' in data.columns:
+                        self.logger.info(f"Tiingo raw data shape: {data.shape}, columns: {list(data.columns)}")
+                        
+                        # timestamp 컬럼 찾기 (다양한 이름 지원)
+                        timestamp_col = None
+                        for col in ['timestamp_utc', 'timestamp', 'datetime', 'date', 'time']:
+                            if col in data.columns:
+                                timestamp_col = col
+                                break
+                        
+                        if timestamp_col:
+                            self.logger.info(f"Found timestamp column: {timestamp_col}")
+                            # timestamp 컬럼을 timestamp_utc로 변환
+                            if timestamp_col != 'timestamp_utc':
+                                data['timestamp_utc'] = pd.to_datetime(data[timestamp_col])
+                                data = data.drop(timestamp_col, axis=1)
+                            
                             # 기본적인 null 체크만 수행
                             data = data[data['timestamp_utc'].notna()]
+                            self.logger.info(f"After null check: {len(data)} records")
                             
-                            # 숫자 값이 아닌 datetime 객체만 허용
-                            data = data[data['timestamp_utc'].apply(lambda x: isinstance(x, (datetime, pd.Timestamp)))]
+                            # 숫자 값이 아닌 datetime 객체만 허용 (더 관대하게)
+                            data = data[data['timestamp_utc'].apply(lambda x: isinstance(x, (datetime, pd.Timestamp)) or pd.notna(x))]
+                            self.logger.info(f"After datetime check: {len(data)} records")
                             
                             if not data.empty:
                                 # 중복 제거 (같은 timestamp가 있으면 마지막 것만 유지)
                                 data = data.reset_index().drop_duplicates(subset='timestamp_utc', keep='last').set_index('timestamp_utc')
-                                data.set_index('timestamp_utc', inplace=True)
+                                data.index.name = 'timestamp_utc'  # 인덱스 이름 통일
+                                self.logger.info(f"Final Tiingo data: {len(data)} records")
                             else:
+                                self.logger.warning(f"Tiingo data became empty after processing for {ticker}")
                                 data = None
+                        else:
+                            self.logger.warning(f"No timestamp column found in data from {client.__class__.__name__} for {ticker}")
+                            data = None
                 elif hasattr(client, 'get_historical_data'):
                     # Yahoo Finance 클라이언트 - period 사용
                     data = await client.get_historical_data(ticker, period=yahoo_period, interval=interval)
@@ -211,16 +260,45 @@ class ApiStrategyManager:
                     continue
                 
                 if data is not None and not data.empty:
-                    # 데이터 검증: 0 가격이 너무 많은지 확인
-                    if 'open_price' in data.columns or 'open' in data.columns:
-                        price_col = 'open_price' if 'open_price' in data.columns else 'open'
-                        zero_count = (data[price_col] == 0).sum()
-                        total_count = len(data)
-                        zero_ratio = zero_count / total_count if total_count > 0 else 0
+                    # 데이터 검증: 모든 가격 컬럼의 0값 확인
+                    price_columns = []
+                    for col_name in ['open_price', 'open', 'Open', 'high_price', 'high', 'High', 'low_price', 'low', 'Low', 'close_price', 'close', 'Close']:
+                        if col_name in data.columns:
+                            price_columns.append(col_name)
+                    
+                    if price_columns:
+                        # 모든 가격 컬럼에서 0값 확인
+                        total_zero_count = 0
+                        total_valid_count = 0
                         
-                        if zero_ratio > 0.1:  # 10% 이상이 0이면 문제로 간주 (더 엄격하게)
-                            self.logger.warning(f"{client.__class__.__name__} returned data with {zero_ratio:.1%} zero prices for {ticker}. Skipping this data.")
+                        for col in price_columns:
+                            zero_count = (data[col] == 0).sum()
+                            null_count = data[col].isna().sum()
+                            total_zero_count += zero_count + null_count
+                            total_valid_count += len(data)
+                        
+                        zero_ratio = total_zero_count / total_valid_count if total_valid_count > 0 else 0
+                        
+                        if zero_ratio > 0.05:  # 5% 이상이 0이면 문제로 간주 (더 엄격하게)
+                            self.logger.warning(f"{client.__class__.__name__} returned data with {zero_ratio:.1%} zero/null prices for {ticker}. Skipping this data.")
                             continue
+                        
+                        # 개별 행에서 모든 가격이 0인 경우 제거
+                        valid_rows = 0
+                        for _, row in data.iterrows():
+                            has_valid_price = False
+                            for col in price_columns:
+                                if pd.notna(row[col]) and row[col] > 0:
+                                    has_valid_price = True
+                                    break
+                            if has_valid_price:
+                                valid_rows += 1
+                        
+                        if valid_rows == 0:
+                            self.logger.warning(f"{client.__class__.__name__} returned data with no valid prices for {ticker}. Skipping this data.")
+                            continue
+                        
+                        self.logger.info(f"{client.__class__.__name__} data validation passed for {ticker}: {valid_rows}/{len(data)} valid rows")
                     
                     self.logger.info(f"Successfully fetched OHLCV for {ticker} from {client.__class__.__name__} ({len(data)} records)")
                     return data
@@ -232,10 +310,10 @@ class ApiStrategyManager:
                 if "404" in str(e) or "Not Found" in str(e):
                     self.logger.warning(f"{client.__class__.__name__} returned 404 for {ticker}. Trying next client.")
                     continue
-                # 심각한 오류는 즉시 중단
-                elif "timestamp" in str(e).lower() or "datetime" in str(e).lower():
-                    self.logger.error(f"Critical error in {client.__class__.__name__} for {ticker}: {e}. Stopping API attempts.")
-                    return None
+                # 컬럼 관련 오류는 다음 클라이언트로 시도
+                elif "timestamp" in str(e).lower() or "datetime" in str(e).lower() or "columns" in str(e).lower():
+                    self.logger.warning(f"{client.__class__.__name__} has column/timestamp issue for {ticker}: {e}. Trying next client.")
+                    last_exception = e
                 else:
                     self.logger.warning(f"{client.__class__.__name__} failed for {ticker}. Reason: {e}. Trying next client.")
                     last_exception = e
@@ -243,34 +321,43 @@ class ApiStrategyManager:
         self.logger.error(f"All API clients failed to fetch OHLCV for {ticker}. Last error: {last_exception}")
         return None
     
-    async def get_commodity_ohlcv(self, ticker: str, interval: str = "1d", limit: int = 100) -> Optional[pd.DataFrame]:
+    async def get_commodity_ohlcv(self, ticker: str, interval: str = "1d", limit: int = 100, asset_id: int = None) -> Optional[pd.DataFrame]:
         """
-        커머디티 OHLCV 데이터를 FMP 우선순위로 가져옵니다.
+        [IMPROVED] 커머디티 OHLCV 데이터를 FMP 우선순위로 가져옵니다.
+        이제 DB 상태를 확인하여 최적의 파라미터를 자동으로 결정합니다.
         """
-        # HISTORICAL_DATA_DAYS_PER_RUN 설정값 동적으로 조회
-        from ..models import AppConfiguration
-        from ..database import get_db
-        
-        db = next(get_db())
-        try:
-            historical_days_config = db.query(AppConfiguration).filter(
-                AppConfiguration.config_key == "HISTORICAL_DATA_DAYS_PER_RUN"
-            ).first()
-            historical_days = int(historical_days_config.config_value) if historical_days_config else 165
-        finally:
-            db.close()
-        
-        # 간격별 limit 조정
-        if interval == '4h':
-            adjusted_limit = historical_days
+        # asset_id가 있으면 DB 상태를 확인하여 최적 파라미터 결정
+        if asset_id:
+            params = await self._get_fetch_parameters(asset_id, interval)
+            start_date = params["start_date"]
+            end_date = params["end_date"]
+            adjusted_limit = params["limit"]
+            self.logger.info(f"Using optimized parameters for commodity asset {asset_id}: {start_date} to {end_date}, limit={adjusted_limit}")
         else:
-            adjusted_limit = limit
+            # 기존 로직 유지 (하위 호환성)
+            from app.models import AppConfiguration
+            from app.core.database import get_db
+            
+            db = next(get_db())
+            try:
+                historical_days_config = db.query(AppConfiguration).filter(
+                    AppConfiguration.config_key == "HISTORICAL_DATA_DAYS_PER_RUN"
+                ).first()
+                historical_days = int(historical_days_config.config_value) if historical_days_config else 165
+            finally:
+                db.close()
+            
+            # 간격별 limit 조정
+            if interval == '4h':
+                adjusted_limit = historical_days
+            else:
+                adjusted_limit = limit
+            
+            # 날짜 범위 계산 (지원하는 API용)
+            start_date, end_date = self._calculate_date_range(adjusted_limit)
         
-        last_exception = None
-        
-        # 날짜 범위 계산 (지원하는 API용)
-        start_date, end_date = self._calculate_date_range(adjusted_limit)
         yahoo_period = self._calculate_yahoo_period(adjusted_limit)
+        last_exception = None
         
         for i, client in enumerate(self.commodity_clients):
             try:
@@ -363,10 +450,10 @@ class ApiStrategyManager:
                 if "404" in str(e) or "Not Found" in str(e):
                     self.logger.warning(f"{client.__class__.__name__} returned 404 for {ticker}. Trying next client.")
                     continue
-                # 심각한 오류는 즉시 중단
-                elif "timestamp" in str(e).lower() or "datetime" in str(e).lower():
-                    self.logger.error(f"Critical error in {client.__class__.__name__} for {ticker}: {e}. Stopping API attempts.")
-                    return None
+                # 컬럼 관련 오류는 다음 클라이언트로 시도
+                elif "timestamp" in str(e).lower() or "datetime" in str(e).lower() or "columns" in str(e).lower():
+                    self.logger.warning(f"{client.__class__.__name__} has column/timestamp issue for commodity {ticker}: {e}. Trying next client.")
+                    last_exception = e
                 else:
                     self.logger.warning(f"{client.__class__.__name__} failed for commodity {ticker}. Reason: {e}. Trying next client.")
                     last_exception = e
@@ -429,10 +516,9 @@ class ApiStrategyManager:
         """
         주식 데이터를 여러 API에서 순서대로 시도하여 가져옵니다.
         """
-        # HISTORICAL_DATA_DAYS_PER_RUN 설정값
-        #  동적으로 조회
-        from ..models import AppConfiguration
-        from ..database import get_db
+        # HISTORICAL_DATA_DAYS_PER_RUN 설정값 동적으로 조회
+        from app.models import AppConfiguration
+        from app.core.database import get_db
         
         db = next(get_db())
         try:
@@ -549,6 +635,78 @@ class ApiStrategyManager:
         
         self.logger.error(f"All API clients failed to fetch company info for {ticker}. Last error: {last_exception}")
         return None
+    
+    async def _get_fetch_parameters(self, asset_id: int, interval: str) -> Dict[str, Any]:
+        """
+        [NEW] Checks the DB and system settings to determine optimal fetch parameters.
+        This centralizes the logic that was previously scattered across collectors.
+        """
+        from app.models import AppConfiguration
+        from app.core.database import get_db
+        from app.crud.asset import crud_ohlcv
+        
+        db = next(get_db())
+        try:
+            # Load settings from DB
+            enable_backfill_conf = db.query(AppConfiguration).filter(
+                AppConfiguration.config_key == "ENABLE_HISTORICAL_BACKFILL"
+            ).first()
+            historical_days_conf = db.query(AppConfiguration).filter(
+                AppConfiguration.config_key == "HISTORICAL_DATA_DAYS_PER_RUN"
+            ).first()
+            
+            enable_backfill = enable_backfill_conf.config_value.lower() == 'true' if enable_backfill_conf else True
+            historical_days = int(historical_days_conf.config_value) if historical_days_conf else 165
+
+            # Get latest data timestamp for this asset and interval
+            latest_date_obj = crud_ohlcv.get_latest_timestamp(db, asset_id, interval)
+            
+            if latest_date_obj:
+                latest_date = latest_date_obj.date()
+                today = datetime.now().date()
+                days_diff = (today - latest_date).days
+
+                if days_diff > 1:
+                    # If there's a gap, fetch the missing data
+                    start_date = (latest_date + timedelta(days=1)).strftime('%Y-%m-%d')
+                    end_date = today.strftime('%Y-%m-%d')
+                    limit = days_diff + 1  # Add a buffer
+                else:
+                    # If up-to-date, just fetch the last few days to be safe
+                    start_date = (today - timedelta(days=5)).strftime('%Y-%m-%d')
+                    end_date = today.strftime('%Y-%m-%d')
+                    limit = 7
+            elif enable_backfill:
+                # If no data exists at all, do a historical backfill
+                end_date = datetime.now().strftime('%Y-%m-%d')
+                start_date = (datetime.now() - timedelta(days=historical_days)).strftime('%Y-%m-%d')
+                limit = historical_days + 1
+            else:
+                # No backfill enabled, just fetch recent data
+                end_date = datetime.now().strftime('%Y-%m-%d')
+                start_date = (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d')
+                limit = 7
+                
+            return {
+                "start_date": start_date,
+                "end_date": end_date, 
+                "limit": limit,
+                "enable_backfill": enable_backfill,
+                "historical_days": historical_days
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error getting fetch parameters for asset {asset_id}: {e}")
+            # Fallback to default values
+            return {
+                "start_date": (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d'),
+                "end_date": datetime.now().strftime('%Y-%m-%d'),
+                "limit": 7,
+                "enable_backfill": True,
+                "historical_days": 165
+            }
+        finally:
+            db.close()
     
     def get_market_data(self, ticker: str, data_type: str = "ohlcv", **kwargs) -> Optional[pd.DataFrame]:
         """
