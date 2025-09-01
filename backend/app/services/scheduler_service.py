@@ -47,7 +47,7 @@ class SchedulerService:
     def _create_collection_function(self, collector_class, job_name: str):
         """수집기 실행 함수를 생성합니다."""
         def run_collection_sync():
-            from ..collectors import OHLCVCollector, OnchainCollector, StockCollector, ETFCollector, TechnicalCollector, CryptoDataCollector, WorldAssetsCollector
+            from ..collectors import OHLCVCollector, OnchainCollector, StockCollector, ETFCollector, TechnicalCollector, CryptoDataCollector, WorldAssetsCollector, RealtimeCollector
             
             start_time = datetime.now()
             db = SessionLocal()
@@ -122,7 +122,7 @@ class SchedulerService:
 
     def setup_jobs(self, run_immediately=False):
         """모든 데이터 수집 작업을 스케줄러에 등록합니다."""
-        from ..collectors import OHLCVCollector, OnchainCollector, StockCollector, ETFCollector, TechnicalCollector, CryptoDataCollector, WorldAssetsCollector
+        from ..collectors import OHLCVCollector, OnchainCollector, StockCollector, ETFCollector, TechnicalCollector, CryptoDataCollector, WorldAssetsCollector, RealtimeCollector
         from ..core.config import GLOBAL_APP_CONFIGS
         
         try:
@@ -267,11 +267,24 @@ class SchedulerService:
             #     next_run_time=datetime.now() if enable_immediate_execution else None
             # )
             
+            # 실시간 가격 데이터 수집 (Redis Stream에서 MySQL로 배치 저장)
+            realtime_func = self._create_collection_function(RealtimeCollector, "realtimecollector_collection")
+            self.scheduler.add_job(
+                realtime_func,
+                'interval',
+                minutes=1,  # 1분마다 실행하여 실시간성 확보
+                id='periodic_realtime_fetch',
+                replace_existing=True,
+                misfire_grace_time=60,  # 1분 이내 재실행 허용
+                next_run_time=datetime.now() if enable_immediate_execution else None
+            )
+            self.logger.info("Realtime price collection job added - interval: 1 minute")
+            
             # 하트비트 작업 추가
             self.scheduler.add_job(self._update_heartbeat, 'interval', minutes=1, id='scheduler_heartbeat')
             self.logger.info("Scheduler heartbeat job added.")
             
-            self.logger.info(f"OHLCV Collector only configured - interval: {frequent_interval_minutes} minutes")
+            self.logger.info(f"OHLCV Collector + Realtime Collector configured - OHLCV interval: {frequent_interval_minutes} minutes, Realtime: 1 minute")
             
         except Exception as e:
             self.logger.error(f"Error setting up scheduler jobs: {e}", exc_info=True)

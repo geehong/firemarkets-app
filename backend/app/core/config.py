@@ -30,6 +30,12 @@ ALPHA_VANTAGE_API_KEY_3 = os.getenv("ALPHA_VANTAGE_API_KEY_3")
 FMP_API_KEY = os.getenv("FMP_API_KEY")
 COINMARKETCAP_API_KEY = os.getenv("COINMARKETCAP_API_KEY")
 
+# Redis 설정
+REDIS_HOST = os.getenv("REDIS_HOST", "redis")  # Docker Compose에서는 'redis' 서비스명 사용
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+REDIS_DB = int(os.getenv("REDIS_DB", 0))
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
+
 # API Request Settings
 API_REQUEST_TIMEOUT_SECONDS = int(os.getenv("API_REQUEST_TIMEOUT_SECONDS", "30"))
 MAX_API_RETRY_ATTEMPTS = int(os.getenv("MAX_API_RETRY_ATTEMPTS", "3"))
@@ -59,7 +65,11 @@ def load_and_set_global_configs():
         "COINMARKETCAP_API_KEY": COINMARKETCAP_API_KEY,
         "API_REQUEST_TIMEOUT_SECONDS": API_REQUEST_TIMEOUT_SECONDS,
         "MAX_API_RETRY_ATTEMPTS": MAX_API_RETRY_ATTEMPTS,
-        "BITCOIN_ASSET_ID": BITCOIN_ASSET_ID
+        "BITCOIN_ASSET_ID": BITCOIN_ASSET_ID,
+        "REDIS_HOST": REDIS_HOST,
+        "REDIS_PORT": REDIS_PORT,
+        "REDIS_DB": REDIS_DB,
+        "REDIS_PASSWORD": REDIS_PASSWORD
     })
     
     # ConfigLoader에서 추가 설정 로드
