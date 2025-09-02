@@ -72,6 +72,26 @@ class RealtimeCollector(BaseCollector):
                 logger.error(f"Redis 연결 실패: {e}")
                 self.redis_client = None
 
+    def _is_us_stock_market_open(self) -> bool:
+        """미국 주식시장 개장시간 확인 (한국 시간 기준 간이 판단)
+        월-금 23:30 ~ 익일 06:00(KST) 동안만 개장으로 간주한다.
+        """
+        try:
+            now_utc = datetime.utcnow()
+            korea_hour = (now_utc.hour + 9) % 24
+            korea_weekday = (now_utc.weekday() + 1) % 7  # 0=월요일, 6=일요일
+
+            if korea_weekday >= 5:  # 토, 일
+                return False
+
+            # 23:30 ~ 06:00 단위의 간이 체크: 시간으로만 게이트(분 단위는 관대하게 처리)
+            if 23 <= korea_hour or korea_hour <= 6:
+                return True
+            return False
+        except Exception:
+            # 문제가 생기면 안전하게 닫힘으로 간주
+            return False
+
     async def _collect_data(self) -> Dict[str, Any]:
         """
         BaseCollector 요구사항을 충족하는 추상 메서드 구현
@@ -227,6 +247,14 @@ class RealtimeCollector(BaseCollector):
         """설정에 따른 실시간 데이터 수집 (기존 호환성 유지)"""
         try:
             self.log_progress("실시간 데이터 수집 시작")
+            # 시장시간 게이트: 휴장 시에는 바로 no-op 리턴
+            if not self._is_us_stock_market_open():
+                logger.debug("미국 주식시장 휴장 시간: RealtimeCollector 실행을 건너뜁니다.")
+                return {
+                    'success': True,
+                    'message': '휴장 시간으로 수집 스킵',
+                    'total_added_records': 0
+                }
             
             # Redis Stream에서 데이터 수집 및 저장
             result = await self._collect_data()

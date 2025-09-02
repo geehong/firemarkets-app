@@ -63,18 +63,18 @@ html body .sidebar-nav .nav-group .nav-link {
   max-height: none !important;
   overflow: visible !important;
   height: auto !important;
-  min-height: fit-content !important;
+  min-height: auto !important;
 }
 
 // card-body 높이 계산 문제 해결
 .card {
   height: auto !important;
-  min-height: fit-content !important;
+  min-height: auto !important;
 }
 
 .card-body {
   height: auto !important;
-  min-height: fit-content !important;
+  min-height: auto !important;
   box-sizing: border-box !important;
 }
 
@@ -82,7 +82,7 @@ html body .sidebar-nav .nav-group .nav-link {
 .card-body.p-0 {
   padding: 0 !important;
   height: auto !important;
-  min-height: fit-content !important;
+  min-height: auto !important;
   box-sizing: content-box !important;
 }
 
@@ -90,7 +90,7 @@ html body .sidebar-nav .nav-group .nav-link {
 .card-body.p-0 > * {
   box-sizing: border-box !important;
   height: auto !important;
-  min-height: fit-content !important;
+  min-height: auto !important;
 }
 
 // 모든 탭 관련 컨테이너에 대한 강제 스타일

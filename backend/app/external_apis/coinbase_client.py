@@ -43,11 +43,15 @@ class CoinbaseClient(BaseAPIClient):
             }
         }
     
-    async def get_ohlcv_data(self, product_id: str, granularity: str = '86400') -> List[Dict[str, Any]]:
-        """Get OHLCV data from Coinbase"""
+    async def get_ohlcv_data(self, product_id: str, granularity: str = '86400', start_iso: Optional[str] = None, end_iso: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get OHLCV data from Coinbase. Supports start/end (ISO8601)."""
         try:
             async with httpx.AsyncClient() as client:
-                url = f"{self.base_url}/products/{product_id}/candles?granularity={granularity}"
+                base = f"{self.base_url}/products/{product_id}/candles?granularity={granularity}"
+                if start_iso and end_iso:
+                    url = f"{base}&start={start_iso}&end={end_iso}"
+                else:
+                    url = base
                 data = await self._fetch_async(client, url, "Coinbase", product_id)
                 
                 if isinstance(data, list):

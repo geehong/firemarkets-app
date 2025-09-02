@@ -5,6 +5,7 @@
 import os
 import logging
 from sqlalchemy import create_engine, text
+import time
 from sqlalchemy.orm import sessionmaker, declarative_base
 from dotenv import load_dotenv
 
@@ -24,25 +25,42 @@ if not DATABASE_URL:
     raise ValueError("DATABASE_URL 환경 변수가 설정되지 않았습니다.")
 
 # 엔진 생성 - 연결 풀 및 성능 최적화 설정
-engine = create_engine(
+def _create_engine_with_retry(url: str, attempts: int = 12, delay_seconds: int = 5):
+    last_err = None
+    for i in range(attempts):
+        try:
+            eng = create_engine(
+                url,
+                pool_pre_ping=True,
+                pool_size=20,
+                max_overflow=40,
+                pool_recycle=600,
+                echo=False,
+                pool_timeout=60,
+                pool_reset_on_return='commit',
+                pool_use_lifo=True,
+                connect_args={
+                    "charset": "utf8mb4",
+                    "autocommit": False,
+                    "connect_timeout": 10,
+                    "sql_mode": "STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO",
+                    "init_command": "SET SESSION sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO'",
+                },
+            )
+            # probe
+            with eng.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            logger.info("DB engine created and probed successfully")
+            return eng
+        except Exception as e:
+            last_err = e
+            logger.warning(f"DB not ready (attempt {i+1}/{attempts}): {e}")
+            time.sleep(delay_seconds)
+    logger.error(f"Failed to create DB engine after {attempts} attempts: {last_err}")
+    raise last_err
+
+engine = _create_engine_with_retry(
     DATABASE_URL,
-    pool_pre_ping=True,      # 연결 유효성 검사
-    pool_size=20,            # 기본 연결 풀 크기 증가 (10 → 20)
-    max_overflow=40,         # 최대 추가 연결 수 증가 (20 → 40)
-    pool_recycle=600,        # 연결 재사용 시간 증가 (300초 → 600초)
-    echo=False,              # SQL 로그 출력 여부
-    pool_timeout=60,         # 연결 대기 시간 증가 (30초 → 60초)
-    pool_reset_on_return='commit',  # 연결 반환 시 커밋
-    # 추가 성능 최적화 설정
-    pool_use_lifo=True,      # LIFO 방식으로 연결 재사용 (더 효율적)
-    poolclass=None,          # 기본 연결 풀 클래스 사용
-    # MySQL 특화 설정
-    connect_args={
-        "charset": "utf8mb4",
-        "autocommit": False,
-        "sql_mode": "STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO",
-        "init_command": "SET SESSION sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO'"
-    }
 )
 
 # SQLAlchemy Base 클래스 생성

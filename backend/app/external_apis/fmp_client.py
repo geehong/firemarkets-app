@@ -53,14 +53,20 @@ class FMPClient(BaseAPIClient):
             }
         }
     
-    async def get_ohlcv_data(self, ticker: str, limit: int = 1000) -> Optional[List[Dict[str, Any]]]:
-        """Get OHLCV data from FMP for both stocks and commodities."""
+    async def get_ohlcv_data(self, ticker: str, limit: int = 1000, start_date: Optional[str] = None, end_date: Optional[str] = None) -> Optional[List[Dict[str, Any]]]:
+        """Get OHLCV data from FMP for both stocks and commodities.
+        Supports date range via from/to when provided.
+        """
         if not self.api_key:
             raise ValueError("No FMP API key configured")
         
         try:
             async with httpx.AsyncClient() as client:
-                url = f"{self.base_url}/historical-price-full/{ticker}?apikey={self.api_key}&limit={limit}"
+                base = f"{self.base_url}/historical-price-full/{ticker}?apikey={self.api_key}"
+                if start_date and end_date:
+                    url = f"base&from={start_date}&to={end_date}"
+                else:
+                    url = f"{base}&limit={limit}"
                 data = await self._fetch_async(client, url, "FMP", ticker)
                 
                 # 응답 데이터가 리스트인지, 딕셔너리 안에 'historical' 키가 있는지 확인

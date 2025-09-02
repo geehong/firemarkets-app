@@ -431,25 +431,6 @@ class CollectorLoggingHelper:
         })
 
 
-class ApiLoggingHelper:
-    """API 전략 매니저용 간단한 로깅 헬퍼"""
-    
-    def __init__(self):
-        self.logger = logging.getLogger(__name__)
-    
-    def log_api_call_start(self, api_name: str, ticker: str):
-        """API 호출 시작 로그"""
-        self.logger.info(f"API call started: {api_name} for {ticker}")
-    
-    def log_api_call_success(self, api_name: str, ticker: str, data_points: int = 0):
-        """API 호출 성공 로그"""
-        self.logger.info(f"API call success: {api_name} for {ticker}, data points: {data_points}")
-    
-    def log_api_call_failure(self, api_name: str, ticker: str, error: Exception):
-        """API 호출 실패 로그"""
-        self.logger.error(f"API call failed: {api_name} for {ticker}, error: {error}")
-
-
 class BatchProcessor:
     """배치 처리를 위한 헬퍼 클래스"""
     
@@ -522,3 +503,80 @@ class BatchProcessor:
             "processed_assets": self.total_processed,
             "total_added_records": self.total_added
         }
+
+
+class ApiLoggingHelper:
+    """API 전략 매니저용 로깅 헬퍼 - api_call_logs 테이블에 저장"""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+    
+    def log_api_call_start(self, api_name: str, ticker: str):
+        """API 호출 시작 로그"""
+        self.logger.info(f"API call started: {api_name} for {ticker}")
+    
+    def log_api_call_success(self, api_name: str, ticker: str, data_points: int = 0):
+        """API 호출 성공 로그 - api_call_logs 테이블에 저장"""
+        try:
+            from app.core.database import SessionLocal
+            from sqlalchemy import text
+            
+            db = SessionLocal()
+            try:
+                # api_call_logs 테이블에 성공 로그 저장
+                db.execute(text("""
+                    INSERT INTO api_call_logs 
+                    (api_name, endpoint, asset_ticker, status_code, response_time_ms, success, error_message, created_at)
+                    VALUES (:api_name, :endpoint, :asset_ticker, :status_code, :response_time_ms, :success, :error_message, :created_at)
+                """), {
+                    'api_name': api_name,
+                    'endpoint': f'OHLCV data collection for {ticker}',
+                    'asset_ticker': ticker,
+                    'status_code': 200,
+                    'response_time_ms': 0,  # 실제 응답 시간 측정 필요시 추가
+                    'success': 1,
+                    'error_message': None,
+                    'created_at': datetime.now()
+                })
+                db.commit()
+                self.logger.info(f"API call success logged to DB: {api_name} for {ticker}, data points: {data_points}")
+            except Exception as e:
+                self.logger.error(f"Failed to log API call success to DB: {e}")
+                db.rollback()
+            finally:
+                db.close()
+        except Exception as e:
+            self.logger.error(f"Failed to log API call success: {e}")
+    
+    def log_api_call_failure(self, api_name: str, ticker: str, error: Exception):
+        """API 호출 실패 로그 - api_call_logs 테이블에 저장"""
+        try:
+            from app.core.database import SessionLocal
+            from sqlalchemy import text
+            
+            db = SessionLocal()
+            try:
+                # api_call_logs 테이블에 실패 로그 저장
+                db.execute(text("""
+                    INSERT INTO api_call_logs 
+                    (api_name, endpoint, asset_ticker, status_code, response_time_ms, success, error_message, created_at)
+                    VALUES (:api_name, :endpoint, :asset_ticker, :status_code, :response_time_ms, :success, :error_message, :created_at)
+                """), {
+                    'api_name': api_name,
+                    'endpoint': f'OHLCV data collection for {ticker}',
+                    'asset_ticker': ticker,
+                    'status_code': 500,  # 일반적인 에러 코드
+                    'response_time_ms': 0,
+                    'success': 0,
+                    'error_message': str(error)[:500],  # 에러 메시지 길이 제한
+                    'created_at': datetime.now()
+                })
+                db.commit()
+                self.logger.error(f"API call failure logged to DB: {api_name} for {ticker}, error: {error}")
+            except Exception as e:
+                self.logger.error(f"Failed to log API call failure to DB: {e}")
+                db.rollback()
+            finally:
+                db.close()
+        except Exception as e:
+            self.logger.error(f"Failed to log API call failure: {e}")

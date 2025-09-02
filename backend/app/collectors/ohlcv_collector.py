@@ -34,9 +34,6 @@ class OHLCVCollector(BaseCollector):
     def __init__(self, db: Session = None):
         super().__init__(db)
         self.api_timeout = 30
-        self.enable_historical_backfill = True
-        self.max_historical_days = 1000
-        self.historical_days_per_run = 100
         # 로깅 헬퍼 초기화
         self.logging_helper = CollectorLoggingHelper("OHLCVCollector", self)
 
@@ -110,12 +107,12 @@ class OHLCVCollector(BaseCollector):
                 total_results.append(result)
             
             # 히스토리 백필이 활성화된 경우 백필 로직 실행 (최신 데이터 수집 후)
-            if self.enable_historical_backfill:
-                await self.safe_emit('scheduler_log', {
-                    'message': "최신 데이터 수집 완료. 히스토리 백필 시작", 
-                    'type': 'info'
-                })
-                await self._perform_historical_backfill(asset_ids)
+            # if self.enable_historical_backfill: # 이 부분은 이제 api_manager가 처리하므로 제거
+            #     await self.safe_emit('scheduler_log', {
+            #         'message': "최신 데이터 수집 완료. 히스토리 백필 시작", 
+            #         'type': 'info'
+            #     })
+            #     await self._perform_historical_backfill(asset_ids)
             
             # 결과 합계
             total_processed = sum(r.get("processed_assets", 0) for r in total_results)
@@ -384,7 +381,7 @@ class OHLCVCollector(BaseCollector):
                         
                         if ohlcv_data:
                             try:
-                                added_count = await self._store_ohlcv_data(asset_id, ohlcv_data)
+                                added_count = await self._store_ohlcv_data_with_interval(asset_id, ohlcv_data, "1d")
                             except Exception as store_error:
                                 self.log_progress(f"Error storing data for {fresh_asset.ticker}: {store_error}", "error")
                                 raise store_error
@@ -540,167 +537,9 @@ class OHLCVCollector(BaseCollector):
         finally:
             db.close()
 
-    async def _get_latest_data_date(self, asset_id: int, interval: str) -> Optional[date]:
-        """Get the latest data date for a specific asset and interval"""
-        db = self.get_db_session()
-        try:
-            from ..crud.asset import crud_ohlcv
-            
-            latest_data = db.query(crud_ohlcv.model).filter(
-                crud_ohlcv.model.asset_id == asset_id,
-                crud_ohlcv.model.data_interval == interval
-            ).order_by(crud_ohlcv.model.timestamp_utc.desc()).first()
-            
-            if latest_data:
-                return latest_data.timestamp_utc.date()
-            return None
-        finally:
-            db.close()
-    
-    def _calculate_days_needed(self, latest_date: Optional[date]) -> int:
-        """Calculate how many days of data are needed based on latest date"""
-        if latest_date is None:
-            # 데이터가 없으면 HISTORICAL_DATA_DAYS_PER_RUN만큼 수집
-            return self.historical_days_per_run
-        
-        current_date = datetime.now().date()
-        days_diff = (current_date - latest_date).days
-        
-        if days_diff <= 0:
-            # 최신 데이터가 있으면 1일만 수집 (최신 데이터 업데이트)
-            return 1
-        elif days_diff > self.historical_days_per_run:
-            # 너무 오래된 데이터면 HISTORICAL_DATA_DAYS_PER_RUN만큼 수집
-            return self.historical_days_per_run
-        else:
-            # 빠진 일수만큼 수집
-            return days_diff
-
-    async def _perform_historical_backfill(self, asset_ids: List[int]) -> None:
-        """Perform historical data backfill for missing data"""
-        if not self.enable_historical_backfill:
-            return
-            
-        await self.safe_emit('scheduler_log', {
-            'message': f"히스토리 백필 시작: {len(asset_ids)}개 자산", 
-            'type': 'info'
-        })
-        
-        for asset_id in asset_ids:
-            try:
-                # asset_id를 사용하여 Asset 정보를 다시 조회
-                db = self.get_db_session()
-                asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
-                if not asset:
-                    db.close()
-                    continue
-                    
-                ticker = getattr(asset, 'ticker', 'Unknown')
-                db.close()
-                
-                # 각 자산의 최신 데이터 날짜 확인
-                db = self.get_db_session()
-                latest_data = db.query(crud_ohlcv.model).filter(
-                    crud_ohlcv.model.asset_id == asset_id
-                ).order_by(crud_ohlcv.model.timestamp_utc.desc()).first()
-                
-                if latest_data:
-                    latest_date = latest_data.timestamp_utc.date()
-                    current_date = datetime.now().date()
-                    
-                    # 최신 데이터가 오늘보다 이전인 경우 백필 수행
-                    if latest_date < current_date:
-                        days_to_backfill = (current_date - latest_date).days
-                        if days_to_backfill > 0:
-                            await self._backfill_historical_data(asset_id, ticker, days_to_backfill)
-                else:
-                    # 데이터가 없는 경우 최대 히스토리 기간만큼 백필
-                    await self._backfill_historical_data(asset_id, ticker, self.max_historical_days)
-                    
-                db.close()
-                            
-            except Exception as e:
-                ticker = getattr(asset, 'ticker', 'Unknown')
-                self.log_progress(f"Historical backfill error for {ticker}: {e}", "error")
-
-    async def _backfill_historical_data(self, asset_id: int, ticker: str, days_to_backfill: int) -> None:
-        """Backfill historical data for a specific asset"""
-        try:
-            # 백필할 기간을 청크로 나누어 처리
-            chunk_size = min(self.historical_days_per_run, days_to_backfill)
-            
-            for i in range(0, days_to_backfill, chunk_size):
-                end_date = datetime.now().date() - timedelta(days=i)
-                start_date = end_date - timedelta(days=chunk_size-1)
-                
-                await self.safe_emit('scheduler_log', {
-                    'message': f"[{ticker}] 히스토리 백필: {start_date} ~ {end_date}", 
-                    'type': 'info'
-                })
-                
-                # 이 기간의 데이터 수집
-                await self._fetch_historical_data_for_period(asset_id, ticker, start_date, end_date)
-                
-        except Exception as e:
-            self.log_progress(f"Backfill error for {ticker}: {e}", "error")
-    
-    async def _fetch_historical_data_for_period(self, asset_id: int, ticker: str, start_date: date, end_date: date) -> None:
-        """Fetch historical data for a specific period"""
-        try:
-            # 자산 타입을 다시 조회
-            db = self.get_db_session()
-            asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
-            if not asset:
-                db.close()
-                return
-                
-            asset_type_name = asset.asset_type.type_name.lower() if asset.asset_type else ""
-            db.close()
-            
-            # [IMPROVED] api_strategy_manager를 사용하여 백필 데이터 수집
-            # 이제 우선순위가 올바르게 적용됩니다 (Tiingo 1순위)
-            if 'crypto' in asset_type_name:
-                data = await api_manager.get_ohlcv(ticker, "1d", asset_type=asset_type_name, asset_id=asset_id)
-            else:
-                data = await api_manager.get_ohlcv(ticker, "1d", asset_type=asset_type_name, asset_id=asset_id)
-            
-            if data is not None and not data.empty:
-                # DataFrame을 OHLCV 레코드로 변환
-                ohlcv_data = []
-                for index, row in data.iterrows():
-                    # timestamp 검증 및 변환
-                    if not isinstance(index, (datetime, pd.Timestamp)):
-                        continue
-                    
-                    close_price = self._safe_float(row.get('close', row.get('close_price')))
-                    
-                    # 최종 검증: 0이 아닌 close_price만 저장
-                    if close_price is not None and close_price > 0:
-                        ohlcv_record = {
-                            "timestamp_utc": index.to_pydatetime() if hasattr(index, 'to_pydatetime') else index,
-                            "open_price": self._safe_float(row.get('open', row.get('open_price'))),
-                            "high_price": self._safe_float(row.get('high', row.get('high_price'))),
-                            "low_price": self._safe_float(row.get('low', row.get('low_price'))),
-                            "close_price": close_price,
-                            "volume": self._safe_float(row.get('volume', 0.0)),
-                            "asset_id": asset_id,
-                            "data_interval": "1d"
-                        }
-                        ohlcv_data.append(ohlcv_record)
-                
-                if ohlcv_data:
-                    await self._store_ohlcv_data_with_interval(asset_id, ohlcv_data, "1d")
-                    await self.safe_emit('scheduler_log', {
-                        'message': f"[{ticker}] 히스토리 데이터 {len(ohlcv_data)}개 저장 완료 (API Manager 사용)", 
-                        'type': 'success'
-                    })
-                    
-        except Exception as e:
-            self.log_progress(f"Historical data fetch error for {ticker}: {e}", "error")
-    
-    # [REMOVED] 직접 API 호출 메서드들 - api_strategy_manager로 대체됨
-    # _fetch_crypto_historical_data와 _fetch_stock_historical_data 메서드는 제거됨
-    # 이제 모든 API 호출은 api_strategy_manager를 통해 우선순위에 따라 처리됩니다
+    # [REMOVED] 백필 관련 메서드들 - api_strategy_manager로 대체됨
+    # _perform_historical_backfill, _backfill_historical_data, _fetch_historical_data_for_period 등은 제거됨
+    # 이제 모든 백필 로직은 api_strategy_manager의 _get_fetch_parameters에서 처리됩니다
 
     async def _fetch_ohlcv_from_alpha_vantage_with_interval(self, client: httpx.AsyncClient, ticker: str, api_keys_list: List[str], interval: str) -> List[Dict]:
         """Fetch OHLCV data from Alpha Vantage with specific interval"""
@@ -1455,35 +1294,26 @@ class OHLCVCollector(BaseCollector):
             ticker=ticker
         )
 
-    async def _store_ohlcv_data(self, asset_id: int, ohlcv_list: List[Dict]) -> int:
-        """Store OHLCV data and calculate daily change percentages"""
+    # [REMOVED] _store_ohlcv_data 함수 - _store_ohlcv_data_with_interval로 통합됨
+
+    async def _store_ohlcv_data_with_interval(self, asset_id: int, ohlcv_list: List[Dict], interval: str) -> int:
+        """Store OHLCV data with specific interval and calculate change percentages"""
         if not ohlcv_list:
             return 0
         
         db = self.get_db_session()
-        
         try:
-            # 디버깅: 입력 데이터 확인
-            self.log_progress(f"Processing {len(ohlcv_list)} records for asset {asset_id}", "info")
-            if len(ohlcv_list) > 0:
-                sample_record = ohlcv_list[0]
-                self.log_progress(f"Sample record keys: {list(sample_record.keys())}", "info")
-                self.log_progress(f"Sample close_price: {sample_record.get('close_price')}", "info")
-            
             # Sort by timestamp
             ohlcv_list.sort(key=lambda x: x['timestamp_utc'])
             
             # Calculate change percentages
             for i, data_point in enumerate(ohlcv_list):
                 data_point['asset_id'] = asset_id
+                data_point['data_interval'] = interval
                 
                 if i > 0:
                     prev_close = ohlcv_list[i-1]['close_price']
                     current_close = data_point['close_price']
-                    
-                    # 디버깅: 값 확인
-                    if i < 3:  # 처음 3개만 로깅
-                        self.log_progress(f"Data point {i}: prev_close={prev_close} (type: {type(prev_close)}), current_close={current_close} (type: {type(current_close)})", "info")
                     
                     if prev_close is not None and current_close is not None and prev_close > 0:
                         change = ((current_close - prev_close) / prev_close) * 100
@@ -1504,55 +1334,11 @@ class OHLCVCollector(BaseCollector):
             from ..crud.asset import crud_ohlcv
             added_count = crud_ohlcv.bulk_upsert_ohlcv(db, ohlcv_list)
             return added_count
+            
         except Exception as e:
-            self.log_progress(f"Error in _store_ohlcv_data: {e}", "error")
+            self.log_progress(f"Error storing {interval} OHLCV data: {e}", "error")
             import traceback
             self.log_progress(f"Traceback: {traceback.format_exc()}", "error")
-            raise
-        finally:
-            db.close()
-
-    async def _store_ohlcv_data_with_interval(self, asset_id: int, ohlcv_list: List[Dict], interval: str) -> int:
-        """Store OHLCV data with specific interval"""
-        if not ohlcv_list:
-            return 0
-        
-        db = self.get_db_session()
-        try:
-            # 기존 데이터와 중복 체크 및 업데이트
-            added_count = 0
-            from ..crud.asset import crud_ohlcv
-            
-            for data_point in ohlcv_list:
-                # asset_id와 간격 정보 추가
-                data_point['asset_id'] = asset_id
-                data_point['data_interval'] = interval
-                
-                # 기존 데이터 확인
-                existing = db.query(crud_ohlcv.model).filter(
-                    crud_ohlcv.model.asset_id == asset_id,
-                    crud_ohlcv.model.timestamp_utc == data_point['timestamp_utc'],
-                    crud_ohlcv.model.data_interval == interval
-                ).first()
-                
-                if existing:
-                    # 기존 데이터 업데이트
-                    for key, value in data_point.items():
-                        if key != 'timestamp_utc' and key != 'data_interval':
-                            setattr(existing, key, value)
-                    existing.updated_at = datetime.now()
-                else:
-                    # 새 데이터 추가
-                    new_ohlcv = crud_ohlcv.model(**data_point)
-                    db.add(new_ohlcv)
-                    added_count += 1
-            
-            db.commit()
-            return added_count
-            
-        except Exception as e:
-            db.rollback()
-            self.log_progress(f"Error storing {interval} OHLCV data: {e}", "error")
             raise
         finally:
             db.close()

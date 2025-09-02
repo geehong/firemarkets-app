@@ -43,11 +43,22 @@ class BinanceClient(BaseAPIClient):
             }
         }
     
-    async def get_ohlcv_data(self, symbol: str, interval: str = "1d", limit: int = 1000) -> List[Dict[str, Any]]:
-        """Get OHLCV data from Binance"""
+    async def get_ohlcv_data(self, symbol: str, interval: str = "1d", limit: int = 1000, start_time_ms: Optional[int] = None, end_time_ms: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Get OHLCV data from Binance.
+        Supports optional startTime/endTime (milliseconds) to fetch a specific window.
+        """
         try:
             async with httpx.AsyncClient() as client:
-                url = f"{self.base_url}/klines?symbol={symbol}&interval={interval}&limit={limit}"
+                # Build query parameters
+                query = f"symbol={symbol}&interval={interval}"
+                if start_time_ms is not None:
+                    query += f"&startTime={start_time_ms}"
+                if end_time_ms is not None:
+                    query += f"&endTime={end_time_ms}"
+                # Always include a limit as a safety cap
+                if limit is not None:
+                    query += f"&limit={limit}"
+                url = f"{self.base_url}/klines?{query}"
                 data = await self._fetch_async(client, url, "Binance", symbol)
                 
                 if isinstance(data, list) and data:  # 데이터가 비어있지 않은지 확인

@@ -66,32 +66,24 @@ class BaseAPIClient(ABC):
             await self._log_api_call(api_name, url, status_code, start_time, success, error_message, ticker)
     
     async def _log_api_call(self, api_name: str, url: str, status_code: int, start_time: datetime, success: bool, error_message: str = None, ticker: str = None):
-        """외부 API 호출을 데이터베이스에 로그"""
+        """외부 API 호출을 데이터베이스에 로그 - ApiLoggingHelper 사용"""
         try:
-            from ..core.database import get_db
-            from ..models.system import ApiCallLog
+            from ..utils.logging_helper import ApiLoggingHelper
             
             end_time = datetime.now()
             response_time_ms = int((end_time - start_time).total_seconds() * 1000)
             
-            db = next(get_db())
-            try:
-                api_log = ApiCallLog(
-                    api_name=f"External {api_name}",
-                    endpoint=url,
-                    asset_ticker=ticker,
-                    status_code=status_code or 0,
-                    response_time_ms=response_time_ms,
-                    success=success,
-                    error_message=error_message
-                )
-                db.add(api_log)
-                db.commit()
-            except Exception as e:
-                logger.error(f"Failed to log external API call: {e}")
-                db.rollback()
-            finally:
-                db.close()
+            # ApiLoggingHelper 사용
+            logging_helper = ApiLoggingHelper()
+            
+            if success:
+                # 성공 로그
+                logging_helper.log_api_call_success(api_name.lower(), ticker or "unknown")
+            else:
+                # 실패 로그
+                error_exception = Exception(error_message) if error_message else Exception("Unknown error")
+                logging_helper.log_api_call_failure(api_name.lower(), ticker or "unknown", error_exception)
+                
         except Exception as e:
             logger.error(f"Error in API call logging: {e}")
     

@@ -141,6 +141,34 @@ class CRUDOHLCV(CRUDBase[OHLCVData]):
             .first()
         )
     
+    def get_date_range(self, db: Session, asset_id: int, interval: str = '1d') -> tuple[Optional[datetime], Optional[datetime]]:
+        """Get both oldest and newest timestamps for a specific asset and interval."""
+        oldest = (
+            db.query(OHLCVData.timestamp_utc)
+            .filter(
+                and_(
+                    OHLCVData.asset_id == asset_id,
+                    OHLCVData.data_interval == interval
+                )
+            )
+            .order_by(OHLCVData.timestamp_utc)
+            .first()
+        )
+        
+        newest = (
+            db.query(OHLCVData.timestamp_utc)
+            .filter(
+                and_(
+                    OHLCVData.asset_id == asset_id,
+                    OHLCVData.data_interval == interval
+                )
+            )
+            .order_by(desc(OHLCVData.timestamp_utc))
+            .first()
+        )
+        
+        return (oldest[0] if oldest else None, newest[0] if newest else None)
+    
     def get_ohlcv_data(
         self, 
         db: Session, 
