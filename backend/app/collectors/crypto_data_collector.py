@@ -37,7 +37,7 @@ class CryptoDataCollector(BaseCollector):
             db.close()
         
         # 로깅 헬퍼 초기화
-        from .logging_helper import CollectorLoggingHelper
+        from ..utils.logging_helper import CollectorLoggingHelper
         self.logging_helper = CollectorLoggingHelper("CryptoDataCollector", self)
     
     async def collect_with_settings(self) -> Dict[str, Any]:

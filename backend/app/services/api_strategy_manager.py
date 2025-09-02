@@ -14,9 +14,11 @@ from app.external_apis.binance_client import BinanceClient
 from app.external_apis.coinbase_client import CoinbaseClient
 from app.external_apis.coinmarketcap_client import CoinMarketCapClient
 from app.external_apis.tiingo_client import TiingoClient
+from app.external_apis.polygon_client import PolygonClient
 from app.external_apis.coingecko_client import CoinGeckoClient
 from app.external_apis.bitcoin_data_client import BitcoinDataClient
 from app.crud.asset import crud_ohlcv
+from app.utils.logging_helper import ApiLoggingHelper as LoggingHelper
 
 class ApiStrategyManager:
     """API 전략 관리자: 여러 API를 순서대로 시도하고 실패 시 자동 전환"""
@@ -26,16 +28,18 @@ class ApiStrategyManager:
         # 1. OHLCV (일반 = 주식 및 지수, 통화)
         self.ohlcv_clients = [
             TiingoClient(),        # 1순위
-            FMPClient(),          # 2순위
-            TwelveDataClient(),   # 3순위
-            AlphaVantageClient()  # 4순위
+            PolygonClient(),       # 2순위
+            FMPClient(),          # 3순위
+            TwelveDataClient(),   # 4순위
+            AlphaVantageClient()  # 5순위
         ]
         
         # 2. 커머디티용 클라이언트 (FMP 우선)
         self.commodity_clients = [
             FMPClient(),          # 1순위 (FMP 우선)
             TiingoClient(),       # 2순위
-            TwelveDataClient()    # 3순위 (지원하는지 모르겠음)
+            PolygonClient(),      # 3순위
+            TwelveDataClient()    # 4순위 (지원하는지 모르겠음)
         ]
         
         # 3. 암호화폐용 클라이언트
@@ -49,6 +53,7 @@ class ApiStrategyManager:
         ]
         
         self.logger = logger
+        self.logging_helper = LoggingHelper()
     
     def _calculate_date_range(self, limit: int) -> Tuple[str, str]:
         """
@@ -90,6 +95,40 @@ class ApiStrategyManager:
             return "5y"
         else:
             return "max"
+    
+    def _get_api_name(self, client) -> str:
+        """
+        클라이언트 객체에서 API 이름을 추출합니다.
+        
+        Args:
+            client: API 클라이언트 객체
+            
+        Returns:
+            API 이름 문자열
+        """
+        class_name = client.__class__.__name__
+        if 'Tiingo' in class_name:
+            return 'tiingo'
+        elif 'Polygon' in class_name:
+            return 'polygon'
+        elif 'FMP' in class_name:
+            return 'fmp'
+        elif 'TwelveData' in class_name:
+            return 'twelvedata'
+        elif 'AlphaVantage' in class_name:
+            return 'alpha_vantage'
+        elif 'Binance' in class_name:
+            return 'binance'
+        elif 'Coinbase' in class_name:
+            return 'coinbase'
+        elif 'CoinMarketCap' in class_name:
+            return 'coinmarketcap'
+        elif 'CoinGecko' in class_name:
+            return 'coingecko'
+        elif 'Yahoo' in class_name:
+            return 'yahoo'
+        else:
+            return class_name.lower()
     
     async def get_ohlcv(self, ticker: str, interval: str = "1d", limit: int = 100, asset_type: str = None, asset_id: int = None) -> Optional[pd.DataFrame]:
         """
@@ -154,6 +193,10 @@ class ApiStrategyManager:
         
         for i, client in enumerate(clients_to_use):
             try:
+                # API 호출 시작 로깅
+                api_name = self._get_api_name(client)
+                self.logging_helper.log_api_call_start(api_name, ticker)
+                
                 self.logger.info(f"Attempting to fetch OHLCV for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(clients_to_use)})")
                 
                 # 각 클라이언트의 메서드명이 다를 수 있으므로 적응적으로 호출
@@ -204,9 +247,12 @@ class ApiStrategyManager:
                             self.logger.warning(f"No timestamp column found in data from {client.__class__.__name__} for {ticker}")
                             data = None
                 elif hasattr(client, 'get_historical_prices'):
-                    # Tiingo, TwelveData 클라이언트
+                    # Tiingo, TwelveData, Polygon 클라이언트
                     if isinstance(client, TiingoClient):
                         # Tiingo는 start_date, end_date 사용
+                        data = await client.get_historical_prices(ticker, start_date, end_date, interval)
+                    elif hasattr(client, '__class__') and 'PolygonClient' in str(client.__class__):
+                        # Polygon - start_date, end_date, interval 순서
                         data = await client.get_historical_prices(ticker, start_date, end_date, interval)
                     else:
                         # TwelveData - 날짜 범위 사용
@@ -300,12 +346,20 @@ class ApiStrategyManager:
                         
                         self.logger.info(f"{client.__class__.__name__} data validation passed for {ticker}: {valid_rows}/{len(data)} valid rows")
                     
+                    # API 호출 성공 로깅
+                    self.logging_helper.log_api_call_success(api_name, ticker, len(data))
+                    
                     self.logger.info(f"Successfully fetched OHLCV for {ticker} from {client.__class__.__name__} ({len(data)} records)")
                     return data
                 else:
+                    # API 호출은 성공했지만 데이터가 없는 경우 로깅
+                    self.logging_helper.log_api_call_failure(api_name, ticker, Exception("No data returned"))
                     self.logger.warning(f"{client.__class__.__name__} returned empty data for {ticker}")
                     
             except Exception as e:
+                # API 호출 실패 로깅
+                self.logging_helper.log_api_call_failure(api_name, ticker, e)
+                
                 # 404 에러는 정상적인 실패로 간주하고 다음 API로 넘어감
                 if "404" in str(e) or "Not Found" in str(e):
                     self.logger.warning(f"{client.__class__.__name__} returned 404 for {ticker}. Trying next client.")
@@ -390,9 +444,12 @@ class ApiStrategyManager:
                             else:
                                 data = None
                 elif hasattr(client, 'get_historical_prices'):
-                    # Tiingo, TwelveData 클라이언트
+                    # Tiingo, TwelveData, Polygon 클라이언트
                     if isinstance(client, TiingoClient):
                         # Tiingo는 start_date, end_date 사용
+                        data = await client.get_historical_prices(ticker, start_date, end_date, interval)
+                    elif hasattr(client, '__class__') and 'PolygonClient' in str(client.__class__):
+                        # Polygon - start_date, end_date, interval 순서
                         data = await client.get_historical_prices(ticker, start_date, end_date, interval)
                     else:
                         # TwelveData - 날짜 범위 사용
@@ -557,9 +614,12 @@ class ApiStrategyManager:
                         # List[Dict]를 DataFrame으로 변환
                         data = pd.DataFrame(data)
                 elif hasattr(client, 'get_historical_prices'):
-                    # Tiingo, TwelveData 클라이언트
+                    # Tiingo, TwelveData, Polygon 클라이언트
                     if isinstance(client, TiingoClient):
                         # Tiingo는 start_date, end_date 사용
+                        data = await client.get_historical_prices(ticker, start_date, end_date, interval)
+                    elif hasattr(client, '__class__') and 'PolygonClient' in str(client.__class__):
+                        # Polygon - start_date, end_date, interval 순서
                         data = await client.get_historical_prices(ticker, start_date, end_date, interval)
                     else:
                         # TwelveData - 날짜 범위 사용

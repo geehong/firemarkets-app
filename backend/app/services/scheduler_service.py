@@ -29,6 +29,7 @@ class SchedulerService:
             timestamp = datetime.utcnow().isoformat()
             if config:
                 config.config_value = timestamp
+                self.logger.debug(f"Updating existing heartbeat: {timestamp}")
             else:
                 config = AppConfiguration(
                     config_key='scheduler_heartbeat', 
@@ -37,10 +38,13 @@ class SchedulerService:
                     is_active=True
                 )
                 db.add(config)
+                self.logger.debug(f"Creating new heartbeat: {timestamp}")
+            
             db.commit()
-            self.logger.info(f"Scheduler heartbeat updated: {timestamp}")
+            self.logger.info(f"Scheduler heartbeat updated successfully: {timestamp}")
         except Exception as e:
-            self.logger.error(f"Failed to update heartbeat: {e}")
+            self.logger.error(f"Failed to update heartbeat: {e}", exc_info=True)
+            db.rollback()
         finally:
             db.close()
 

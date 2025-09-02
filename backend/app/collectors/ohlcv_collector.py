@@ -9,11 +9,12 @@ from typing import List, Dict, Any, Optional
 
 import httpx
 import backoff
+import pandas as pd
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, text
 
 from .base_collector import BaseCollector
-from .logging_helper import CollectorLoggingHelper, create_collection_summary_log
+from ..utils.logging_helper import CollectorLoggingHelper, create_collection_summary_log
 from ..core.config import GLOBAL_APP_CONFIGS
 from ..models.asset import Asset
 from ..models.system import AppConfiguration
@@ -66,8 +67,8 @@ class OHLCVCollector(BaseCollector):
                 })
                 return {"message": "No assets with OHLCV collection enabled", "processed": 0}
             
-            # 상세 로깅 시작
-            self.logging_helper.start_collection("OHLCV", len(asset_ids), api_provider="FMP")
+            # 상세 로깅 시작 (실제 API는 나중에 결정)
+            self.logging_helper.start_collection("OHLCV", len(asset_ids), api_provider="Multiple")
             
             await self.safe_emit('scheduler_log', {
                 'message': f"OHLCV 데이터 수집 시작: {len(asset_ids)}개 자산 (설정 기반)", 
@@ -120,11 +121,21 @@ class OHLCVCollector(BaseCollector):
             total_processed = sum(r.get("processed_assets", 0) for r in total_results)
             total_added = sum(r.get("total_added_records", 0) for r in total_results)
             
+            # 실제 사용된 API 추적
+            api_usage = {}
+            for result in total_results:
+                if isinstance(result, dict) and "api_usage" in result:
+                    for api, count in result["api_usage"].items():
+                        api_usage[api] = api_usage.get(api, 0) + count
+            
+            # 가장 많이 사용된 API를 기본값으로 설정
+            primary_api = max(api_usage.items(), key=lambda x: x[1])[0] if api_usage else "FMP"
+            
             # 상세 로깅 완료
             self.logging_helper.log_collection_completion(
                 total_processed, 
                 total_added,
-                api_provider="FMP",
+                api_provider=primary_api,
                 collection_type="OHLCV",
                 intervals_processed=len(ohlcv_intervals)
             )
@@ -237,6 +248,7 @@ class OHLCVCollector(BaseCollector):
             batch_size = GLOBAL_APP_CONFIGS.get("BATCH_SIZE", 1)  # 기본값을 1로 변경
             total_processed = 0
             total_added = 0
+            api_usage = {}  # API 사용량 추적
             
             for i in range(0, len(asset_ids), batch_size):
                 batch = asset_ids[i:i + batch_size]
@@ -260,6 +272,12 @@ class OHLCVCollector(BaseCollector):
                     else:
                         total_processed += 1
                         total_added += result.get("added_count", 0)
+                        
+                        # API 사용량 추적
+                        if result.get("success", False) and result.get("source"):
+                            source = result.get("source")
+                            api_usage[source] = api_usage.get(source, 0) + 1
+                        
                         if result.get("success", False):
                             await self.safe_emit('scheduler_log', {
                                 'message': f"[{result.get('ticker', 'Unknown')}] {interval} {result.get('source', 'Unknown')}에서 {result.get('added_count', 0)}개 데이터 수집 완료", 
@@ -279,6 +297,7 @@ class OHLCVCollector(BaseCollector):
                 "processed_assets": total_processed,
                 "total_added_records": total_added,
                 "interval": interval,
+                "api_usage": api_usage,  # API 사용량 포함
                 "message": f"Successfully processed {total_processed} assets for {interval} interval"
             }
             
@@ -348,6 +367,8 @@ class OHLCVCollector(BaseCollector):
                         
                         if source == 'tiingo':
                             ohlcv_data = await self._fetch_ohlcv_from_tiingo(client, fresh_asset.ticker)
+                        elif source == 'polygon':
+                            ohlcv_data = await self._fetch_ohlcv_from_polygon(client, fresh_asset.ticker)
                         elif source == 'alpha_vantage':
                             api_keys = GLOBAL_APP_CONFIGS.get("ALPHA_VANTAGE_API_KEYS", [])
                             ohlcv_data = await self._fetch_ohlcv_from_alpha_vantage(client, fresh_asset.ticker, api_keys)
@@ -362,7 +383,11 @@ class OHLCVCollector(BaseCollector):
                             ohlcv_data = await self._fetch_ohlcv_from_coinmarketcap(client, fresh_asset.ticker)
                         
                         if ohlcv_data:
-                            added_count = await self._store_ohlcv_data(asset_id, ohlcv_data)
+                            try:
+                                added_count = await self._store_ohlcv_data(asset_id, ohlcv_data)
+                            except Exception as store_error:
+                                self.log_progress(f"Error storing data for {fresh_asset.ticker}: {store_error}", "error")
+                                raise store_error
                             
                             # 상세 로깅 - 성공
                             self.logging_helper.log_api_call_success(source, fresh_asset.ticker, len(ohlcv_data))
@@ -962,18 +987,34 @@ class OHLCVCollector(BaseCollector):
             data = await api_manager.get_ohlcv(ticker, "1d")
             
             if data is not None and not data.empty:
-                return [
-                    {
-                        "timestamp_utc": row.name.to_pydatetime() if hasattr(row.name, 'to_pydatetime') else datetime.now(),
-                        "open_price": self._safe_float(row.get("open", 0)),
-                        "high_price": self._safe_float(row.get("high", 0)),
-                        "low_price": self._safe_float(row.get("low", 0)),
-                        "close_price": self._safe_float(row.get("close", 0)),
-                        "volume": self._safe_float(row.get("volume", 0), 0.0),
+                result = []
+                for index, row in data.iterrows():
+                    # timestamp 처리 - DataFrame의 인덱스가 timestamp인 경우
+                    if hasattr(index, 'to_pydatetime'):
+                        timestamp = index.to_pydatetime()
+                    elif isinstance(index, (datetime, pd.Timestamp)):
+                        timestamp = index
+                    else:
+                        # 인덱스가 timestamp가 아닌 경우, timestamp_utc 컬럼 사용
+                        timestamp = row.get("timestamp_utc")
+                        if timestamp is None:
+                            timestamp = datetime.now()
+                    
+                    # 데이터 변환
+                    record = {
+                        "timestamp_utc": timestamp,
+                        "open_price": self._safe_float(row.get("open_price")),
+                        "high_price": self._safe_float(row.get("high_price")),
+                        "low_price": self._safe_float(row.get("low_price")),
+                        "close_price": self._safe_float(row.get("close_price")),
+                        "volume": self._safe_float(row.get("volume"), 0.0),
                     }
-                    for _, row in data.iterrows()
-                    if row.get("close", 0) is not None
-                ]
+                    
+                    # close_price가 None이 아닌 경우만 추가
+                    if record["close_price"] is not None:
+                        result.append(record)
+                
+                return result
             else:
                 await self.safe_emit('scheduler_log', {
                     'message': f"Tiingo: 데이터 없음 ({ticker})", 
@@ -1017,6 +1058,108 @@ class OHLCVCollector(BaseCollector):
         except Exception as e:
             await self.safe_emit('scheduler_log', {
                 'message': f"Tiingo {interval} 데이터 파싱 오류 ({ticker}): {e}", 
+                'type': 'error'
+            })
+            return []
+
+    async def _fetch_ohlcv_from_polygon(self, client: httpx.AsyncClient, ticker: str) -> List[Dict]:
+        """Fetch OHLCV data from Polygon.io using api_manager"""
+        try:
+            # api_manager를 사용하여 OHLCV 데이터 조회
+            from datetime import datetime, timedelta
+            end_date = datetime.now().strftime("%Y-%m-%d")
+            start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+            
+            data = await api_manager.get_ohlcv(ticker, "1d")
+            
+            if data is not None and not data.empty:
+                result = []
+                for index, row in data.iterrows():
+                    # timestamp 처리 - DataFrame의 인덱스가 timestamp인 경우
+                    if hasattr(index, 'to_pydatetime'):
+                        timestamp = index.to_pydatetime()
+                    elif isinstance(index, (datetime, pd.Timestamp)):
+                        timestamp = index
+                    else:
+                        # 인덱스가 timestamp가 아닌 경우, timestamp_utc 컬럼 사용
+                        timestamp = row.get("timestamp_utc")
+                        if timestamp is None:
+                            timestamp = datetime.now()
+                    
+                    # 데이터 변환
+                    record = {
+                        "timestamp_utc": timestamp,
+                        "open_price": self._safe_float(row.get("open_price")),
+                        "high_price": self._safe_float(row.get("high_price")),
+                        "low_price": self._safe_float(row.get("low_price")),
+                        "close_price": self._safe_float(row.get("close_price")),
+                        "volume": self._safe_float(row.get("volume"), 0.0),
+                    }
+                    
+                    # close_price가 None이 아닌 경우만 추가
+                    if record["close_price"] is not None:
+                        result.append(record)
+                
+                return result
+            else:
+                await self.safe_emit('scheduler_log', {
+                    'message': f"Polygon: 데이터 없음 ({ticker})", 
+                    'type': 'warning'
+                })
+                return []
+                
+        except Exception as e:
+            await self.safe_emit('scheduler_log', {
+                'message': f"Polygon 데이터 파싱 오류 ({ticker}): {e}", 
+                'type': 'error'
+            })
+            return []
+
+    async def _fetch_ohlcv_from_polygon_with_interval(self, client: httpx.AsyncClient, ticker: str, interval: str) -> List[Dict]:
+        """Fetch OHLCV data from Polygon.io with specific interval using api_manager"""
+        try:
+            # api_manager를 사용하여 OHLCV 데이터 조회
+            data = await api_manager.get_ohlcv(ticker, interval)
+            
+            if data is not None and not data.empty:
+                result = []
+                for index, row in data.iterrows():
+                    # timestamp 처리 - DataFrame의 인덱스가 timestamp인 경우
+                    if hasattr(index, 'to_pydatetime'):
+                        timestamp = index.to_pydatetime()
+                    elif isinstance(index, (datetime, pd.Timestamp)):
+                        timestamp = index
+                    else:
+                        # 인덱스가 timestamp가 아닌 경우, timestamp_utc 컬럼 사용
+                        timestamp = row.get("timestamp_utc")
+                        if timestamp is None:
+                            timestamp = datetime.now()
+                    
+                    # 데이터 변환
+                    record = {
+                        "timestamp_utc": timestamp,
+                        "open_price": self._safe_float(row.get("open_price")),
+                        "high_price": self._safe_float(row.get("high_price")),
+                        "low_price": self._safe_float(row.get("low_price")),
+                        "close_price": self._safe_float(row.get("close_price")),
+                        "volume": self._safe_float(row.get("volume"), 0.0),
+                    }
+                    
+                    # close_price가 None이 아닌 경우만 추가
+                    if record["close_price"] is not None:
+                        result.append(record)
+                
+                return result
+            else:
+                await self.safe_emit('scheduler_log', {
+                    'message': f"Polygon {interval}: 데이터 없음 ({ticker})", 
+                    'type': 'warning'
+                })
+                return []
+                
+        except Exception as e:
+            await self.safe_emit('scheduler_log', {
+                'message': f"Polygon {interval} 데이터 파싱 오류 ({ticker}): {e}", 
                 'type': 'error'
             })
             return []
@@ -1320,6 +1463,13 @@ class OHLCVCollector(BaseCollector):
         db = self.get_db_session()
         
         try:
+            # 디버깅: 입력 데이터 확인
+            self.log_progress(f"Processing {len(ohlcv_list)} records for asset {asset_id}", "info")
+            if len(ohlcv_list) > 0:
+                sample_record = ohlcv_list[0]
+                self.log_progress(f"Sample record keys: {list(sample_record.keys())}", "info")
+                self.log_progress(f"Sample close_price: {sample_record.get('close_price')}", "info")
+            
             # Sort by timestamp
             ohlcv_list.sort(key=lambda x: x['timestamp_utc'])
             
@@ -1330,7 +1480,12 @@ class OHLCVCollector(BaseCollector):
                 if i > 0:
                     prev_close = ohlcv_list[i-1]['close_price']
                     current_close = data_point['close_price']
-                    if prev_close and current_close and prev_close > 0:
+                    
+                    # 디버깅: 값 확인
+                    if i < 3:  # 처음 3개만 로깅
+                        self.log_progress(f"Data point {i}: prev_close={prev_close} (type: {type(prev_close)}), current_close={current_close} (type: {type(current_close)})", "info")
+                    
+                    if prev_close is not None and current_close is not None and prev_close > 0:
                         change = ((current_close - prev_close) / prev_close) * 100
                         data_point['change_percent'] = round(change, 4)
                     else:
@@ -1339,7 +1494,7 @@ class OHLCVCollector(BaseCollector):
                     # For first data point, check previous day from DB
                     from ..crud.asset import crud_ohlcv
                     prev_ohlcv = crud_ohlcv.get_previous_day_ohlcv(db, asset_id, data_point['timestamp_utc'].date())
-                    if prev_ohlcv and prev_ohlcv.close_price > 0:
+                    if prev_ohlcv and prev_ohlcv.close_price is not None and prev_ohlcv.close_price > 0:
                         change = ((data_point['close_price'] - float(prev_ohlcv.close_price)) / float(prev_ohlcv.close_price)) * 100
                         data_point['change_percent'] = round(change, 4)
                     else:
@@ -1349,6 +1504,11 @@ class OHLCVCollector(BaseCollector):
             from ..crud.asset import crud_ohlcv
             added_count = crud_ohlcv.bulk_upsert_ohlcv(db, ohlcv_list)
             return added_count
+        except Exception as e:
+            self.log_progress(f"Error in _store_ohlcv_data: {e}", "error")
+            import traceback
+            self.log_progress(f"Traceback: {traceback.format_exc()}", "error")
+            raise
         finally:
             db.close()
 

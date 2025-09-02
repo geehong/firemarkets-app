@@ -10,6 +10,7 @@ from .etf_collector import ETFCollector
 from .technical_collector import TechnicalCollector
 from .crypto_data_collector import CryptoDataCollector
 from .world_assets_collector import WorldAssetsCollector
+from .realtime_collector import RealtimeCollector
 
 __all__ = [
     'BaseCollector',
@@ -20,4 +21,5 @@ __all__ = [
     'TechnicalCollector',
     'CryptoDataCollector',
     'WorldAssetsCollector',
+    'RealtimeCollector',
 ]

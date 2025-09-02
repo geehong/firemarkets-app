@@ -99,6 +99,8 @@ class AlphaVantageClient(BaseAPIClient):
                         continue  # Try next API key
                     else:
                         logger.warning(f"Alpha Vantage: 예상치 못한 응답 형식 ({ticker})")
+                        logger.debug(f"Alpha Vantage response keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
+                        logger.debug(f"Alpha Vantage response sample: {str(data)[:200]}...")
                         continue
                         
             except Exception as e:

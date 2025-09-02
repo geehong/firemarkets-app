@@ -27,8 +27,8 @@ def check_health():
         if heartbeat_config:
             try:
                 last_heartbeat = datetime.fromisoformat(heartbeat_config)
-                # 하트비트가 5분 이상 갱신되지 않았다면 문제가 있는 것으로 간주
-                if datetime.utcnow() - last_heartbeat > timedelta(minutes=5):
+                # 하트비트가 30분 이상 갱신되지 않았다면 문제가 있는 것으로 간주
+                if datetime.utcnow() - last_heartbeat > timedelta(minutes=30):
                     logger.error("Scheduler heartbeat is stale! Process might be frozen. Attempting restart.")
                     return False
             except (ValueError, TypeError) as e:
@@ -87,7 +87,7 @@ def main_loop():
         except Exception as e:
             logger.error(f"An error occurred in the main scheduler loop: {e}")
         
-        time.sleep(15) # 확인 주기를 15초로 조정
+        time.sleep(60) # 확인 주기를 60초로 조정
 
 if __name__ == "__main__":
     main_loop()

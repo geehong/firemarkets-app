@@ -431,6 +431,25 @@ class CollectorLoggingHelper:
         })
 
 
+class ApiLoggingHelper:
+    """API 전략 매니저용 간단한 로깅 헬퍼"""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+    
+    def log_api_call_start(self, api_name: str, ticker: str):
+        """API 호출 시작 로그"""
+        self.logger.info(f"API call started: {api_name} for {ticker}")
+    
+    def log_api_call_success(self, api_name: str, ticker: str, data_points: int = 0):
+        """API 호출 성공 로그"""
+        self.logger.info(f"API call success: {api_name} for {ticker}, data points: {data_points}")
+    
+    def log_api_call_failure(self, api_name: str, ticker: str, error: Exception):
+        """API 호출 실패 로그"""
+        self.logger.error(f"API call failed: {api_name} for {ticker}, error: {error}")
+
+
 class BatchProcessor:
     """배치 처리를 위한 헬퍼 클래스"""
     

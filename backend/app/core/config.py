@@ -21,7 +21,9 @@ logger = logging.getLogger(__name__)
 logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
 
 # .env 파일 로드 (프로젝트 루트에서 로드)
-load_dotenv(dotenv_path='.env')
+import pathlib
+project_root = pathlib.Path(__file__).parent.parent.parent.parent
+load_dotenv(dotenv_path=project_root / '.env')
 
 # External API Keys
 ALPHA_VANTAGE_API_KEY_1 = os.getenv("ALPHA_VANTAGE_API_KEY_1")
@@ -29,6 +31,23 @@ ALPHA_VANTAGE_API_KEY_2 = os.getenv("ALPHA_VANTAGE_API_KEY_2")
 ALPHA_VANTAGE_API_KEY_3 = os.getenv("ALPHA_VANTAGE_API_KEY_3")
 FMP_API_KEY = os.getenv("FMP_API_KEY")
 COINMARKETCAP_API_KEY = os.getenv("COINMARKETCAP_API_KEY")
+
+# 추가 API Keys
+BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
+BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY")
+COINBASE_API_KEY = os.getenv("COINBASE_API_KEY")
+COINBASE_SECRET_KEY = os.getenv("COINBASE_SECRET_KEY")
+COIN_GECKO_API_KEY = os.getenv("COIN_GECKO_API_KEY")
+COIN_MARKET_API_KEY = os.getenv("COIN_MARKET_API_KEY")
+EODHD_API_KEY = os.getenv("EODHD_API_KEY")
+TIINGO_API_KEY = os.getenv("TIINGO_API_KEY")
+TOKEN_METRICS_API_KEY = os.getenv("TOKEN_METRICS_API_KEY")
+TWELVEDATA_API_KEY = os.getenv("TWELVEDATA_API_KEY")
+
+# Alpaca API 설정
+ALPACA_API_KEY = os.getenv("ALPACA_API_KEY")
+ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
+ALPACA_PAPER = os.getenv("ALPACA_PAPER", "true").lower() == "true"
 
 # Redis 설정
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")  # Docker Compose에서는 'redis' 서비스명 사용
@@ -63,6 +82,19 @@ def load_and_set_global_configs():
         "ALPHA_VANTAGE_API_KEYS": [ALPHA_VANTAGE_API_KEY_1, ALPHA_VANTAGE_API_KEY_2, ALPHA_VANTAGE_API_KEY_3],
         "FMP_API_KEY": FMP_API_KEY,
         "COINMARKETCAP_API_KEY": COINMARKETCAP_API_KEY,
+        "BINANCE_API_KEY": BINANCE_API_KEY,
+        "BINANCE_SECRET_KEY": BINANCE_SECRET_KEY,
+        "COINBASE_API_KEY": COINBASE_API_KEY,
+        "COINBASE_SECRET_KEY": COINBASE_SECRET_KEY,
+        "COIN_GECKO_API_KEY": COIN_GECKO_API_KEY,
+        "COIN_MARKET_API_KEY": COIN_MARKET_API_KEY,
+        "EODHD_API_KEY": EODHD_API_KEY,
+        "TIINGO_API_KEY": TIINGO_API_KEY,
+        "TOKEN_METRICS_API_KEY": TOKEN_METRICS_API_KEY,
+        "TWELVEDATA_API_KEY": TWELVEDATA_API_KEY,
+        "ALPACA_API_KEY": ALPACA_API_KEY,
+        "ALPACA_SECRET_KEY": ALPACA_SECRET_KEY,
+        "ALPACA_PAPER": ALPACA_PAPER,
         "API_REQUEST_TIMEOUT_SECONDS": API_REQUEST_TIMEOUT_SECONDS,
         "MAX_API_RETRY_ATTEMPTS": MAX_API_RETRY_ATTEMPTS,
         "BITCOIN_ASSET_ID": BITCOIN_ASSET_ID,

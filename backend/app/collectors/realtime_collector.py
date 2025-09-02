@@ -95,10 +95,14 @@ class RealtimeCollector(BaseCollector):
                     for ticker, asset_id, asset_type in assets
                 }
 
-                # 2. Redis Stream에서 사용 가능한 모든 데이터 읽기
-                # XREAD with BLOCK 0은 대기하지만, collector는 즉시 가져옴
+                # 2. Redis Stream에서 사용 가능한 모든 데이터 읽기 (Tiingo + Alpaca)
+                streams_to_read = {
+                    REDIS_STREAM_KEY: '0-0',  # Tiingo Stream
+                    "alpaca_realtime_stream": '0-0'  # Alpaca Stream
+                }
+                
                 stream_data = await self.redis_client.xread(
-                    {REDIS_STREAM_KEY: '0-0'}, 
+                    streams_to_read, 
                     count=1000  # 최대 1000개 레코드 읽기
                 )
                 
@@ -110,42 +114,42 @@ class RealtimeCollector(BaseCollector):
                         "processed_records": 0
                     }
 
-                messages = stream_data[0][1]  # (stream_name, messages)
                 records_to_save = []
-                last_message_id = None
+                last_message_ids = {}
 
-                # 3. 메시지 처리
-                for message_id, message_data in messages:
-                    try:
-                        trade_data_str = message_data.get(b'data')
-                        if not trade_data_str:
-                            continue
+                # 3. 메시지 처리 (여러 스트림에서)
+                for stream_name, messages in stream_data:
+                    for message_id, message_data in messages:
+                        try:
+                            trade_data_str = message_data.get(b'data')
+                            if not trade_data_str:
+                                continue
 
-                        trade_data = json.loads(trade_data_str)
-                        ticker = trade_data.get('ticker')
-                        asset_info = ticker_to_asset.get(ticker)
+                            trade_data = json.loads(trade_data_str)
+                            ticker = trade_data.get('ticker')
+                            asset_info = ticker_to_asset.get(ticker)
 
-                        if asset_info:
-                            # RealtimeQuote에 저장할 데이터 준비
-                            quote_data = {
-                                "ticker": ticker,
-                                "asset_type": asset_info["asset_type"],
-                                "price": float(trade_data.get('price', 0)),
-                                "volume_today": float(trade_data.get('volume', 0)),
-                                "change_percent_today": float(trade_data.get('change_percent', 0)),
-                                "data_source": trade_data.get('data_source', 'tiingo_ws'),
-                                "currency": "USD",
-                                "fetched_at": datetime.fromisoformat(
-                                    trade_data['timestamp'].replace('Z', '+00:00')
-                                ) if trade_data.get('timestamp') else datetime.utcnow()
-                            }
+                            if asset_info:
+                                # RealtimeQuote에 저장할 데이터 준비
+                                quote_data = {
+                                    "ticker": ticker,
+                                    "asset_type": asset_info["asset_type"],
+                                    "price": float(trade_data.get('price', 0)),
+                                    "volume_today": float(trade_data.get('volume', 0)),
+                                    "change_percent_today": float(trade_data.get('change_percent', 0)),
+                                    "data_source": trade_data.get('data_source', 'tiingo_ws'),
+                                    "currency": "USD",
+                                    "fetched_at": datetime.fromisoformat(
+                                        trade_data['timestamp'].replace('Z', '+00:00')
+                                    ) if trade_data.get('timestamp') else datetime.utcnow()
+                                }
+                                
+                                records_to_save.append(quote_data)
+                                
+                            last_message_ids[stream_name] = message_id
                             
-                            records_to_save.append(quote_data)
-                            
-                        last_message_id = message_id
-                        
-                    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
-                        logger.warning(f"스트림 메시지 {message_id} 처리 실패: {e}")
+                        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
+                            logger.warning(f"스트림 메시지 {message_id} 처리 실패: {e}")
 
                 # 4. 데이터베이스에 저장할 것이 있으면 저장
                 if records_to_save:
@@ -153,9 +157,9 @@ class RealtimeCollector(BaseCollector):
                     logger.info(f"데이터베이스에 {len(records_to_save)}개의 실시간 레코드를 성공적으로 저장했습니다.")
 
                     # 5. 처리된 메시지를 제거하기 위해 스트림 트림
-                    if last_message_id:
-                        await self.redis_client.xtrim(REDIS_STREAM_KEY, minid=last_message_id)
-                        logger.info(f"Redis Stream이 메시지 ID {last_message_id.decode()}까지 트림되었습니다.")
+                    for stream_name, last_message_id in last_message_ids.items():
+                        await self.redis_client.xtrim(stream_name, minid=last_message_id)
+                        logger.info(f"Redis Stream {stream_name}이 메시지 ID {last_message_id.decode()}까지 트림되었습니다.")
 
                     return {
                         "success": True,

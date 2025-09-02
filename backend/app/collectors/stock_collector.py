@@ -11,7 +11,7 @@ import backoff
 from sqlalchemy.orm import Session
 
 from .base_collector import BaseCollector
-from .logging_helper import CollectorLoggingHelper, BatchProcessor
+from ..utils.logging_helper import CollectorLoggingHelper, BatchProcessor
 from ..core.config import GLOBAL_APP_CONFIGS
 from ..models.asset import Asset
 from ..utils.retry import retry_with_backoff, classify_api_error, TransientAPIError, PermanentAPIError

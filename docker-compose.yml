@@ -179,27 +179,7 @@ services:
     networks:
       - shared-network
 
-  # FTP 서비스 주석 처리 (리얼 서버에서 FTP 실행 중)
-  # ftp:
-  #   image: fauria/vsftpd:latest
-  #   container_name: fire_markets_ftp
-  #   restart: unless-stopped
-  #   ports:
-  #     - "21:21"
-  #     - "30000-30009:30000-30009"
-  #   environment:
-  #     FTP_USER: geehong
-  #     FTP_PASS: Power@6100
-  #     PASV_ADDRESS: 211.176.23.51 
-  #     PASV_MIN_PORT: 30000
-  #     PASV_MAX_PORT: 30009
-  #     ANONYMOUS_ACCESS: "NO"
-  #   volumes:
-  #     - /home/geehong/firemarkets-app:/home/vsftpd/geehong/firemarkets-app
-  #     - /home/geehong/Documents:/home/vsftpd/geehong/Documents
-  #     - /home/geehong/Downloads:/home/vsftpd/geehong/Downloads
-  #   networks:
-  #     - shared-network
+ 
 
 volumes:
   db_data:
