@@ -84,7 +84,7 @@ sudo chmod 644 /home/geehong/.ssh/*.pub
 
 ### 2. 모니터링 중단
 ```bash
-crontab -l | grep -v "ssh_permission_monitor" | crontab -
+crontab -l - grep -v "ssh_permission_monitor" - crontab -
 ```
 
 ### 3. 로그 파일 정리
@@ -103,3 +103,38 @@ sudo truncate -s 0 /var/log/ssh_backup.log
 2. **자동 권한 복구**: 문제 발견 시 즉시 복구
 3. **정기 백업**: SSH 키 파일들의 안전한 백업
 4. **로그 기록**: 모든 활동의 상세한 로그 기록 
+
+Tables_in_markets 
+
+- active_assets           
+- api_call_logs           
+- app_configurations      
+- apscheduler_jobs        
+- asset_type_stats        
+- asset_types             
+- assets                  
+- audit_logs              
+- bond_market_data        
+- crypto_data             
+- crypto_metrics          
+- economic_indicators     
+- etf_holdings            
+- etf_info                
+- etf_sector_exposure     
+- index_infos             
+- m2_data                 
+- ohlcv_data              
+- ohlcv_data_backup       
+- onchain_metrics_info    
+- realtime_quotes         
+- scheduler_logs          
+- scraping_logs           
+- sparkline_data          
+- stock_analyst_estimates 
+- stock_financials        
+- stock_profiles          
+- technical_indicators    
+- token_blacklist         
+- user_sessions           
+- users                   
+- world_assets_ranking    
