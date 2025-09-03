@@ -14,7 +14,7 @@ from ....schemas.common import (
     OnchainMetricCategoryResponse, OnchainMetricToggleResponse, 
     OnchainMetricRunResponse, OnchainMetricStatusResponse
 )
-from ....collectors.onchain_collector import OnchainCollector
+# from ....collectors.onchain_collector import OnchainCollector  # Temporarily disabled in v2 pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -557,21 +557,8 @@ async def run_metric(
     try:
         metric_def = get_metric_definition(metric_id, db)
         
-        # Thermo Cap은 특별 처리
-        if metric_id == "thermo_cap":
-            import httpx
-            collector = OnchainCollector(db)
-            
-            async with httpx.AsyncClient() as client:
-                data_points_added = await collector._fetch_thermo_cap_simple(client)
-        else:
-            # 다른 메트릭들은 기존 방식 사용
-            collector = OnchainCollector(db)
-            data_points_added = await collector.collect_data(
-                metric_id=metric_id,
-                force_update=request.force_update,
-                collection_type=request.collection_type
-            )
+        # OnchainCollector temporarily disabled during v2 transition
+        raise HTTPException(status_code=503, detail="Onchain collector is temporarily disabled during v2 transition")
         
         logger.info(f"Metric {metric_id} run completed. Added {data_points_added} data points.")
         

@@ -14,10 +14,11 @@ import redis.asyncio as redis
 from sqlalchemy.orm import Session
 
 from ..core.database import SessionLocal
-from ..core.config import GLOBAL_APP_CONFIGS
+from ..core.config import GLOBAL_APP_CONFIGS, config_manager
 from ..models.realtime import RealtimeQuote
 from ..models.asset import Asset
 from ..utils.logger import logger
+from ..utils.redis_queue_manager import RedisQueueManager
 
 class DataProcessor:
     """
@@ -39,9 +40,14 @@ class DataProcessor:
         self.redis_password = GLOBAL_APP_CONFIGS.get("REDIS_PASSWORD")
         
         # 처리 설정
-        self.batch_size = 1000
+        self.batch_size = int(GLOBAL_APP_CONFIGS.get("BATCH_SIZE", 1000))
         self.processing_interval = 1.0  # 초
-        self.max_retries = 3
+        # 우선 순위: DB(ConfigManager) > GLOBAL_APP_CONFIGS
+        self.max_retries = (config_manager.get_retry_attempts() if config_manager else GLOBAL_APP_CONFIGS.get("MAX_API_RETRY_ATTEMPTS", 3))
+        try:
+            self.max_retries = int(self.max_retries)
+        except Exception:
+            self.max_retries = 3
         self.retry_delay = 5  # 초
         
         # 스트림 및 큐 설정
@@ -50,6 +56,9 @@ class DataProcessor:
             "alpaca_realtime_stream": "alpaca_processor_group"
         }
         self.batch_queue = "batch_data_queue"
+
+        # Redis Queue Manager (for batch queue + DLQ)
+        self.queue_manager = RedisQueueManager(config_manager=config_manager) if config_manager else None
         
         # 처리 통계
         self.stats = {
@@ -179,24 +188,46 @@ class DataProcessor:
         try:
             # 큐에서 데이터 가져오기 (최대 100개씩)
             for _ in range(100):
-                result = await self.redis_client.blpop(self.batch_queue, timeout=0.1)
-                if not result:
+                # Prefer RedisQueueManager pop; fallback to direct BLPOP
+                task_wrapper = None
+                if self.queue_manager:
+                    task_wrapper = await self.queue_manager.pop_batch_task(timeout_seconds=1)
+                else:
+                    result = await self.redis_client.blpop(self.batch_queue, timeout=0.5)
+                    if result:
+                        _, task_data = result
+                        try:
+                            task_wrapper = json.loads(task_data)
+                        except json.JSONDecodeError:
+                            task_wrapper = None
+
+                if not task_wrapper:
                     break
-                    
-                try:
-                    _, task_data = result
-                    task = json.loads(task_data)
-                    
-                    # 태스크 타입에 따른 처리
-                    success = await self._process_batch_task(task)
-                    if success:
-                        processed_count += 1
-                    else:
-                        self.stats["errors"] += 1
-                        
-                except (json.JSONDecodeError, KeyError) as e:
-                    logger.warning(f"배치 태스크 처리 실패: {e}")
-                    self.stats["errors"] += 1
+
+                # Retry loop per task
+                attempts = 0
+                while attempts <= self.max_retries:
+                    attempts += 1
+                    try:
+                        success = await self._process_batch_task(task_wrapper)
+                        if success:
+                            processed_count += 1
+                            break
+                        else:
+                            raise RuntimeError("Task processing returned False")
+                    except Exception as e:
+                        if attempts > self.max_retries:
+                            # Move to DLQ
+                            try:
+                                raw_json = json.dumps(task_wrapper, ensure_ascii=False)
+                            except Exception:
+                                raw_json = str(task_wrapper)
+                            if self.queue_manager:
+                                await self.queue_manager.move_to_dlq(raw_json, str(e))
+                            logger.error(f"태스크 최대 재시도 초과, DLQ로 이동: {e}")
+                            self.stats["errors"] += 1
+                            break
+                        await asyncio.sleep(self.retry_delay)
                     
         except Exception as e:
             logger.error(f"배치 큐 처리 중 오류: {e}")
@@ -212,16 +243,33 @@ class DataProcessor:
             
             if not task_type or not payload:
                 return False
-                
-            # 태스크 타입별 처리 로직
+            
+            # 표준 페이로드: {"items": [...]} 우선 사용, 아니면 기존 payload를 리스트로 래핑
+            items = payload.get("items") if isinstance(payload, dict) else None
+            if items is None:
+                items = payload if isinstance(payload, list) else [payload]
+
+            # 태스크 타입별 처리 로직 (신/구 키 모두 지원)
             if task_type == "stock_profile":
-                return await self._save_stock_profile(payload)
+                return await self._save_stock_profile(items)
+            elif task_type == "stock_financials":
+                return await self._save_stock_financials(items)
+            elif task_type == "stock_estimate":
+                return await self._save_stock_estimate(items)
             elif task_type == "etf_info":
-                return await self._save_etf_info(payload)
-            elif task_type == "crypto_data":
-                return await self._save_crypto_data(payload)
+                return await self._save_etf_info(items)
+            elif task_type in ("crypto_info", "crypto_data"):
+                return await self._save_crypto_data(items)
             elif task_type == "ohlcv_data":
-                return await self._save_ohlcv_data(payload)
+                return await self._save_ohlcv_data(items)
+            elif task_type == "index_data":
+                return await self._save_index_data(items)
+            elif task_type == "technical_indicators":
+                return await self._save_technical_indicators(items)
+            elif task_type == "onchain_metric":
+                return await self._save_onchain_metric(items)
+            elif task_type == "asset_settings_update":
+                return await self._update_asset_settings(payload)
             else:
                 logger.warning(f"알 수 없는 태스크 타입: {task_type}")
                 return False
@@ -243,28 +291,58 @@ class DataProcessor:
             logger.error(f"실시간 인용 데이터 저장 실패: {e}")
             return False
 
-    async def _save_stock_profile(self, data: List[Dict[str, Any]]) -> bool:
+    async def _save_stock_profile(self, items: List[Dict[str, Any]]) -> bool:
         """주식 프로필 데이터 저장"""
         # TODO: 실제 CRUD 함수 호출
-        logger.info(f"주식 프로필 데이터 저장: {len(data)}개 레코드")
+        logger.info(f"주식 프로필 데이터 저장: {len(items)}개 레코드")
         return True
 
-    async def _save_etf_info(self, data: List[Dict[str, Any]]) -> bool:
+    async def _save_etf_info(self, items: List[Dict[str, Any]]) -> bool:
         """ETF 정보 데이터 저장"""
         # TODO: 실제 CRUD 함수 호출
-        logger.info(f"ETF 정보 데이터 저장: {len(data)}개 레코드")
+        logger.info(f"ETF 정보 데이터 저장: {len(items)}개 레코드")
         return True
 
-    async def _save_crypto_data(self, data: List[Dict[str, Any]]) -> bool:
+    async def _save_crypto_data(self, items: List[Dict[str, Any]]) -> bool:
         """크립토 데이터 저장"""
         # TODO: 실제 CRUD 함수 호출
-        logger.info(f"크립토 데이터 저장: {len(data)}개 레코드")
+        logger.info(f"크립토 데이터 저장: {len(items)}개 레코드")
         return True
 
-    async def _save_ohlcv_data(self, data: List[Dict[str, Any]]) -> bool:
+    async def _save_ohlcv_data(self, items: List[Dict[str, Any]]) -> bool:
         """OHLCV 데이터 저장"""
         # TODO: 실제 CRUD 함수 호출
-        logger.info(f"OHLCV 데이터 저장: {len(data)}개 레코드")
+        logger.info(f"OHLCV 데이터 저장: {len(items)}개 레코드")
+        return True
+
+    async def _save_stock_financials(self, items: List[Dict[str, Any]]) -> bool:
+        """주식 재무 데이터 저장 (스냅샷)"""
+        logger.info(f"주식 재무 데이터 저장: {len(items)}개 레코드")
+        return True
+
+    async def _save_stock_estimate(self, items: List[Dict[str, Any]]) -> bool:
+        """주식 추정치 데이터 저장"""
+        logger.info(f"주식 추정치 데이터 저장: {len(items)}개 레코드")
+        return True
+
+    async def _save_index_data(self, items: List[Dict[str, Any]]) -> bool:
+        """지수 데이터 저장"""
+        logger.info(f"지수 데이터 저장: {len(items)}개 레코드")
+        return True
+
+    async def _save_technical_indicators(self, items: List[Dict[str, Any]]) -> bool:
+        """기술적 지표 데이터 저장"""
+        logger.info(f"기술적 지표 데이터 저장: {len(items)}개 레코드")
+        return True
+
+    async def _save_onchain_metric(self, items: List[Dict[str, Any]]) -> bool:
+        """온체인 메트릭 데이터 저장"""
+        logger.info(f"온체인 메트릭 데이터 저장: {len(items)}개 레코드")
+        return True
+
+    async def _update_asset_settings(self, payload: Dict[str, Any]) -> bool:
+        """자산 설정 업데이트 (큐를 통한 간단 설정 반영)"""
+        logger.info(f"자산 설정 업데이트 태스크 처리: {payload}")
         return True
 
     async def _log_stats(self):

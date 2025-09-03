@@ -10,7 +10,7 @@ import httpx
 import backoff
 from datetime import datetime
 
-from ...core.config import API_REQUEST_TIMEOUT_SECONDS, MAX_API_RETRY_ATTEMPTS
+from app.core.config import API_REQUEST_TIMEOUT_SECONDS, MAX_API_RETRY_ATTEMPTS
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ class BaseAPIClient(ABC):
     async def _log_api_call(self, api_name: str, url: str, status_code: int, start_time: datetime, success: bool, error_message: str = None, ticker: str = None):
         """외부 API 호출을 데이터베이스에 로그 - ApiLoggingHelper 사용"""
         try:
-            from ...utils.logging_helper import ApiLoggingHelper
+            from app.utils.logging_helper import ApiLoggingHelper
             
             end_time = datetime.now()
             response_time_ms = int((end_time - start_time).total_seconds() * 1000)

@@ -2,10 +2,11 @@
 Abstract base class for onchain data API clients.
 """
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, List
+from typing import Optional, List
 from datetime import datetime
 
 from .base_client import BaseAPIClient
+from .schemas import OnChainMetricData
 
 
 class OnChainAPIClient(BaseAPIClient, ABC):
@@ -16,7 +17,7 @@ class OnChainAPIClient(BaseAPIClient, ABC):
         self, 
         metric_type: str = "all",
         days: int = 30
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[List[OnChainMetricData]]:
         """
         Get specific onchain metrics (e.g., MVRV, SOPR).
         
@@ -25,7 +26,7 @@ class OnChainAPIClient(BaseAPIClient, ABC):
             days: Number of days to fetch
             
         Returns:
-            Onchain metrics data or None
+            List of standardized onchain metrics data or None
         """
         pass
     
@@ -34,7 +35,7 @@ class OnChainAPIClient(BaseAPIClient, ABC):
         self, 
         stat_type: str = "all",
         days: int = 30
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[List[OnChainMetricData]]:
         """
         Get network statistics (e.g., hashrate, difficulty).
         
@@ -43,6 +44,6 @@ class OnChainAPIClient(BaseAPIClient, ABC):
             days: Number of days to fetch
             
         Returns:
-            Network statistics data or None
+            List of standardized network statistics data or None
         """
         pass

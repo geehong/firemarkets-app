@@ -6,6 +6,14 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 from .base_client import BaseAPIClient
+from .schemas import (
+    OhlcvDataPoint,
+    CompanyProfileData,
+    StockFinancialsData,
+    RealtimeQuoteData,
+    TechnicalIndicatorsData,
+    EtfSectorExposureData
+)
 
 
 class TradFiAPIClient(BaseAPIClient, ABC):
@@ -19,7 +27,7 @@ class TradFiAPIClient(BaseAPIClient, ABC):
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
         limit: Optional[int] = None
-    ) -> List[Dict[str, Any]]:
+    ) -> List[OhlcvDataPoint]:
         """
         Get OHLCV data for a symbol.
         
@@ -31,12 +39,12 @@ class TradFiAPIClient(BaseAPIClient, ABC):
             limit: Maximum number of data points
             
         Returns:
-            List of OHLCV data dictionaries
+            List of standardized OHLCV data points
         """
         pass
     
     @abstractmethod
-    async def get_company_profile(self, symbol: str) -> Optional[Dict[str, Any]]:
+    async def get_company_profile(self, symbol: str) -> Optional[CompanyProfileData]:
         """
         Get company profile information.
         
@@ -44,7 +52,7 @@ class TradFiAPIClient(BaseAPIClient, ABC):
             symbol: Stock/ETF symbol
             
         Returns:
-            Company profile data or None
+            Standardized company profile data or None
         """
         pass
     
@@ -62,7 +70,7 @@ class TradFiAPIClient(BaseAPIClient, ABC):
         pass
     
     @abstractmethod
-    async def get_realtime_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
+    async def get_realtime_quote(self, symbol: str) -> Optional[RealtimeQuoteData]:
         """
         Get real-time quote for a symbol.
         
@@ -70,12 +78,12 @@ class TradFiAPIClient(BaseAPIClient, ABC):
             symbol: Stock/ETF/Commodity symbol
             
         Returns:
-            Real-time quote data or None
+            Standardized real-time quote data or None
         """
         pass
     
     @abstractmethod
-    async def get_technical_indicators(self, symbol: str) -> Optional[Dict[str, Any]]:
+    async def get_technical_indicators(self, symbol: str) -> Optional[TechnicalIndicatorsData]:
         """
         Get technical indicators for a symbol.
         
@@ -83,6 +91,32 @@ class TradFiAPIClient(BaseAPIClient, ABC):
             symbol: Stock/ETF/Commodity symbol
             
         Returns:
-            Technical indicators data or None
+            Standardized technical indicators data or None
+        """
+        pass
+    
+    @abstractmethod
+    async def get_etf_sector_exposure(self, symbol: str) -> Optional[List[EtfSectorExposureData]]:
+        """
+        Get ETF sector exposure data.
+        
+        Args:
+            symbol: ETF symbol
+            
+        Returns:
+            List of standardized sector exposure data or None if not available
+        """
+        pass
+    
+    @abstractmethod
+    async def get_stock_financials(self, symbol: str) -> Optional[StockFinancialsData]:
+        """
+        Get stock financial data.
+        
+        Args:
+            symbol: Stock symbol
+            
+        Returns:
+            Standardized stock financial data or None if not available
         """
         pass

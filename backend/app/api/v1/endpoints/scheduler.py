@@ -11,7 +11,7 @@ from ....core.database import get_db
 from ....models import SchedulerLog
 from ....models.system import AppConfiguration
 from ....core.websocket import scheduler
-from ....core.config import setup_scheduler_jobs, GLOBAL_APP_CONFIGS
+# Removed deprecated setup_scheduler_jobs and unused GLOBAL_APP_CONFIGS import
 from ....services.tiingo_ws_consumer import get_consumer as get_tiingo_ws_consumer
 from ....services.scheduler_service import scheduler_service as get_realtime_scheduler
 

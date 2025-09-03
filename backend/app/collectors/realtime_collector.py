@@ -1,6 +1,8 @@
 """
-Realtime Data Collector - 전문 저장자 역할
-Redis Stream에서 실시간 데이터를 주기적으로 가져와 영구 데이터베이스에 저장
+DEPRECATED (v2): This module is kept for reference only.
+In the v2 pipeline, the canonical DataProcessor lives at
+`backend/app/services/data_processor.py` and is responsible for real-time and
+batch processing. Do not import or schedule this module.
 """
 import logging
 import asyncio
@@ -8,327 +10,228 @@ import json
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
-import redis.asyncio as redis
 from sqlalchemy.orm import Session
+from pydantic import ValidationError
 
-from .base_collector import BaseCollector
-from ..core.config import GLOBAL_APP_CONFIGS
-from ..core.database import SessionLocal
-from ..models.realtime import RealtimeQuote
-from ..models.asset import Asset
+from app.core.database import SessionLocal, get_db
+from app.core.config_manager import ConfigManager
+from app.utils.redis_queue_manager import RedisQueueManager
+from app.external_apis import schemas
+from app.crud import ohlcv as crud_ohlcv
+from app.crud import asset as crud_asset
+from app.crud import crypto as crud_crypto
+from app.crud import etf as crud_etf
+from app.crud import onchain as crud_onchain
 
 logger = logging.getLogger(__name__)
 
-# Redis Stream Key for real-time data
-REDIS_STREAM_KEY = "tiingo_realtime_stream"
 
-class RealtimeCollector(BaseCollector):
+class DataProcessor:
     """
-    실시간 데이터 수집기 - 전문 저장자 역할
-    - 스케줄러에 의해 주기적으로 실행 (예: 1분마다)
-    - Redis Stream에서 데이터를 가져와 MySQL에 저장
-    - 배치 처리로 데이터베이스 부하 최소화
+    A long-running service that processes data from Redis queues and streams.
+    It acts as the single point of entry for writing data to the database,
+    ensuring data integrity and consistency.
     """
 
-    def __init__(self, db: Session = None):
-        super().__init__(db)
-        self.redis_client = None
-        
-        # Redis 설정
-        self.redis_host = GLOBAL_APP_CONFIGS.get("REDIS_HOST", "redis")  # Docker Compose에서는 'redis' 서비스명 사용
-        self.redis_port = GLOBAL_APP_CONFIGS.get("REDIS_PORT", 6379)
-        self.redis_db = GLOBAL_APP_CONFIGS.get("REDIS_DB", 0)
-        self.redis_password = GLOBAL_APP_CONFIGS.get("REDIS_PASSWORD")
-        
-        # 수집 설정
-        self.default_tickers = {
-            "Stocks": ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"],
-            "Crypto": ["BTCUSDT", "ETHUSDT", "SOLUSDT", "ADAUSDT", "DOTUSDT"],
-            "ETFs": ["SPY", "QQQ", "IWM", "VTI", "VEA"],
-            "Funds": ["VTSAX", "VTIAX", "VBTLX", "VBMFX", "VGSIX"],
-            "Commodities": ["GC", "SI", "CL", "NG", "ZC"]
-        }
-        
-        # 수집 간격 (초)
-        self.intervals = {
-            "Crypto": 5 * 60,      # 5분
-            "Stocks": 15 * 60,     # 15분
-            "ETFs": 30 * 60,       # 30분
-            "Funds": 30 * 60,      # 30분
-            "Commodities": 4 * 60 * 60  # 4시간
-        }
+    def __init__(
+        self,
+        config_manager: ConfigManager,
+        redis_queue_manager: RedisQueueManager,
+    ):
+        self.config_manager = config_manager
+        self.redis_queue_manager = redis_queue_manager
+        self.db_session_factory = SessionLocal
+        self.is_running = False
 
-    async def _connect_redis(self):
-        """Redis 연결 초기화"""
-        if not self.redis_client:
+    async def start(self):
+        """Starts the main processing loop."""
+        self.is_running = True
+        logger.info("Data Processor service starting...")
+        # Run both real-time and batch processing concurrently.
+        await asyncio.gather(
+            self._process_realtime_streams(),
+            self._process_batch_queue()
+        )
+
+    def stop(self):
+        """Signals the processor to stop."""
+        self.is_running = False
+        logger.info("Data Processor service stopping...")
+
+    def get_db(self) -> Session:
+        """Provides a database session for a unit of work."""
+        return self.db_session_factory()
+
+    # ============================================================================
+    # Real-time Stream Processing (Logic migrated from RealtimeCollector)
+    # ============================================================================
+
+    async def _process_realtime_streams(self):
+        """Continuously processes data from real-time Redis streams."""
+        logger.info("Starting real-time stream processing loop...")
+        while self.is_running:
             try:
-                redis_url = f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
-                if self.redis_password:
-                    redis_url = f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
+                # Only process if the market is likely open to save resources.
+                if not self._is_us_stock_market_open():
+                    await asyncio.sleep(60)  # Check again in a minute.
+                    continue
+
+                raw_messages = await self.redis_queue_manager.pop_from_streams(count=1000)
+                if not raw_messages:
+                    await asyncio.sleep(1)  # Brief pause if no new data.
+                    continue
+
+                quotes_to_save, last_ids = self._parse_stream_messages(raw_messages)
+
+                if quotes_to_save:
+                    await self._bulk_save_realtime_quotes(quotes_to_save)
                 
-                self.redis_client = await redis.from_url(redis_url)
-                logger.info(f"Redis에 연결되었습니다: {self.redis_host}:{self.redis_port}")
-            except redis.RedisError as e:
-                logger.error(f"Redis 연결 실패: {e}")
-                self.redis_client = None
+                if last_ids:
+                    await self.redis_queue_manager.trim_streams(last_ids)
+
+            except Exception as e:
+                logger.error(f"Error in real-time stream processing loop: {e}", exc_info=True)
+                await asyncio.sleep(10) # Wait before retrying on error.
 
     def _is_us_stock_market_open(self) -> bool:
-        """미국 주식시장 개장시간 확인 (한국 시간 기준 간이 판단)
-        월-금 23:30 ~ 익일 06:00(KST) 동안만 개장으로 간주한다.
-        """
-        try:
-            now_utc = datetime.utcnow()
-            korea_hour = (now_utc.hour + 9) % 24
-            korea_weekday = (now_utc.weekday() + 1) % 7  # 0=월요일, 6=일요일
-
-            if korea_weekday >= 5:  # 토, 일
-                return False
-
-            # 23:30 ~ 06:00 단위의 간이 체크: 시간으로만 게이트(분 단위는 관대하게 처리)
-            if 23 <= korea_hour or korea_hour <= 6:
-                return True
+        """A simple check for US stock market hours based on UTC."""
+        now_utc = datetime.utcnow()
+        # Monday(0) to Friday(4)
+        if now_utc.weekday() > 4:
             return False
-        except Exception:
-            # 문제가 생기면 안전하게 닫힘으로 간주
-            return False
-
-    async def _collect_data(self) -> Dict[str, Any]:
-        """
-        BaseCollector 요구사항을 충족하는 추상 메서드 구현
-        Redis Stream에서 데이터를 가져와 MySQL에 저장
-        """
-        try:
-            await self._connect_redis()
-            if not self.redis_client:
-                return {
-                    "success": False,
-                    "message": "Redis 연결 실패",
-                    "processed_records": 0
-                }
-
-            db = self.get_db_session()
-            try:
-                # 1. 모든 티커를 asset_id로 매핑하여 빠른 조회
-                assets = db.query(Asset.ticker, Asset.asset_id, Asset.asset_type).all()
-                ticker_to_asset = {
-                    ticker: {"asset_id": asset_id, "asset_type": asset_type} 
-                    for ticker, asset_id, asset_type in assets
-                }
-
-                # 2. Redis Stream에서 사용 가능한 모든 데이터 읽기 (Tiingo + Alpaca)
-                streams_to_read = {
-                    REDIS_STREAM_KEY: '0-0',  # Tiingo Stream
-                    "alpaca_realtime_stream": '0-0'  # Alpaca Stream
-                }
-                
-                stream_data = await self.redis_client.xread(
-                    streams_to_read, 
-                    count=1000  # 최대 1000개 레코드 읽기
-                )
-                
-                if not stream_data:
-                    logger.info("Redis Stream에 새로운 실시간 데이터가 없습니다.")
-                    return {
-                        "success": True,
-                        "message": "새로운 데이터 없음",
-                        "processed_records": 0
-                    }
-
-                records_to_save = []
-                last_message_ids = {}
-
-                # 3. 메시지 처리 (여러 스트림에서)
-                for stream_name, messages in stream_data:
-                    for message_id, message_data in messages:
-                        try:
-                            trade_data_str = message_data.get(b'data')
-                            if not trade_data_str:
-                                continue
-
-                            trade_data = json.loads(trade_data_str)
-                            ticker = trade_data.get('ticker')
-                            asset_info = ticker_to_asset.get(ticker)
-
-                            if asset_info:
-                                # RealtimeQuote에 저장할 데이터 준비
-                                quote_data = {
-                                    "ticker": ticker,
-                                    "asset_type": asset_info["asset_type"],
-                                    "price": float(trade_data.get('price', 0)),
-                                    "volume_today": float(trade_data.get('volume', 0)),
-                                    "change_percent_today": float(trade_data.get('change_percent', 0)),
-                                    "data_source": trade_data.get('data_source', 'tiingo_ws'),
-                                    "currency": "USD",
-                                    "fetched_at": datetime.fromisoformat(
-                                        trade_data['timestamp'].replace('Z', '+00:00')
-                                    ) if trade_data.get('timestamp') else datetime.utcnow()
-                                }
-                                
-                                records_to_save.append(quote_data)
-                                
-                            last_message_ids[stream_name] = message_id
-                            
-                        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
-                            logger.warning(f"스트림 메시지 {message_id} 처리 실패: {e}")
-
-                # 4. 데이터베이스에 저장할 것이 있으면 저장
-                if records_to_save:
-                    await self._bulk_save_realtime_quotes(db, records_to_save)
-                    logger.info(f"데이터베이스에 {len(records_to_save)}개의 실시간 레코드를 성공적으로 저장했습니다.")
-
-                    # 5. 처리된 메시지를 제거하기 위해 스트림 트림
-                    for stream_name, last_message_id in last_message_ids.items():
-                        await self.redis_client.xtrim(stream_name, minid=last_message_id)
-                        logger.info(f"Redis Stream {stream_name}이 메시지 ID {last_message_id.decode()}까지 트림되었습니다.")
-
-                    return {
-                        "success": True,
-                        "message": "데이터 처리 완료",
-                        "processed_records": len(records_to_save)
-                    }
-
-                return {
-                    "success": True,
-                    "message": "저장할 새로운 유효한 데이터 없음",
-                    "processed_records": 0
-                }
-            
-            except Exception as e:
-                logger.error(f"RealtimeCollector에서 오류 발생: {e}")
-                return {
-                    "success": False,
-                    "message": f"오류: {e}",
-                    "processed_records": 0
-                }
-            finally:
-                if self.redis_client:
-                    await self.redis_client.close()
-                db.close()
+        # 13:30 to 20:00 UTC (9:30 AM to 4:00 PM ET, no DST handling)
+        if 13 <= now_utc.hour < 20:
+            return True
+        return False
         
-        except Exception as e:
-            logger.error(f"RealtimeCollector 실행 중 예상치 못한 오류: {e}")
-            return {
-                "success": False,
-                "message": f"예상치 못한 오류: {e}",
-                "processed_records": 0
-            }
+    def _parse_stream_messages(self, raw_messages: Dict[str, List[tuple]]) -> (List[schemas.RealtimeQuoteData], Dict[str, str]):
+        """Parses raw stream messages into standardized Pydantic models."""
+        quotes = []
+        last_ids = {}
+        for stream_name, messages in raw_messages.items():
+            for msg_id, msg_data in messages:
+                try:
+                    data_str = msg_data.get(b'data')
+                    if not data_str:
+                        continue
+                    
+                    data = json.loads(data_str)
+                    quote = schemas.RealtimeQuoteData.model_validate(data)
+                    quotes.append(quote)
+                    last_ids[stream_name.decode('utf-8')] = msg_id.decode('utf-8')
+                except (json.JSONDecodeError, ValidationError, KeyError) as e:
+                    logger.warning(f"Failed to parse message {msg_id} from {stream_name}: {e}")
+        return quotes, last_ids
 
-    async def _bulk_save_realtime_quotes(self, db: Session, records: List[Dict[str, Any]]):
-        """실시간 인용 데이터를 배치로 저장"""
+    async def _bulk_save_realtime_quotes(self, quotes: List[schemas.RealtimeQuoteData]):
+        """Saves a batch of real-time quotes to the database."""
+        db = self.get_db()
         try:
-            for record in records:
-                # Upsert 로직: 기존 데이터가 있으면 업데이트, 없으면 새로 생성
-                existing = db.query(RealtimeQuote).filter(
-                    RealtimeQuote.ticker == record["ticker"],
-                    RealtimeQuote.asset_type == record["asset_type"]
-                ).first()
-                
-                if existing:
-                    # 기존 레코드 업데이트
-                    existing.price = record["price"]
-                    existing.volume_today = record["volume_today"]
-                    existing.change_percent_today = record["change_percent_today"]
-                    existing.data_source = record["data_source"]
-                    existing.fetched_at = record["fetched_at"]
-                else:
-                    # 새 레코드 생성
-                    quote = RealtimeQuote(**record)
-                    db.add(quote)
-            
-            db.commit()
-            logger.info(f"배치 저장 완료: {len(records)}개 레코드")
-            
+            crud_asset.upsert_realtime_quotes(db, quotes)
+            logger.info(f"Successfully saved/updated {len(quotes)} real-time quotes.")
         except Exception as e:
-            db.rollback()
-            logger.error(f"배치 저장 실패: {e}")
-            raise
+            logger.error(f"Failed to bulk save real-time quotes: {e}")
+        finally:
+            db.close()
 
-    async def collect_with_settings(self) -> Dict[str, Any]:
-        """설정에 따른 실시간 데이터 수집 (기존 호환성 유지)"""
-        try:
-            self.log_progress("실시간 데이터 수집 시작")
-            # 시장시간 게이트: 휴장 시에는 바로 no-op 리턴
-            if not self._is_us_stock_market_open():
-                logger.debug("미국 주식시장 휴장 시간: RealtimeCollector 실행을 건너뜁니다.")
-                return {
-                    'success': True,
-                    'message': '휴장 시간으로 수집 스킵',
-                    'total_added_records': 0
-                }
-            
-            # Redis Stream에서 데이터 수집 및 저장
-            result = await self._collect_data()
-            
-            if result["success"]:
-                return {
-                    'success': True,
-                    'message': f'실시간 데이터 수집 완료: {result["processed_records"]}개 레코드 처리',
-                    'total_added_records': result["processed_records"]
-                }
-            else:
-                return {
-                    'success': False,
-                    'message': f'실시간 데이터 수집 실패: {result["message"]}',
-                    'total_added_records': 0
-                }
-                
-        except Exception as e:
-            logger.error(f"설정 기반 실시간 데이터 수집 실패: {e}")
-            return {
-                'success': False,
-                'message': f'설정 기반 실시간 데이터 수집 실패: {str(e)}',
-                'total_added_records': 0
-            }
+    # ============================================================================
+    # Batch Queue Processing
+    # ============================================================================
 
-    async def get_redis_stream_info(self) -> Dict[str, Any]:
-        """Redis Stream 정보 조회"""
-        try:
-            await self._connect_redis()
-            if not self.redis_client:
-                return {"error": "Redis 연결 실패"}
-            
-            # Stream 정보 조회
-            stream_info = await self.redis_client.xinfo_stream(REDIS_STREAM_KEY)
-            stream_length = await self.redis_client.xlen(REDIS_STREAM_KEY)
-            
-            return {
-                "stream_name": REDIS_STREAM_KEY,
-                "length": stream_length,
-                "info": stream_info,
-                "redis_connected": True
-            }
-            
-        except Exception as e:
-            logger.error(f"Redis Stream 정보 조회 실패: {e}")
-            return {"error": str(e)}
+    async def _process_batch_queue(self):
+        """Continuously processes tasks from the batch data Redis queue."""
+        logger.info("Starting batch queue processing loop...")
+        while self.is_running:
+            try:
+                task_json = await self.redis_queue_manager.pop_batch_task()
+                if not task_json:
+                    continue # pop_batch_task has a timeout, so this is normal
 
-    def get_status(self) -> Dict[str, Any]:
-        """수집기 상태 조회"""
-        try:
-            return {
-                'redis': {
-                    'host': self.redis_host,
-                    'port': self.redis_port,
-                    'connected': self.redis_client is not None
-                },
-                'collection_settings': {
-                    'intervals': self.intervals,
-                    'default_tickers': self.default_tickers
-                },
-                'last_run': getattr(self, '_last_run', None)
-            }
-            
-        except Exception as e:
-            logger.error(f"상태 조회 실패: {e}")
-            return {
-                'error': str(e)
-            }
+                task = json.loads(task_json)
+                success = await self._process_batch_task(task)
 
-    async def cleanup(self):
-        """리소스 정리"""
+                if not success:
+                    # If processing fails after retries, move to DLQ
+                    await self.redis_queue_manager.move_to_dlq(task_json, "Task processing failed")
+
+            except Exception as e:
+                logger.error(f"Error in batch queue processing loop: {e}", exc_info=True)
+                # In case of system error, wait before retrying to prevent rapid failure loops
+                await asyncio.sleep(10)
+
+    async def _process_batch_task(self, task: dict) -> bool:
+        """Routes a single batch task to the appropriate handler."""
+        task_type = task.get('type')
+        payload = task.get('payload')
+
+        if not task_type or not payload:
+            logger.warning(f"Invalid task format received: {task}")
+            return False # Invalid task, don't retry
+
+        handlers = {
+            "ohlcv_data": self._save_ohlcv_data,
+            "etf_info": self._save_etf_info,
+            "crypto_info": self._save_crypto_data,
+            "onchain_metric": self._save_onchain_metric
+        }
+
+        handler = handlers.get(task_type)
+        if not handler:
+            logger.error(f"Unknown task type '{task_type}'. Moving to DLQ.")
+            return False # No handler, don't retry
+
         try:
-            if self.redis_client:
-                await self.redis_client.close()
-                logger.info("Redis 연결이 종료되었습니다")
+            await handler(payload)
+            return True
         except Exception as e:
-            logger.error(f"Redis 연결 종료 중 오류: {e}")
+            logger.error(f"Handler for task type '{task_type}' failed: {e}", exc_info=True)
+            return False # Handler failed, allow for retry/DLQ
+
+    # --- Batch Task Handlers ---
+
+    async def _save_ohlcv_data(self, payload: dict):
+        db = self.get_db()
+        try:
+            # Pydantic 모델로 데이터 유효성 검사 및 변환
+            ohlcv_records = [schemas.OhlcvDataPoint.model_validate(item) for item in payload.get('data', [])]
+            asset_id = payload.get('asset_id')
+            interval = payload.get('interval')
+            if ohlcv_records and asset_id and interval:
+                crud_ohlcv.create_ohlcv_records(db, ohlcv_records, asset_id, interval)
+                logger.info(f"Saved {len(ohlcv_records)} OHLCV records for asset {asset_id} ({interval}).")
+        finally:
+            db.close()
+
+    async def _save_etf_info(self, payload: dict):
+        db = self.get_db()
+        try:
+            etf_info = schemas.EtfInfoData.model_validate(payload.get('data', {}))
+            asset_id = payload.get('asset_id')
+            if etf_info and asset_id:
+                crud_etf.upsert_etf_info(db, asset_id, etf_info)
+                logger.info(f"Saved ETF info for asset {asset_id}.")
+        finally:
+            db.close()
+            
+    async def _save_crypto_data(self, payload: dict):
+        db = self.get_db()
+        try:
+            crypto_data = schemas.CryptoData.model_validate(payload.get('data', {}))
+            asset_id = payload.get('asset_id')
+            if crypto_data and asset_id:
+                crud_crypto.upsert_crypto_data(db, asset_id, crypto_data)
+                logger.info(f"Saved crypto info for asset {asset_id}.")
+        finally:
+            db.close()
+
+    async def _save_onchain_metric(self, payload: dict):
+        db = self.get_db()
+        try:
+            metric_data = [schemas.OnchainMetricDataPoint.model_validate(item) for item in payload.get('data', [])]
+            asset_id = payload.get('asset_id')
+            metric_name = payload.get('metric_name')
+            if metric_data and asset_id and metric_name:
+                crud_onchain.upsert_onchain_metrics(db, asset_id, metric_name, metric_data)
+                logger.info(f"Saved {len(metric_data)} records for onchain metric '{metric_name}'.")
+        finally:
+            db.close()

@@ -17,9 +17,7 @@ from ..models import (
     WorldAssetsRanking,
     StockFinancial,
 )
-from ..external_apis.twelvedata_client import TwelveDataClient
-from ..external_apis.binance_client import BinanceClient
-from ..external_apis.coingecko_client import CoinGeckoClient
+from app.external_apis.implementations import TwelveDataClient, BinanceClient, CoinGeckoClient
 from ..core.cache import cache_with_invalidation
 
 logger = logging.getLogger(__name__)
@@ -563,7 +561,7 @@ class AssetsTableService:
                                 asset_item['data_source'] = 'twelvedata'
                                 asset_item['last_updated'] = datetime.now()
                         elif asset.data_source == 'tiingo':
-                            from ..external_apis.tiingo_client import TiingoClient
+                            from app.external_apis.implementations import TiingoClient
                             tiingo_client = TiingoClient()
                             quote_data = await tiingo_client.get_quote(ticker)
                             if quote_data:

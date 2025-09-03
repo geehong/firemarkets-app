@@ -1,21 +1,50 @@
 """
 External API clients for financial data.
+
+This module provides access to all API clients organized by category:
+- Traditional Financial API clients (stocks, ETFs, etc.)
+- Cryptocurrency API clients
+- On-chain data API clients
 """
 
-from .base_client import BaseAPIClient
-from .alpha_vantage_client import AlphaVantageClient
-from .fmp_client import FMPClient
-from .binance_client import BinanceClient
-from .coinbase_client import CoinbaseClient
-from .coinmarketcap_client import CoinMarketCapClient
+# Base classes
+from .base.base_client import BaseAPIClient
+from .base.tradfi_client import TradFiAPIClient
+from .base.crypto_client import CryptoAPIClient
+from .base.onchain_client import OnChainAPIClient
+
+# All implementations
+from .implementations import (
+    # Traditional Financial API Clients
+    FMPClient, TiingoClient, AlphaVantageClient, PolygonClient, TwelveDataClient,
+    # Cryptocurrency API Clients
+    BinanceClient, CoinbaseClient, CoinGeckoClient, CoinMarketCapClient,
+    # On-chain Data API Clients
+    BitcoinDataClient
+)
 
 __all__ = [
+    # Base classes
     "BaseAPIClient",
-    "AlphaVantageClient", 
+    "TradFiAPIClient",
+    "CryptoAPIClient", 
+    "OnChainAPIClient",
+    
+    # Traditional Financial API Clients
     "FMPClient",
+    "TiingoClient",
+    "AlphaVantageClient",
+    "PolygonClient", 
+    "TwelveDataClient",
+    
+    # Cryptocurrency API Clients
     "BinanceClient",
     "CoinbaseClient",
-    "CoinMarketCapClient"
+    "CoinGeckoClient",
+    "CoinMarketCapClient",
+    
+    # On-chain Data API Clients
+    "BitcoinDataClient"
 ]
 
 

@@ -6,7 +6,7 @@ from typing import Dict, Any
 from pydantic import BaseModel
 
 from ....core.database import get_db
-from ....collectors import OHLCVCollector, OnchainCollector, StockCollector, ETFCollector, TechnicalCollector, WorldAssetsCollector
+from ....collectors import OHLCVCollector, StockCollector, ETFCollector, WorldAssetsCollector
 from ....core.websocket import scheduler
 
 logger = logging.getLogger(__name__)
@@ -79,17 +79,8 @@ async def test_ohlcv_asset(request: AssetTestRequest, background_tasks: Backgrou
 
 @router.post("/onchain/run", response_model=CollectorResponse)
 async def run_onchain_collection(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """온체인 데이터 수집을 수동으로 실행"""
-    try:
-        background_tasks.add_task(run_collector_async, OnchainCollector, db)
-        return CollectorResponse(
-            success=True,
-            message="Onchain collection started in background",
-            job_id="onchain_collection"
-        )
-    except Exception as e:
-        logger.error(f"Failed to start onchain collection: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to start onchain collection: {str(e)}")
+    """온체인 컬렉터는 v2 전환 동안 비활성화"""
+    raise HTTPException(status_code=503, detail="Onchain collector temporarily disabled during v2 transition")
 
 @router.post("/stock/run", response_model=CollectorResponse)
 async def run_stock_collection(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
@@ -121,17 +112,8 @@ async def run_etf_collection(background_tasks: BackgroundTasks, db: Session = De
 
 @router.post("/technical/run", response_model=CollectorResponse)
 async def run_technical_collection(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """기술적 지표 데이터 수집을 수동으로 실행"""
-    try:
-        background_tasks.add_task(run_collector_async, TechnicalCollector, db)
-        return CollectorResponse(
-            success=True,
-            message="Technical indicators collection started in background",
-            job_id="technical_collection"
-        )
-    except Exception as e:
-        logger.error(f"Failed to start technical collection: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to start technical collection: {str(e)}")
+    """기술적 지표 컬렉터는 v2 전환 동안 비활성화"""
+    raise HTTPException(status_code=503, detail="Technical collector temporarily disabled during v2 transition")
 
 @router.post("/world-assets/run", response_model=CollectorResponse)
 async def run_world_assets_collection(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
@@ -154,10 +136,8 @@ async def run_all_collections(background_tasks: BackgroundTasks, db: Session = D
         # 모든 collector를 순차적으로 실행
         collectors = [
             (OHLCVCollector, "OHLCV"),
-            (OnchainCollector, "Onchain"),
             (StockCollector, "Stock"),
             (ETFCollector, "ETF"),
-            (TechnicalCollector, "Technical"),
             (WorldAssetsCollector, "WorldAssets")
         ]
         

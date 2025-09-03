@@ -7,8 +7,9 @@ from datetime import datetime
 
 import httpx
 
-from ..base.crypto_client import CryptoAPIClient
-from ..utils.helpers import safe_float, safe_timestamp_parse
+from app.external_apis.base.crypto_client import CryptoAPIClient
+from app.external_apis.base.schemas import CryptoData
+from app.external_apis.utils.helpers import safe_float, safe_timestamp_parse
 
 logger = logging.getLogger(__name__)
 
@@ -79,15 +80,17 @@ class BinanceClient(CryptoAPIClient):
                 data = await self._fetch_async(client, url, "Binance", symbol)
                 
                 if isinstance(data, list) and data:  # 데이터가 비어있지 않은지 확인
+                    from app.external_apis.base.schemas import OhlcvDataPoint
                     return [
-                        {
-                            "timestamp_utc": datetime.fromtimestamp(kline[0] / 1000),
-                            "open_price": safe_float(kline[1]),
-                            "high_price": safe_float(kline[2]),
-                            "low_price": safe_float(kline[3]),
-                            "close_price": safe_float(kline[4]),
-                            "volume": safe_float(kline[5], 0.0),
-                        }
+                        OhlcvDataPoint(
+                            timestamp_utc=datetime.fromtimestamp(kline[0] / 1000),
+                            open_price=safe_float(kline[1]),
+                            high_price=safe_float(kline[2]),
+                            low_price=safe_float(kline[3]),
+                            close_price=safe_float(kline[4]),
+                            volume=safe_float(kline[5], 0.0),
+                            change_percent=None  # Binance klines API는 change_percent를 제공하지 않음
+                        )
                         for kline in data
                     ]
         except Exception as e:
@@ -103,25 +106,14 @@ class BinanceClient(CryptoAPIClient):
                 data = await self._fetch_async(client, url, "Binance 24hr Ticker", symbol)
                 
                 if isinstance(data, dict):
-                    return {
-                        "symbol": data.get("symbol"),
-                        "price_change": safe_float(data.get("priceChange")),
-                        "price_change_percent": safe_float(data.get("priceChangePercent")),
-                        "weighted_avg_price": safe_float(data.get("weightedAvgPrice")),
-                        "prev_close_price": safe_float(data.get("prevClosePrice")),
-                        "last_price": safe_float(data.get("lastPrice")),
-                        "last_qty": safe_float(data.get("lastQty")),
-                        "bid_price": safe_float(data.get("bidPrice")),
-                        "ask_price": safe_float(data.get("askPrice")),
-                        "open_price": safe_float(data.get("openPrice")),
-                        "high_price": safe_float(data.get("highPrice")),
-                        "low_price": safe_float(data.get("lowPrice")),
-                        "volume": safe_float(data.get("volume")),
-                        "quote_volume": safe_float(data.get("quoteVolume")),
-                        "open_time": datetime.fromtimestamp(data.get("openTime", 0) / 1000),
-                        "close_time": datetime.fromtimestamp(data.get("closeTime", 0) / 1000),
-                        "count": data.get("count")
-                    }
+                    from app.external_apis.base.schemas import RealtimeQuoteData
+                    quote = RealtimeQuoteData(
+                        symbol=data.get("symbol"),
+                        price=safe_float(data.get("lastPrice")),
+                        change_percent=safe_float(data.get("priceChangePercent")),
+                        timestamp_utc=datetime.now()  # Binance는 실시간 데이터를 제공하므로 현재 시간 사용
+                    )
+                    return quote
         except Exception as e:
             logger.error(f"Binance 24hr Ticker fetch failed for {symbol}: {e}")
         
@@ -148,7 +140,35 @@ class BinanceClient(CryptoAPIClient):
     
     async def get_global_metrics(self) -> Optional[Dict[str, Any]]:
         """Get global cryptocurrency market metrics - Not supported by Binance"""
-        raise NotImplementedError("Binance API does not support global market metrics")
+        raise NotImplementedError("Binance API는 거래소별 API이므로 글로벌 암호화폐 시장 메트릭을 제공하지 않습니다. 글로벌 메트릭은 CoinGecko, CoinMarketCap API를 사용하세요.")
+    
+    async def get_crypto_data(self, symbol: str) -> Optional[CryptoData]:
+        """Get comprehensive cryptocurrency data from Binance"""
+        try:
+            async with httpx.AsyncClient() as client:
+                # Get 24hr ticker data
+                url = f"{self.base_url}/ticker/24hr?symbol={symbol}"
+                data = await self._fetch_async(client, url, "Binance 24hr Ticker", symbol)
+                
+                if isinstance(data, dict):
+                    crypto_data = CryptoData(
+                        symbol=data.get("symbol"),
+                        price=safe_float(data.get("lastPrice")),
+                        market_cap=None,  # Binance API는 market cap을 제공하지 않음
+                        volume_24h=safe_float(data.get("volume")),
+                        change_24h=safe_float(data.get("priceChangePercent")),
+                        circulating_supply=None,  # Binance API는 supply 정보를 제공하지 않음
+                        total_supply=None,
+                        max_supply=None,
+                        rank=None,  # Binance API는 rank를 제공하지 않음
+                        timestamp_utc=datetime.now()
+                    )
+                    return crypto_data
+                    
+        except Exception as e:
+            logger.error(f"Binance crypto data fetch failed for {symbol}: {e}")
+        
+        return None
     
     def _create_signature(self, query_string: str, secret_key: str) -> str:
         """Create signature for Binance API authentication - Private method"""

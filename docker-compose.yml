@@ -83,6 +83,7 @@ services:
 
   # --- 독립 스케줄러 서비스 추가 ---
   scheduler:
+    profiles: ["processing"]
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -112,6 +113,81 @@ services:
     volumes:
       - ./.env:/app/.env:ro
     command: ["python", "-m", "app.services.run_scheduler"]
+    networks:
+      - app_network
+      - shared-network
+
+  # --- 실시간 컨슈머 (Processing 프로필) ---
+  tiingo_ws_consumer:
+    profiles: ["processing"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fire_markets_tiingo_ws_consumer
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: mysql+mysqlconnector://${DB_USERNAME}:${DB_PASSWORD}@db:3306/${DB_DATABASE}
+      TZ: Asia/Seoul
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./.env:/app/.env:ro
+    command: ["python", "-m", "app.services.tiingo_ws_consumer"]
+    networks:
+      - app_network
+      - shared-network
+
+  alpaca_ws_consumer:
+    profiles: ["processing"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fire_markets_alpaca_ws_consumer
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: mysql+mysqlconnector://${DB_USERNAME}:${DB_PASSWORD}@db:3306/${DB_DATABASE}
+      TZ: Asia/Seoul
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./.env:/app/.env:ro
+    command: ["python", "-m", "app.services.alpaca_ws_consumer"]
+    networks:
+      - app_network
+      - shared-network
+
+  # --- 데이터 프로세서 (Processing 프로필) ---
+  data_processor:
+    profiles: ["processing"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fire_markets_data_processor
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: mysql+mysqlconnector://${DB_USERNAME}:${DB_PASSWORD}@db:3306/${DB_DATABASE}
+      TZ: Asia/Seoul
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./.env:/app/.env:ro
+    # 임시 실행 엔트리포인트 (전용 run 스크립트 없이도 실행되도록)
+    command: ["python", "-c", "import asyncio; from app.services.data_processor import DataProcessor; asyncio.run(DataProcessor().start())"]
     networks:
       - app_network
       - shared-network

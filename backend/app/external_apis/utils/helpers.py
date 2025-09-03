@@ -2,7 +2,7 @@
 Common helper functions for API clients.
 """
 import logging
-from typing import Optional, Any
+from typing import Optional, Any, List, Dict
 from datetime import datetime
 
 logger = logging.getLogger(__name__)

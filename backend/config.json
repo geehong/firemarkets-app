@@ -2,7 +2,7 @@
   "data_collection": {
     "interval_minutes": 60,
     "interval_daily": 1,
-    "enable_immediate_execution": true
+    "enable_immediate_execution": false
   },
       "onchain_collection": {
         "interval_hours": 24

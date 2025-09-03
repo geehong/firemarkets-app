@@ -7,10 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from ..external_apis.binance_client import BinanceClient
-from ..external_apis.yahoo_client import YahooFinanceClient
-from ..external_apis.coingecko_client import CoinGeckoClient
-from ..external_apis.twelvedata_client import TwelveDataClient
+from app.external_apis.implementations import BinanceClient, CoinGeckoClient, TwelveDataClient
 from ..models import Asset, OHLCVData
 from ..api import deps
 
@@ -18,9 +15,7 @@ logger = logging.getLogger(__name__)
 
 # 클라이언트 인스턴스 생성
 binance_client = BinanceClient()
-yahoo_client = YahooFinanceClient()
 coingecko_client = CoinGeckoClient()
-
 twelve_client = TwelveDataClient()
 
 

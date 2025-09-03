@@ -6,17 +6,11 @@ import pandas as pd
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta
 from app.utils.logger import logger
-from app.external_apis.fmp_client import FMPClient
-from app.external_apis.twelvedata_client import TwelveDataClient
-from app.external_apis.alpha_vantage_client import AlphaVantageClient
-from app.external_apis.yahoo_client import YahooFinanceClient as YahooClient
-from app.external_apis.binance_client import BinanceClient
-from app.external_apis.coinbase_client import CoinbaseClient
-from app.external_apis.coinmarketcap_client import CoinMarketCapClient
-from app.external_apis.tiingo_client import TiingoClient
-from app.external_apis.polygon_client import PolygonClient
-from app.external_apis.coingecko_client import CoinGeckoClient
-from app.external_apis.bitcoin_data_client import BitcoinDataClient
+from app.external_apis.implementations import (
+    FMPClient, TiingoClient, AlphaVantageClient, PolygonClient, TwelveDataClient,
+    BinanceClient, CoinbaseClient, CoinGeckoClient, CoinMarketCapClient,
+    BitcoinDataClient
+)
 from app.crud.asset import crud_ohlcv
 from app.utils.logging_helper import ApiLoggingHelper as LoggingHelper
 

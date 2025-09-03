@@ -5,13 +5,21 @@ from datetime import datetime, date
 from typing import Optional, Any
 
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field, AliasChoices
+ 
 
 # Global dictionary to store application configurations
 GLOBAL_APP_CONFIGS = {}
 
 # ConfigLoader import (나중에 초기화)
 config_loader = None
+
+# Centralized ConfigManager
+try:
+    from .config_manager import ConfigManager
+    config_manager = ConfigManager()
+except Exception:
+    # Fallback for early import stages; will be set during app init
+    config_manager = None
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -113,7 +121,6 @@ def load_and_set_global_configs():
         "RETRY_BASE_DELAY": config_loader.get("retry.base_delay", 1.0),
         "RETRY_MAX_DELAY": config_loader.get("retry.max_delay", 30.0),
         "ENABLE_JITTER": config_loader.get("retry.enable_jitter", True),
-        "REQUEST_TIMEOUT_SECONDS": config_loader.get("api_limits.request_timeout_seconds", 30),
         "RATE_LIMIT_DELAY": config_loader.get("api_limits.rate_limit_delay", 0.5),
         "HISTORICAL_DATA_DAYS_PER_RUN": config_loader.get("historical_data.days_per_run", 1000),
         "MAX_HISTORICAL_DAYS": config_loader.get("historical_data.max_historical_days", 10950),
@@ -145,6 +152,14 @@ def load_and_set_global_configs():
         raise # Re-raise to prevent app from starting with incomplete configs
     finally:
         db.close()
+
+    # Optionally seed frequently used dynamic values via ConfigManager cache
+    if config_manager is not None:
+        try:
+            GLOBAL_APP_CONFIGS.setdefault("HISTORICAL_DAYS", config_manager.get_historical_days())
+            GLOBAL_APP_CONFIGS.setdefault("SEMAPHORE_LIMIT", config_manager.get_semaphore_limit())
+        except Exception:
+            pass
 
 def initialize_bitcoin_asset_id():
     """비트코인 Asset ID를 초기화합니다."""
@@ -180,113 +195,6 @@ def initialize_bitcoin_asset_id():
     finally:
         db.close()
 
-def setup_scheduler_jobs():
-    """스케줄러 작업들을 설정에 따라 등록합니다. (DEPRECATED: SchedulerService 사용)"""
-    from ..services.scheduler_service import scheduler_service
-    logger.warning("setup_scheduler_jobs() is deprecated. Use SchedulerService instead.")
-    scheduler_service.setup_jobs()
-    
-    # DEPRECATED: 이 함수는 더 이상 사용되지 않습니다.
-    # SchedulerService를 사용하세요.
-    pass
+ 
 
-# Utility functions
-def safe_float(value, default=None):
-    """안전한 float 변환"""
-    if value is None or value == "None" or value == "N/A" or value == "":
-        return default
-    try:
-        return float(value)
-    except (ValueError, TypeError):
-        return default
-
-def safe_date_parse(date_str, fmt='%Y-%m-%d', default=None):
-    """안전한 날짜 파싱"""
-    if not date_str or date_str == "None" or date_str == "N/A":
-        return default
-    try:
-        return datetime.strptime(date_str, fmt).date()
-    except (ValueError, TypeError):
-        return default
-
-def safe_int(value: Any, default: Optional[int] = None) -> Optional[int]:
-    """안전한 정수 변환"""
-    if value is None or value == "None" or value == "N/A" or value == "":
-        return default
-    try:
-        return int(float(value))
-    except (ValueError, TypeError):
-        return default
-
-def safe_datetime_parse(datetime_str: Any, fmt: str = '%Y-%m-%d %H:%M:%S', default: Optional[datetime] = None) -> Optional[datetime]:
-    """안전한 datetime 파싱"""
-    if not datetime_str or datetime_str == "None" or datetime_str == "N/A":
-        return default
-    try:
-        return datetime.strptime(str(datetime_str), fmt)
-    except (ValueError, TypeError):
-        return default
-
-def safe_string(value: Any, default: str = "") -> str:
-    """안전한 문자열 변환"""
-    if value is None or value == "None" or value == "N/A":
-        return default
-    return str(value)
-
-def safe_boolean(value: Any, default: bool = False) -> bool:
-    """안전한 boolean 변환"""
-    if value is None or value == "None" or value == "N/A":
-        return default
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.lower() in ['true', '1', 'yes', 'on']
-    if isinstance(value, (int, float)):
-        return bool(value)
-    return default
-
-def format_number(value: float, decimal_places: int = 2) -> str:
-    """숫자 포맷팅"""
-    try:
-        return f"{value:,.{decimal_places}f}"
-    except (ValueError, TypeError):
-        return "0.00"
-
-def format_percentage(value: float, decimal_places: int = 2) -> str:
-    """퍼센트 포맷팅"""
-    try:
-        return f"{value:.{decimal_places}f}%"
-    except (ValueError, TypeError):
-        return "0.00%"
-
-def format_currency(value: float, currency: str = "USD", decimal_places: int = 2) -> str:
-    """통화 포맷팅"""
-    try:
-        return f"{currency} {value:,.{decimal_places}f}"
-    except (ValueError, TypeError):
-        return f"{currency} 0.00"
-
-def truncate_string(text: str, max_length: int = 100, suffix: str = "...") -> str:
-    """문자열 자르기"""
-    if len(text) <= max_length:
-        return text
-    return text[:max_length - len(suffix)] + suffix
-
-def validate_email(email: str) -> bool:
-    """이메일 검증"""
-    import re
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(pattern, email) is not None
-
-def validate_url(url: str) -> bool:
-    """URL 검증"""
-    import re
-    pattern = r'^https?://(?:[-\w.])+(?:[:\d]+)?(?:/(?:[\w/_.])*(?:\?(?:[\w&=%.])*)?(?:#(?:[\w.])*)?)?$'
-    return re.match(pattern, url) is not None
-
-async def safe_emit(event, data):
-    """안전한 Socket.IO 이벤트 전송"""
-    try:
-        await sio.emit(event, data)
-    except Exception as e:
-        logger.error(f"Socket.IO emit error: {e}")
+ 

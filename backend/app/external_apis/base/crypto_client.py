@@ -6,6 +6,11 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 from .base_client import BaseAPIClient
+from .schemas import (
+    OhlcvDataPoint,
+    RealtimeQuoteData,
+    CryptoData
+)
 
 
 class CryptoAPIClient(BaseAPIClient, ABC):
@@ -19,7 +24,7 @@ class CryptoAPIClient(BaseAPIClient, ABC):
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
         limit: Optional[int] = None
-    ) -> List[Dict[str, Any]]:
+    ) -> List[OhlcvDataPoint]:
         """
         Get OHLCV data for a cryptocurrency.
         
@@ -31,12 +36,12 @@ class CryptoAPIClient(BaseAPIClient, ABC):
             limit: Maximum number of data points
             
         Returns:
-            List of OHLCV data dictionaries
+            List of standardized OHLCV data points
         """
         pass
     
     @abstractmethod
-    async def get_realtime_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
+    async def get_realtime_quote(self, symbol: str) -> Optional[RealtimeQuoteData]:
         """
         Get real-time quote for a cryptocurrency.
         
@@ -44,7 +49,7 @@ class CryptoAPIClient(BaseAPIClient, ABC):
             symbol: Cryptocurrency symbol
             
         Returns:
-            Real-time quote data or None
+            Standardized real-time quote data or None
         """
         pass
     
@@ -65,5 +70,18 @@ class CryptoAPIClient(BaseAPIClient, ABC):
         
         Returns:
             Global market metrics or None
+        """
+        pass
+    
+    @abstractmethod
+    async def get_crypto_data(self, symbol: str) -> Optional[CryptoData]:
+        """
+        Get comprehensive cryptocurrency data.
+        
+        Args:
+            symbol: Cryptocurrency symbol (e.g., 'BTC', 'ETH')
+            
+        Returns:
+            Standardized cryptocurrency data or None
         """
         pass

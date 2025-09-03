@@ -140,52 +140,37 @@ class TechnicalCollector(BaseCollector):
                 self.log_progress(f"[{asset.ticker}] No technical indicators data found", "warning")
                 return {"success": False, "error": "No technical indicators data found"}
             
-            # Store data
-            success = crud_asset.upsert_technical_indicators(db, indicators)
-            
-            # Update last collection time
-            crud_asset.update_ticker_settings(db, asset.asset_id, {'last_technical_indicators_collection': datetime.now()})
-            
-            if success:
-                self.log_progress(f"[{asset.ticker}] Technical indicators collection completed successfully")
-                return {"success": True, "message": "Technical indicators collected and stored"}
-            else:
-                return {"success": False, "error": "Failed to store technical indicators"}
+            # Enqueue for DataProcessor
+            if getattr(self, 'redis_queue_manager', None) is None:
+                self.log_progress("redis_queue_manager not configured; skipping enqueue", "warning")
+                return {"success": False, "error": "queue manager not available"}
+            await self.redis_queue_manager.push_batch_task("technical_indicators", {
+                'asset_id': asset.asset_id,
+                'indicators': indicators_data,
+                'timestamp_utc': datetime.now().isoformat()
+            })
+            await self.redis_queue_manager.push_batch_task("asset_settings_update", {
+                'asset_id': asset.asset_id,
+                'settings': {'last_technical_indicators_collection': datetime.now().isoformat()}
+            })
+            self.log_progress(f"[{asset.ticker}] Technical indicators enqueued successfully")
+            return {"success": True, "message": "Technical indicators enqueued"}
                 
         except Exception as e:
             self.log_progress(f"[{asset.ticker}] Technical indicators collection failed: {e}", "error")
             return {"success": False, "error": str(e)}
     
     async def _store_technical_indicators(self, asset: Asset, indicators_data: dict) -> bool:
-        """Store technical indicators in database"""
-        db = self.get_db_session()
-        
-        try:
-            # Transform data
-            indicators = {
-                'asset_id': asset.asset_id,
-                'rsi': self._safe_float(indicators_data.get('rsi')),
-                'macd': self._safe_float(indicators_data.get('macd')),
-                'macd_signal': self._safe_float(indicators_data.get('macdSignal')),
-                'macd_histogram': self._safe_float(indicators_data.get('macdHistogram')),
-                'bollinger_upper': self._safe_float(indicators_data.get('bollingerUpper')),
-                'bollinger_middle': self._safe_float(indicators_data.get('bollingerMiddle')),
-                'bollinger_lower': self._safe_float(indicators_data.get('bollingerLower')),
-                'timestamp_utc': datetime.now()
-            }
-            
-            # Store in database
-            success = crud_asset.upsert_technical_indicators(db, indicators)
-            
-            # Update last collection time
-            crud_asset.update_ticker_settings(db, asset.asset_id, {'last_technical_indicators_collection': datetime.now()})
-            
-            return success
-            
-        except Exception as e:
-            db.rollback()
-            self.log_progress(f"Error storing technical indicators: {e}", "error")
+        """Enqueue technical indicators for DataProcessor instead of direct DB writes."""
+        if getattr(self, 'redis_queue_manager', None) is None:
+            self.log_progress("redis_queue_manager not configured; skipping enqueue", "warning")
             return False
+        await self.redis_queue_manager.push_batch_task("technical_indicators", {
+            'asset_id': asset.asset_id,
+            'indicators': indicators_data,
+            'timestamp_utc': datetime.now().isoformat()
+        })
+        return True
     
     def _safe_float(self, value: Any) -> Optional[float]:
         """Safely convert value to float"""

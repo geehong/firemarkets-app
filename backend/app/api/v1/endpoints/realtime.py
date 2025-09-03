@@ -13,8 +13,7 @@ from ....services.tiingo_ws_consumer import get_consumer
 from ....services.scheduler_service import scheduler_service as get_scheduler
 from ....services import price_service
 from ....core.cache import cache_with_invalidation
-from ....external_apis.tiingo_client import tiingo_client
-from ....collectors.realtime_collector import RealtimeCollector
+from app.external_apis.implementations import TiingoClient
 from ....schemas.asset import AssetsTableResponse
 from ....services.assets_table_service import AssetsTableService
 
@@ -22,8 +21,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# 실시간 수집기 인스턴스
-realtime_collector = RealtimeCollector()
 
 
 # ============================================================================
@@ -124,6 +121,7 @@ async def get_tiingo_prices(
     여러 주식/ETF 심볼에 대한 가격을 Tiingo에서 조회합니다.
     """
     try:
+        tiingo_client = TiingoClient()
         quotes = await tiingo_client.get_batch_quotes(symbols)
         
         # 응답 형식 변환

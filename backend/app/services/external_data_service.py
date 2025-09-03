@@ -5,7 +5,7 @@ import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
-from ..external_apis import (
+from app.external_apis.implementations import (
     AlphaVantageClient,
     FMPClient,
     BinanceClient,
