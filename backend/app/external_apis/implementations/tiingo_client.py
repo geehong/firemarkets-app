@@ -95,13 +95,20 @@ class TiingoClient(TradFiAPIClient):
             if end_date:
                 params["endDate"] = end_date
             
-            data = await self._request(f"/tiingo/daily/{symbol.lower()}/prices", params)
+            # Use httpx directly to get the raw response content
+            async with httpx.AsyncClient() as client:
+                url = f"{self.base_url}/tiingo/daily/{symbol.lower()}/prices"
+                params["token"] = self.api_key
+                resp = await client.get(url, params=params, timeout=self.api_timeout)
+                resp.raise_for_status()
+                # Parse the JSON response directly into a pandas DataFrame
+                data = pd.read_json(resp.text)
             
-            if not isinstance(data, list) or not data:
+            if data.empty:
                 return []
             
             result = []
-            for item in data:
+            for _, item in data.iterrows():
                 timestamp = safe_date_parse(item.get("date"))
                 if timestamp is None:
                     continue

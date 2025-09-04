@@ -64,8 +64,8 @@ class PolygonClient(TradFiAPIClient):
         """Return known public rate limits for Polygon free plan"""
         return {
             "free_tier": {
-                "requests_per_minute": 5,
-                "requests_per_day": 100,
+                "calls_per_minute": 5,
+                "calls_per_day": 100,
                 "real_time_quotes": False
             }
         }

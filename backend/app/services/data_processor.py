@@ -16,7 +16,8 @@ from sqlalchemy.orm import Session
 from ..core.database import SessionLocal
 from ..core.config import GLOBAL_APP_CONFIGS, config_manager
 from ..models.realtime import RealtimeQuote
-from ..models.asset import Asset
+from ..models.asset import Asset, OHLCVData
+from ..crud.asset import crud_ohlcv
 from ..utils.logger import logger
 from ..utils.redis_queue_manager import RedisQueueManager
 
@@ -29,9 +30,11 @@ class DataProcessor:
     - MySQL DB 저장
     """
     
-    def __init__(self):
+    def __init__(self, config_manager=None, redis_queue_manager=None):
         self.redis_client: Optional[redis.Redis] = None
         self.running = False
+        self.config_manager = config_manager
+        self.redis_queue_manager = redis_queue_manager
         
         # Redis 설정
         self.redis_host = GLOBAL_APP_CONFIGS.get("REDIS_HOST", "redis")
@@ -211,22 +214,26 @@ class DataProcessor:
                     try:
                         success = await self._process_batch_task(task_wrapper)
                         if success:
+                            logger.info(f"Task {task_wrapper.get('type')} processed successfully.")
                             processed_count += 1
-                            break
+                            break # 성공 시 루프 종료
                         else:
-                            raise RuntimeError("Task processing returned False")
+                            # 처리 로직에서 False를 반환한 경우 (일시적 오류일 수 있음)
+                            raise RuntimeError(f"Task processing for {task_wrapper.get('type')} returned False.")
                     except Exception as e:
+                        logger.warning(f"Attempt {attempts}/{self.max_retries} failed for task {task_wrapper.get('type')}: {e}")
                         if attempts > self.max_retries:
-                            # Move to DLQ
+                            # 최대 재시도 횟수 초과 시 DLQ로 이동
                             try:
                                 raw_json = json.dumps(task_wrapper, ensure_ascii=False)
                             except Exception:
                                 raw_json = str(task_wrapper)
                             if self.queue_manager:
                                 await self.queue_manager.move_to_dlq(raw_json, str(e))
-                            logger.error(f"태스크 최대 재시도 초과, DLQ로 이동: {e}")
+                            logger.error(f"Task failed after max retries, moving to DLQ: {e}")
                             self.stats["errors"] += 1
                             break
+                        # 재시도 전 잠시 대기
                         await asyncio.sleep(self.retry_delay)
                     
         except Exception as e:
@@ -261,7 +268,9 @@ class DataProcessor:
             elif task_type in ("crypto_info", "crypto_data"):
                 return await self._save_crypto_data(items)
             elif task_type == "ohlcv_data":
-                return await self._save_ohlcv_data(items)
+                # metadata 정보 추출
+                metadata = payload.get("metadata", {}) if isinstance(payload, dict) else {}
+                return await self._save_ohlcv_data(items, metadata)
             elif task_type == "index_data":
                 return await self._save_index_data(items)
             elif task_type == "technical_indicators":
@@ -309,11 +318,34 @@ class DataProcessor:
         logger.info(f"크립토 데이터 저장: {len(items)}개 레코드")
         return True
 
-    async def _save_ohlcv_data(self, items: List[Dict[str, Any]]) -> bool:
+    async def _save_ohlcv_data(self, items: List[Dict[str, Any]], metadata: Dict[str, Any] = None) -> bool:
         """OHLCV 데이터 저장"""
-        # TODO: 실제 CRUD 함수 호출
-        logger.info(f"OHLCV 데이터 저장: {len(items)}개 레코드")
-        return True
+        if not items:
+            return True
+        
+        # metadata에서 asset_id와 interval 추출
+        asset_id = metadata.get("asset_id") if metadata else None
+        interval = metadata.get("interval") if metadata else None
+        
+        if not asset_id or not interval:
+            logger.warning(f"OHLCV 데이터 저장 실패: asset_id={asset_id}, interval={interval} 정보 부족")
+            return False
+        
+        logger.info(f"OHLCV 데이터 저장 시작: asset_id={asset_id}, interval={interval}, records={len(items)}")
+        
+        try:
+            total_added = 0
+            async with self.get_db_session() as db:
+                # crud_ohlcv.create_multi 호출
+                added_count = crud_ohlcv.create_multi(db, asset_id, items, interval)
+                total_added += added_count
+                
+            logger.info(f"OHLCV 데이터 저장 완료: asset_id={asset_id}, interval={interval}, added={total_added}개 레코드")
+            return True
+            
+        except Exception as e:
+            logger.error(f"OHLCV 데이터 저장 실패: asset_id={asset_id}, interval={interval}, error={e}")
+            return False
 
     async def _save_stock_financials(self, items: List[Dict[str, Any]]) -> bool:
         """주식 재무 데이터 저장 (스냅샷)"""

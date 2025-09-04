@@ -86,36 +86,76 @@ class AlphaVantageClient(TradFiAPIClient):
         for api_key in self.api_keys:
             try:
                 async with httpx.AsyncClient() as client:
-                    url = f"{self.base_url}?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={api_key}&outputsize=full"
-                    data = await self._fetch_async(client, url, "Alpha Vantage", symbol)
-                    
-                    if "Time Series (Daily)" in data:
-                        result = []
-                        for date_str, daily_data in data["Time Series (Daily)"].items():
-                            timestamp = safe_date_parse(date_str)
-                            if timestamp is None:
-                                continue
-                            
-                            point = OhlcvDataPoint(
-                                timestamp_utc=timestamp,
-                                open_price=safe_float(daily_data.get("1. open")),
-                                high_price=safe_float(daily_data.get("2. high")),
-                                low_price=safe_float(daily_data.get("3. low")),
-                                close_price=safe_float(daily_data.get("4. close")),
-                                volume=safe_float(daily_data.get("5. volume"), 0.0),
-                                change_percent=self._calculate_change_percent(
-                                    safe_float(daily_data.get("4. close")),
-                                    safe_float(daily_data.get("1. open"))
-                                )
-                            )
-                            result.append(point)
-                            
-                            # Limit 적용
-                            if limit and len(result) >= limit:
-                                break
+                    # 4h 인터벌의 경우 TIME_SERIES_INTRADAY 사용
+                    if interval == "4h":
+                        url = f"{self.base_url}?function=TIME_SERIES_INTRADAY&symbol={symbol}&interval=60min&apikey={api_key}&outputsize=full"
+                        data = await self._fetch_async(client, url, "Alpha Vantage 4h", symbol)
                         
-                        return result
-                    elif "Error Message" in data:
+                        if "Time Series (60min)" in data:
+                            result = []
+                            for timestamp_str, intraday_data in data["Time Series (60min)"].items():
+                                # 4시간 간격으로 필터링 (00:00, 04:00, 08:00, 12:00, 16:00, 20:00)
+                                timestamp = safe_date_parse(timestamp_str)
+                                if timestamp is None:
+                                    continue
+                                
+                                # 4시간 간격이 아닌 경우 스킵
+                                if timestamp.hour % 4 != 0:
+                                    continue
+                                
+                                point = OhlcvDataPoint(
+                                    timestamp_utc=timestamp,
+                                    open_price=safe_float(intraday_data.get("1. open")),
+                                    high_price=safe_float(intraday_data.get("2. high")),
+                                    low_price=safe_float(intraday_data.get("3. low")),
+                                    close_price=safe_float(intraday_data.get("4. close")),
+                                    volume=safe_float(intraday_data.get("5. volume"), 0.0),
+                                    change_percent=self._calculate_change_percent(
+                                        safe_float(intraday_data.get("4. close")),
+                                        safe_float(intraday_data.get("1. open"))
+                                    )
+                                )
+                                result.append(point)
+                                
+                                # Limit 적용
+                                if limit and len(result) >= limit:
+                                    break
+                            
+                            return result
+                    else:
+                        # 1d 인터벌의 경우 기존 로직 사용
+                        url = f"{self.base_url}?function=TIME_SERIES_DAILY_ADJUSTED&symbol={symbol}&apikey={api_key}&outputsize=full"
+                        data = await self._fetch_async(client, url, "Alpha Vantage", symbol)
+                        
+                        if "Time Series (Daily)" in data:
+                            result = []
+                            for date_str, daily_data in data["Time Series (Daily)"].items():
+                                timestamp = safe_date_parse(date_str)
+                                if timestamp is None:
+                                    continue
+                                
+                                point = OhlcvDataPoint(
+                                    timestamp_utc=timestamp,
+                                    open_price=safe_float(daily_data.get("1. open")),
+                                    high_price=safe_float(daily_data.get("2. high")),
+                                    low_price=safe_float(daily_data.get("3. low")),
+                                    close_price=safe_float(daily_data.get("4. close")),
+                                    volume=safe_float(daily_data.get("5. volume"), 0.0),
+                                    change_percent=self._calculate_change_percent(
+                                        safe_float(daily_data.get("4. close")),
+                                        safe_float(daily_data.get("1. open"))
+                                    )
+                                )
+                                result.append(point)
+                                
+                                # Limit 적용
+                                if limit and len(result) >= limit:
+                                    break
+                            
+                            return result
+                    
+                    # 에러 처리 (4h와 1d 모두에 적용)
+                    if "Error Message" in data:
                         logger.warning(f"Alpha Vantage API 오류 ({symbol}): {data['Error Message']}")
                         if "API call frequency" in data.get("Error Message", ""):
                             continue  # Try next API key
@@ -124,13 +164,13 @@ class AlphaVantageClient(TradFiAPIClient):
                         continue  # Try next API key
                     else:
                         logger.warning(f"Alpha Vantage: 예상치 못한 응답 형식 ({symbol})")
-                        continue
+                        return None  # 빈 리스트 대신 None을 반환하여 상위에서 처리하도록 함
                         
             except Exception as e:
                 logger.error(f"Alpha Vantage OHLCV fetch failed for {symbol} with key {api_key[:8]}...: {e}")
                 continue
         
-        return []
+        return None
     
     async def get_company_profile(self, symbol: str) -> Optional[CompanyProfileData]:
         """Get company profile from Alpha Vantage"""

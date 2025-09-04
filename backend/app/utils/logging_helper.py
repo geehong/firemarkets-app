@@ -429,6 +429,34 @@ class CollectorLoggingHelper:
             "sources_tried": sources_tried,
             "status": "all_sources_failed"
         })
+    
+    def log_info(self, message: str):
+        """일반 정보 로그"""
+        logger.info(f"[{self.collector_name}] {message}")
+    
+    def log_warning(self, message: str):
+        """경고 로그"""
+        logger.warning(f"[{self.collector_name}] {message}")
+    
+    def log_job_failure(self, error: Exception, duration: float):
+        """작업 실패 로그"""
+        logger.error(f"[{self.collector_name}] Job failed after {duration:.2f}s: {error}")
+    
+    def log_job_end(self, duration: float, result: Dict[str, Any]):
+        """작업 완료 로그"""
+        logger.info(f"[{self.collector_name}] Job completed in {duration:.2f}s: {result}")
+    
+    def log_debug(self, message: str):
+        """디버그 로그"""
+        logger.debug(f"[{self.collector_name}] {message}")
+    
+    def log_asset_error(self, asset_id: int, error: Exception):
+        """자산별 오류 로그"""
+        logger.error(f"[{self.collector_name}] Asset {asset_id} error: {error}")
+    
+    def log_error(self, message: str):
+        """오류 로그"""
+        logger.error(f"[{self.collector_name}] {message}")
 
 
 class BatchProcessor:

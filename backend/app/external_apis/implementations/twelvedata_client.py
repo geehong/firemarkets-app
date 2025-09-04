@@ -78,8 +78,8 @@ class TwelveDataClient(TradFiAPIClient):
         """Return known public rate limits for Twelve Data free plan"""
         return {
             "free_tier": {
-                "requests_per_minute": 8,
-                "requests_per_day": 800
+                "calls_per_minute": 8,
+                "calls_per_day": 800
             }
         }
 

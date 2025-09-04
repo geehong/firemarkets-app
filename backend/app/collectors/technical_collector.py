@@ -1,5 +1,7 @@
 """
 Technical indicators collector for fetching and storing technical analysis data.
+DEPRECATED: Technical indicators collector is not used in the current plan.
+This file is kept for potential future reference but is not active.
 """
 import logging
 import asyncio

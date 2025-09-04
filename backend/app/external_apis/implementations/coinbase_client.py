@@ -35,13 +35,9 @@ class CoinbaseClient(CryptoAPIClient):
     def get_rate_limit_info(self) -> Dict[str, Any]:
         """Get Coinbase rate limit information"""
         return {
-            "public_endpoints": {
-                "requests_per_second": 3,
-                "requests_per_minute": 180
-            },
-            "private_endpoints": {
-                "requests_per_second": 5,
-                "requests_per_minute": 300
+            "free_tier": {
+                "calls_per_minute": 180,
+                "calls_per_second": 3
             }
         }
     

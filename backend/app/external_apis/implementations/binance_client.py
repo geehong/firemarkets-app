@@ -35,13 +35,9 @@ class BinanceClient(CryptoAPIClient):
     def get_rate_limit_info(self) -> Dict[str, Any]:
         """Get Binance rate limit information"""
         return {
-            "public_endpoints": {
-                "requests_per_minute": 1200,
-                "requests_per_second": 10
-            },
-            "private_endpoints": {
-                "requests_per_minute": 1000,
-                "requests_per_second": 10
+            "free_tier": {
+                "calls_per_minute": 1200,
+                "calls_per_second": 10
             }
         }
     

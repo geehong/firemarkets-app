@@ -315,10 +315,6 @@ def get_ohlcv_data(
                 OHLCVData.data_interval == '1d'
             ).order_by(OHLCVData.timestamp_utc.asc()).limit(limit).all()
             
-            # 월별 데이터의 data_interval을 '1M'으로 설정
-            for ohlcv in ohlcv_data:
-                ohlcv.data_interval = '1M'
-            
         elif data_interval.upper() == '1W':
             # 주별 마지막 거래일 데이터
             last_day_subquery = db.query(
@@ -349,10 +345,6 @@ def get_ohlcv_data(
             ).filter(
                 OHLCVData.data_interval == '1d'
             ).order_by(OHLCVData.timestamp_utc.asc()).limit(limit).all()
-            
-            # 주별 데이터의 data_interval을 '1W'로 설정
-            for ohlcv in ohlcv_data:
-                ohlcv.data_interval = '1W'
             
         else:
             # 일반적인 간격 데이터

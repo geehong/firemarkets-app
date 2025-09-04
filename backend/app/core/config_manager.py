@@ -153,6 +153,11 @@ class ConfigManager:
         except json.JSONDecodeError:
             logger.warning(f"Could not parse OHLCV_DATA_INTERVALS JSON: {intervals_str}. Using default.")
             return ["1d", "4h"]
+    
+    def is_4h_collection_enabled(self) -> bool:
+        """4시간 데이터 수집이 활성화되어 있는지 확인"""
+        intervals = self.get_ohlcv_intervals()
+        return "4h" in intervals
 
     # --- On-chain Specific Settings ---
     def get_onchain_api_delay(self) -> int:

@@ -125,6 +125,7 @@ def load_and_set_global_configs():
         "HISTORICAL_DATA_DAYS_PER_RUN": config_loader.get("historical_data.days_per_run", 1000),
         "MAX_HISTORICAL_DAYS": config_loader.get("historical_data.max_historical_days", 10950),
         "ENABLE_HISTORICAL_BACKFILL": config_loader.get("historical_data.enable_backfill", True),
+        "MIN_HISTORICAL_DATE": config_loader.get("historical_data.min_historical_date", "1999-11-01"),
         "ENABLE_IMMEDIATE_EXECUTION": config_loader.get("data_collection.enable_immediate_execution", True),
         "DATA_COLLECTION_INTERVAL_MINUTES": config_loader.get("data_collection.interval_minutes", 240),
         "DATA_COLLECTION_INTERVAL_DAILY": config_loader.get("data_collection.interval_days", 30),

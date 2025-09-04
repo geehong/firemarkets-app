@@ -8,19 +8,19 @@ from app.core.database import SessionLocal
 
 
 async def run_collector(collector_class_name: str):
-    from app.collectors.stock_collector import StockCollector
+    # from app.collectors.stock_collector import StockCollector  # disabled during v2 transition
     from app.collectors.ohlcv_collector import OHLCVCollector
-    from app.collectors.etf_collector import ETFCollector
-    from app.collectors.crypto_data_collector import CryptoDataCollector
-    from app.collectors.index_collector import IndexCollector
+    # from app.collectors.etf_collector import ETFCollector  # disabled during v2 transition
+    # from app.collectors.crypto_data_collector import CryptoDataCollector  # disabled during v2 transition
+    # from app.collectors.index_collector import IndexCollector  # disabled during v2 transition
 
     available = {
-        'StockCollector': StockCollector,
         'OHLCVCollector': OHLCVCollector,
-        'EtfCollector': ETFCollector,
-        'ETFCollector': ETFCollector,
-        'CryptoDataCollector': CryptoDataCollector,
-        'IndexCollector': IndexCollector,
+        # 'StockCollector': StockCollector,  # disabled during v2 transition
+        # 'EtfCollector': ETFCollector,  # disabled during v2 transition
+        # 'ETFCollector': ETFCollector,  # disabled during v2 transition
+        # 'CryptoDataCollector': CryptoDataCollector,  # disabled during v2 transition
+        # 'IndexCollector': IndexCollector,  # disabled during v2 transition
         # 'OnchainCollector': OnchainCollector,  # disabled during v2 transition
     }
 

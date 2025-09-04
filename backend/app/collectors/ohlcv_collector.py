@@ -5,6 +5,7 @@ relying on dependency injection for all external interactions.
 """
 import logging
 import asyncio
+import json
 from typing import List, Dict, Any
 
 from sqlalchemy.orm import Session, joinedload
@@ -135,15 +136,28 @@ class OHLCVCollector(BaseCollector):
                 return {"success": True, "enqueued_count": 0}
 
             # 4. 작업 큐에 넘겨주기 (RedisQueueManager 사용)
-            # 표준 큐 페이로드 형식: {"items": [...]}로 통일
-            items = [item.model_dump() for item in ohlcv_data]
-            await self.redis_queue_manager.push_batch_task(
-                "ohlcv_data",
-                {"items": items}
-            )
+            if ohlcv_data:
+                # 표준 큐 페이로드 형식: {"items": [...], "metadata": {...}}로 통일
+                # JSON 직렬화를 위해 model_dump_json을 사용하거나, 직접 변환
+                items = [
+                    json.loads(item.model_dump_json()) for item in ohlcv_data
+                ]
+
+                await self.redis_queue_manager.push_batch_task(
+                    "ohlcv_data",
+                    {
+                        "items": items,
+                        "metadata": {
+                            "asset_id": asset_id,
+                            "interval": interval,
+                            "data_type": "ohlcv"
+                        }
+                    }
+                )
+                self.logging_helper.log_debug(f"Successfully enqueued {len(ohlcv_data)} OHLCV records for asset_id {asset_id}.")
+                return {"success": True, "enqueued_count": len(ohlcv_data)}
             
-            self.logging_helper.log_debug(f"Successfully enqueued {len(ohlcv_data)} OHLCV records for asset_id {asset_id}.")
-            return {"success": True, "enqueued_count": len(ohlcv_data)}
+            return {"success": True, "enqueued_count": 0}
 
         except Exception as e:
             self.logging_helper.log_asset_error(asset_id, e)

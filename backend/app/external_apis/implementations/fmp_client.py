@@ -80,10 +80,15 @@ class FMPClient(TradFiAPIClient):
             async with httpx.AsyncClient() as client:
                 base = f"{self.base_url}/historical-price-full/{symbol}?apikey={self.api_key}"
                 if start_date and end_date:
-                    url = f"base&from={start_date}&to={end_date}"
+                    url = f"{base}&from={start_date}&to={end_date}"
                 else:
                     url = f"{base}&limit={limit or 1000}"
-                data = await self._fetch_async(client, url, "FMP", symbol)
+                
+                logger.info(f"[{symbol}] FMP API 호출 시도: {url}")
+                
+                response = await client.get(url, timeout=self.api_timeout)
+                response.raise_for_status()
+                data = response.json()
                 
                 # 응답 데이터가 리스트인지, 딕셔너리 안에 'historical' 키가 있는지 확인
                 historical_data = []

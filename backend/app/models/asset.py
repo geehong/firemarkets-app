@@ -82,6 +82,8 @@ class Asset(Base):
     
     def get_collect_technical_indicators(self):
         return self.get_setting('collect_technical_indicators', False)
+    
+
 
 
 class OHLCVData(Base):

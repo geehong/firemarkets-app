@@ -76,8 +76,8 @@ class StockCollector(BaseCollector):
                     Asset.is_active == True,
                     AssetType.type_name.ilike('Stock'), # Case-insensitive
                     or_(
-                        Asset.collection_settings.contains({"collect_assets_info": True}),
-                        text("JSON_EXTRACT(collection_settings, '$.collect_assets_info') = true")
+                        Asset.collection_settings.contains({"collect_financials": True}),
+                        text("JSON_EXTRACT(collection_settings, '$.collect_financials') = true")
                     )
                 )
             )

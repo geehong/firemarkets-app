@@ -80,8 +80,8 @@ class ETFCollector(BaseCollector):
                     Asset.is_active == True,
                     AssetType.type_name.ilike('ETF'), # Case-insensitive
                     or_(
-                        Asset.collection_settings.contains({"collect_assets_info": True}),
-                        text("JSON_EXTRACT(collection_settings, '$.collect_assets_info') = true")
+                        Asset.collection_settings.contains({"collect_price": True}),
+                        text("JSON_EXTRACT(collection_settings, '$.collect_price') = true")
                     )
                 )
             )
