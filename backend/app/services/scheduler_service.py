@@ -25,7 +25,7 @@ from app.collectors.stock_collector import StockCollector
 from app.collectors.etf_collector import ETFCollector
 from app.collectors.crypto_data_collector import CryptoDataCollector
 from app.collectors.world_assets_collector import WorldAssetsCollector
-from app.collectors.index_collector import IndexCollector
+# from app.collectors.index_collector import IndexCollector  # Temporarily disabled
 
 
 class SchedulerService:
@@ -40,7 +40,6 @@ class SchedulerService:
         "ETFInfo": {"class": ETFCollector, "config_key": "is_etf_collection_enabled"},
         "CryptoInfo": {"class": CryptoDataCollector, "config_key": "is_crypto_collection_enabled"},
         "WorldAssets": {"class": WorldAssetsCollector, "config_key": "is_world_assets_collection_enabled"},
-        "Index": {"class": IndexCollector, "config_key": "is_index_collection_enabled"},
     }
 
     def __init__(self):
@@ -86,7 +85,7 @@ class SchedulerService:
 
         return run_collection_sync
 
-    def setup_jobs(self):
+    def setup_jobs(self, run_immediately: bool | None = None):
         """
         Sets up all data collection jobs based on DB configuration.
         This method is now data-driven via JOB_MAPPING.
@@ -98,7 +97,8 @@ class SchedulerService:
         self.logger.info("Setting up scheduler jobs...")
 
         # Get common scheduling configurations
-        run_immediately = self.config_manager.is_immediate_execution_enabled()
+        if run_immediately is None:
+            run_immediately = self.config_manager.is_immediate_execution_enabled()
         
         for job_name, meta in self.JOB_MAPPING.items():
             collector_class = meta["class"]
@@ -147,10 +147,10 @@ class SchedulerService:
         finally:
             db.close()
 
-    def start_scheduler(self):
+    def start_scheduler(self, run_immediately: bool | None = None):
         """Sets up jobs and starts the scheduler if not already running."""
         if not self.scheduler.running:
-            self.setup_jobs()
+            self.setup_jobs(run_immediately=run_immediately)
             self.scheduler.start()
             self.logger.info("Scheduler started successfully.")
 

@@ -216,9 +216,36 @@ class CRUDOHLCV(CRUDBase[OHLCVData]):
             return 0
         
         added_count = 0
+        updated_count = 0
         
         try:
+            # Coerce timestamp_utc to UTC-naive datetime for MySQL DATETIME compatibility
+            from datetime import datetime, timezone
+            def _normalize_ts(ts_val: Any) -> Any:
+                try:
+                    if isinstance(ts_val, datetime):
+                        if ts_val.tzinfo is not None and ts_val.tzinfo.utcoffset(ts_val) is not None:
+                            ts_val = ts_val.astimezone(timezone.utc).replace(tzinfo=None)
+                        return ts_val.replace(microsecond=0)
+                    # handle strings like '2024-09-05T00:00:00Z' or '2024-09-05 00:00:00+00:00'
+                    s = str(ts_val)
+                    if not s:
+                        return ts_val
+                    if s.endswith('Z'):
+                        s = s[:-1]
+                    s = s.replace('T', ' ')
+                    if '+' in s:
+                        s = s.split('+')[0]
+                    if '.' in s:
+                        s = s.split('.', 1)[0]
+                    return datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    return ts_val
+
             for ohlcv_data in ohlcv_list:
+                # Normalize timestamp before querying/inserting
+                if 'timestamp_utc' in ohlcv_data:
+                    ohlcv_data['timestamp_utc'] = _normalize_ts(ohlcv_data['timestamp_utc'])
                 # Check if record already exists
                 existing = db.query(OHLCVData).filter(
                     and_(
@@ -230,9 +257,13 @@ class CRUDOHLCV(CRUDBase[OHLCVData]):
                 
                 if existing:
                     # Update existing record
+                    updated = False
                     for key, value in ohlcv_data.items():
-                        if hasattr(existing, key):
+                        if hasattr(existing, key) and getattr(existing, key) != value:
                             setattr(existing, key, value)
+                            updated = True
+                    if updated:
+                        updated_count += 1
                 else:
                     # Create new record
                     new_ohlcv = OHLCVData(**ohlcv_data)
@@ -240,7 +271,9 @@ class CRUDOHLCV(CRUDBase[OHLCVData]):
                     added_count += 1
             
             db.commit()
-            return added_count
+            total_count = added_count + updated_count
+            logger.info(f"OHLCV bulk upsert: {added_count} new, {updated_count} updated, total {total_count}")
+            return total_count
             
         except Exception as e:
             logger.error(f"Bulk OHLCV upsert failed: {e}")

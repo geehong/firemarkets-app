@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from app.external_apis.base.tradfi_client import TradFiAPIClient
 from app.external_apis.base.schemas import (
     OhlcvDataPoint, RealtimeQuoteData, CompanyProfileData,
-    StockFinancialsData, TechnicalIndicatorsData
+    StockFinancialsData, StockAnalystEstimatesData, TechnicalIndicatorsData
 )
 from app.external_apis.utils.helpers import safe_float, safe_date_parse
 
@@ -237,6 +237,11 @@ class PolygonClient(TradFiAPIClient):
         except Exception as e:
             logger.error(f"Polygon Stock Financials fetch failed for {symbol}: {e}")
         
+        return None
+
+    async def get_analyst_estimates(self, symbol: str) -> Optional[List[StockAnalystEstimatesData]]:
+        """Polygon does not provide analyst estimates; return None."""
+        logger.warning("PolygonClient has no analyst estimates method")
         return None
 
     async def get_etf_sector_exposure(self, symbol: str) -> Optional[List[Dict[str, Any]]]:

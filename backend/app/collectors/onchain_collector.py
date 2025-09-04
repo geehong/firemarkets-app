@@ -9,11 +9,11 @@ from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 
 from .base_collector import BaseCollector
-from app.models.asset import Asset
-from app.core.config_manager import ConfigManager
-from app.services.api_strategy_manager import ApiStrategyManager
-from app.utils.redis_queue_manager import RedisQueueManager
-from app.external_apis.base.schemas import OnchainMetricDataPoint # 표준 스키마 임포트
+from ..models.asset import Asset
+from ..core.config_manager import ConfigManager
+from ..utils.redis_queue_manager import RedisQueueManager
+from ..services.api_strategy_manager import ApiStrategyManager
+from ..external_apis.base.schemas import OnchainMetricDataPoint # 표준 스키마 임포트
 
 logger = logging.getLogger(__name__)
 
@@ -100,19 +100,36 @@ class OnchainCollector(BaseCollector):
                 return {"success": True, "enqueued_count": 0}
 
             # 4. 작업 큐에 넘겨주기 (RedisQueueManager 사용)
-            # 표준 큐 페이로드: {"items": [...]}로 통일
-            items = [
-                {
-                    **item.model_dump(),
-                    "asset_id": self.bitcoin_asset_id,
-                    "metric_name": metric_name,
-                }
-                for item in metric_data
-            ]
-            await self.redis_queue_manager.push_batch_task("onchain_metric", {"items": items})
+            payload = {
+                "asset_id": self.bitcoin_asset_id,
+                "metric_name": metric_name,
+                "data": []
+            }
             
-            self.logging_helper.log_debug(f"Successfully enqueued {len(metric_data)} records for onchain metric '{metric_name}'.")
-            return {"success": True, "enqueued_count": len(metric_data)}
+            # metric_data가 리스트인지 확인하고 각 항목을 처리
+            if isinstance(metric_data, list):
+                for item in metric_data:
+                    if hasattr(item, 'model_dump'):
+                        # Pydantic 모델인 경우
+                        payload["data"].append(item.model_dump(mode='json'))
+                    elif isinstance(item, dict):
+                        # 딕셔너리인 경우
+                        payload["data"].append(item)
+                    else:
+                        # 문자열이나 다른 타입인 경우 건너뛰기
+                        self.logging_helper.log_warning(f"Skipping non-dict item for metric '{metric_name}': {type(item)}")
+                        continue
+            else:
+                self.logging_helper.log_warning(f"Unexpected metric_data type for '{metric_name}': {type(metric_data)}")
+                return {"success": False, "error": f"Unexpected data type: {type(metric_data)}", "enqueued_count": 0}
+            
+            if payload["data"]:
+                await self.redis_queue_manager.push_batch_task("onchain_metric", payload)
+                self.logging_helper.log_debug(f"Successfully enqueued {len(payload['data'])} records for onchain metric '{metric_name}'.")
+                return {"success": True, "enqueued_count": len(payload["data"])}
+            else:
+                self.logging_helper.log_debug(f"No valid items to enqueue for onchain metric '{metric_name}'.")
+                return {"success": True, "enqueued_count": 0}
 
         except Exception as e:
             self.logging_helper.log_error(f"Failed to process onchain metric '{metric_name}' for asset_id {self.bitcoin_asset_id}: {e}")

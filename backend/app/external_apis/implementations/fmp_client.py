@@ -12,6 +12,7 @@ from app.external_apis.base.schemas import (
     OhlcvDataPoint,
     CompanyProfileData,
     StockFinancialsData,
+    StockAnalystEstimatesData,
     RealtimeQuoteData,
     TechnicalIndicatorsData,
     EtfSectorExposureData
@@ -246,58 +247,102 @@ class FMPClient(TradFiAPIClient):
         return None
     
     async def get_stock_financials(self, symbol: str) -> Optional[StockFinancialsData]:
-        """Get stock financial data from FMP"""
+        """Get stock financial data from FMP (profile-symbol spec)."""
         if not self.api_key:
             raise ValueError("No FMP API key configured")
-        
+
         try:
             async with httpx.AsyncClient() as client:
-                # FMP Quote API for financial metrics
-                url = f"{self.base_url}/quote/{symbol}?apikey={self.api_key}"
-                quote_data = await self._fetch_async(client, url, "FMP Quote", symbol)
-                
-                # FMP Profile API for additional financial data
-                profile_url = f"{self.base_url}/profile/{symbol}?apikey={self.api_key}"
-                profile_data = await self._fetch_async(client, profile_url, "FMP Profile", symbol)
-                
-                # Process quote data
-                quote = None
-                if isinstance(quote_data, list) and len(quote_data) > 0:
-                    quote = quote_data[0]
-                elif isinstance(quote_data, dict):
-                    quote = quote_data
-                
-                # Process profile data
-                profile = None
-                if isinstance(profile_data, list) and len(profile_data) > 0:
-                    profile = profile_data[0]
-                elif isinstance(profile_data, dict):
-                    profile = profile_data
-                
-                # FMP 데이터를 표준 구조로 변환
+                url = f"{self.base_url}/profile/{symbol}?apikey={self.api_key}"
+                data = await self._fetch_async(client, url, "FMP Profile", symbol)
+
+                if isinstance(data, list) and len(data) > 0:
+                    raw = data[0]
+                elif isinstance(data, dict) and data.get('symbol'):
+                    raw = data
+                else:
+                    return None
+
+                # 일부 키는 프로필 응답에서 대체 키로 제공됨(mktCap 등)
                 financials = StockFinancialsData(
                     symbol=symbol,
-                    market_cap=safe_float(quote.get("marketCap")) if quote else None,
-                    pe_ratio=safe_float(quote.get("pe")) if quote else None,
-                    eps=safe_float(quote.get("eps")) if quote else None,
-                    dividend_yield=safe_float(quote.get("dividendYield")) if quote else None,
-                    dividend_per_share=safe_float(quote.get("lastDiv")) if quote else None,
-                    beta=safe_float(profile.get("beta")) if profile else None,
-                    peg_ratio=safe_float(profile.get("peg")) if profile else None,
-                    price_to_book_ratio=safe_float(profile.get("priceToBookRatio")) if profile else None,
-                    profit_margin_ttm=safe_float(profile.get("profitMargin")) if profile else None,
-                    return_on_equity_ttm=safe_float(profile.get("returnOnEquity")) if profile else None,
-                    revenue_ttm=safe_float(profile.get("revenueTTM")) if profile else None,
-                    ebitda=None,  # FMP에서 제공하지 않음
-                    shares_outstanding=safe_float(profile.get("sharesOutstanding")) if profile else None,
-                    currency=quote.get("currency", "USD") if quote else "USD",
+                    market_cap=safe_float(raw.get("marketCap", raw.get("mktCap"))),
+                    pe_ratio=safe_float(raw.get("pe")),
+                    eps=safe_float(raw.get("eps")),
+                    dividend_yield=safe_float(raw.get("dividendYield")),
+                    dividend_per_share=safe_float(raw.get("lastDividend", raw.get("lastDiv"))),
+                    beta=safe_float(raw.get("beta")),
+                    peg_ratio=safe_float(raw.get("pegRatio", raw.get("peg"))),
+                    price_to_book_ratio=safe_float(raw.get("priceToBookRatio")),
+                    profit_margin_ttm=safe_float(raw.get("profitMargin")),
+                    return_on_equity_ttm=safe_float(raw.get("returnOnEquity")),
+                    revenue_ttm=safe_float(raw.get("revenueTTM")),
+                    ebitda=safe_float(raw.get("ebitda")),
+                    shares_outstanding=safe_float(raw.get("sharesOutstanding")),
+                    currency=raw.get("currency", "USD"),
                     snapshot_date=datetime.now(),
-                    timestamp_utc=datetime.now()
+                    timestamp_utc=datetime.now(),
                 )
-                
+
                 return financials
-                
+
         except Exception as e:
             logger.error(f"FMP Stock Financials fetch failed for {symbol}: {e}")
-        
-        return None
+            return None
+
+    async def get_analyst_estimates(self, symbol: str) -> Optional[List[StockAnalystEstimatesData]]:
+        """Get analyst estimates from FMP and map to DB schema fields.
+
+        Returns a list of StockAnalystEstimatesData with fields:
+        - revenue_low/high/avg, ebitda_avg, eps_avg/high/low,
+          revenue_analysts_count, eps_analysts_count, fiscal_date
+        """
+        if not self.api_key:
+            raise ValueError("No FMP API key configured")
+
+        try:
+            async with httpx.AsyncClient() as client:
+                # Use the stable analyst-estimates endpoint per FMP docs
+                url = f"https://financialmodelingprep.com/stable/analyst-estimates?symbol={symbol}&period=annual&limit=10&apikey={self.api_key}"
+                data = await self._fetch_async(client, url, "FMP Analyst Estimates", symbol)
+
+                if not isinstance(data, list) or not data:
+                    return None
+
+                results: List[StockAnalystEstimatesData] = []
+                from app.external_apis.base.schemas import StockAnalystEstimatesData as Est
+                from datetime import datetime
+
+                for row in data:
+                    if not isinstance(row, dict):
+                        continue
+                    # Parse fiscal date
+                    fd = row.get("date") or row.get("fiscalDate")
+                    fiscal_date = None
+                    if isinstance(fd, str) and fd:
+                        try:
+                            fiscal_date = datetime.strptime(fd.split("T")[0], "%Y-%m-%d").date()
+                        except Exception:
+                            fiscal_date = None
+
+                    est = Est(
+                        symbol=symbol,
+                        revenue_low=row.get("revenueLow"),
+                        revenue_high=row.get("revenueHigh"),
+                        revenue_avg=row.get("revenueAvg"),
+                        ebitda_avg=row.get("ebitdaAvg"),
+                        eps_avg=row.get("epsAvg"),
+                        eps_high=row.get("epsHigh"),
+                        eps_low=row.get("epsLow"),
+                        revenue_analysts_count=row.get("numAnalystsRevenue"),
+                        eps_analysts_count=row.get("numAnalystsEps"),
+                        fiscal_date=fiscal_date,
+                        timestamp_utc=datetime.utcnow(),
+                    )
+                    results.append(est)
+
+                return results or None
+
+        except Exception as e:
+            logger.error(f"FMP Analyst Estimates fetch failed for {symbol}: {e}")
+            return None

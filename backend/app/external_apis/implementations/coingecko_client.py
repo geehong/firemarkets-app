@@ -213,3 +213,4 @@ class CoinGeckoClient(CryptoAPIClient):
         
         return ((close - open_price) / open_price) * 100
 
+

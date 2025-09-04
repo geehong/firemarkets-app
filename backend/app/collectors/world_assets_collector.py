@@ -18,6 +18,9 @@ from ..models.world_assets import WorldAssetsRanking, BondMarketData, ScrapingLo
 from ..models.asset import Asset
 from ..utils.retry import retry_with_backoff, classify_api_error, TransientAPIError, PermanentAPIError
 from ..services.api_strategy_manager import api_manager
+from ..core.config_manager import ConfigManager
+from ..utils.redis_queue_manager import RedisQueueManager
+from ..services.api_strategy_manager import ApiStrategyManager
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +45,14 @@ class AssetData:
 class WorldAssetsCollector(BaseCollector):
     """세계 자산 데이터 수집 및 처리 서비스"""
     
-    def __init__(self, db: Session = None):
-        super().__init__(db)
+    def __init__(
+        self,
+        db: Session,
+        config_manager: ConfigManager,
+        api_manager: ApiStrategyManager,
+        redis_queue_manager: RedisQueueManager,
+    ):
+        super().__init__(db, config_manager, api_manager, redis_queue_manager)
         self.companies_marketcap_url = "https://companiesmarketcap.com/assets-by-market-cap/"
         self.bis_url = "https://www.bis.org/statistics/totcredit/q_data.csv"
         self.headers = {
@@ -55,10 +64,7 @@ class WorldAssetsCollector(BaseCollector):
         try:
             # World assets collection은 전역적으로 실행 (개별 자산 설정 없음)
             # 하지만 향후 개별 설정이 필요할 수 있으므로 구조는 유지
-            await self.safe_emit('scheduler_log', {
-                'message': "세계 자산 데이터 수집 시작 (전역 설정)", 
-                'type': 'info'
-            })
+            self.logging_helper.log_info("세계 자산 데이터 수집 시작 (전역 설정)")
             
             result = await self._collect_data()
             
@@ -71,7 +77,7 @@ class WorldAssetsCollector(BaseCollector):
             return result
             
         except Exception as e:
-            self.log_progress(f"World assets collection with settings failed: {e}", "error")
+            self.logging_helper.log_error(f"World assets collection with settings failed: {e}")
             raise
     
     async def _collect_data(self) -> Dict[str, Any]:
@@ -80,7 +86,7 @@ class WorldAssetsCollector(BaseCollector):
         scraping_log = None
         
         try:
-            self.log_progress("Starting world assets data collection process")
+            self.logging_helper.log_info("Starting world assets data collection process")
             
             # 스크래핑 로그 시작
             scraping_log = self._create_scraping_log("world_assets_ranking", "running")
@@ -119,7 +125,7 @@ class WorldAssetsCollector(BaseCollector):
                 execution_time = (end_time - start_time).total_seconds()
                 self._update_scraping_log(scraping_log, "failed", 0, 0, str(e), execution_time)
             
-            self.log_progress(f"World assets collection failed: {str(e)}", "error")
+            self.logging_helper.log_error(f"World assets collection failed: {str(e)}")
             return {
                 'success': False,
                 'error': str(e),
@@ -131,7 +137,7 @@ class WorldAssetsCollector(BaseCollector):
         all_assets = []
         
         try:
-            self.log_progress("Scraping main page from companiesmarketcap.com")
+            self.logging_helper.log_info("Scraping main page from companiesmarketcap.com")
             
             # HTML 응답을 위한 별도 처리
             import requests
@@ -142,7 +148,7 @@ class WorldAssetsCollector(BaseCollector):
             table = soup.find('table')
                 
             if not table:
-                self.log_progress("No table found on main page", "warning")
+                self.logging_helper.log_warning("No table found on main page")
                 return all_assets
             
             rows = table.find_all('tr')[1:]  # 헤더 제외
@@ -153,14 +159,14 @@ class WorldAssetsCollector(BaseCollector):
                     if asset_data:
                         all_assets.append(asset_data)
                 except Exception as e:
-                    self.log_progress(f"Error parsing row: {e}", "error")
+                    self.logging_helper.log_error(f"Error parsing row: {e}")
                     continue
                 
         except Exception as e:
-            self.log_progress(f"Error scraping companiesmarketcap.com: {e}", "error")
+            self.logging_helper.log_error(f"Error scraping companiesmarketcap.com: {e}")
             raise
         
-        self.log_progress(f"Successfully scraped {len(all_assets)} assets from main page")
+        self.logging_helper.log_info(f"Successfully scraped {len(all_assets)} assets from main page")
         return all_assets
     
     def _parse_asset_row(self, row, rank: int) -> Optional[AssetData]:
@@ -226,7 +232,7 @@ class WorldAssetsCollector(BaseCollector):
             )
                         
         except Exception as e:
-            self.log_progress(f"Error parsing asset row: {e}", "error")
+            self.logging_helper.log_error(f"Error parsing asset row: {e}")
             return None
 
     def _parse_market_cap(self, market_cap_str: str) -> Optional[float]:
@@ -249,7 +255,7 @@ class WorldAssetsCollector(BaseCollector):
             
             return value
         except Exception as e:
-            self.log_progress(f"Error parsing market cap '{market_cap_str}': {e}", "error")
+            self.logging_helper.log_error(f"Error parsing market cap '{market_cap_str}': {e}")
             return None
     
     def _parse_price(self, price_str: str) -> Optional[float]:
@@ -261,7 +267,7 @@ class WorldAssetsCollector(BaseCollector):
             price_str = price_str.replace('$', '').replace(',', '')
             return float(price_str)
         except Exception as e:
-            self.log_progress(f"Error parsing price '{price_str}': {e}", "error")
+            self.logging_helper.log_error(f"Error parsing price '{price_str}': {e}")
             return None
 
     def _parse_change_percent(self, change_str: str) -> Optional[float]:
@@ -273,7 +279,7 @@ class WorldAssetsCollector(BaseCollector):
             change_str = change_str.replace('%', '').replace(',', '')
             return float(change_str)
         except Exception as e:
-            self.log_progress(f"Error parsing change percent '{change_str}': {e}", "error")
+            self.logging_helper.log_error(f"Error parsing change percent '{change_str}': {e}")
             return None
     
     def _classify_asset(self, name: str, ticker: str) -> str:
@@ -361,14 +367,14 @@ class WorldAssetsCollector(BaseCollector):
                 
                 country = stock_profile.country if stock_profile else 'Unknown'
                 
-                self.log_progress(f"Matched {name} ({ticker}) -> {db_asset.name} ({db_asset.ticker})")
+                self.logging_helper.log_info(f"Matched {name} ({ticker}) -> {db_asset.name} ({db_asset.ticker})")
                 return {
                     'country': country,
                     'asset_type_id': db_asset.asset_type_id,
                     'asset_id': db_asset.asset_id
                 }
             
-            self.log_progress(f"No match found for {name} ({ticker})", "warning")
+            self.logging_helper.log_warning(f"No match found for {name} ({ticker})")
             return {
                 'country': 'Unknown',
                 'asset_type_id': None,
@@ -376,7 +382,7 @@ class WorldAssetsCollector(BaseCollector):
             }
             
         except Exception as e:
-            self.log_progress(f"Error enriching asset data: {e}", "error")
+            self.logging_helper.log_error(f"Error enriching asset data: {e}")
             return {
                 'country': 'Unknown',
                 'asset_type_id': None,
@@ -400,7 +406,7 @@ class WorldAssetsCollector(BaseCollector):
     async def get_bis_bond_data(self) -> Optional[Dict[str, Any]]:
         """BIS에서 글로벌 채권 시장 규모 데이터 수집"""
         try:
-            self.log_progress("Fetching BIS bond market data")
+            self.logging_helper.log_info("Fetching BIS bond market data")
             
             response = requests.get(self.bis_url, headers=self.headers, timeout=30)
             response.raise_for_status()
@@ -412,7 +418,7 @@ class WorldAssetsCollector(BaseCollector):
             total_row = df[df['Title'].str.contains('Total debt securities', na=False)]
             
             if total_row.empty:
-                self.log_progress("No total debt securities data found in BIS CSV", "warning")
+                self.logging_helper.log_warning("No total debt securities data found in BIS CSV")
                 return None
             
             # 최신 분기 데이터 가져오기
@@ -429,7 +435,7 @@ class WorldAssetsCollector(BaseCollector):
             }
             
         except Exception as e:
-            self.log_progress(f"Error fetching BIS bond data: {e}", "error")
+            self.logging_helper.log_error(f"Error fetching BIS bond data: {e}")
             return None
 
     def _update_assets_database(self, assets_data: List[AssetData]) -> int:
@@ -444,7 +450,7 @@ class WorldAssetsCollector(BaseCollector):
             ).count()
             
             if existing_today_data > 0:
-                self.log_progress(f"Today's data already exists ({existing_today_data} records). Skipping insertion.")
+                self.logging_helper.log_warning(f"Today's data already exists ({existing_today_data} records). Skipping insertion.")
                 return existing_today_data
             
             # 새 데이터 삽입 (히스토리 보존)
@@ -467,12 +473,12 @@ class WorldAssetsCollector(BaseCollector):
                 inserted_count += 1
             
             db.commit()
-            self.log_progress(f"Successfully inserted {inserted_count} new assets for {today}")
+            self.logging_helper.log_info(f"Successfully inserted {inserted_count} new assets for {today}")
             return inserted_count
             
         except Exception as e:
             db.rollback()
-            self.log_progress(f"Error updating assets database: {e}", "error")
+            self.logging_helper.log_error(f"Error updating assets database: {e}")
             raise
     
     def _update_bond_market_database(self, bond_data: Dict[str, Any]) -> int:
@@ -497,12 +503,12 @@ class WorldAssetsCollector(BaseCollector):
             db.add(db_bond)
             
             db.commit()
-            self.log_progress("Successfully updated bond market data in database")
+            self.logging_helper.log_info("Successfully updated bond market data in database")
             return 1
             
         except Exception as e:
             db.rollback()
-            self.log_progress(f"Error updating bond market database: {e}", "error")
+            self.logging_helper.log_error(f"Error updating bond market database: {e}")
             raise
 
     def _create_scraping_log(self, source: str, status: str) -> ScrapingLogs:
@@ -518,7 +524,7 @@ class WorldAssetsCollector(BaseCollector):
             db.commit()
             return scraping_log
         except Exception as e:
-            self.log_progress(f"Error creating scraping log: {e}", "error")
+            self.logging_helper.log_error(f"Error creating scraping log: {e}")
             return None
 
     def _update_scraping_log(self, scraping_log: ScrapingLogs, status: str, 
@@ -538,7 +544,7 @@ class WorldAssetsCollector(BaseCollector):
             scraping_log.completed_at = datetime.now()
             
             db.commit()
-            self.log_progress(f"Scraping log updated: {status}, {records_successful} records processed")
+            self.logging_helper.log_info(f"Scraping log updated: {status}, {records_successful} records processed")
             
         except Exception as e:
-            self.log_progress(f"Error updating scraping log: {e}", "error") 
+            self.logging_helper.log_error(f"Error updating scraping log: {e}") 

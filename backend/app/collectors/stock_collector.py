@@ -67,24 +67,28 @@ class StockCollector(BaseCollector):
         }
 
     def _get_target_asset_ids(self) -> List[int]:
-        """Fetches the IDs of stock assets that are configured for collection."""
+        """수집할 주식 자산 ID 목록을 반환합니다."""
         try:
-            query = (
+            assets = (
                 self.db.query(Asset.asset_id)
                 .join(AssetType)
                 .filter(
                     Asset.is_active == True,
-                    AssetType.type_name.ilike('Stock'), # Case-insensitive
+                    AssetType.type_name.ilike('%Stock%'),
                     or_(
                         Asset.collection_settings.contains({"collect_financials": True}),
-                        text("JSON_EXTRACT(collection_settings, '$.collect_financials') = true")
+                        Asset.collection_settings.contains({"collect_estimates": True}),
+                        Asset.collection_settings.contains({"collect_assets_info": True}),
+                        text("JSON_EXTRACT(collection_settings, '$.collect_financials') = true"),
+                        text("JSON_EXTRACT(collection_settings, '$.collect_estimates') = true"),
+                        text("JSON_EXTRACT(collection_settings, '$.collect_assets_info') = true")
                     )
                 )
+                .all()
             )
-            asset_id_tuples = query.all()
-            return [asset_id for (asset_id,) in asset_id_tuples]
+            return [asset.asset_id for asset in assets]
         except Exception as e:
-            self.logging_helper.log_error(f"Failed to fetch target stock asset IDs: {e}")
+            self.logging_helper.log_error(f"Error getting target asset IDs: {e}")
             return []
 
     async def _fetch_and_enqueue_for_asset(self, asset_id: int) -> Dict[str, Any]:
@@ -102,34 +106,29 @@ class StockCollector(BaseCollector):
 
             profile_data, financials_data, estimates_data = results
             
-            # Process and enqueue profile data (standard payload: {"items": [...]})
+            # Process and enqueue profile data
             if isinstance(profile_data, schemas.CompanyProfileData):
-                await self.redis_queue_manager.push_batch_task(
-                    "stock_profile",
-                    {"items": [profile_data.model_dump()]}
-                )
+                payload = {"asset_id": asset_id, "data": profile_data.model_dump(mode='json')}
+                await self.redis_queue_manager.push_batch_task("stock_profile", payload)
                 enqueued_count += 1
             elif isinstance(profile_data, Exception):
                 self.logging_helper.log_asset_error(asset_id, profile_data, context="fetching profile")
 
             # Process and enqueue financials data
             if isinstance(financials_data, schemas.StockFinancialsData):
-                await self.redis_queue_manager.push_batch_task(
-                    "stock_financials",
-                    {"items": [financials_data.model_dump()]}
-                )
+                payload = {"asset_id": asset_id, "data": financials_data.model_dump(mode='json')}
+                await self.redis_queue_manager.push_batch_task("stock_financials", payload)
                 enqueued_count += 1
             elif isinstance(financials_data, Exception):
                  self.logging_helper.log_asset_error(asset_id, financials_data, context="fetching financials")
 
-            # Process and enqueue estimates data (batch items)
+            # Process and enqueue estimates data
             if isinstance(estimates_data, list) and estimates_data:
-                items = [estimate.model_dump() for estimate in estimates_data]
-                await self.redis_queue_manager.push_batch_task(
-                    "stock_estimate",
-                    {"items": items}
-                )
-                enqueued_count += len(items)
+                # Estimates can be a list of multiple periods
+                for estimate in estimates_data:
+                    payload = {"asset_id": asset_id, "data": estimate.model_dump(mode='json')}
+                    await self.redis_queue_manager.push_batch_task("stock_estimate", payload)
+                    enqueued_count += 1
             elif isinstance(estimates_data, Exception):
                  self.logging_helper.log_asset_error(asset_id, estimates_data, context="fetching estimates")
 

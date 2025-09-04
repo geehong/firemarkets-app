@@ -13,9 +13,10 @@ import backoff
 from sqlalchemy.orm import Session
 
 from .base_collector import BaseCollector
-from ..core.config import GLOBAL_APP_CONFIGS
-from ..models.asset import Asset
-from ..crud.asset import crud_asset
+from app.models.asset import Asset
+from app.core.config_manager import ConfigManager
+from app.services.api_strategy_manager import ApiStrategyManager
+from app.utils.redis_queue_manager import RedisQueueManager
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +24,14 @@ logger = logging.getLogger(__name__)
 class TechnicalCollector(BaseCollector):
     """Collects technical indicators from various APIs"""
     
-    def __init__(self, db: Session = None):
-        super().__init__(db)
-        from ..core.config import GLOBAL_APP_CONFIGS
-        self.api_timeout = GLOBAL_APP_CONFIGS.get("API_REQUEST_TIMEOUT_SECONDS", 30)
-        self.max_retries = GLOBAL_APP_CONFIGS.get("MAX_API_RETRY_ATTEMPTS", 3)
+    def __init__(
+        self,
+        db: Session,
+        config_manager: ConfigManager,
+        api_manager: ApiStrategyManager,
+        redis_queue_manager: RedisQueueManager,
+    ):
+        super().__init__(db, config_manager, api_manager, redis_queue_manager)
     
     async def _collect_data(self) -> Dict[str, Any]:
         """Collect technical indicators for all FMP assets"""

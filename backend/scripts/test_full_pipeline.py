@@ -15,13 +15,13 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 # Collector imports (선택적으로 활성화/비활성화 가능)
 from app.collectors.ohlcv_collector import OHLCVCollector
-# from app.collectors.stock_collector import StockCollector  # disabled during v2 transition
-# from app.collectors.etf_collector import ETFCollector  # disabled during v2 transition
-# from app.collectors.crypto_data_collector import CryptoDataCollector  # disabled during v2 transition
-# from app.collectors.onchain_collector import OnchainCollector  # disabled during v2 transition
-# from app.collectors.index_collector import IndexCollector  # disabled during v2 transition
-# from app.collectors.technical_collector import TechnicalCollector  # disabled during v2 transition
-# from app.collectors.world_assets_collector import WorldAssetsCollector  # disabled during v2 transition
+from app.collectors.stock_collector import StockCollector  # disabled during v2 transition
+from app.collectors.etf_collector import ETFCollector  # disabled during v2 transition
+from app.collectors.crypto_data_collector import CryptoDataCollector  # disabled during v2 transition
+from app.collectors.onchain_collector import OnchainCollector  # disabled during v2 transition
+from app.collectors.index_collector import IndexCollector  # disabled during v2 transition
+from app.collectors.technical_collector import TechnicalCollector  # disabled during v2 transition
+from app.collectors.world_assets_collector import WorldAssetsCollector  # disabled during v2 transition
 
 from app.services.data_processor import DataProcessor
 from app.core.database import SessionLocal, get_db
@@ -175,130 +175,157 @@ async def main():
             ],
             'intervals': ["1d", "4h"]
         },
-        # 'StockCollector': {
-        #     'class': StockCollector,
-        #     'assets': [
-        #         {"id": 8, "ticker": "AAPL", "type": "Stock", "description": "Apple Inc."},
-        #     ],
-        #     'intervals': ["1d"]
-        # },
-        # 'ETFCollector': {
-        #     'class': ETFCollector,
-        #     'assets': [
-        #         {"id": 4, "ticker": "SPY", "type": "ETF", "description": "SPDR S&P 500 ETF Trust"},
-        #     ],
-        #     'intervals': ["1d"]
-        # },
-        # 'CryptoDataCollector': {
-        #     'class': CryptoDataCollector,
-        #     'assets': [
-        #         {"id": 1, "ticker": "BTCUSDT", "type": "Crypto", "description": "Bitcoin"},
-        #     ],
-        #     'intervals': ["1d"]
-        # },
-        # 'OnchainCollector': {
-        #     'class': OnchainCollector,
-        #     'assets': [
-        #         {"id": 1, "ticker": "BTCUSDT", "type": "Crypto", "description": "Bitcoin"},
-        #     ],
-        #     'intervals': ["1d"]
-        # },
-    }
+        'StockCollector': {
+            'class': StockCollector,
+            'assets': [
+                {"id": 8, "ticker": "AAPL", "type": "Stock", "description": "Apple Inc."},
+            ],
+            'intervals': ["1d"]
+        },
+        'ETFCollector': {
+            'class': ETFCollector,
+            'assets': [
+                {"id": 4, "ticker": "SPY", "type": "ETF", "description": "SPDR S&P 500 ETF Trust"},
+            ],
+            'intervals': ["1d"]
+        },
+        'CryptoDataCollector': {
+            'class': CryptoDataCollector,
+            'assets': [
+                {"id": 1, "ticker": "BTCUSDT", "type": "Crypto", "description": "Bitcoin"},
+            ],
+            'intervals': ["1d"]
+        },
+        'OnchainCollector': {
+            'class': OnchainCollector,
+            'assets': [
+                {"id": 1, "ticker": "BTCUSDT", "type": "Crypto", "description": "Bitcoin MVRV-Z-Score"},
+            ],
+            'intervals': ["1d"],
+            'metrics': ["mvrv_z_score"]
+        },
+        'WorldAssetsCollector': {
+            'class': WorldAssetsCollector,
+            'assets': [
+                {"id": 1, "ticker": "BTCUSDT", "type": "Crypto", "description": "Bitcoin"},
+            ],
+            'intervals': ["1d"]
+        },
+    } 
     
-    # 테스트할 Collector 선택 (명령행 인자로 받거나 기본값 사용)
+    # 테스트할 Collector 선택 (명령행 인자로 받거나 모든 수집기 테스트)
     import sys
     if len(sys.argv) > 1:
-        collector_name = sys.argv[1]
+        if sys.argv[1] == 'ALL':
+            # 모든 수집기 테스트
+            collectors_to_test = list(available_collectors.keys())
+        else:
+            collectors_to_test = [sys.argv[1]]
     else:
-        collector_name = 'OHLCVCollector'  # 기본값
+        collectors_to_test = ['OHLCVCollector']  # 기본값
     
-    if collector_name not in available_collectors:
-        logger.error(f"Unknown collector: {collector_name}. Available: {list(available_collectors.keys())}")
+    # 존재하지 않는 수집기 필터링
+    valid_collectors = [name for name in collectors_to_test if name in available_collectors]
+    if not valid_collectors:
+        logger.error(f"Unknown collector(s): {collectors_to_test}. Available: {list(available_collectors.keys())}")
         return
     
-    collector_config = available_collectors[collector_name]
-    test_assets = collector_config['assets']
-    test_intervals = collector_config['intervals']
-    
-    logger.info(f"테스트할 Collector: {collector_name}")
-    logger.info(f"테스트할 자산 수: {len(test_assets)}개")
-    logger.info(f"테스트할 간격: {test_intervals}")
+    logger.info(f"테스트할 Collector들: {valid_collectors}")
+    logger.info(f"총 {len(valid_collectors)}개 수집기 테스트 예정")
 
     try:
-        # 각 간격별로 테스트 실행
-        for test_interval in test_intervals:
+        # 각 수집기별로 테스트 실행
+        for collector_name in valid_collectors:
+            collector_config = available_collectors[collector_name]
+            test_assets = collector_config['assets']
+            test_intervals = collector_config['intervals']
+            
             logger.info(f"\n{'='*60}")
-            logger.info(f"📊 간격 테스트 시작: {test_interval}")
+            logger.info(f"🔧 수집기 테스트 시작: {collector_name}")
             logger.info(f"{'='*60}")
+            logger.info(f"테스트할 자산 수: {len(test_assets)}개")
+            logger.info(f"테스트할 간격: {test_intervals}")
             
-            for asset_info in test_assets:
-                test_asset_id = asset_info["id"]
-                ticker = asset_info["ticker"]
-                asset_type = asset_info["type"]
-                description = asset_info["description"]
+            # 각 간격별로 테스트 실행
+            for test_interval in test_intervals:
+                logger.info(f"\n{'='*40}")
+                logger.info(f"📊 간격 테스트 시작: {test_interval}")
+                logger.info(f"{'='*40}")
                 
-                logger.info(f"\n{'='*20} 자산 테스트 시작: {ticker} (ID: {test_asset_id}) {'='*20}")
-                logger.info(f"자산 정보: {description} ({asset_type})")
-                logger.info(f"테스트 간격: {test_interval}")
-                logger.info(f"테스트 시작 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                for asset_info in test_assets:
+                    test_asset_id = asset_info["id"]
+                    ticker = asset_info["ticker"]
+                    asset_type = asset_info["type"]
+                    description = asset_info["description"]
+                    
+                    logger.info(f"\n{'='*20} 자산 테스트 시작: {ticker} (ID: {test_asset_id}) {'='*20}")
+                    logger.info(f"자산 정보: {description} ({asset_type})")
+                    logger.info(f"테스트 간격: {test_interval}")
+                    logger.info(f"테스트 시작 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-                # --- 1. 자산 정보 확인 ---
-                logger.info(f"--- 1단계: 자산 정보 확인 ---")
-                await check_asset_info(db, test_asset_id, ticker, asset_type)
+                    # --- 1. 자산 정보 확인 ---
+                    logger.info(f"--- 1단계: 자산 정보 확인 ---")
+                    await check_asset_info(db, test_asset_id, ticker, asset_type)
 
-                # --- 2. 데이터 수집 및 큐 저장 테스트 ---
-                logger.info(f"--- 2단계: 자산 ID {test_asset_id}에 대한 데이터 수집 및 큐 저장 ---")
-                collector = collector_config['class'](db, config_manager, api_manager, redis_queue_manager)
+                    # --- 2. 데이터 수집 및 큐 저장 테스트 ---
+                    logger.info(f"--- 2단계: 자산 ID {test_asset_id}에 대한 데이터 수집 및 큐 저장 ---")
+                    collector = collector_config['class'](db, config_manager, api_manager, redis_queue_manager)
+                    
+                    # 특정 자산에 대한 데이터 수집 실행
+                    if collector_name == 'OHLCVCollector':
+                        result = await collector._fetch_and_enqueue_for_asset(test_asset_id, test_interval)
+                    else:
+                        # 다른 Collector들은 collect_with_settings() 사용
+                        result = await collector.collect_with_settings()
+                    
+                    if not result.get("success"):
+                        logger.error(f"데이터 수집 실패: {result.get('error')}")
+                        continue # 다음 자산으로 넘어감
+
+                    enqueued_count = result.get("enqueued_count", 0)
+                    if enqueued_count == 0:
+                        logger.warning("큐에 추가된 데이터가 없습니다. (이미 최신 데이터일 수 있음)")
+                    else:
+                        logger.info(f"✅ {enqueued_count}개의 레코드가 Redis 큐에 성공적으로 추가되었습니다.")
+
+                    # 큐에 데이터가 들어갔는지 확인
+                    queue_size = await redis_queue_manager.get_queue_size()
+                    logger.info(f"현재 Redis 'batch_data_queue'의 작업 개수: {queue_size}")
+                    if queue_size == 0:
+                        logger.warning("큐가 비어있어 데이터 처리 단계를 건너뜁니다.")
+                        continue # 다음 자산으로 넘어감
+
+                    # --- 3. 데이터 처리 및 DB 저장 테스트 ---
+                    logger.info("--- 3단계: 데이터 처리 및 DB 저장 (5초 후 시작) ---")
+                    await asyncio.sleep(5)
+                    
+                    processor = DataProcessor()
+                    await processor._connect_redis()
+                    
+                    # 큐에 있는 모든 작업을 처리
+                    processed_count = await processor._process_batch_queue()
+                    
+                    logger.info(f"✅ {processed_count}개의 배치 작업을 처리했습니다.")
+
+                    # --- 4. DB 저장 결과 확인 ---
+                    logger.info(f"--- 4단계: DB 저장 결과 확인 ---")
+                    await check_db_results(db, test_asset_id, ticker, enqueued_count)
+
+                    logger.info(f"--- 자산 테스트 종료: {ticker} ---")
                 
-                # 특정 자산에 대한 데이터 수집 실행
-                if collector_name == 'OHLCVCollector':
-                    result = await collector._fetch_and_enqueue_for_asset(test_asset_id, test_interval)
-                else:
-                    # 다른 Collector들은 collect_with_settings() 사용
-                    result = await collector.collect_with_settings()
-                
-                if not result.get("success"):
-                    logger.error(f"데이터 수집 실패: {result.get('error')}")
-                    continue # 다음 자산으로 넘어감
-
-                enqueued_count = result.get("enqueued_count", 0)
-                if enqueued_count == 0:
-                    logger.warning("큐에 추가된 데이터가 없습니다. (이미 최신 데이터일 수 있음)")
-                else:
-                    logger.info(f"✅ {enqueued_count}개의 레코드가 Redis 큐에 성공적으로 추가되었습니다.")
-
-                # 큐에 데이터가 들어갔는지 확인
-                queue_size = await redis_queue_manager.get_queue_size()
-                logger.info(f"현재 Redis 'batch_data_queue'의 작업 개수: {queue_size}")
-                if queue_size == 0:
-                    logger.warning("큐가 비어있어 데이터 처리 단계를 건너뜁니다.")
-                    continue # 다음 자산으로 넘어감
-
-                # --- 3. 데이터 처리 및 DB 저장 테스트 ---
-                logger.info("--- 3단계: 데이터 처리 및 DB 저장 (5초 후 시작) ---")
-                await asyncio.sleep(5)
-                
-                processor = DataProcessor()
-                await processor._connect_redis()
-                
-                # 큐에 있는 모든 작업을 처리
-                processed_count = await processor._process_batch_queue()
-                
-                logger.info(f"✅ {processed_count}개의 배치 작업을 처리했습니다.")
-
-                # --- 4. DB 저장 결과 확인 ---
-                logger.info(f"--- 4단계: DB 저장 결과 확인 ---")
-                await check_db_results(db, test_asset_id, ticker, enqueued_count)
-
-                logger.info(f"--- 자산 테스트 종료: {ticker} ---")
+                logger.info(f"\n📊 간격 테스트 완료: {test_interval}")
+                logger.info(f"{'='*40}")
             
-            logger.info(f"\n📊 간격 테스트 완료: {test_interval}")
+            logger.info(f"\n🔧 수집기 테스트 완료: {collector_name}")
             logger.info(f"{'='*60}")
 
-        logger.info("\n--- 모든 자산 테스트 완료 ---")
+        logger.info("\n--- 모든 수집기 테스트 완료 ---")
         
         # 전체 요약 정보
-        await generate_summary_report(db, test_assets)
+        all_test_assets = []
+        for collector_name in valid_collectors:
+            all_test_assets.extend(available_collectors[collector_name]['assets'])
+        await generate_summary_report(db, all_test_assets)
 
     except Exception as e:
         logger.error(f"테스트 중 오류 발생: {e}", exc_info=True)
@@ -316,22 +343,22 @@ if __name__ == "__main__":
 전체 데이터 파이프라인 테스트 스크립트
 
 사용법:
-    python scripts/test_full_pipeline.py [CollectorName]
+    python scripts/test_full_pipeline.py [CollectorName|ALL]
 
 사용 가능한 Collector:
     - OHLCVCollector (기본값)
-    - StockCollector (주석 해제 필요)
-    - ETFCollector (주석 해제 필요)
-    - CryptoDataCollector (주석 해제 필요)
-    - OnchainCollector (주석 해제 필요)
-    - IndexCollector (주석 해제 필요)
-    - TechnicalCollector (주석 해제 필요)
-    - WorldAssetsCollector (주석 해제 필요)
+    - StockCollector
+    - ETFCollector
+    - CryptoDataCollector
+    - OnchainCollector
+    - IndexCollector
+    - WorldAssetsCollector
 
 예시:
     python scripts/test_full_pipeline.py                    # OHLCVCollector 테스트 (기본)
     python scripts/test_full_pipeline.py OHLCVCollector     # OHLCVCollector 테스트
-    # python scripts/test_full_pipeline.py StockCollector   # StockCollector 테스트 (주석 해제 필요)
+    python scripts/test_full_pipeline.py ALL                # 모든 수집기 테스트
+    python scripts/test_full_pipeline.py StockCollector     # StockCollector 테스트
 
 각 Collector는 해당하는 자산들과 간격으로 테스트됩니다.
 """)

@@ -193,9 +193,7 @@ class ApiStrategyManager:
                     if high_viol or low_viol:
                         self.logger.warning(f"[{api_name} {ticker}] OHLC logical anomalies: high<max(open,close,low)={int(high_viol)}, low>min(open,close,high)={int(low_viol)}")
 
-            # 인덱스 설정
-            data = data.set_index('timestamp_utc')
-            data.index.name = 'timestamp_utc'
+            # 인덱스 설정하지 않고 컬럼으로 유지 (DataProcessor에서 처리)
             self.logger.info(f"[{api_name} {ticker}] final frame shape={data.shape}")
             return data
         except Exception as e:
@@ -555,20 +553,45 @@ class ApiStrategyManager:
                     if isinstance(client, TiingoClient):
                         # Tiingo는 get_ohlcv_data를 사용 (내부적으로 prices 엔드포인트 호출)
                         data = await client.get_ohlcv_data(ticker, interval=interval, start_date=start_date, end_date=end_date)
+                        if data is not None and len(data) > 0:
+                            # TiingoClient는 이미 List[OhlcvDataPoint]를 반환하므로 DataFrame으로 변환
+                            df_data = []
+                            for item in data:
+                                item_dict = {
+                                    'timestamp_utc': item.timestamp_utc,
+                                    'open_price': item.open_price,
+                                    'high_price': item.high_price,
+                                    'low_price': item.low_price,
+                                    'close_price': item.close_price,
+                                    'volume': item.volume,
+                                    'change_percent': item.change_percent
+                                }
+                                df_data.append(item_dict)
+                            
+                            data = pd.DataFrame(df_data)
+                            self.logger.info(f"{client.__class__.__name__} raw frame shape={data.shape}, columns={list(data.columns)}")
+                            
+                            # 디버깅: DataFrame의 첫 번째 행 확인
+                            if not data.empty:
+                                self.logger.debug(f"First row data: {data.iloc[0].to_dict()}")
+                            
+                            data = self._validate_ohlcv_dataframe(data, api_name, ticker)
+                        else:
+                            data = None
                     elif hasattr(client, '__class__') and 'PolygonClient' in str(client.__class__):
                         # Polygon - start_date, end_date, interval 순서
                         data = await client.get_historical_prices(ticker, start_date, end_date, interval)
                     else:
                         # TwelveData - 날짜 범위 사용
                         data = await client.get_historical_prices(ticker, interval, start_date=start_date, end_date=end_date)
-                    if data:
+                    if data is not None and not data.empty:
                         data = pd.DataFrame(data)
                         self.logger.info(f"{client.__class__.__name__} raw frame shape={data.shape}, columns={list(data.columns)}")
                         data = self._validate_ohlcv_dataframe(data, api_name, ticker)
                 elif hasattr(client, 'get_historical_data'):
                     # Yahoo Finance 클라이언트 - period 사용
                     data = await client.get_historical_data(ticker, period=yahoo_period, interval=interval)
-                    if data:
+                    if data is not None and not data.empty:
                         # List[Dict]를 DataFrame으로 변환
                         data = pd.DataFrame(data)
                 else:
@@ -727,12 +750,24 @@ class ApiStrategyManager:
         finally:
             db.close()
         
-        # stock_clients 사용 (의도된 우선순위)
-        for i, client in enumerate(self.stock_clients):
+        # 재무 데이터는 FMPClient → AlphaVantageClient 순으로만 시도하고, 나머지는 스킵
+        try:
+            # 지연 임포트로 순환 참조 방지
+            from app.external_apis.implementations.fmp_client import FMPClient
+            from app.external_apis.implementations.alpha_vantage_client import AlphaVantageClient
+            preferred_types = (FMPClient, AlphaVantageClient)
+        except Exception:
+            preferred_types = tuple()
+
+        preferred_clients = [c for c in self.stock_clients if isinstance(c, preferred_types)] or []
+        # 지정된 우선순위에 맞춘 리스트를 만든 뒤 해당 리스트만 순회
+        for i, client in enumerate(preferred_clients):
             try:
-                self.logger.info(f"Attempting to fetch stock financials for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.stock_clients)})")
-                
-                if hasattr(client, 'get_financials'):
+                self.logger.info(f"Attempting to fetch stock financials for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(preferred_clients)})")
+                # 우선 순위: get_stock_financials (신규 표준) → get_financials → get_financial_statements (레거시)
+                if hasattr(client, 'get_stock_financials'):
+                    data = await client.get_stock_financials(ticker)
+                elif hasattr(client, 'get_financials'):
                     data = await client.get_financials(ticker)
                 elif hasattr(client, 'get_financial_statements'):
                     data = await client.get_financial_statements(ticker)
@@ -749,7 +784,7 @@ class ApiStrategyManager:
             except Exception as e:
                 self.logger.warning(f"{client.__class__.__name__} failed for stock financials {ticker}. Reason: {e}. Trying next client.")
         
-        self.logger.error(f"All API clients failed to fetch stock financials for {ticker}")
+        self.logger.error(f"All preferred API clients failed to fetch stock financials for {ticker}")
         return None
 
     async def get_analyst_estimates(self, asset_id: int) -> Optional:
@@ -1075,33 +1110,22 @@ class ApiStrategyManager:
     def _check_data_gaps(self, db, asset_id: int, interval: str, min_date: datetime.date, max_date: datetime.date) -> Optional[Dict[str, Any]]:
         """
         지정된 날짜 범위 내에서 데이터 갭을 확인합니다.
-        가장 큰 갭을 우선적으로 반환합니다.
+        간단한 방식으로 변경하여 MySQL 재귀 쿼리 제한을 회피합니다.
         """
         try:
             from sqlalchemy import text
             
-            # 지정된 범위 내의 모든 날짜에 대해 데이터 존재 여부 확인
+            # 간단한 방식: 최근 데이터와 최초 데이터만 확인
             query = text("""
-                WITH RECURSIVE date_series AS (
-                    SELECT :min_date::date as date
-                    UNION ALL
-                    SELECT date + INTERVAL '1 day'
-                    FROM date_series
-                    WHERE date < :max_date::date
-                ),
-                existing_dates AS (
-                    SELECT DISTINCT DATE(timestamp_utc) as date
-                    FROM ohlcv_data
-                    WHERE asset_id = :asset_id 
-                    AND interval = :interval
-                    AND timestamp_utc >= :min_date::date
-                    AND timestamp_utc <= :max_date::date
-                )
-                SELECT ds.date, 
-                       CASE WHEN ed.date IS NULL THEN 1 ELSE 0 END as is_gap
-                FROM date_series ds
-                LEFT JOIN existing_dates ed ON ds.date = ed.date
-                ORDER BY ds.date
+                SELECT 
+                    MIN(timestamp_utc) as earliest_date,
+                    MAX(timestamp_utc) as latest_date,
+                    COUNT(*) as total_records
+                FROM ohlcv_data
+                WHERE asset_id = :asset_id 
+                AND data_interval = :interval
+                AND timestamp_utc >= CAST(:min_date AS DATE)
+                AND timestamp_utc <= CAST(:max_date AS DATE)
             """)
             
             result = db.execute(query, {
@@ -1109,47 +1133,51 @@ class ApiStrategyManager:
                 'interval': interval,
                 'min_date': min_date.strftime('%Y-%m-%d'),
                 'max_date': max_date.strftime('%Y-%m-%d')
-            }).fetchall()
+            }).fetchone()
             
-            if not result:
-                return None
+            if not result or result[2] == 0:
+                return {
+                    'has_gaps': True,
+                    'gap_start': min_date,
+                    'gap_end': max_date,
+                    'gap_days': (max_date - min_date).days
+                }
             
-            # 갭 찾기
+            earliest_date = result[0].date() if result[0] else None
+            latest_date = result[1].date() if result[1] else None
+            total_records = result[2]
+            
+            # 간단한 갭 체크: 최초/최근 날짜와 요청 범위 비교
             gaps = []
-            gap_start = None
             
-            for row in result:
-                if row.is_gap == 1 and gap_start is None:
-                    gap_start = row.date
-                elif row.is_gap == 0 and gap_start is not None:
-                    gaps.append({
-                        'start_date': gap_start,
-                        'end_date': row.date - timedelta(days=1),
-                        'days': (row.date - gap_start).days
-                    })
-                    gap_start = None
-            
-            # 마지막 갭 처리
-            if gap_start is not None:
+            if earliest_date and earliest_date > min_date:
                 gaps.append({
-                    'start_date': gap_start,
-                    'end_date': max_date,
-                    'days': (max_date - gap_start).days + 1
+                    'start': min_date,
+                    'end': earliest_date,
+                    'days': (earliest_date - min_date).days
                 })
             
-            # 가장 큰 갭 반환
+            if latest_date and latest_date < max_date:
+                gaps.append({
+                    'start': latest_date,
+                    'end': max_date,
+                    'days': (max_date - latest_date).days
+                })
+            
             if gaps:
+                # 가장 큰 갭 반환
                 largest_gap = max(gaps, key=lambda x: x['days'])
                 return {
-                    'start_date': largest_gap['start_date'].strftime('%Y-%m-%d'),
-                    'end_date': largest_gap['end_date'].strftime('%Y-%m-%d'),
-                    'days': largest_gap['days']
+                    'has_gaps': True,
+                    'gap_start': largest_gap['start'],
+                    'gap_end': largest_gap['end'],
+                    'gap_days': largest_gap['days']
                 }
             
             return None
             
         except Exception as e:
-            self.logger.error(f"Error checking data gaps for asset {asset_id}: {e}")
+            logger.error(f"Error checking data gaps for asset {asset_id}: {e}")
             return None
     
     def _get_asset_type_cached(self, db, asset_id: int) -> Tuple[str, bool]:

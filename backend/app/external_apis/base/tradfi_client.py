@@ -10,6 +10,7 @@ from .schemas import (
     OhlcvDataPoint,
     CompanyProfileData,
     StockFinancialsData,
+    StockAnalystEstimatesData,
     RealtimeQuoteData,
     TechnicalIndicatorsData,
     EtfSectorExposureData
@@ -120,3 +121,17 @@ class TradFiAPIClient(BaseAPIClient, ABC):
             Standardized stock financial data or None if not available
         """
         pass
+
+    # Optional: Analyst estimates. Not all providers support this.
+    # Provide a default no-op implementation so callers can safely invoke it.
+    async def get_analyst_estimates(self, symbol: str) -> Optional[List[StockAnalystEstimatesData]]:
+        """
+        Get analyst estimates data (optional).
+
+        Args:
+            symbol: Stock symbol
+
+        Returns:
+            List of standardized analyst estimate entries, or None if not available.
+        """
+        return None

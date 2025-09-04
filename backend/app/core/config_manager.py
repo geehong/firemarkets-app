@@ -126,6 +126,9 @@ class ConfigManager:
     def is_onchain_collection_enabled(self) -> bool:
         return self._get_config("ENABLE_ONCHAIN_COLLECTION", True, _str_to_bool)
         
+    def is_index_collection_enabled(self) -> bool:
+        return self._get_config("ENABLE_INDEX_COLLECTION", True, _str_to_bool)
+        
     def is_ohlcv_collection_enabled(self) -> bool:
         return self._get_config("ENABLE_OHLCV_COLLECTION", True, _str_to_bool)
         
@@ -178,4 +181,22 @@ class ConfigManager:
         # e.g., metric_key = "MVRV_ZSCORE" -> config_key = "ONCHAIN_COLLECT_MVRV_ZSCORE"
         config_key = f"ONCHAIN_COLLECT_{metric_key.upper()}"
         return self._get_config(config_key, True, _str_to_bool)
+    
+    def get_enabled_onchain_metrics(self) -> List[str]:
+        """Returns a list of enabled on-chain metrics for collection."""
+        # 기본적으로 MVRV-Z-Score를 활성화
+        default_metrics = ["mvrv_z_score"]
+        
+        # 설정에서 활성화된 메트릭들을 확인
+        enabled_metrics = []
+        for metric in default_metrics:
+            if self.is_onchain_metric_enabled(metric):
+                enabled_metrics.append(metric)
+        
+        # 활성화된 메트릭이 없으면 기본값 반환
+        if not enabled_metrics:
+            logger.warning("No onchain metrics enabled, using default: mvrv_z_score")
+            return default_metrics
+        
+        return enabled_metrics
 

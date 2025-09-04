@@ -5,12 +5,14 @@ import logging
 from typing import Dict, List, Optional, Any
 import httpx
 import asyncio
+import pandas as pd
 from datetime import datetime, timedelta
 
 from app.external_apis.base.tradfi_client import TradFiAPIClient
 from app.external_apis.base.schemas import (
     OhlcvDataPoint, RealtimeQuoteData, CompanyProfileData,
-    StockFinancialsData, TechnicalIndicatorsData
+    StockFinancialsData, TechnicalIndicatorsData,
+    StockAnalystEstimatesData
 )
 from app.external_apis.utils.helpers import safe_float, safe_date_parse
 
@@ -75,21 +77,16 @@ class TiingoClient(TradFiAPIClient):
             }
         }
 
-    async def get_ohlcv_data(
-        self, 
-        symbol: str, 
-        interval: str = "1d",
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        limit: Optional[int] = None
-    ) -> List[OhlcvDataPoint]:
+    async def get_ohlcv_data(self, symbol: str, interval: str = "1d", 
+                           start_date: str = None, end_date: str = None, 
+                           limit: int = None) -> Optional[List[OhlcvDataPoint]]:
         """Get OHLCV data from Tiingo"""
-        try:
-            # Tiingo는 일간 데이터를 기본으로 제공
-            if interval != "1d":
-                logger.warning(f"Tiingo only supports daily data, requested interval: {interval}")
+        if interval != "1d":
+            logger.warning(f"Tiingo only supports daily data, requested interval: {interval}")
+            return None  # None을 반환하여 다음 클라이언트로 넘어가도록 함
             
-            params: Dict[str, Any] = {}
+        try:
+            params = {}
             if start_date:
                 params["startDate"] = start_date
             if end_date:
@@ -101,16 +98,26 @@ class TiingoClient(TradFiAPIClient):
                 params["token"] = self.api_key
                 resp = await client.get(url, params=params, timeout=self.api_timeout)
                 resp.raise_for_status()
-                # Parse the JSON response directly into a pandas DataFrame
-                data = pd.read_json(resp.text)
-            
-            if data.empty:
-                return []
+                
+                # JSON 응답을 파싱
+                json_data = resp.json()
+                
+                if not json_data or not isinstance(json_data, list):
+                    logger.warning(f"Tiingo returned empty or invalid data for {symbol}")
+                    return None
             
             result = []
-            for _, item in data.iterrows():
-                timestamp = safe_date_parse(item.get("date"))
-                if timestamp is None:
+            for item in json_data:
+                # 날짜 문자열을 datetime으로 변환
+                date_str = item.get("date")
+                if not date_str:
+                    continue
+                    
+                try:
+                    # ISO 형식 날짜 문자열을 파싱
+                    timestamp = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid date format in Tiingo response: {date_str}")
                     continue
                 
                 point = OhlcvDataPoint(
@@ -135,7 +142,7 @@ class TiingoClient(TradFiAPIClient):
             
         except Exception as e:
             logger.error(f"Tiingo OHLCV fetch failed for {symbol}: {e}")
-            return []
+            return None
 
     async def get_company_profile(self, symbol: str) -> Optional[CompanyProfileData]:
         """Get company profile from Tiingo"""
@@ -224,6 +231,11 @@ class TiingoClient(TradFiAPIClient):
         except Exception as e:
             logger.error(f"Tiingo Stock Financials fetch failed for {symbol}: {e}")
         
+        return None
+
+    async def get_analyst_estimates(self, symbol: str) -> Optional[List[StockAnalystEstimatesData]]:
+        """Tiingo does not provide analyst estimates; return None."""
+        logger.warning("TiingoClient has no analyst estimates method")
         return None
 
     async def get_etf_sector_exposure(self, symbol: str) -> Optional[List[Dict[str, Any]]]:

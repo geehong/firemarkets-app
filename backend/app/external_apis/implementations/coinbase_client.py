@@ -21,6 +21,19 @@ class CoinbaseClient(CryptoAPIClient):
         super().__init__()
         self.base_url = "https://api.exchange.coinbase.com"
     
+    def _convert_symbol_for_coinbase(self, symbol: str) -> str:
+        """Coinbase API용 심볼 변환 (BTCUSDT -> BTC-USD)"""
+        # 일반적인 변환 규칙
+        if symbol.endswith('USDT'):
+            return symbol[:-4] + '-USD'
+        elif symbol.endswith('USDC'):
+            return symbol[:-4] + '-USD'
+        elif symbol.endswith('BTC'):
+            return symbol + '-USD'
+        else:
+            # 기타 경우는 그대로 반환
+            return symbol
+    
     async def test_connection(self) -> bool:
         """Test Coinbase API connection"""
         try:
@@ -51,6 +64,9 @@ class CoinbaseClient(CryptoAPIClient):
     ) -> List[OhlcvDataPoint]:
         """Get OHLCV data from Coinbase"""
         try:
+            # Coinbase API용 심볼 변환
+            coinbase_symbol = self._convert_symbol_for_coinbase(symbol)
+            
             async with httpx.AsyncClient() as client:
                 # Coinbase는 granularity를 초 단위로 받음 (86400 = 1일)
                 granularity = "86400"  # 1일
@@ -59,7 +75,7 @@ class CoinbaseClient(CryptoAPIClient):
                 elif interval == "4h":
                     granularity = "14400"
                 
-                base = f"{self.base_url}/products/{symbol}/candles?granularity={granularity}"
+                base = f"{self.base_url}/products/{coinbase_symbol}/candles?granularity={granularity}"
                 if start_date and end_date:
                     url = f"{base}&start={start_date}&end={end_date}"
                 else:
@@ -97,8 +113,11 @@ class CoinbaseClient(CryptoAPIClient):
     async def get_realtime_quote(self, symbol: str) -> Optional[RealtimeQuoteData]:
         """Get real-time quote from Coinbase"""
         try:
+            # Coinbase API용 심볼 변환
+            coinbase_symbol = self._convert_symbol_for_coinbase(symbol)
+            
             async with httpx.AsyncClient() as client:
-                url = f"{self.base_url}/products/{symbol}/ticker"
+                url = f"{self.base_url}/products/{coinbase_symbol}/ticker"
                 data = await self._fetch_async(client, url, "Coinbase Ticker", symbol)
                 
                 if isinstance(data, dict):
@@ -146,9 +165,12 @@ class CoinbaseClient(CryptoAPIClient):
     async def get_crypto_data(self, symbol: str) -> Optional[CryptoData]:
         """Get comprehensive cryptocurrency data from Coinbase"""
         try:
+            # Coinbase API용 심볼 변환
+            coinbase_symbol = self._convert_symbol_for_coinbase(symbol)
+            
             async with httpx.AsyncClient() as client:
                 # Get product stats
-                url = f"{self.base_url}/products/{symbol}/stats"
+                url = f"{self.base_url}/products/{coinbase_symbol}/stats"
                 data = await self._fetch_async(client, url, "Coinbase Stats", symbol)
                 
                 if isinstance(data, dict):

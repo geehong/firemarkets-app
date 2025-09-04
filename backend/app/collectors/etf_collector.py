@@ -71,24 +71,26 @@ class ETFCollector(BaseCollector):
         }
 
     def _get_target_asset_ids(self) -> List[int]:
-        """Fetches the IDs of ETF assets that are configured for collection."""
+        """수집할 ETF 자산 ID 목록을 반환합니다."""
         try:
-            query = (
-                self.db.query(Asset.asset_id)
+            assets = (
+                self.db.query(Asset.id)
                 .join(AssetType)
                 .filter(
                     Asset.is_active == True,
-                    AssetType.type_name.ilike('ETF'), # Case-insensitive
+                    AssetType.type_name.ilike('%ETF%'),
                     or_(
                         Asset.collection_settings.contains({"collect_price": True}),
-                        text("JSON_EXTRACT(collection_settings, '$.collect_price') = true")
+                        Asset.collection_settings.contains({"collect_assets_info": True}),
+                        text("JSON_EXTRACT(collection_settings, '$.collect_price') = true"),
+                        text("JSON_EXTRACT(collection_settings, '$.collect_assets_info') = true")
                     )
                 )
+                .all()
             )
-            asset_id_tuples = query.all()
-            return [asset_id for (asset_id,) in asset_id_tuples]
+            return [asset.id for asset in assets]
         except Exception as e:
-            self.logging_helper.log_error(f"Failed to fetch target ETF asset IDs: {e}")
+            self.logging_helper.log_error(f"Error getting target asset IDs: {e}")
             return []
 
     async def _fetch_and_enqueue_for_asset(self, asset_id: int) -> Dict[str, Any]:
@@ -104,11 +106,11 @@ class ETFCollector(BaseCollector):
                 return {"success": True, "enqueued_count": 0}
 
             # 4. 작업 큐에 넘겨주기 (RedisQueueManager 사용)
-            # 표준 큐 페이로드: {"items": [...]}로 통일
-            await self.redis_queue_manager.push_batch_task(
-                "etf_info",
-                {"items": [etf_data.model_dump()]}
-            )
+            payload = {
+                "asset_id": asset_id,
+                "data": etf_data.model_dump()
+            }
+            await self.redis_queue_manager.push_batch_task("etf_info", payload)
             
             self.logging_helper.log_debug(f"Successfully enqueued ETF info for asset_id {asset_id}.")
             return {"success": True, "enqueued_count": 1}

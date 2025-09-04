@@ -10,7 +10,8 @@ import httpx
 from app.external_apis.base.tradfi_client import TradFiAPIClient
 from app.external_apis.base.schemas import (
     OhlcvDataPoint, RealtimeQuoteData, CompanyProfileData,
-    StockFinancialsData, TechnicalIndicatorsData, EtfSectorExposureData
+    StockFinancialsData, StockAnalystEstimatesData,
+    TechnicalIndicatorsData, EtfSectorExposureData
 )
 from app.core.config import (
     ALPHA_VANTAGE_API_KEY_1,
@@ -163,7 +164,7 @@ class AlphaVantageClient(TradFiAPIClient):
                         logger.warning(f"Alpha Vantage API 주의사항 ({symbol}): {data['Note']}")
                         continue  # Try next API key
                     else:
-                        logger.warning(f"Alpha Vantage: 예상치 못한 응답 형식 ({symbol})")
+                        logger.warning(f"Alpha Vantage: 예상치 못한 응답 형식 ({symbol}) - 응답 키: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
                         return None  # 빈 리스트 대신 None을 반환하여 상위에서 처리하도록 함
                         
             except Exception as e:
@@ -259,18 +260,49 @@ class AlphaVantageClient(TradFiAPIClient):
     async def get_stock_financials(self, symbol: str) -> Optional[StockFinancialsData]:
         """Get stock financial data from Alpha Vantage"""
         try:
-            profile = await self.get_company_profile(symbol)
-            if profile:
-                financials = StockFinancialsData(
-                    symbol=symbol,
-                    market_cap=profile.market_cap,
-                    pe_ratio=safe_float(profile.description),  # Alpha Vantage는 제한적인 재무 데이터 제공
-                    timestamp_utc=datetime.now()
-                )
-                return financials
+            # Overview 엔드포인트에서 재무 정보 컬럼 발췌
+            if not self.api_keys:
+                raise ValueError("No Alpha Vantage API keys configured")
+            for api_key in self.api_keys:
+                try:
+                    async with httpx.AsyncClient() as client:
+                        url = f"{self.base_url}?function=OVERVIEW&symbol={symbol}&apikey={api_key}"
+                        data = await self._fetch_async(client, url, "Alpha Vantage Overview", symbol)
+
+                        if isinstance(data, dict) and data.get('Symbol'):
+                            financials = StockFinancialsData(
+                                symbol=symbol,
+                                market_cap=safe_float(data.get('MarketCapitalization')),
+                                pe_ratio=safe_float(data.get('PERatio')),
+                                eps=safe_float(data.get('EPS')),
+                                dividend_yield=safe_float(data.get('DividendYield')),
+                                dividend_per_share=safe_float(data.get('DividendPerShare')),
+                                beta=safe_float(data.get('Beta')),
+                                peg_ratio=safe_float(data.get('PEGRatio')),
+                                price_to_book_ratio=safe_float(data.get('PriceToBookRatio')),
+                                profit_margin_ttm=safe_float(data.get('ProfitMargin')),
+                                return_on_equity_ttm=safe_float(data.get('ReturnOnEquityTTM')),
+                                revenue_ttm=safe_float(data.get('RevenueTTM')),
+                                currency=data.get('Currency', 'USD'),
+                                snapshot_date=datetime.now(),
+                                timestamp_utc=datetime.now(),
+                            )
+                            return financials
+                        elif isinstance(data, dict) and ("Note" in data or "Error Message" in data):
+                            # 레이트 리밋이면 다음 키 시도
+                            continue
+                        else:
+                            return None
+                except Exception as ie:
+                    logger.warning(f"Alpha Vantage Overview fetch issue for {symbol} with key {api_key[:8]}...: {ie}")
+                    continue
         except Exception as e:
             logger.error(f"Alpha Vantage Stock Financials fetch failed for {symbol}: {e}")
-        
+        return None
+
+    async def get_analyst_estimates(self, symbol: str) -> Optional[List[StockAnalystEstimatesData]]:
+        """Alpha Vantage free endpoints do not provide analyst estimates; return None."""
+        logger.warning("AlphaVantageClient has no analyst estimates method")
         return None
     
     async def get_etf_sector_exposure(self, symbol: str) -> Optional[List[EtfSectorExposureData]]:

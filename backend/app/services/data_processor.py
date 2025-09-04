@@ -17,9 +17,10 @@ from ..core.database import SessionLocal
 from ..core.config import GLOBAL_APP_CONFIGS, config_manager
 from ..models.realtime import RealtimeQuote
 from ..models.asset import Asset, OHLCVData
-from ..crud.asset import crud_ohlcv
+from ..crud.asset import crud_ohlcv, crud_asset
 from ..utils.logger import logger
 from ..utils.redis_queue_manager import RedisQueueManager
+from ..utils.helpers import safe_float
 
 class DataProcessor:
     """
@@ -53,10 +54,10 @@ class DataProcessor:
             self.max_retries = 3
         self.retry_delay = 5  # 초
         
-        # 스트림 및 큐 설정
+        # 스트림 및 큐 설정 (실시간 스트림은 일시적으로 비활성화)
         self.realtime_streams = {
-            "tiingo_realtime_stream": "tiingo_processor_group",
-            "alpaca_realtime_stream": "alpaca_processor_group"
+            # "tiingo_realtime_stream": "tiingo_processor_group",
+            # "alpaca_realtime_stream": "alpaca_processor_group"
         }
         self.batch_queue = "batch_data_queue"
 
@@ -91,6 +92,37 @@ class DataProcessor:
             logger.error(f"Redis 연결 실패: {e}")
             return False
 
+    def _parse_timestamp(self, timestamp_str: str) -> datetime:
+        """타임스탬프 문자열을 파싱합니다."""
+        try:
+            # 먼저 표준 ISO 형식으로 시도
+            return datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+        except ValueError:
+            try:
+                # 마이크로초가 6자리를 초과하는 경우 처리
+                if '.' in timestamp_str and len(timestamp_str.split('.')[1]) > 6:
+                    # 마이크로초를 6자리로 자르기
+                    parts = timestamp_str.split('.')
+                    if len(parts) == 2:
+                        base_time = parts[0]
+                        microseconds = parts[1][:6]  # 6자리로 자르기
+                        timezone_part = ''
+                        if '-' in microseconds or '+' in microseconds:
+                            # 타임존 정보가 마이크로초에 포함된 경우
+                            for i, char in enumerate(microseconds):
+                                if char in ['-', '+']:
+                                    microseconds = microseconds[:i]
+                                    timezone_part = parts[1][i:]
+                                    break
+                        timestamp_str = f"{base_time}.{microseconds}{timezone_part}"
+                        return datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+            except ValueError:
+                pass
+            
+            # 모든 파싱이 실패하면 현재 시간 반환
+            logger.warning(f"타임스탬프 파싱 실패: {timestamp_str}, 현재 시간 사용")
+            return datetime.utcnow()
+
     @asynccontextmanager
     async def get_db_session(self):
         """데이터베이스 세션 컨텍스트 매니저"""
@@ -113,6 +145,9 @@ class DataProcessor:
         try:
             # 모든 스트림에서 데이터 읽기
             streams_to_read = {stream: '0-0' for stream in self.realtime_streams.keys()}
+            # 스트림이 비어있으면 Redis XREAD 호출을 건너뜁니다
+            if not streams_to_read:
+                return 0
             stream_data = await self.redis_client.xread(
                 streams_to_read, 
                 count=self.batch_size,
@@ -127,7 +162,8 @@ class DataProcessor:
             
             # 자산 정보 캐시 (성능 최적화)
             async with self.get_db_session() as db:
-                assets = db.query(Asset.ticker, Asset.asset_id, Asset.asset_type).all()
+                from ..models.asset import AssetType
+                assets = db.query(Asset.ticker, Asset.asset_id, AssetType.type_name).join(Asset.asset_type).all()
                 ticker_to_asset = {
                     ticker: {"asset_id": asset_id, "asset_type": asset_type} 
                     for ticker, asset_id, asset_type in assets
@@ -149,13 +185,13 @@ class DataProcessor:
                             quote_data = {
                                 "ticker": ticker,
                                 "asset_type": asset_info["asset_type"],
-                                "price": float(trade_data.get('price', 0)),
-                                "volume_today": float(trade_data.get('volume', 0)),
-                                "change_percent_today": float(trade_data.get('change_percent', 0)),
+                                "price": safe_float(trade_data.get('price'), 0.0),
+                                "volume_today": safe_float(trade_data.get('volume'), 0.0),
+                                "change_percent_today": safe_float(trade_data.get('change_percent'), 0.0),
                                 "data_source": trade_data.get('data_source', 'unknown'),
                                 "currency": "USD",
-                                "fetched_at": datetime.fromisoformat(
-                                    trade_data['timestamp'].replace('Z', '+00:00')
+                                "fetched_at": self._parse_timestamp(
+                                    trade_data.get('timestamp')
                                 ) if trade_data.get('timestamp') else datetime.utcnow()
                             }
                             records_to_save.append(quote_data)
@@ -270,6 +306,7 @@ class DataProcessor:
             elif task_type == "ohlcv_data":
                 # metadata 정보 추출
                 metadata = payload.get("metadata", {}) if isinstance(payload, dict) else {}
+                logger.info(f"Processing ohlcv_data task: items_count={len(items)}, metadata={metadata}")
                 return await self._save_ohlcv_data(items, metadata)
             elif task_type == "index_data":
                 return await self._save_index_data(items)
@@ -290,21 +327,137 @@ class DataProcessor:
     async def _bulk_save_realtime_quotes(self, records: List[Dict[str, Any]]) -> bool:
         """실시간 인용 데이터 일괄 저장"""
         try:
+            # UPSERT 로직을 사용하여 중복 키 오류 방지
             async with self.get_db_session() as db:
                 for record_data in records:
-                    quote = RealtimeQuote(**record_data)
-                    db.add(quote)
-                db.commit()
+                    try:
+                        # 기존 레코드가 있는지 확인
+                        existing_quote = db.query(RealtimeQuote).filter(
+                            RealtimeQuote.ticker == record_data['ticker'],
+                            RealtimeQuote.asset_type == record_data['asset_type']
+                        ).first()
+                        
+                        if existing_quote:
+                            # 기존 레코드 업데이트
+                            for key, value in record_data.items():
+                                if hasattr(existing_quote, key):
+                                    setattr(existing_quote, key, value)
+                        else:
+                            # 새 레코드 생성
+                            quote = RealtimeQuote(**record_data)
+                            db.add(quote)
+                        
+                        # 각 레코드마다 개별적으로 커밋하여 race condition 방지
+                        db.commit()
+                        
+                    except Exception as e:
+                        logger.warning(f"개별 실시간 인용 데이터 저장 실패: {e}")
+                        db.rollback()
+                        continue
+                        
             return True
         except Exception as e:
             logger.error(f"실시간 인용 데이터 저장 실패: {e}")
             return False
 
     async def _save_stock_profile(self, items: List[Dict[str, Any]]) -> bool:
-        """주식 프로필 데이터 저장"""
-        # TODO: 실제 CRUD 함수 호출
-        logger.info(f"주식 프로필 데이터 저장: {len(items)}개 레코드")
-        return True
+        """주식 프로필 데이터 저장 (업서트)"""
+        try:
+            if not items:
+                return True
+
+            logger.info(f"주식 프로필 데이터 저장: {len(items)}개 레코드")
+
+            async with self.get_db_session() as db:
+                from ..models.asset import StockProfile
+
+                for item in items:
+                    try:
+                        asset_id = item.get("asset_id") or item.get("assetId") or item.get("asset_id".lower())
+                        data = item.get("data") if "data" in item else item
+                        if not asset_id or not isinstance(data, dict):
+                            continue
+
+                        # 매핑: CompanyProfileData -> StockProfile 컬럼
+                        company_name = data.get("name") or data.get("company_name")
+                        description = data.get("description")
+                        sector = data.get("sector")
+                        industry = data.get("industry")
+                        website = data.get("website")
+                        employees_count = data.get("employees") or data.get("fullTimeEmployees")
+                        country = data.get("country")
+                        address = data.get("address")
+                        city = data.get("city")
+                        ceo = data.get("ceo") or data.get("CEO")
+                        phone = data.get("phone")
+                        logo_image_url = data.get("image") or data.get("logo")
+                        # ipo_date 파싱
+                        ipo_date_val = data.get("ipoDate") or data.get("ipo_date")
+                        ipo_date = None
+                        if ipo_date_val:
+                            try:
+                                if isinstance(ipo_date_val, str):
+                                    ipo_date = datetime.strptime(ipo_date_val.split("T")[0], "%Y-%m-%d").date()
+                            except Exception:
+                                ipo_date = None
+
+                        profile: StockProfile = db.query(StockProfile).filter(StockProfile.asset_id == asset_id).first()
+                        if profile:
+                            if company_name is not None:
+                                profile.company_name = company_name
+                            if description is not None:
+                                profile.description = description
+                            if sector is not None:
+                                profile.sector = sector
+                            if industry is not None:
+                                profile.industry = industry
+                            if website is not None:
+                                profile.website = website
+                            if employees_count is not None:
+                                profile.employees_count = employees_count
+                            if country is not None:
+                                profile.country = country
+                            if address is not None:
+                                profile.address = address
+                            if city is not None:
+                                profile.city = city
+                            if ceo is not None:
+                                profile.ceo = ceo
+                            if phone is not None:
+                                profile.phone = phone
+                            if logo_image_url is not None:
+                                profile.logo_image_url = logo_image_url
+                            if ipo_date is not None:
+                                profile.ipo_date = ipo_date
+                        else:
+                            profile = StockProfile(
+                                asset_id=asset_id,
+                                company_name=company_name or "",
+                                description=description,
+                                sector=sector,
+                                industry=industry,
+                                website=website,
+                                employees_count=employees_count,
+                                country=country,
+                                address=address,
+                                city=city,
+                                ceo=ceo,
+                                phone=phone,
+                                logo_image_url=logo_image_url,
+                                ipo_date=ipo_date,
+                            )
+                            db.add(profile)
+
+                        db.commit()
+                    except Exception as e:
+                        logger.warning(f"개별 주식 프로필 저장 실패(asset_id={item.get('asset_id')}): {e}")
+                        db.rollback()
+                        continue
+
+            return True
+        except Exception as e:
+            logger.error(f"주식 프로필 데이터 저장 실패: {e}")
+            return False
 
     async def _save_etf_info(self, items: List[Dict[str, Any]]) -> bool:
         """ETF 정보 데이터 저장"""
@@ -333,29 +486,276 @@ class DataProcessor:
         
         logger.info(f"OHLCV 데이터 저장 시작: asset_id={asset_id}, interval={interval}, records={len(items)}")
         
-        try:
-            total_added = 0
-            async with self.get_db_session() as db:
-                # crud_ohlcv.create_multi 호출
-                added_count = crud_ohlcv.create_multi(db, asset_id, items, interval)
-                total_added += added_count
+        async with self.get_db_session() as db:
+            try:
+                # 0) 사전 방어: items 내 timestamp_utc를 먼저 표준화 (UTC naive datetime)
+                from datetime import datetime, timezone
+                def _normalize_ts_val(val: Any) -> Any:
+                    try:
+                        if isinstance(val, datetime):
+                            if val.tzinfo is not None and val.tzinfo.utcoffset(val) is not None:
+                                val = val.astimezone(timezone.utc).replace(tzinfo=None)
+                            return val.replace(microsecond=0)
+                        s = str(val)
+                        if not s:
+                            return val
+                        if s.endswith('Z'):
+                            s = s[:-1]
+                        s = s.replace('T', ' ')
+                        if '+' in s:
+                            s = s.split('+')[0]
+                        if '.' in s:
+                            s = s.split('.', 1)[0]
+                        return datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        return val
+
+                for it in items:
+                    if isinstance(it, dict) and 'timestamp_utc' in it:
+                        it['timestamp_utc'] = _normalize_ts_val(it.get('timestamp_utc'))
+
+                # DB 저장을 위해 Pydantic 모델 객체 리스트로 변환
+                from app.external_apis.base.schemas import OhlcvDataPoint
+                ohlcv_list = [OhlcvDataPoint(**item) for item in items]
+
+                # OHLCV 데이터에 asset_id와 data_interval 추가
+                # MySQL DATETIME 컬럼과 호환되도록 timestamp_utc는 "YYYY-MM-DD HH:MM:SS" 또는 naive UTC datetime으로 전달
+                from datetime import datetime, timezone
+
+                ohlcv_data_list = []
+                for i, ohlcv_item in enumerate(ohlcv_list):
+                    # model_dump(mode='python')을 사용하여 datetime을 그대로 유지
+                    item_dict = ohlcv_item.model_dump(mode='python')
+
+                    ts = item_dict.get('timestamp_utc')
+                    # Pydantic에서 datetime으로 유지된 경우만 처리
+                    if isinstance(ts, datetime):
+                        # tz-aware이면 UTC로 변환 후 naive로 만들기
+                        if ts.tzinfo is not None and ts.tzinfo.utcoffset(ts) is not None:
+                            ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
+                        # 초 단위로 맞추기 (마이크로초 제거)
+                        ts = ts.replace(microsecond=0)
+                        item_dict['timestamp_utc'] = ts
+                    else:
+                        # 혹시 문자열로 들어온 경우 안전하게 파싱해 UTC naive로 변환
+                        try:
+                            # 지원 포맷: 2025-08-05T04:00:00Z, 2025-08-05 04:00:00+00:00, 등
+                            s = str(ts)
+                            if s.endswith('Z'):
+                                s = s[:-1]
+                            # 공백/"T" 모두 허용
+                            s = s.replace('T', ' ')
+                            # 타임존 제거
+                            if '+' in s:
+                                s = s.split('+')[0]
+                            if '.' in s:
+                                base, frac = s.split('.', 1)
+                                s = base
+                            parsed = datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+                            item_dict['timestamp_utc'] = parsed
+                        except Exception:
+                            # 마지막 수단: 그대로 두되, 뒤의 CRUD에서 실패하면 스킵될 것
+                            pass
+
+                    item_dict['asset_id'] = asset_id
+                    item_dict['data_interval'] = interval
+
+                    ohlcv_data_list.append(item_dict)
                 
-            logger.info(f"OHLCV 데이터 저장 완료: asset_id={asset_id}, interval={interval}, added={total_added}개 레코드")
-            return True
-            
-        except Exception as e:
-            logger.error(f"OHLCV 데이터 저장 실패: asset_id={asset_id}, interval={interval}, error={e}")
-            return False
+                # CRUD를 사용하여 데이터 저장
+                from app.crud.asset import crud_ohlcv
+                added_count = crud_ohlcv.bulk_upsert_ohlcv(db, ohlcv_data_list)
+                
+                logger.info(f"OHLCV 데이터 저장 완료: asset_id={asset_id}, interval={interval}, added={added_count}개 레코드")
+                return True
+                
+            except Exception as e:
+                logger.error(f"OHLCV 데이터 저장 실패: asset_id={asset_id}, interval={interval}, error={e}", exc_info=True)
+                return False
 
     async def _save_stock_financials(self, items: List[Dict[str, Any]]) -> bool:
-        """주식 재무 데이터 저장 (스냅샷)"""
-        logger.info(f"주식 재무 데이터 저장: {len(items)}개 레코드")
-        return True
+        """주식 재무 데이터 저장 (스냅샷, 병합 업서트)
+
+        규칙:
+        - 동일한 asset_id + snapshot_date 레코드가 있으면 제공된 컬럼만 덮어씀(None/없음은 무시)
+        - 없던 레코드는 새로 생성
+        """
+        try:
+            if not items:
+                return True
+
+            logger.info(f"주식 재무 데이터 저장: {len(items)}개 레코드")
+
+            async with self.get_db_session() as db:
+                from ..models.asset import StockFinancial
+                from datetime import datetime, date
+
+                updatable_fields = {
+                    "currency",
+                    "market_cap",
+                    "ebitda",
+                    "shares_outstanding",
+                    "pe_ratio",
+                    "peg_ratio",
+                    "beta",
+                    "eps",
+                    "dividend_yield",
+                    "dividend_per_share",
+                    "profit_margin_ttm",
+                    "return_on_equity_ttm",
+                    "revenue_ttm",
+                    "price_to_book_ratio",
+                    "_52_week_high",
+                    "_52_week_low",
+                    "_50_day_moving_avg",
+                    "_200_day_moving_avg",
+                }
+
+                for item in items:
+                    try:
+                        asset_id = item.get("asset_id") or item.get("assetId")
+                        data = item.get("data") if isinstance(item, dict) and "data" in item else item
+                        if not asset_id or not isinstance(data, dict):
+                            continue
+
+                        # 의미 있는 값이 하나도 없으면 스킵 (통화 제외)
+                        meaningful_keys = [
+                            "market_cap", "ebitda", "shares_outstanding", "pe_ratio", "peg_ratio",
+                            "beta", "eps", "dividend_yield", "dividend_per_share", "profit_margin_ttm",
+                            "return_on_equity_ttm", "revenue_ttm", "price_to_book_ratio",
+                            "_52_week_high", "_52_week_low", "_50_day_moving_avg", "_200_day_moving_avg",
+                        ]
+                        if not any((data.get(k) is not None) for k in meaningful_keys):
+                            # 저장할 실질 값이 없으면 건너뜀
+                            continue
+
+                        # snapshot_date 파싱(가능하면 날짜만 저장)
+                        snapshot = data.get("snapshot_date") or data.get("snapshotDate")
+                        parsed_snapshot = None
+                        if snapshot:
+                            try:
+                                if isinstance(snapshot, str):
+                                    # YYYY-MM-DD 혹은 ISO
+                                    s = snapshot.split("T")[0]
+                                    parsed_snapshot = datetime.strptime(s, "%Y-%m-%d").date()
+                                elif isinstance(snapshot, datetime):
+                                    parsed_snapshot = snapshot.date()
+                            except Exception:
+                                parsed_snapshot = None
+                        if parsed_snapshot is None:
+                            parsed_snapshot = datetime.utcnow().date()
+
+                        existing: StockFinancial = (
+                            db.query(StockFinancial)
+                            .filter(StockFinancial.asset_id == asset_id, StockFinancial.snapshot_date == parsed_snapshot)
+                            .first()
+                        )
+
+                        if existing:
+                            # 선택적 병합 업데이트(None/미존재 키는 무시)
+                            for field in updatable_fields:
+                                if field in data and data.get(field) is not None and hasattr(existing, field):
+                                    setattr(existing, field, data.get(field))
+                        else:
+                            # 생성 시에도 제공된 필드만 세팅
+                            new_kwargs = {"asset_id": asset_id, "snapshot_date": parsed_snapshot}
+                            for field in updatable_fields:
+                                val = data.get(field)
+                                if val is not None:
+                                    new_kwargs[field] = val
+                            profile = StockFinancial(**new_kwargs)
+                            db.add(profile)
+
+                        db.commit()
+                    except Exception as e:
+                        logger.warning(f"개별 주식 재무 저장 실패(asset_id={item.get('asset_id')}): {e}")
+                        db.rollback()
+                        continue
+
+            return True
+        except Exception as e:
+            logger.error(f"주식 재무 데이터 저장 실패: {e}")
+            return False
 
     async def _save_stock_estimate(self, items: List[Dict[str, Any]]) -> bool:
-        """주식 추정치 데이터 저장"""
-        logger.info(f"주식 추정치 데이터 저장: {len(items)}개 레코드")
-        return True
+        """주식 추정치 데이터 저장 (병합 업서트)
+
+        규칙:
+        - 동일한 asset_id + fiscal_date 레코드가 있으면 제공된 컬럼만 덮어씀(None/없음은 무시)
+        - 없던 레코드는 새로 생성
+        """
+        try:
+            if not items:
+                return True
+
+            logger.info(f"주식 추정치 데이터 저장: {len(items)}개 레코드")
+
+            async with self.get_db_session() as db:
+                from ..models.asset import StockAnalystEstimate
+                from datetime import datetime, date
+
+                # DB 컬럼 스키마 기준의 필드 집합
+                updatable_fields = {
+                    "revenue_avg", "revenue_low", "revenue_high",
+                    "eps_avg", "eps_low", "eps_high",
+                    "revenue_analysts_count", "eps_analysts_count",
+                    "ebitda", "ebit", "net_income",
+                }
+
+                for item in items:
+                    try:
+                        asset_id = item.get("asset_id") or item.get("assetId")
+                        data = item.get("data") if isinstance(item, dict) and "data" in item else item
+                        if not asset_id or not isinstance(data, dict):
+                            continue
+
+                        # 다양한 키 케이스 허용
+                        fiscal_date = (
+                            data.get("fiscal_date") or data.get("fiscalDate") or data.get("date")
+                        )
+                        parsed_date = None
+                        if fiscal_date:
+                            try:
+                                if isinstance(fiscal_date, str):
+                                    s = fiscal_date.split("T")[0]
+                                    parsed_date = datetime.strptime(s, "%Y-%m-%d").date()
+                                elif isinstance(fiscal_date, datetime):
+                                    parsed_date = fiscal_date.date()
+                            except Exception:
+                                parsed_date = None
+                        if parsed_date is None:
+                            # 날짜가 없으면 스킵 (추정치는 날짜 기준 병합 필요)
+                            continue
+
+                        existing: StockAnalystEstimate = (
+                            db.query(StockAnalystEstimate)
+                            .filter(StockAnalystEstimate.asset_id == asset_id, StockAnalystEstimate.fiscal_date == parsed_date)
+                            .first()
+                        )
+
+                        if existing:
+                            for field in updatable_fields:
+                                if field in data and data.get(field) is not None and hasattr(existing, field):
+                                    setattr(existing, field, data.get(field))
+                        else:
+                            new_kwargs = {"asset_id": asset_id, "fiscal_date": parsed_date}
+                            for field in updatable_fields:
+                                val = data.get(field)
+                                if val is not None:
+                                    new_kwargs[field] = val
+                            est = StockAnalystEstimate(**new_kwargs)
+                            db.add(est)
+
+                        db.commit()
+                    except Exception as e:
+                        logger.warning(f"개별 주식 추정치 저장 실패(asset_id={item.get('asset_id')}): {e}")
+                        db.rollback()
+                        continue
+
+            return True
+        except Exception as e:
+            logger.error(f"주식 추정치 데이터 저장 실패: {e}")
+            return False
 
     async def _save_index_data(self, items: List[Dict[str, Any]]) -> bool:
         """지수 데이터 저장"""

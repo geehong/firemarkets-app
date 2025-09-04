@@ -136,6 +136,41 @@ class BitcoinDataClient(OnChainAPIClient):
         logger.error(f"All endpoints failed for {metric_name}")
         return None
     
+    async def get_metric(self, metric_name: str, days: int = 30) -> Optional[List]:
+        """
+        Get a specific onchain metric by name.
+        
+        Args:
+            metric_name: Name of the metric (e.g., "mvrv_z_score", "nupl", "sopr")
+            days: Number of days to fetch
+            
+        Returns:
+            List of metric data points or None
+        """
+        try:
+            # 메트릭 이름 매핑
+            metric_mapping = {
+                "mvrv_z_score": "mvrv",
+                "nupl": "nupl", 
+                "sopr": "sopr",
+                "hashrate": "hashrate",
+                "difficulty": "difficulty"
+            }
+            
+            metric_type = metric_mapping.get(metric_name, metric_name)
+            
+            if metric_type in ["mvrv", "nupl", "sopr"]:
+                return await self.get_onchain_metrics(metric_type, days)
+            elif metric_type in ["hashrate", "difficulty"]:
+                return await self.get_network_stats(metric_type, days)
+            else:
+                logger.warning(f"Unknown metric: {metric_name}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Bitcoin Data get_metric error for {metric_name}: {e}")
+            return None
+
     async def get_onchain_metrics(
         self, 
         metric_type: str = "all",

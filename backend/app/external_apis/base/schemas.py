@@ -2,7 +2,7 @@
 Standard Pydantic data schemas for API clients (Data Contracts).
 """
 from typing import Optional, List, Union, Dict, Any
-from datetime import datetime
+from datetime import datetime, date
 from pydantic import BaseModel, Field, ConfigDict
 
 # ============================================================================
@@ -63,6 +63,13 @@ class CompanyProfileData(BaseModel):
     country: Optional[str] = None
     currency: Optional[str] = None
     market_cap: Optional[float] = None
+    # DB 매핑 확장 필드
+    address: Optional[str] = None
+    city: Optional[str] = None
+    ceo: Optional[str] = None
+    phone: Optional[str] = None
+    logo_image_url: Optional[str] = None
+    ipo_date: Optional[date] = None
     timestamp_utc: datetime
 
 class StockFinancialsData(BaseModel):
@@ -84,16 +91,27 @@ class StockFinancialsData(BaseModel):
     currency: Optional[str] = None
     snapshot_date: Optional[datetime] = None
     timestamp_utc: datetime
+    # 이동평균/52주 고저 (DB 스키마 매핑 필드)
+    _52_week_high: Optional[float] = None
+    _52_week_low: Optional[float] = None
+    _50_day_moving_avg: Optional[float] = None
+    _200_day_moving_avg: Optional[float] = None
 
 class StockAnalystEstimatesData(BaseModel):
     """주식 애널리스트 추정치 데이터의 표준 구조"""
     symbol: str
-    target_price: Optional[float] = None
-    target_high: Optional[float] = None
-    target_low: Optional[float] = None
-    target_median: Optional[float] = None
-    recommendation: Optional[str] = None
-    number_of_analysts: Optional[int] = None
+    # DB 스키마 매핑 필드
+    revenue_low: Optional[float] = None
+    revenue_high: Optional[float] = None
+    revenue_avg: Optional[float] = None
+    ebitda_avg: Optional[float] = None
+    eps_avg: Optional[float] = None
+    eps_high: Optional[float] = None
+    eps_low: Optional[float] = None
+    revenue_analysts_count: Optional[int] = None
+    eps_analysts_count: Optional[int] = None
+    fiscal_date: Optional[date] = None
+    # 참고: 벤더 고유 필드는 필요 시 별도 확장
     timestamp_utc: datetime
 
 # ============================================================================
@@ -181,6 +199,14 @@ class TechnicalIndicatorsData(BaseModel):
 # ============================================================================
 # 온체인 데이터 (On-chain Data)
 # ============================================================================
+
+class OnchainMetricDataPoint(BaseModel):
+    """온체인 메트릭 데이터 포인트의 표준 구조"""
+    asset_id: int
+    timestamp_utc: datetime
+    metric_name: str
+    metric_value: float
+    additional_data: Optional[Dict[str, Any]] = None
 
 class OnChainMetricData(BaseModel):
     """간단한 온체인 메트릭 데이터 (기존 호환성 유지)"""
@@ -290,6 +316,7 @@ IndexInfoList = List[IndexInfoData]
 IndexInfos = List[IndexInfoData]  # 호환성을 위한 별칭
 TechnicalIndicatorsList = List[TechnicalIndicatorsData]
 TechnicalIndicators = List[TechnicalIndicatorsData]  # 호환성을 위한 별칭
+OnchainMetricDataPointList = List[OnchainMetricDataPoint]
 OnChainMetricList = List[OnChainMetricData]
 CryptoMetricsList = List[CryptoMetricsData]
 

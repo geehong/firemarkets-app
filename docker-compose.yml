@@ -186,8 +186,6 @@ services:
         condition: service_healthy
     volumes:
       - ./.env:/app/.env:ro
-    # 임시 실행 엔트리포인트 (전용 run 스크립트 없이도 실행되도록)
-    command: ["python", "-c", "import asyncio; from app.services.data_processor import DataProcessor; asyncio.run(DataProcessor().start())"]
     command: ["python", "-m", "app.services.run_data_processor"]
     networks:
       - app_network
