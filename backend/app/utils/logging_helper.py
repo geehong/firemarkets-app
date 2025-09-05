@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 
-from ..models.system import SchedulerLog
+from ..models.asset import SchedulerLog
 from ..core.database import SessionLocal
 
 logger = logging.getLogger(__name__)

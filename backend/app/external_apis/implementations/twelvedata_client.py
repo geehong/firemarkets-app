@@ -30,8 +30,6 @@ class TwelveDataClient(TradFiAPIClient):
         self.api_key = os.getenv("TWELVEDATA_API_KEY", "")
         if not self.api_key:
             logger.warning("TWELVEDATA_API_KEY is not configured.")
-        else:
-            logger.info(f"TwelveData API key configured: {self.api_key[:8]}...")
 
         # Simple per-process rate limiter: 8 requests per 60 seconds
         if not hasattr(TwelveDataClient, "_rl_times"):

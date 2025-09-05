@@ -308,7 +308,7 @@ class WorldAssetsCollector(BaseCollector):
     def _enrich_asset_data(self, name: str, ticker: str) -> Dict[str, Any]:
         """기존 DB와 조인하여 풍부한 정보 획득"""
         try:
-            db = self.get_db_session()
+            db = self.db
             
             # StockProfile 모델 import
             from ..models.asset import StockProfile
@@ -441,7 +441,7 @@ class WorldAssetsCollector(BaseCollector):
     def _update_assets_database(self, assets_data: List[AssetData]) -> int:
         """자산 데이터 DB 업데이트 - 히스토리 데이터 보존"""
         try:
-            db = self.get_db_session()
+            db = self.db
             today = datetime.now().date()
             
             # 오늘 데이터가 이미 있는지 확인
@@ -484,7 +484,7 @@ class WorldAssetsCollector(BaseCollector):
     def _update_bond_market_database(self, bond_data: Dict[str, Any]) -> int:
         """채권 시장 데이터 DB 업데이트"""
         try:
-            db = self.get_db_session()
+            db = self.db
             today = datetime.now().date()
             
             # 기존 오늘 데이터 삭제
@@ -514,7 +514,7 @@ class WorldAssetsCollector(BaseCollector):
     def _create_scraping_log(self, source: str, status: str) -> ScrapingLogs:
         """스크래핑 로그 생성"""
         try:
-            db = self.get_db_session()
+            db = self.db
             scraping_log = ScrapingLogs(
                 source=source,
                 status=status,
@@ -535,7 +535,7 @@ class WorldAssetsCollector(BaseCollector):
             if not scraping_log:
                 return
                 
-            db = self.get_db_session()
+            db = self.db
             scraping_log.status = status
             scraping_log.records_processed = records_processed
             scraping_log.records_successful = records_successful

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from app.services.scheduler_service import scheduler_service
 from app.utils.logger import logger
 from app.core.database import SessionLocal
-from app.models.system import AppConfiguration
+from app.models.asset import AppConfiguration
 
 def get_db_config(db, key, default_value):
     """DB에서 설정값을 가져옵니다."""
@@ -62,12 +62,13 @@ def main_loop():
         try:
             db = SessionLocal()
             should_run = get_db_config(db, 'scheduler_enabled', 'false').lower() == 'true'
+            test_mode = get_db_config(db, 'test_mode', 'false').lower() == 'true'
             db.close()
 
             if should_run:
                 if not scheduler_service.scheduler.running:
                     logger.info("Control flag is ON. Starting scheduler...")
-                    scheduler_service.start_scheduler(run_immediately=False)
+                    scheduler_service.start_scheduler(test_mode=test_mode)
                 # 스케줄러가 실행 중일 때만 헬스 체크 수행
                 elif not check_health():
                     logger.warning("Health check failed. Restarting scheduler...")
@@ -76,7 +77,7 @@ def main_loop():
                     # 새로운 스케줄러 인스턴스 생성
                     from app.services.scheduler_service import SchedulerService
                     scheduler_service = SchedulerService()
-                    scheduler_service.start_scheduler(run_immediately=False)
+                    scheduler_service.start_scheduler(test_mode=test_mode)
             elif not should_run and scheduler_service.scheduler.running:
                 logger.info("Control flag is OFF. Stopping scheduler...")
                 scheduler_service.stop_scheduler()

@@ -453,6 +453,10 @@ class DataProcessor:
                                 profile.isin = isin
                             if cusip is not None:
                                 profile.cusip = cusip
+                            
+                            # updated_at을 명시적으로 업데이트
+                            from datetime import datetime
+                            profile.updated_at = datetime.now()
                         else:
                             profile = StockProfile(
                                 asset_id=asset_id,
@@ -693,7 +697,7 @@ class DataProcessor:
 
                         existing: StockFinancial = (
                             db.query(StockFinancial)
-                            .filter(StockFinancial.asset_id == asset_id, StockFinancial.snapshot_date == parsed_snapshot)
+                            .filter(StockFinancial.asset_id == asset_id)
                             .first()
                         )
 

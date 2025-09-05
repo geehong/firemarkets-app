@@ -441,7 +441,135 @@ class AssetsTableResponse(BaseModel):
     search: Optional[str] = Field(None, description="Search term")
 
 
+# ============================================================================
+# World Assets Schemas
+# ============================================================================
+class TreemapResponse(BaseModel):
+    """트리맵 응답 스키마"""
+    data: List[Dict[str, Any]]
+    total_market_cap: float
+    last_updated: datetime
+
+class AssetsRankingResponse(BaseModel):
+    """자산 순위 응답 스키마"""
+    rankings: List[Dict[str, Any]]
+    total_count: int
+    last_updated: datetime
+
+class BondMarketResponse(BaseModel):
+    """채권 시장 응답 스키마"""
+    bond_data: List[Dict[str, Any]]
+    total_value: float
+    last_updated: datetime
+
+class ScrapingLogsResponse(BaseModel):
+    """스크래핑 로그 응답 스키마"""
+    logs: List[Dict[str, Any]]
+    total_count: int
+    last_updated: datetime
+
+class WorldAssetsStats(BaseModel):
+    """세계 자산 통계 스키마"""
+    total_market_cap: float
+    total_assets: int
+    last_updated: datetime
+
+class MarketCapByCategory(BaseModel):
+    """카테고리별 시가총액 스키마"""
+    category: str
+    market_cap: float
+    percentage: float
+
+class CollectionStatus(BaseModel):
+    """수집 상태 스키마"""
+    status: str
+    last_collection: Optional[datetime]
+    next_collection: Optional[datetime]
+
+class TopAssetsResponse(BaseModel):
+    """상위 자산 응답 스키마"""
+    assets: List[Dict[str, Any]]
+    total_count: int
+    last_updated: datetime
+
+class MarketCapTrends(BaseModel):
+    """시가총액 트렌드 스키마"""
+    trends: List[Dict[str, Any]]
+    period: str
+    last_updated: datetime
+
+class AssetHistory(BaseModel):
+    """자산 히스토리 스키마"""
+    history: List[Dict[str, Any]]
+    asset_name: str
+    last_updated: datetime
+
+class CategoryTrends(BaseModel):
+    """카테고리 트렌드 스키마"""
+    trends: List[Dict[str, Any]]
+    category: str
+    last_updated: datetime
+
+class TopAssetsByCategory(BaseModel):
+    """카테고리별 상위 자산 스키마"""
+    category: str
+    assets: List[Dict[str, Any]]
+    total_count: int
+    last_updated: datetime
+
+class PerformanceTreemapResponse(BaseModel):
+    """성과 트리맵 응답 스키마"""
+    data: List[Dict[str, Any]]
+    performance_metric: str
+    last_updated: datetime
 
 
+# ============================================================================
+# Crypto Schemas
+# ============================================================================
+
+class BitcoinHalvingPeriodDataResponse(BaseModel):
+    """비트코인 반감기 기간 데이터 응답 스키마"""
+    period: int
+    block_height: int
+    date: datetime
+    days_remaining: int
+    blocks_remaining: int
+
+class BitcoinHalvingSummary(BaseModel):
+    """비트코인 반감기 요약 스키마"""
+    current_period: int
+    next_halving: BitcoinHalvingPeriodDataResponse
+    total_halvings: int
+
+class NextHalvingInfo(BaseModel):
+    """다음 반감기 정보 스키마"""
+    block_height: int
+    estimated_date: datetime
+    days_remaining: int
+    blocks_remaining: int
+
+class CryptoDataResponse(BaseModel):
+    """암호화폐 데이터 응답 스키마"""
+    symbol: str
+    price: float
+    market_cap: Optional[float]
+    volume_24h: Optional[float]
+    change_24h: Optional[float]
+    last_updated: datetime
+
+class TopCryptosResponse(BaseModel):
+    """상위 암호화폐 응답 스키마"""
+    cryptos: List[CryptoDataResponse]
+    total_count: int
+    last_updated: datetime
+
+class GlobalCryptoMetrics(BaseModel):
+    """글로벌 암호화폐 메트릭스 스키마"""
+    total_market_cap: float
+    total_volume_24h: float
+    bitcoin_dominance: float
+    active_cryptocurrencies: int
+    last_updated: datetime
 
 

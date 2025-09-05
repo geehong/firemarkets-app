@@ -141,7 +141,6 @@ def get_metric_data_range(metric_def: OnchainMetricsInfo, db: Session) -> Any:
         'cdd_90dma': 'cdd_90dma',
         'true_market_mean': 'true_market_mean',
         'nrpl_btc': 'nrpl_btc',
-        'aviv': 'aviv',
         'thermo_cap': 'thermo_cap',
         'hodl_waves_supply': 'hodl_waves_supply'
     }
@@ -213,7 +212,6 @@ def create_data_points(records: List, metric_def: OnchainMetricsInfo) -> List[Me
         'cdd_90dma': 'cdd_90dma',
         'true_market_mean': 'true_market_mean',
         'nrpl_btc': 'nrpl_btc',
-        'aviv': 'aviv',
         'thermo_cap': 'thermo_cap',
         'hodl_waves_supply': 'hodl_waves_supply'
     }
@@ -425,7 +423,6 @@ async def get_metric_data(
         'cdd_90dma': 'cdd_90dma',
         'true_market_mean': 'true_market_mean',
         'nrpl_btc': 'nrpl_btc',
-        'aviv': 'aviv',
         'thermo_cap': 'thermo_cap',
         'hodl_waves_supply': 'hodl_waves_supply'
     }

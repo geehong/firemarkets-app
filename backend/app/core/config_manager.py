@@ -3,7 +3,7 @@ import json
 from typing import Any, Callable, Optional, List, Dict
 
 from app.core.database import SessionLocal
-from app.models.system import AppConfiguration
+from app.models.asset import AppConfiguration
 from app.utils.logger import logger
 
 def _str_to_bool(s: Any) -> bool:

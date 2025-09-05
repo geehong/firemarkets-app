@@ -15,11 +15,7 @@ from .asset import (
 
 # Crypto, ETF, Onchain CRUD files removed - models consolidated into asset.py
 
-# World Assets CRUD
-from .world_assets import (
-    CRUDWorldAssetsRanking, CRUDBondMarketData, CRUDScrapingLogs,
-    crud_world_assets_ranking, crud_bond_market_data, crud_scraping_logs
-)
+# World Assets CRUD - not currently used, removed from import
 
 __all__ = [
     # Base
@@ -33,9 +29,7 @@ __all__ = [
     
     # Crypto, ETF, Onchain CRUD removed - models consolidated into asset.py
     
-    # World Assets
-    "CRUDWorldAssetsRanking", "CRUDBondMarketData", "CRUDScrapingLogs",
-    "crud_world_assets_ranking", "crud_bond_market_data", "crud_scraping_logs"
+    # World Assets - not currently used, removed from export
 ]
 
 

@@ -4,11 +4,6 @@ Pydantic schemas for API request/response models.
 
 from .common import *
 from .asset import *
-from .crypto import *
-from .dashboard import *
-from .etf import *
-from .onchain import *
-from .world_assets import *
 
 __all__ = [
     # Common schemas

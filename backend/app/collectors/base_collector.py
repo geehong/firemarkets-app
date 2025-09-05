@@ -17,7 +17,7 @@ from app.services.api_strategy_manager import ApiStrategyManager
 from app.utils.redis_queue_manager import RedisQueueManager
 # ---
 
-from app.models.system import SchedulerLog
+from app.models.asset import SchedulerLog
 from app.utils.logging_helper import CollectorLoggingHelper
 
 

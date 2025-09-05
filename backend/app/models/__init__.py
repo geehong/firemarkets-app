@@ -36,7 +36,7 @@ from .asset import (
 )
 
 # System related models
-from .system import (
+from .asset import (
     AppConfiguration,
     SchedulerLog,
     ApiCallLog,
@@ -45,13 +45,14 @@ from .system import (
 )
 
 # User related models
-from .user import (
+from .asset import (
     User,
 )
 
 # Session related models
-from .session import (
+from .asset import (
     UserSession,
+    TokenBlacklist,
 )
 
 # Export all models
@@ -100,4 +101,5 @@ __all__ = [
     
     # Session models
     "UserSession",
+    "TokenBlacklist",
 ]

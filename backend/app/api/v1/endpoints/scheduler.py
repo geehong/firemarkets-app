@@ -7,13 +7,11 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 from datetime import datetime
 
-from ....core.database import get_db
+from ....core.database import get_db, SessionLocal
 from ....models import SchedulerLog
-from ....models.system import AppConfiguration
+from ....models.asset import AppConfiguration
 from ....core.websocket import scheduler
-# Removed deprecated setup_scheduler_jobs and unused GLOBAL_APP_CONFIGS import
-from ....services.tiingo_ws_consumer import get_consumer as get_tiingo_ws_consumer
-from ....services.scheduler_service import scheduler_service as get_realtime_scheduler
+from ....services.scheduler_service import scheduler_service
 
 logger = logging.getLogger(__name__)
 
@@ -73,16 +71,7 @@ class SchedulerJobsResponse(BaseModel):
     jobs: List[JobDetail]
     total_count: int
 
-class RealtimeActionResponse(BaseModel):
-    success: bool
-    message: str
-    details: Optional[Dict[str, Any]] = None
-
-class RealtimeScheduleRequest(BaseModel):
-    timezone: str = "America/New_York"
-    open_time: str = "09:30"  # HH:MM
-    close_time: str = "16:00"
-    weekdays_only: bool = True
+# Removed RealtimeActionResponse and RealtimeScheduleRequest - no longer needed
 
 def get_scheduler_status() -> SchedulerStatus:
     """실제 스케줄러 상태를 반환합니다."""
@@ -295,132 +284,100 @@ def get_scheduler_status_by_period(period: str, db: Session = Depends(get_db)):
         logger.error(f"Failed to get scheduler status for period {period}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get scheduler status for period {period}")
 
-@router.post("/scheduler/start", response_model=SchedulerActionResponse)
-def start_scheduler(db: Session = Depends(get_db), include_diagnostics: bool = False, fix_running: bool = False):
-    """스케줄러를 시작합니다."""
-    try:
-        logger.info("Starting scheduler")
-        diagnostics: Dict[str, Any] = {}
+# Legacy scheduler control endpoints - REMOVED
+# These endpoints were removed because:
+# 1. They use old DB flag-based approach instead of SchedulerService
+# 2. They directly manipulate APScheduler instead of using the service layer
+# 3. SchedulerService now manages its own lifecycle automatically
+# 
+# Use these instead:
+# - /scheduler/status - Check scheduler status
+# - /scheduler/collect-all-now - Manual data collection
+# - /scheduler/jobs - View scheduled jobs
 
-        # 요청 시 running 로그 정리
-        if fix_running:
-            try:
-                running_jobs = db.query(SchedulerLog).filter(
-                    SchedulerLog.status == "running"
-                ).all()
-                for job in running_jobs:
-                    job.status = "completed"
-                    job.end_time = datetime.now()
-                db.commit()
-                diagnostics["fixed_running_jobs"] = len(running_jobs)
-            except Exception as e:
-                diagnostics["fix_running_error"] = str(e)
+# @router.post("/scheduler/trigger", response_model=SchedulerActionResponse) - DEPRECATED
+# 이 엔드포인트는 레거시 코드입니다. 
+# 대신 /scheduler/collect-all-now를 사용하세요.
+
+@router.post("/scheduler/collect-all-now", response_model=Dict[str, Any])
+def collect_all_now_manually(db: Session = Depends(get_db)):
+    """관리자 수동 실행: 스케줄과 상관없이 모든 데이터 수집을 즉시 실행 (실시간 웹소켓 제외)"""
+    try:
+        import asyncio
+        # scheduler_service is already imported at the top
         
-        # 스케줄러가 이미 실행 중인지 확인
-        if scheduler and scheduler.running:
-            resp = SchedulerActionResponse(
-                success=True,
-                message="Scheduler is already running",
-                job_count=len(scheduler.get_jobs())
+        logger.info("Starting manual execution of all data collections")
+        
+        # 비동기 함수를 동기적으로 실행
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            start_time = datetime.now()
+            result = loop.run_until_complete(scheduler_service.run_all_collections_once())
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            
+            # 로그 기록
+            log = SchedulerLog(
+                job_name="manual_all_collections",
+                status="completed" if result.get("success") else "failed",
+                start_time=start_time,
+                end_time=end_time,
+                duration_seconds=int(duration),
+                data_points_added=sum(r.get("data", {}).get("total_added_records", 0) for r in result.get("results", [])),
+                error_message=None if result.get("success") else result.get("message")
             )
-            if include_diagnostics:
-                diagnostics.update({
-                    "is_running": True,
-                    "jobs": [job.id for job in scheduler.get_jobs()],
-                })
-                resp_dict = resp.model_dump()
-                resp_dict["diagnostics"] = diagnostics
-                return SchedulerActionResponse(**resp_dict)
-            return resp
+            db.add(log)
+            db.commit()
+            
+            return result
+            
+        finally:
+            loop.close()
+            
+    except Exception as e:
+        logger.error(f"Failed to run manual collections: {e}")
         
-        # DB에 스케줄러 활성화 플래그 설정
-        config = db.query(AppConfiguration).filter(AppConfiguration.config_key == 'scheduler_enabled').first()
+        # 실패 로그 기록
+        end_time = datetime.now()
+        log = SchedulerLog(
+            job_name="manual_all_collections",
+            status="failed",
+            start_time=start_time if 'start_time' in locals() else end_time,
+            end_time=end_time,
+            duration_seconds=int((end_time - (start_time if 'start_time' in locals() else end_time)).total_seconds()),
+            data_points_added=0,
+            error_message=str(e)
+        )
+        db.add(log)
+        db.commit()
+        
+        raise HTTPException(status_code=500, detail=f"Failed to run manual collections: {str(e)}")
+
+@router.post("/scheduler/enable-test-mode", response_model=SchedulerActionResponse)
+def enable_test_mode(db: Session = Depends(get_db)):
+    """테스트 모드를 활성화합니다 (짧은 간격으로 스케줄 실행)"""
+    try:
+        logger.info("Enabling test mode")
+        
+        # DB에 테스트 모드 플래그 설정
+        config = db.query(AppConfiguration).filter(AppConfiguration.config_key == 'test_mode').first()
         if config:
             config.config_value = 'true'
         else:
             config = AppConfiguration(
-                config_key='scheduler_enabled',
+                config_key='test_mode',
                 config_value='true',
                 data_type='string',
                 is_active=True
             )
             db.add(config)
         db.commit()
-        logger.info("Scheduler enabled flag set to True")
         
         # 로그 기록
         log = SchedulerLog(
-            job_name="scheduler_start",
-            status="completed",
-            start_time=datetime.now(),
-            end_time=datetime.now(),
-            duration_seconds=0,
-            data_points_added=0
-        )
-        db.add(log)
-        db.commit()
-
-        resp = SchedulerActionResponse(
-            success=True,
-            message="Scheduler start signal sent to worker process",
-            job_count=0  # 실제 작업 수는 워커 프로세스에서 관리
-        )
-        if include_diagnostics:
-            diagnostics.update({
-                "is_running": scheduler.running if scheduler else False,
-                "jobs": [{"id": job.id, "next_run_time": job.next_run_time} for job in scheduler.get_jobs()] if scheduler else [],
-            })
-            # 최근 로그 10개 포함
-            try:
-                recent = db.query(SchedulerLog).order_by(SchedulerLog.start_time.desc()).limit(10).all()
-                diagnostics["recent_logs"] = [
-                    {
-                        "job_name": r.job_name,
-                        "status": r.status,
-                        "error": r.error_message,
-                        "created_at": r.created_at,
-                    } for r in recent
-                ]
-            except Exception as e:
-                diagnostics["logs_error"] = str(e)
-            resp_dict = resp.model_dump()
-            resp_dict["diagnostics"] = diagnostics
-            return SchedulerActionResponse(**resp_dict)
-        return resp
-    except Exception as e:
-        logger.error(f"Failed to start scheduler: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to start scheduler: {str(e)}")
-
-@router.post("/scheduler/restart", response_model=SchedulerActionResponse)
-def restart_scheduler(db: Session = Depends(get_db)):
-    """스케줄러 워커에 재시작 신호를 보냅니다 (stop 후 start)."""
-    try:
-        logger.info("Sending scheduler restart signal")
-        
-        # 먼저 중지 신호
-        config = db.query(AppConfiguration).filter(AppConfiguration.config_key == 'scheduler_enabled').first()
-        if config:
-            config.config_value = 'false'
-        else:
-            config = AppConfiguration(
-                config_key='scheduler_enabled',
-                config_value='false',
-                data_type='string',
-                is_active=True
-            )
-            db.add(config)
-        db.commit()
-        
-        # 잠시 대기 후 시작 신호
-        import time
-        time.sleep(2)
-        
-        config.config_value = 'true'
-        db.commit()
-        
-        # 로그 기록
-        log = SchedulerLog(
-            job_name="scheduler_restart",
+            job_name="enable_test_mode",
             status="completed",
             start_time=datetime.now(),
             end_time=datetime.now(),
@@ -432,25 +389,25 @@ def restart_scheduler(db: Session = Depends(get_db)):
         
         return SchedulerActionResponse(
             success=True,
-            message="Scheduler restart signal sent to worker process"
+            message="Test mode enabled. All schedules will run every 3 minutes for testing"
         )
     except Exception as e:
-        logger.error(f"Failed to send scheduler restart signal: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to send scheduler restart signal: {str(e)}")
+        logger.error(f"Failed to enable test mode: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to enable test mode: {str(e)}")
 
-@router.post("/scheduler/stop", response_model=SchedulerActionResponse)
-def stop_scheduler(db: Session = Depends(get_db)):
-    """DB 플래그를 'disabled'로 설정하여 스케줄러 워커의 중지를 지시합니다."""
+@router.post("/scheduler/disable-test-mode", response_model=SchedulerActionResponse)
+def disable_test_mode(db: Session = Depends(get_db)):
+    """테스트 모드를 비활성화합니다 (일반 24시간 간격으로 복원)"""
     try:
-        logger.info("Setting scheduler enabled flag to False")
+        logger.info("Disabling test mode")
         
-        # DB에 스케줄러 비활성화 플래그 설정
-        config = db.query(AppConfiguration).filter(AppConfiguration.config_key == 'scheduler_enabled').first()
+        # DB에 테스트 모드 플래그 비활성화
+        config = db.query(AppConfiguration).filter(AppConfiguration.config_key == 'test_mode').first()
         if config:
             config.config_value = 'false'
         else:
             config = AppConfiguration(
-                config_key='scheduler_enabled',
+                config_key='test_mode',
                 config_value='false',
                 data_type='string',
                 is_active=True
@@ -460,7 +417,7 @@ def stop_scheduler(db: Session = Depends(get_db)):
         
         # 로그 기록
         log = SchedulerLog(
-            job_name="scheduler_stop",
+            job_name="disable_test_mode",
             status="completed",
             start_time=datetime.now(),
             end_time=datetime.now(),
@@ -472,100 +429,11 @@ def stop_scheduler(db: Session = Depends(get_db)):
         
         return SchedulerActionResponse(
             success=True,
-            message="Scheduler stop signal sent to worker process"
+            message="Test mode disabled. Scheduler will restart with normal 24-hour intervals"
         )
     except Exception as e:
-        logger.error(f"Failed to set scheduler disabled flag: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to set scheduler disabled flag: {str(e)}")
-
-@router.post("/scheduler/pause", response_model=SchedulerActionResponse)
-def pause_scheduler(db: Session = Depends(get_db)):
-    """스케줄러를 일시정지합니다."""
-    try:
-        logger.info("Pausing scheduler")
-        
-        # 스케줄러 일시정지 (모든 작업 일시정지)
-        if scheduler and scheduler.running:
-            scheduler.pause()
-            logger.info("Scheduler paused")
-        
-        # 로그 기록
-        log = SchedulerLog(
-            job_name="scheduler_pause",
-            status="completed",
-            start_time=datetime.now(),
-            end_time=datetime.now(),
-            duration_seconds=0,
-            data_points_added=0
-        )
-        db.add(log)
-        db.commit()
-        
-        return SchedulerActionResponse(
-            success=True,
-            message="Scheduler paused successfully"
-        )
-    except Exception as e:
-        logger.error(f"Failed to pause scheduler: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to pause scheduler: {str(e)}")
-
-@router.post("/scheduler/trigger", response_model=SchedulerActionResponse)
-def trigger_scheduler(db: Session = Depends(get_db)):
-    """스케줄러 작업을 즉시 실행합니다."""
-    try:
-        logger.info("Triggering scheduler jobs")
-        
-        # 스케줄러가 실행 중인지 확인
-        if not scheduler:
-            raise HTTPException(status_code=400, detail="Scheduler is not initialized")
-        
-        if not scheduler.running:
-            # 스케줄러가 실행되지 않았으면 시작
-            scheduler.start()
-            logger.info("Scheduler started for trigger")
-        
-        # 모든 작업을 즉시 실행
-        jobs = scheduler.get_jobs()
-        if not jobs:
-            return SchedulerActionResponse(
-                success=True,
-                message="No jobs configured",
-                job_count=0
-            )
-        
-        # 각 작업을 즉시 실행
-        for job in jobs:
-            try:
-                # APScheduler에서는 run_job 대신 다른 방법을 사용
-                # 작업을 즉시 실행하기 위해 함수를 직접 호출
-                if hasattr(job.func, '__call__'):
-                    job.func()
-                    logger.info(f"Triggered job: {job.id}")
-                else:
-                    logger.warning(f"Job {job.id} has no callable function")
-            except Exception as e:
-                logger.error(f"Failed to trigger job {job.id}: {e}")
-        
-        # 로그 기록
-        log = SchedulerLog(
-            job_name="scheduler_trigger",
-            status="completed",
-            start_time=datetime.now(),
-            end_time=datetime.now(),
-            duration_seconds=0,
-            data_points_added=0
-        )
-        db.add(log)
-        db.commit()
-        
-        return SchedulerActionResponse(
-            success=True,
-            message=f"Triggered {len(jobs)} jobs",
-            job_count=len(jobs)
-        )
-    except Exception as e:
-        logger.error(f"Failed to trigger scheduler: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to trigger scheduler: {str(e)}")
+        logger.error(f"Failed to disable test mode: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to disable test mode: {str(e)}")
 
 @router.post("/scheduler/fix-running-jobs", response_model=SchedulerActionResponse)
 def fix_running_jobs(db: Session = Depends(get_db)):
@@ -676,81 +544,9 @@ def get_scheduler_jobs_history(db: Session = Depends(get_db)):
 
 
 
-# Realtime control endpoints
-@router.post("/realtime/start", response_model=RealtimeActionResponse)
-def realtime_start():
-    try:
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        consumer = get_tiingo_ws_consumer()
-        default_tickers = ["AAPL", "MSFT", "GOOGL"]
-        loop.run_until_complete(consumer.start(default_tickers))
-        rt_sched = get_realtime_scheduler()
-        loop.run_until_complete(rt_sched.start())
-        return RealtimeActionResponse(success=True, message="Realtime collectors started")
-    except Exception as e:
-        logger.error(f"Failed to start realtime collectors: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to start realtime collectors: {str(e)}")
-
-
-@router.post("/realtime/stop", response_model=RealtimeActionResponse)
-def realtime_stop():
-    try:
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        consumer = get_tiingo_ws_consumer()
-        loop.run_until_complete(consumer.stop())
-        rt_sched = get_realtime_scheduler()
-        loop.run_until_complete(rt_sched.stop())
-        return RealtimeActionResponse(success=True, message="Realtime collectors stopped")
-    except Exception as e:
-        logger.error(f"Failed to stop realtime collectors: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to stop realtime collectors: {str(e)}")
-
-
-@router.post("/realtime/schedule", response_model=RealtimeActionResponse)
-def realtime_schedule(req: RealtimeScheduleRequest):
-    try:
-        from pytz import timezone
-        from apscheduler.triggers.cron import CronTrigger
-
-        tz = timezone(req.timezone)
-        # Cancel existing realtime schedule jobs if any
-        existing = [job for job in scheduler.get_jobs() if job.id in ("realtime_open", "realtime_close")] if scheduler else []
-        for job in existing:
-            scheduler.remove_job(job.id)
-
-        # Parse HH:MM
-        open_h, open_m = map(int, req.open_time.split(":"))
-        close_h, close_m = map(int, req.close_time.split(":"))
-
-        dow = "mon-fri" if req.weekdays_only else "*"
-
-        # Schedule start at open
-        scheduler.add_job(
-            func=lambda: realtime_start(),
-            trigger=CronTrigger(hour=open_h, minute=open_m, day_of_week=dow, timezone=tz),
-            id="realtime_open",
-            replace_existing=True,
-        )
-
-        # Schedule stop at close
-        scheduler.add_job(
-            func=lambda: realtime_stop(),
-            trigger=CronTrigger(hour=close_h, minute=close_m, day_of_week=dow, timezone=tz),
-            id="realtime_close",
-            replace_existing=True,
-        )
-
-        return RealtimeActionResponse(success=True, message="Realtime schedule set", details={
-            "timezone": req.timezone,
-            "open": req.open_time,
-            "close": req.close_time,
-            "weekdays_only": req.weekdays_only,
-        })
-    except Exception as e:
-        logger.error(f"Failed to set realtime schedule: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to set realtime schedule: {str(e)}")
+# Realtime control endpoints - REMOVED (Legacy code)
+# These endpoints were removed because:
+# 1. RealtimeCollector has been removed and integrated into SchedulerService
+# 2. Tiingo WebSocket consumer is now managed separately
+# 3. Use /scheduler/collect-all-now for manual data collection instead
 

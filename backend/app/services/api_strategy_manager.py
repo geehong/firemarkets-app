@@ -5,6 +5,8 @@ API 전략 관리자: 여러 외부 API를 순서대로 호출하고 실패 시 
 import pandas as pd
 import time
 from typing import Optional, List, Dict, Any, Tuple
+import os
+import httpx
 from datetime import datetime, timedelta
 from collections import defaultdict
 from app.utils.logger import logger
@@ -15,6 +17,7 @@ from app.external_apis.implementations import (
 )
 from app.crud.asset import crud_ohlcv
 from app.utils.logging_helper import ApiLoggingHelper as LoggingHelper
+from app.external_apis.base.schemas import EtfInfoData
 
 class ApiStrategyManager:
     """API 전략 관리자: 여러 API를 순서대로 시도하고 실패 시 자동 전환"""
@@ -71,12 +74,12 @@ class ApiStrategyManager:
             # AlphaVantageClient() # 선물 심볼 미지원
         ]
         
-        # 7. ETF용 클라이언트
+        # 7. ETF용 클라이언트 (AlphaVantage 전용)
         self.etf_clients = [
-            AlphaVantageClient(), # 1순위
-            TiingoClient(),       # 2순위
-            PolygonClient(),      # 3순위
-            TwelveDataClient(),   # 4순위
+            AlphaVantageClient(),  # AlphaVantage만 사용
+            # TiingoClient(),
+            # PolygonClient(),
+            # TwelveDataClient(),
         ]
         
         # 8. 암호화폐용 클라이언트 (일반 데이터)
@@ -864,8 +867,15 @@ class ApiStrategyManager:
                 
                 if hasattr(client, 'get_etf_info'):
                     data = await client.get_etf_info(ticker)
+                elif hasattr(client, 'get_etf_profile'):
+                    data = await client.get_etf_profile(ticker)
+                elif hasattr(client, 'get_overview'):
+                    data = await client.get_overview(ticker)
                 elif hasattr(client, 'get_profile'):
                     data = await client.get_profile(ticker)
+                elif 'AlphaVantage' in client.__class__.__name__:
+                    # 직접 AlphaVantage ETF_PROFILE 호출 (클라이언트에 메서드가 없는 경우)
+                    data = await self._fetch_alpha_vantage_etf_profile(ticker)
                 else:
                     self.logger.warning(f"{client.__class__.__name__} has no ETF info method")
                     continue
@@ -881,6 +891,52 @@ class ApiStrategyManager:
         
         self.logger.error(f"All API clients failed to fetch ETF info for {ticker}")
         return None
+
+    async def _fetch_alpha_vantage_etf_profile(self, ticker: str) -> Optional[EtfInfoData]:
+        """AlphaVantage ETF_PROFILE 직접 호출 후 EtfInfoData로 매핑"""
+        try:
+            api_key = None
+            # ConfigManager 우선, 없으면 환경변수
+            if self.config_manager and hasattr(self.config_manager, 'get_config'):
+                api_key = self.config_manager.get_config('ALPHA_VANTAGE_API_KEY_1') or self.config_manager.get_config('ALPHA_VANTAGE_API_KEY')
+            if not api_key:
+                api_key = os.getenv('ALPHA_VANTAGE_API_KEY_1') or os.getenv('ALPHA_VANTAGE_API_KEY')
+            if not api_key:
+                self.logger.warning("AlphaVantage API key not configured for ETF_PROFILE")
+                return None
+
+            url = "https://www.alphavantage.co/query"
+            params = {"function": "ETF_PROFILE", "symbol": ticker, "apikey": api_key}
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(url, params=params)
+                resp.raise_for_status()
+                payload = resp.json() or {}
+
+            # 매핑 및 변환
+            def to_float(x):
+                try:
+                    return float(x) if x not in (None, "", "n/a") else None
+                except Exception:
+                    return None
+
+            leveraged_str = str(payload.get("leveraged") or "").strip().upper()
+            leveraged = True if leveraged_str in ("YES", "Y", "TRUE", "1") else False if leveraged_str in ("NO", "N", "FALSE", "0") else None
+
+            etf_data = EtfInfoData(
+                net_assets=to_float(payload.get("net_assets")),
+                net_expense_ratio=to_float(payload.get("net_expense_ratio")),
+                portfolio_turnover=to_float(payload.get("portfolio_turnover")),
+                dividend_yield=to_float(payload.get("dividend_yield")),
+                inception_date=payload.get("inception_date") or None,
+                leveraged=leveraged,
+                sectors=payload.get("sectors"),
+                holdings=payload.get("holdings"),
+                snapshot_date=datetime.now().date()
+            )
+            return etf_data
+        except Exception as e:
+            self.logger.warning(f"AlphaVantage ETF_PROFILE fetch failed for {ticker}: {e}")
+            return None
 
     async def get_crypto_info(self, asset_id: int) -> Optional:
         """

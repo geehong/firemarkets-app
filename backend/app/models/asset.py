@@ -1,6 +1,6 @@
 # backend_temp/app/models/asset.py
 from sqlalchemy import (BIGINT, DECIMAL, TIMESTAMP, Boolean, Column, Date,
-                        DateTime, ForeignKey, Integer, String, Text, func, JSON)
+                        DateTime, ForeignKey, Integer, String, Text, func, JSON, Float)
 from sqlalchemy.orm import relationship
 
 from ..core.database import Base
@@ -413,43 +413,55 @@ class ScrapingLogs(Base):
 
 class CryptoMetric(Base):
     __tablename__ = 'crypto_metrics'
-    
-    id = Column(Integer, primary_key=True)
+
+    # DB-aligned primary key and core identifiers
+    metric_id = Column(BIGINT, primary_key=True, autoincrement=True)
     asset_id = Column(Integer, ForeignKey('assets.asset_id'), nullable=False, index=True)
-    timestamp_utc = Column(DateTime, nullable=False, index=True)
-    
-    # HODL Waves (Bitcoin age distribution)
+    # DB column is DATE; we accept Date or DateTime but store as Date-compatible
+    timestamp_utc = Column(Date, nullable=False, index=True)
+
+    # HODL Waves (match DB column names)
     hodl_age_0d_1d = Column(DECIMAL(20, 10), nullable=True)
     hodl_age_1d_1w = Column(DECIMAL(20, 10), nullable=True)
     hodl_age_1w_1m = Column(DECIMAL(20, 10), nullable=True)
     hodl_age_1m_3m = Column(DECIMAL(20, 10), nullable=True)
     hodl_age_3m_6m = Column(DECIMAL(20, 10), nullable=True)
+    hodl_age_4y_5y = Column(DECIMAL(20, 10), nullable=True)
+    hodl_age_3y_4y = Column(DECIMAL(20, 10), nullable=True)
+    hodl_age_5y_7y = Column(DECIMAL(20, 10), nullable=True)
     hodl_age_6m_1y = Column(DECIMAL(20, 10), nullable=True)
     hodl_age_1y_2y = Column(DECIMAL(20, 10), nullable=True)
     hodl_age_2y_3y = Column(DECIMAL(20, 10), nullable=True)
-    hodl_age_3y_5y = Column(DECIMAL(20, 10), nullable=True)
-    hodl_age_5y_7y = Column(DECIMAL(20, 10), nullable=True)
     hodl_age_7y_10y = Column(DECIMAL(20, 10), nullable=True)
-    hodl_age_10y_plus = Column(DECIMAL(20, 10), nullable=True)
-    
-    # Network metrics
-    active_addresses = Column(Integer, nullable=True)
-    transaction_count = Column(Integer, nullable=True)
-    hash_rate = Column(DECIMAL(30, 10), nullable=True)
+    hodl_age_10y = Column(DECIMAL(20, 10), nullable=True)
+    hodl_waves_supply = Column(DECIMAL(20, 10), nullable=True)
+
+    # Network/market metrics (DB-aligned names)
     difficulty = Column(DECIMAL(30, 10), nullable=True)
-    
-    # Market metrics
-    market_cap = Column(DECIMAL(30, 2), nullable=True)
+    hashrate = Column(DECIMAL(30, 10), nullable=True)
     realized_cap = Column(DECIMAL(30, 2), nullable=True)
-    mvrv_ratio = Column(DECIMAL(10, 4), nullable=True)
-    
-    # Metadata
-    data_source = Column(String(100), nullable=True)
+    realized_price = Column(DECIMAL(30, 10), nullable=True)
+    mvrv_z_score = Column(DECIMAL(20, 10), nullable=True)
+    nupl = Column(DECIMAL(20, 10), nullable=True)
+    sopr = Column(DECIMAL(20, 10), nullable=True)
+    miner_reserves = Column(DECIMAL(30, 10), nullable=True)
+    open_interest_futures = Column(JSON, nullable=True)
+    etf_btc_flow = Column(DECIMAL(30, 10), nullable=True)
+    etf_btc_total = Column(DECIMAL(30, 10), nullable=True)
+
+    # Additional metrics from DB schema
+    cdd_90dma = Column(DECIMAL(30, 10), nullable=True)
+    true_market_mean = Column(DECIMAL(30, 10), nullable=True)
+    nrpl_btc = Column(DECIMAL(30, 10), nullable=True)
+    aviv = Column(DECIMAL(30, 10), nullable=True)
+    thermo_cap = Column(DECIMAL(30, 10), nullable=True)
+
+    # Timestamps
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     def __repr__(self):
-        return f"<CryptoMetric(id={self.id}, asset_id={self.asset_id}, timestamp={self.timestamp_utc})>"
+        return f"<CryptoMetric(metric_id={self.metric_id}, asset_id={self.asset_id}, timestamp={self.timestamp_utc})>"
 
 
 class SparklineData(Base):
@@ -466,5 +478,227 @@ class SparklineData(Base):
         return f"<SparklineData(id={self.id}, ticker='{self.ticker}', asset_type='{self.asset_type}')>"
 
 
+# ============================================================================
+# System Configuration Models
+# ============================================================================
 
+class AppConfiguration(Base):
+    """애플리케이션 설정 테이블"""
+    __tablename__ = 'app_configurations'
+    
+    config_id = Column(Integer, primary_key=True, autoincrement=True)
+    config_key = Column(String(100), unique=True, nullable=False, index=True)
+    config_value = Column(Text, nullable=True)
+    data_type = Column(String(20), default='string')  # string, int, float, boolean, json
+    description = Column(Text, nullable=True)
+    is_sensitive = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True, index=True)
+    category = Column(String(50), default='general', index=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    
+    def __repr__(self):
+        return f"<AppConfiguration(config_id={self.config_id}, key='{self.config_key}', value='{self.config_value}')>"
+
+
+class SchedulerLog(Base):
+    """스케줄러 실행 로그 테이블"""
+    __tablename__ = 'scheduler_logs'
+    
+    log_id = Column(BIGINT, primary_key=True, autoincrement=True)
+    job_name = Column(String(100), nullable=False, index=True)
+    start_time = Column(DateTime, nullable=False)
+    end_time = Column(DateTime, nullable=True)
+    status = Column(String(20), nullable=False, index=True)  # running, completed, failed
+    duration_seconds = Column(Integer, nullable=True)
+    assets_processed = Column(Integer, default=0)
+    data_points_added = Column(Integer, default=0)
+    error_message = Column(Text, nullable=True)
+    details = Column(JSON, nullable=True)  # 추가 메타데이터
+    current_task = Column(String(200), nullable=True)
+    checkpoint_data = Column(JSON, nullable=True)
+    retry_count = Column(Integer, default=0)
+    strategy_used = Column(String(100), nullable=True)
+    
+    def __repr__(self):
+        return f"<SchedulerLog(log_id={self.log_id}, job='{self.job_name}', status='{self.status}')>"
+
+
+class ApiCallLog(Base):
+    """API 호출 로그 테이블"""
+    __tablename__ = 'api_call_logs'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    api_name = Column(String(50), nullable=False, index=True)
+    endpoint = Column(String(200), nullable=True)
+    method = Column(String(10), nullable=True)
+    status_code = Column(Integer, nullable=True)
+    response_time_ms = Column(Integer, nullable=True)
+    data_points = Column(Integer, default=0)
+    error_message = Column(Text, nullable=True)
+    timestamp = Column(DateTime, server_default=func.now(), index=True)
+    
+    def __repr__(self):
+        return f"<ApiCallLog(id={self.id}, api='{self.api_name}', status={self.status_code})>"
+
+
+class TechnicalIndicator(Base):
+    """기술적 지표 데이터 테이블"""
+    __tablename__ = 'technical_indicators'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    asset_id = Column(Integer, ForeignKey('assets.asset_id'), nullable=False, index=True)
+    indicator_type = Column(String(50), nullable=False, index=True)  # RSI, MACD, SMA, etc.
+    value = Column(Float, nullable=False)
+    timestamp = Column(DateTime, nullable=False, index=True)
+    period = Column(Integer, nullable=True)  # 지표 계산 기간
+    indicator_metadata = Column(JSON, nullable=True)  # 추가 지표 정보
+    
+    def __repr__(self):
+        return f"<TechnicalIndicator(id={self.id}, asset_id={self.asset_id}, type='{self.indicator_type}')>"
+
+
+class EconomicIndicator(Base):
+    """경제 지표 데이터 테이블"""
+    __tablename__ = 'economic_indicators'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    indicator_name = Column(String(100), nullable=False, index=True)
+    country = Column(String(50), nullable=True)
+    value = Column(Float, nullable=False)
+    unit = Column(String(20), nullable=True)
+    period = Column(String(20), nullable=True)  # Q1, Q2, Monthly, etc.
+    release_date = Column(Date, nullable=False, index=True)
+    source = Column(String(100), nullable=True)
+    
+    def __repr__(self):
+        return f"<EconomicIndicator(id={self.id}, name='{self.indicator_name}', value={self.value})>"
+
+
+class SystemMetrics(Base):
+    """시스템 메트릭스 테이블"""
+    __tablename__ = 'system_metrics'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    metric_name = Column(String(100), nullable=False, index=True)
+    metric_value = Column(Float, nullable=False)
+    metric_unit = Column(String(20), nullable=True)
+    timestamp = Column(DateTime, server_default=func.now(), index=True)
+    metric_metadata = Column(JSON, nullable=True)  # 추가 메트릭 정보
+    
+    def __repr__(self):
+        return f"<SystemMetrics(id={self.id}, name='{self.metric_name}', value={self.metric_value})>"
+
+
+class ApiUsageLog(Base):
+    """API 사용량 로그 테이블"""
+    __tablename__ = 'api_usage_logs'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    api_name = Column(String(50), nullable=False, index=True)
+    endpoint = Column(String(200), nullable=True)
+    calls_made = Column(Integer, default=0)
+    calls_remaining = Column(Integer, nullable=True)
+    reset_time = Column(DateTime, nullable=True)
+    timestamp = Column(DateTime, server_default=func.now(), index=True)
+    
+    def __repr__(self):
+        return f"<ApiUsageLog(id={self.id}, api='{self.api_name}', calls={self.calls_made})>"
+
+
+class DataCollectionLog(Base):
+    """데이터 수집 로그 테이블"""
+    __tablename__ = 'data_collection_logs'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    collector_name = Column(String(50), nullable=False, index=True)
+    asset_id = Column(Integer, ForeignKey('assets.asset_id'), nullable=True, index=True)
+    data_type = Column(String(50), nullable=False)
+    records_collected = Column(Integer, default=0)
+    records_saved = Column(Integer, default=0)
+    execution_time_seconds = Column(Float, nullable=True)
+    status = Column(String(20), nullable=False, index=True)  # success, failed, partial
+    error_message = Column(Text, nullable=True)
+    timestamp = Column(DateTime, server_default=func.now(), index=True)
+    collection_metadata = Column(JSON, nullable=True)  # 수집 관련 메타데이터
+    
+    def __repr__(self):
+        return f"<DataCollectionLog(id={self.id}, collector='{self.collector_name}', status='{self.status}')>"
+
+
+class User(Base):
+    """사용자 테이블"""
+    __tablename__ = 'users'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    email = Column(String(100), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    role = Column(String(50), nullable=False, index=True)  # e.g., 'user', 'admin', 'super_admin'
+    permissions = Column(JSON, nullable=True)
+    full_name = Column(String(100), nullable=True)
+    address = Column(Text, nullable=True)
+    avatar_url = Column(String(255), nullable=True)
+    phone_number = Column(String(50), nullable=True)
+    is_active = Column(Boolean, default=True)
+    last_login = Column(DateTime, nullable=True)
+    locked_until = Column(DateTime, nullable=True)
+    login_attempts = Column(Integer, nullable=False, default=0)
+    deleted_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    
+    def __repr__(self):
+        return f"<User(id={self.id}, username='{self.username}')>"
+
+
+class UserSession(Base):
+    """사용자 세션 테이블"""
+    __tablename__ = 'user_sessions'
+    
+    id = Column(BIGINT, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    session_id = Column(String(64), unique=True, nullable=False, index=True)
+    refresh_token_hash = Column(String(255), nullable=False)
+    issued_at = Column(DateTime, server_default=func.now())
+    expires_at = Column(DateTime, nullable=False, index=True)
+    is_revoked = Column(Boolean, default=False)
+    last_used_at = Column(DateTime, nullable=True)
+    user_agent = Column(Text, nullable=True)
+    ip_address = Column(String(100), nullable=True)
+    
+    def __repr__(self):
+        return f"<UserSession(id={self.id}, user_id={self.user_id})>"
+
+
+class TokenBlacklist(Base):
+    """토큰 블랙리스트 테이블"""
+    __tablename__ = 'token_blacklist'
+    
+    id = Column(BIGINT, primary_key=True, autoincrement=True)
+    token_hash = Column(String(255), unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    created_at = Column(DateTime, server_default=func.now())
+    
+    def __repr__(self):
+        return f"<TokenBlacklist(id={self.id}, token='{self.token[:10]}...')>"
+
+
+class AuditLog(Base):
+    """감사 로그 테이블"""
+    __tablename__ = 'audit_logs'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    action = Column(String(100), nullable=False, index=True)
+    resource_type = Column(String(50), nullable=True)
+    resource_id = Column(String(100), nullable=True)
+    ip_address = Column(String(45), nullable=True)
+    # user_agent = Column(Text, nullable=True)  # DB에 컬럼이 없어서 주석 처리
+    timestamp = Column(DateTime, server_default=func.now(), index=True)
+    details = Column(JSON, nullable=True)
+    
+    def __repr__(self):
+        return f"<AuditLog(id={self.id}, action='{self.action}', user_id={self.user_id})>"
 

@@ -9,7 +9,7 @@ from sqlalchemy import and_, or_, desc, func
 from datetime import date, datetime
 
 from .base import CRUDBase
-from ..models.asset import Asset, AssetType, OHLCVData, StockFinancial, StockProfile, StockAnalystEstimate, IndexInfo
+from ..models.asset import Asset, AssetType, OHLCVData, StockFinancial, StockProfile, StockAnalystEstimate, IndexInfo, WorldAssetsRanking, BondMarketData, ScrapingLogs
 # CryptoMetric removed - using CryptoData instead
 
 logger = logging.getLogger(__name__)

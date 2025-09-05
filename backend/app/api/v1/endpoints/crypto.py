@@ -10,7 +10,7 @@ from datetime import datetime, date, timedelta
 from ....core.database import get_db
 from ....models import Asset, OHLCVData
 from ....collectors import CryptoDataCollector
-from ....schemas.crypto import (
+from ....schemas.asset import (
     BitcoinHalvingPeriodDataResponse, BitcoinHalvingSummary, NextHalvingInfo,
     CryptoDataResponse, TopCryptosResponse, GlobalCryptoMetrics
     # CryptoMetricsResponse,  # Commented out - duplicate API
@@ -328,41 +328,14 @@ async def get_crypto_data_by_asset(
         if not crypto_data:
             raise HTTPException(status_code=404, detail=f"Crypto data not found for {asset_identifier}")
         
-        # Format the response with all crypto_data fields
+        # Format the response to match CryptoDataResponse (no extra wrapper)
         return {
-            "data": {
-                "symbol": crypto_data.symbol,
-                "name": crypto_data.name,
-                "price": float(crypto_data.current_price) if crypto_data.current_price else float(crypto_data.price) if crypto_data.price else 0.0,
-                "market_cap": float(crypto_data.market_cap) if crypto_data.market_cap else 0.0,
-                "volume_24h": float(crypto_data.volume_24h) if crypto_data.volume_24h else 0.0,
-                "price_change_24h": 0.0,  # TODO: Calculate from OHLCV data
-                "price_change_percent_24h": float(crypto_data.percent_change_24h) if crypto_data.percent_change_24h else 0.0,
-                "circulating_supply": float(crypto_data.circulating_supply) if crypto_data.circulating_supply else None,
-                "total_supply": float(crypto_data.total_supply) if crypto_data.total_supply else None,
-                "max_supply": float(crypto_data.max_supply) if crypto_data.max_supply else None,
-                "rank": crypto_data.cmc_rank if crypto_data.cmc_rank else 0,
-                "last_updated": crypto_data.last_updated,
-                # Additional fields for CryptoInfoTab
-                "category": crypto_data.category,
-                "description": crypto_data.description,
-                "logo_url": crypto_data.logo_url,
-                "website_url": crypto_data.website_url,
-                "slug": crypto_data.slug,
-                "date_added": crypto_data.date_added.isoformat() if crypto_data.date_added else None,
-                "platform": crypto_data.platform,
-                "explorer": crypto_data.explorer,
-                "source_code": crypto_data.source_code,
-                "tags": crypto_data.tags,
-                "is_active": crypto_data.is_active,
-                "created_at": crypto_data.created_at.isoformat() if crypto_data.created_at else None,
-                "percent_change_1h": float(crypto_data.percent_change_1h) if crypto_data.percent_change_1h else None,
-                "percent_change_7d": float(crypto_data.percent_change_7d) if crypto_data.percent_change_7d else None,
-                "percent_change_30d": float(crypto_data.percent_change_30d) if crypto_data.percent_change_30d else None,
-                "current_price": float(crypto_data.current_price) if crypto_data.current_price else None,
-                # Add cmc_rank as alternative to rank
-                "cmc_rank": crypto_data.cmc_rank if crypto_data.cmc_rank else None
-            }
+            "symbol": crypto_data.symbol,
+            "price": float(crypto_data.current_price) if crypto_data.current_price else float(crypto_data.price) if crypto_data.price else 0.0,
+            "market_cap": float(crypto_data.market_cap) if crypto_data.market_cap else None,
+            "volume_24h": float(crypto_data.volume_24h) if crypto_data.volume_24h else None,
+            "change_24h": float(crypto_data.percent_change_24h) if crypto_data.percent_change_24h else None,
+            "last_updated": crypto_data.last_updated or datetime.now(),
         }
     except HTTPException:
         raise

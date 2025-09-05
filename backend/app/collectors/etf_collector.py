@@ -74,7 +74,7 @@ class ETFCollector(BaseCollector):
         """수집할 ETF 자산 ID 목록을 반환합니다."""
         try:
             assets = (
-                self.db.query(Asset.id)
+                self.db.query(Asset.asset_id)
                 .join(AssetType)
                 .filter(
                     Asset.is_active == True,
@@ -88,7 +88,7 @@ class ETFCollector(BaseCollector):
                 )
                 .all()
             )
-            return [asset.id for asset in assets]
+            return [row[0] for row in assets]
         except Exception as e:
             self.logging_helper.log_error(f"Error getting target asset IDs: {e}")
             return []

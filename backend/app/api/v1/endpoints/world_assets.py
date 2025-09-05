@@ -7,7 +7,7 @@ from datetime import datetime, date
 
 from ....core.database import get_db
 from ....models.asset import WorldAssetsRanking, BondMarketData, ScrapingLogs, AssetType
-from ....schemas.world_assets import (
+from ....schemas.asset import (
     TreemapResponse, AssetsRankingResponse, BondMarketResponse, ScrapingLogsResponse,
     WorldAssetsStats, MarketCapByCategory, CollectionStatus, TopAssetsResponse,
     MarketCapTrends, AssetHistory, CategoryTrends, TopAssetsByCategory, PerformanceTreemapResponse
@@ -681,7 +681,7 @@ async def get_category_trends(
         raise HTTPException(status_code=500, detail=f"카테고리별 추이 데이터 조회 중 오류 발생: {str(e)}")
 
 
-@router.get("/world-assets/top-assets-by-category", response_model=TopAssetsByCategory)
+@router.get("/world-assets/top-assets-by-category")
 async def get_top_assets_by_category(
     db: Session = Depends(get_db),
     limit: int = 30
@@ -690,6 +690,7 @@ async def get_top_assets_by_category(
     카테고리별 상위 N개 자산 반환 (채권 시장 데이터 포함)
     """
     try:
+        logger.info(f"[top-assets-by-category] start, limit={limit}")
         from sqlalchemy import func
         
         # 1. 카테고리별로 그룹화하여 상위 N개 자산 조회
@@ -697,6 +698,7 @@ async def get_top_assets_by_category(
         
         # 최신 날짜의 데이터 조회 (오늘 데이터가 없으면 최신 데이터 사용)
         latest_date_query = db.query(func.max(WorldAssetsRanking.ranking_date)).scalar()
+        logger.info(f"[top-assets-by-category] latest_ranking_date={latest_date_query}")
         if not latest_date_query:
             latest_date_query = datetime.now().date()
         
@@ -705,6 +707,7 @@ async def get_top_assets_by_category(
             WorldAssetsRanking.ranking_date == latest_date_query,
             WorldAssetsRanking.asset_type_id.isnot(None)
         ).distinct().all()
+        logger.info(f"[top-assets-by-category] categories_count={len(categories_query)}")
         
         for (asset_type_id,) in categories_query:
             # 해당 카테고리의 상위 N개 자산 조회
@@ -775,6 +778,7 @@ async def get_top_assets_by_category(
         
         # 3. 채권 시장 데이터 추가 (bond_market_data 테이블에서)
         bond_data = db.query(BondMarketData).order_by(BondMarketData.collection_date.desc()).all()
+        logger.info(f"[top-assets-by-category] bond_rows={len(bond_data)}")
         
         for bond in bond_data:
             # name을 category로 사용하고, asset_type_id는 이미 설정되어 있음
@@ -802,6 +806,7 @@ async def get_top_assets_by_category(
             if category not in categories_dict:
                 categories_dict[category] = []
             categories_dict[category].append(item)
+        logger.info(f"[top-assets-by-category] result_items={len(result)}, categories={len(categories_dict)}")
         
         return {
             "success": True,
@@ -812,7 +817,8 @@ async def get_top_assets_by_category(
         }
         
     except Exception as e:
-        logger.error(f"Error getting top assets by category: {e}")
+        import traceback
+        logger.error(f"[top-assets-by-category] ERROR: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to get top assets by category: {str(e)}")
 
 
@@ -1026,7 +1032,9 @@ async def get_performance_treemap_data(
             "total": len(result),
             "performance_period": performance_period,
             "categories": categories,
-            "execution_time": execution_time
+            "execution_time": execution_time,
+            "performance_metric": "percentage_change",
+            "last_updated": datetime.now()
         }
         
     except Exception as e:

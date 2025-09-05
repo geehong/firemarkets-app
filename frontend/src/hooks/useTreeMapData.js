@@ -11,11 +11,15 @@ const useTreeMapData = () => {
     setError(null)
 
     try {
+      console.log('[TreeMap] fetching /world-assets/top-assets-by-category?limit=30')
       // 카테고리별 상위 자산 데이터 (채권 시장 데이터 포함)
       const response = await axios.get(
         '/api/v1/world-assets/top-assets-by-category?limit=30',
       )
-
+      console.log('[TreeMap] status:', response.status)
+      console.log('[TreeMap] keys:', Object.keys(response.data || {}))
+      console.log('[TreeMap] success:', response.data?.success, 'total:', response.data?.total, 'limit:', response.data?.limit)
+      console.log('[TreeMap] categories keys:', response.data?.categories ? Object.keys(response.data.categories).length : 'no categories')
       let combinedData = []
 
       // 응답 데이터 처리
@@ -58,11 +62,11 @@ const useTreeMapData = () => {
         })
       }
 
-      // console.log('Combined TreeMap data:', combinedData)
+      console.log('[TreeMap] combined items:', combinedData.length)
       setData(combinedData)
     } catch (err) {
       setError(err.message)
-      // console.error('Error fetching world assets data:', err)
+      console.error('[TreeMap] fetch error:', err)
     } finally {
       setLoading(false)
     }
@@ -111,8 +115,9 @@ const usePerformanceTreeMapData = (performancePeriod = '1d', limit = 100) => {
       // console.log('Response success:', response.data?.success)
       // console.log('Response data length:', response.data?.data?.length)
 
-      if (response.data && response.data.success && response.data.data) {
-        const performanceData = response.data.data
+      const payload = response.data
+      const performanceData = payload && Array.isArray(payload.data) ? payload.data : null
+      if (performanceData) {
 
         // console.log('=== RAW PERFORMANCE DATA ===')
         // console.log('Performance data length:', performanceData.length)
@@ -160,7 +165,7 @@ const usePerformanceTreeMapData = (performancePeriod = '1d', limit = 100) => {
         setData(formattedData)
       } else {
         // console.log('=== NO DATA CONDITION ===')
-        // console.log('Response data:', response.data)
+        // console.log('Response data:', payload)
         // console.log('Success check:', response.data?.success)
         // console.log('Data check:', response.data?.data)
         setData([])
