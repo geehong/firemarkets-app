@@ -118,6 +118,8 @@ class StockProfile(Base):
     industry = Column(String(100))
     country = Column(String(50))
     city = Column(String(100))
+    state = Column(String(50))  # 주/도 (CA, NY 등)
+    zip_code = Column(String(20))  # 우편번호
     address = Column(String(255))
     phone = Column(String(50))
     website = Column(String(255))
@@ -125,6 +127,12 @@ class StockProfile(Base):
     employees_count = Column(Integer)
     ipo_date = Column(Date)
     logo_image_url = Column(String(255))
+    # 거래소 및 식별자 정보
+    exchange = Column(String(50))  # 거래소 코드 (NASDAQ, NYSE 등)
+    exchange_full_name = Column(String(100))  # 거래소 전체명
+    cik = Column(String(20))  # CIK 코드
+    isin = Column(String(20))  # ISIN 코드
+    cusip = Column(String(20))  # CUSIP 코드
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
 
@@ -147,10 +155,24 @@ class StockFinancial(Base):
     return_on_equity_ttm = Column(DECIMAL(10, 4))
     revenue_ttm = Column(BIGINT)
     price_to_book_ratio = Column(DECIMAL(10, 4))
-    _52_week_high = Column(DECIMAL(18, 4), name="_52_week_high")
-    _52_week_low = Column(DECIMAL(18, 4), name="_52_week_low")
-    _50_day_moving_avg = Column(DECIMAL(18, 4), name="_50_day_moving_avg")
-    _200_day_moving_avg = Column(DECIMAL(18, 4), name="_200_day_moving_avg")
+    week_52_high = Column(DECIMAL(18, 4))
+    week_52_low = Column(DECIMAL(18, 4))
+    day_50_moving_avg = Column(DECIMAL(18, 4))
+    day_200_moving_avg = Column(DECIMAL(18, 4))
+    # 추가 재무 지표
+    book_value = Column(DECIMAL(20, 4))  # 장부가치
+    revenue_per_share_ttm = Column(DECIMAL(20, 4))  # 주당 매출
+    operating_margin_ttm = Column(DECIMAL(10, 6))  # 영업 마진
+    return_on_assets_ttm = Column(DECIMAL(10, 6))  # 자산 수익률
+    gross_profit_ttm = Column(BIGINT)  # 총 이익
+    quarterly_earnings_growth_yoy = Column(DECIMAL(10, 6))  # 분기 수익 성장률
+    quarterly_revenue_growth_yoy = Column(DECIMAL(10, 6))  # 분기 매출 성장률
+    analyst_target_price = Column(DECIMAL(20, 4))  # 애널리스트 목표가
+    trailing_pe = Column(DECIMAL(20, 4))  # 후행 PER
+    forward_pe = Column(DECIMAL(20, 4))  # 선행 PER
+    price_to_sales_ratio_ttm = Column(DECIMAL(20, 4))  # 주가매출비율
+    ev_to_revenue = Column(DECIMAL(20, 4))  # 기업가치매출비율
+    ev_to_ebitda = Column(DECIMAL(20, 4))  # 기업가치EBITDA비율
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
 
@@ -168,6 +190,40 @@ class StockAnalystEstimate(Base):
     eps_high = Column(DECIMAL(10, 4))
     eps_analysts_count = Column(Integer)
     ebitda_avg = Column(BIGINT)
+    ebitda_low = Column(BIGINT)
+    ebitda_high = Column(BIGINT)
+    ebit_avg = Column(BIGINT)
+    ebit_low = Column(BIGINT)
+    ebit_high = Column(BIGINT)
+    net_income_avg = Column(BIGINT)
+    net_income_low = Column(BIGINT)
+    net_income_high = Column(BIGINT)
+    sga_expense_avg = Column(BIGINT)
+    sga_expense_low = Column(BIGINT)
+    sga_expense_high = Column(BIGINT)
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+
+class ETFInfo(Base):
+    __tablename__ = "etf_info"
+    etf_info_id = Column(Integer, primary_key=True, index=True)
+    asset_id = Column(
+        Integer,
+        ForeignKey("assets.asset_id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True
+    )
+    snapshot_date = Column(Date, nullable=False, comment="Information reference date (stores the latest information)")
+    net_assets = Column(DECIMAL(22, 0), comment="Net Assets")
+    net_expense_ratio = Column(DECIMAL(10, 4), comment="Net Expense Ratio")
+    portfolio_turnover = Column(DECIMAL(10, 4), comment="Portfolio Turnover Rate")
+    dividend_yield = Column(DECIMAL(10, 4), comment="Dividend Yield")
+    inception_date = Column(Date, comment="Inception Date")
+    leveraged = Column(Boolean, comment="Leveraged status")
+    sectors = Column(JSON, comment="ETF 섹터별 비중 정보")
+    holdings = Column(JSON, comment="ETF 보유 종목 정보")
+    created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
 
@@ -187,6 +243,227 @@ class IndexInfo(Base):
     price_avg_200 = Column(DECIMAL(20, 4))
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+
+class CryptoData(Base):
+    __tablename__ = "crypto_data"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    asset_id = Column(Integer, ForeignKey("assets.asset_id"), nullable=False, unique=True, index=True)
+    symbol = Column(String(20), nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    
+    # Market cap and supply data
+    market_cap = Column(DECIMAL(30, 2), nullable=True)
+    circulating_supply = Column(DECIMAL(30, 10), nullable=True)
+    total_supply = Column(DECIMAL(30, 10), nullable=True)
+    max_supply = Column(DECIMAL(30, 10), nullable=True)
+    
+    # Price and volume data
+    current_price = Column(DECIMAL(24, 10), nullable=True)
+    volume_24h = Column(DECIMAL(30, 10), nullable=True)
+    
+    # Price change percentages
+    percent_change_1h = Column(DECIMAL(10, 4), nullable=True)
+    percent_change_24h = Column(DECIMAL(10, 4), nullable=True)
+    percent_change_7d = Column(DECIMAL(10, 4), nullable=True)
+    percent_change_30d = Column(DECIMAL(10, 4), nullable=True)
+    
+    # Metadata
+    cmc_rank = Column(Integer, nullable=True)
+    category = Column(String(50), nullable=True)
+    description = Column(Text, nullable=True)
+    logo_url = Column(String(500), nullable=True)
+    website_url = Column(String(500), nullable=True)
+    
+    # Additional fields for CoinMarketCap API
+    price = Column(DECIMAL(24, 10), nullable=True)  # Alternative price field
+    slug = Column(String(100), nullable=True)
+    date_added = Column(Date, nullable=True)
+    platform = Column(Text, nullable=True)
+    explorer = Column(JSON, nullable=True)  # JSON 형식으로 저장
+    source_code = Column(JSON, nullable=True)  # JSON 형식으로 저장
+    
+    # Tags and status
+    tags = Column(JSON, nullable=True)  # JSON 형식으로 저장
+    is_active = Column(Boolean, default=True)
+    last_updated = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    def __repr__(self):
+        return f"<CryptoData(id={self.id}, symbol='{self.symbol}', name='{self.name}')>"
+
+
+class RealtimeQuote(Base):
+    """실시간 가격 및 시장 데이터 저장 테이블"""
+    __tablename__ = "realtime_quotes"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    ticker = Column(String(20), nullable=False, index=True, comment="자산 티커")
+    asset_type = Column(String(20), nullable=False, index=True, comment="자산 유형 (stock, crypto, etf)")
+    
+    # 가격 데이터
+    price = Column(DECIMAL(24, 10), nullable=True, comment="현재 가격")
+    change_percent_today = Column(DECIMAL(10, 4), nullable=True, comment="오늘 변화율 (%)")
+    change_amount_today = Column(DECIMAL(24, 10), nullable=True, comment="오늘 변화액")
+    
+    # 시장 데이터
+    market_cap = Column(DECIMAL(30, 2), nullable=True, comment="시가총액")
+    volume_today = Column(DECIMAL(30, 10), nullable=True, comment="오늘 거래량")
+    volume_24h = Column(DECIMAL(30, 10), nullable=True, comment="24시간 거래량")
+    
+    # 52주 데이터
+    high_52w = Column(DECIMAL(24, 10), nullable=True, comment="52주 최고가")
+    low_52w = Column(DECIMAL(24, 10), nullable=True, comment="52주 최저가")
+    change_52w_percent = Column(DECIMAL(10, 4), nullable=True, comment="52주 변화율 (%)")
+    
+    # 추가 데이터
+    pe_ratio = Column(DECIMAL(10, 4), nullable=True, comment="P/E 비율")
+    pb_ratio = Column(DECIMAL(10, 4), nullable=True, comment="P/B 비율")
+    dividend_yield = Column(DECIMAL(10, 4), nullable=True, comment="배당 수익률")
+    
+    # 메타데이터
+    data_source = Column(String(50), nullable=False, comment="데이터 소스 (twelvedata, binance, coingecko, yahoo)")
+    currency = Column(String(10), default="USD", comment="통화")
+    exchange = Column(String(50), nullable=True, comment="거래소")
+    
+    # 타임스탬프
+    fetched_at = Column(DateTime, server_default=func.now(), comment="데이터 수집 시간")
+    created_at = Column(DateTime, server_default=func.now(), comment="생성 시간")
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), comment="수정 시간")
+
+
+class OnchainMetricsInfo(Base):
+    __tablename__ = "onchain_metrics_info"
+    
+    metric_id = Column(String(50), primary_key=True)
+    name = Column(String(100), nullable=False)
+    description = Column(Text)
+    category = Column(String(50), nullable=False)
+    
+    # 차트 표출 정보 (JSON 형태로 저장)
+    interpretations = Column(JSON, nullable=True)
+    chart_title = Column(String(200), nullable=True)
+    loading_text = Column(String(100), nullable=True)
+    
+    # 상태 및 데이터 정보
+    status = Column(String(20), nullable=False, default='active')
+    data_count = Column(Integer, default=0)
+    current_range = Column(String(100), nullable=True)
+    last_update = Column(DateTime, nullable=True)
+    is_enabled = Column(Boolean, default=True)
+    
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class WorldAssetsRanking(Base):
+    __tablename__ = 'world_assets_ranking'
+    
+    id = Column(Integer, primary_key=True)
+    rank = Column(Integer, nullable=False)
+    name = Column(String(255), nullable=False)
+    ticker = Column(String(50))
+    market_cap_usd = Column(DECIMAL(20, 2))
+    price_usd = Column(DECIMAL(10, 2))
+    daily_change_percent = Column(DECIMAL(5, 2))
+    country = Column(String(100))
+    asset_type_id = Column(Integer, ForeignKey('asset_types.asset_type_id'))
+    asset_id = Column(Integer, ForeignKey('assets.asset_id'))
+    ranking_date = Column(Date, nullable=False, default=func.current_date())
+    data_source = Column(String(100))
+    last_updated = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    def __repr__(self):
+        return f"<WorldAssetsRanking(id={self.id}, name='{self.name}', rank={self.rank})>"
+
+
+class BondMarketData(Base):
+    __tablename__ = 'bond_market_data'
+    
+    id = Column(Integer, primary_key=True)
+    name = Column(String(50), nullable=False)
+    asset_type_id = Column(Integer, ForeignKey('asset_types.asset_type_id'), default=6)
+    market_size_usd = Column(DECIMAL(20, 2))
+    quarter = Column(String(10))
+    data_source = Column(String(100), default='BIS')
+    collection_date = Column(Date, nullable=False, default=func.current_date())
+    last_updated = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    def __repr__(self):
+        return f"<BondMarketData(id={self.id}, name='{self.name}', market_size={self.market_size_usd})>"
+
+
+class ScrapingLogs(Base):
+    __tablename__ = 'scraping_logs'
+    
+    id = Column(Integer, primary_key=True)
+    source = Column(String(100), nullable=False)
+    status = Column(String(20), nullable=False)  # 'success', 'failed', 'partial'
+    records_processed = Column(Integer, default=0)
+    records_successful = Column(Integer, default=0)
+    error_message = Column(Text)
+    execution_time_seconds = Column(DECIMAL(10, 2))
+    started_at = Column(DateTime, default=func.now())
+    completed_at = Column(DateTime)
+
+    def __repr__(self):
+        return f"<ScrapingLogs(id={self.id}, source='{self.source}', status='{self.status}')>"
+
+
+class CryptoMetric(Base):
+    __tablename__ = 'crypto_metrics'
+    
+    id = Column(Integer, primary_key=True)
+    asset_id = Column(Integer, ForeignKey('assets.asset_id'), nullable=False, index=True)
+    timestamp_utc = Column(DateTime, nullable=False, index=True)
+    
+    # HODL Waves (Bitcoin age distribution)
+    hodl_age_0d_1d = Column(DECIMAL(20, 10), nullable=True)
+    hodl_age_1d_1w = Column(DECIMAL(20, 10), nullable=True)
+    hodl_age_1w_1m = Column(DECIMAL(20, 10), nullable=True)
+    hodl_age_1m_3m = Column(DECIMAL(20, 10), nullable=True)
+    hodl_age_3m_6m = Column(DECIMAL(20, 10), nullable=True)
+    hodl_age_6m_1y = Column(DECIMAL(20, 10), nullable=True)
+    hodl_age_1y_2y = Column(DECIMAL(20, 10), nullable=True)
+    hodl_age_2y_3y = Column(DECIMAL(20, 10), nullable=True)
+    hodl_age_3y_5y = Column(DECIMAL(20, 10), nullable=True)
+    hodl_age_5y_7y = Column(DECIMAL(20, 10), nullable=True)
+    hodl_age_7y_10y = Column(DECIMAL(20, 10), nullable=True)
+    hodl_age_10y_plus = Column(DECIMAL(20, 10), nullable=True)
+    
+    # Network metrics
+    active_addresses = Column(Integer, nullable=True)
+    transaction_count = Column(Integer, nullable=True)
+    hash_rate = Column(DECIMAL(30, 10), nullable=True)
+    difficulty = Column(DECIMAL(30, 10), nullable=True)
+    
+    # Market metrics
+    market_cap = Column(DECIMAL(30, 2), nullable=True)
+    realized_cap = Column(DECIMAL(30, 2), nullable=True)
+    mvrv_ratio = Column(DECIMAL(10, 4), nullable=True)
+    
+    # Metadata
+    data_source = Column(String(100), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    def __repr__(self):
+        return f"<CryptoMetric(id={self.id}, asset_id={self.asset_id}, timestamp={self.timestamp_utc})>"
+
+
+class SparklineData(Base):
+    __tablename__ = 'sparkline_data'
+    
+    id = Column(Integer, primary_key=True)
+    ticker = Column(String(20), nullable=False, index=True)
+    asset_type = Column(String(20), nullable=False, index=True)
+    data = Column(JSON, nullable=True)  # 스파크라인 데이터 (가격 배열 등)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    def __repr__(self):
+        return f"<SparklineData(id={self.id}, ticker='{self.ticker}', asset_type='{self.asset_type}')>"
 
 
 

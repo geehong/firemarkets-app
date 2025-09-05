@@ -10,7 +10,7 @@ from datetime import date, datetime
 
 from .base import CRUDBase
 from ..models.asset import Asset, AssetType, OHLCVData, StockFinancial, StockProfile, StockAnalystEstimate, IndexInfo
-from ..models.crypto import CryptoMetric
+# CryptoMetric removed - using CryptoData instead
 
 logger = logging.getLogger(__name__)
 
@@ -494,75 +494,4 @@ crud_stock_estimate = CRUDStockEstimate()
 crud_index_info = CRUDIndexInfo()
 
 
-class CRUDCryptoMetric:
-    """CRUD operations for CryptoMetric model."""
-    
-    def __init__(self):
-        pass
-    
-    def bulk_upsert_crypto_metrics(self, db: Session, metrics_list: List[Dict[str, Any]]) -> int:
-        """Bulk upsert crypto metrics data using ORM."""
-        if not metrics_list:
-            return 0
-        
-        try:
-            added_count = 0
-            
-            for metric_data in metrics_list:
-                # Check if record already exists
-                existing = db.query(CryptoMetric).filter(
-                    and_(
-                        CryptoMetric.asset_id == metric_data['asset_id'],
-                        CryptoMetric.timestamp_utc == metric_data['timestamp_utc']
-                    )
-                ).first()
-                
-                if existing:
-                    # Update existing record
-                    for key, value in metric_data.items():
-                        if hasattr(existing, key):
-                            setattr(existing, key, value)
-                    existing.updated_at = datetime.now()
-                else:
-                    # Create new record
-                    new_metric = CryptoMetric(**metric_data)
-                    db.add(new_metric)
-                    added_count += 1
-            
-            db.commit()
-            return added_count
-            
-        except Exception as e:
-            logger.error(f"Bulk crypto metrics upsert failed: {e}")
-            db.rollback()
-            return 0
-    
-    def get_latest_crypto_metric(self, db: Session, asset_id: int) -> Optional[CryptoMetric]:
-        """Get latest crypto metric for an asset."""
-        return (
-            db.query(CryptoMetric)
-            .filter(CryptoMetric.asset_id == asset_id)
-            .order_by(desc(CryptoMetric.timestamp_utc))
-            .first()
-        )
-    
-    def get_crypto_metrics_history(
-        self, 
-        db: Session, 
-        asset_id: int, 
-        start_date: Optional[date] = None,
-        end_date: Optional[date] = None,
-        limit: int = 100
-    ) -> List[CryptoMetric]:
-        """Get crypto metrics history for an asset."""
-        query = db.query(CryptoMetric).filter(CryptoMetric.asset_id == asset_id)
-        
-        if start_date:
-            query = query.filter(CryptoMetric.timestamp_utc >= start_date)
-        if end_date:
-            query = query.filter(CryptoMetric.timestamp_utc <= end_date)
-        
-        return query.order_by(desc(CryptoMetric.timestamp_utc)).limit(limit).all()
-
-# 인스턴스 생성
-crypto_metric = CRUDCryptoMetric()
+# CRUDCryptoMetric removed - using CryptoData model instead

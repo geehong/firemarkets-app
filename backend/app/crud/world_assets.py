@@ -8,7 +8,7 @@ from sqlalchemy import and_, desc, func
 from datetime import date, datetime, timedelta
 
 from .base import CRUDBase
-from ..models.world_assets import WorldAssetsRanking, BondMarketData, ScrapingLogs
+from ..models.asset import WorldAssetsRanking, BondMarketData, ScrapingLogs
 
 logger = logging.getLogger(__name__)
 

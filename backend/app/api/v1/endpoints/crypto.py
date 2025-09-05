@@ -322,7 +322,7 @@ async def get_crypto_data_by_asset(
             raise HTTPException(status_code=400, detail=f"Asset {asset_identifier} is not a cryptocurrency")
         
         # Get crypto data from database
-        from ....models.crypto import CryptoData
+        from ....models.asset import CryptoData
         crypto_data = db.query(CryptoData).filter(CryptoData.asset_id == asset_id).first()
         
         if not crypto_data:
@@ -380,7 +380,7 @@ async def get_top_cryptos(limit: int = 100, db: Session = Depends(get_db)):
             limit = 1000  # Prevent excessive requests
         
         # Get crypto data from database ordered by market cap
-        from ....models.crypto import CryptoData
+        from ....models.asset import CryptoData
         crypto_data_list = db.query(CryptoData).join(Asset).filter(
             Asset.asset_type.has(type_name="Crypto"),
             CryptoData.market_cap.isnot(None)
@@ -504,7 +504,7 @@ async def update_crypto_data(symbol: str, db: Session = Depends(get_db)):
 async def get_global_crypto_metrics(db: Session = Depends(get_db)):
     """Get global cryptocurrency market metrics from database"""
     try:
-        from ....models.crypto import CryptoData
+        from ....models.asset import CryptoData
         from sqlalchemy import func
         
         # Get global metrics from database

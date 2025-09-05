@@ -5,7 +5,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 from ....core.database import get_db
-from ....models import EtfInfo, EtfSectorExposure, EtfHolding
+from ....models.asset import ETFInfo
 from ....schemas.common import ETFInfoListResponse
 
 router = APIRouter()

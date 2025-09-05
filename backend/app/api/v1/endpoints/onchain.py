@@ -9,7 +9,7 @@ from sqlalchemy import func, desc
 import statistics
 
 from ....core.database import get_db
-from ....models import CryptoMetric, Asset, OnchainMetricsInfo
+from ....models.asset import Asset, OnchainMetricsInfo, CryptoMetric
 from ....schemas.common import (
     OnchainMetricCategoryResponse, OnchainMetricToggleResponse, 
     OnchainMetricRunResponse, OnchainMetricStatusResponse

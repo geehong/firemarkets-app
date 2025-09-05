@@ -306,7 +306,7 @@ class TiingoWSConsumer:
         """DB에서 해당 티커의 마지막 가격 조회"""
         try:
             from ..core.database import SessionLocal
-            from ..models.realtime import RealtimeQuote
+            from ..models.asset import RealtimeQuote
             
             db = SessionLocal()
             try:
@@ -328,7 +328,7 @@ class TiingoWSConsumer:
         """오늘 해당 티커의 데이터가 이미 있는지 확인"""
         try:
             from ..core.database import SessionLocal
-            from ..models.realtime import RealtimeQuote
+            from ..models.asset import RealtimeQuote
             
             db = SessionLocal()
             try:

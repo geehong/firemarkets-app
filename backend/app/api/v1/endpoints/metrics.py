@@ -10,7 +10,7 @@ from sqlalchemy import func
 
 from ....core.database import get_db
 from ....core.cache import cache_with_invalidation
-from ....models import OHLCVData, Asset, CryptoMetric, OnchainMetricsInfo
+from ....models.asset import OHLCVData, Asset, OnchainMetricsInfo, CryptoMetric
 from ....schemas.asset import PriceDataPoint, PriceResponse
 from ....api.v1.endpoints.assets import resolve_asset_identifier, get_asset_by_ticker
 

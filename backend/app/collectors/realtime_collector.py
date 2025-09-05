@@ -19,9 +19,7 @@ from app.utils.redis_queue_manager import RedisQueueManager
 from app.external_apis import schemas
 from app.crud import ohlcv as crud_ohlcv
 from app.crud import asset as crud_asset
-from app.crud import crypto as crud_crypto
-from app.crud import etf as crud_etf
-from app.crud import onchain as crud_onchain
+# Crypto, ETF, Onchain CRUD removed - models consolidated into asset.py
 
 logger = logging.getLogger(__name__)
 
@@ -202,36 +200,5 @@ class DataProcessor:
         finally:
             db.close()
 
-    async def _save_etf_info(self, payload: dict):
-        db = self.get_db()
-        try:
-            etf_info = schemas.EtfInfoData.model_validate(payload.get('data', {}))
-            asset_id = payload.get('asset_id')
-            if etf_info and asset_id:
-                crud_etf.upsert_etf_info(db, asset_id, etf_info)
-                logger.info(f"Saved ETF info for asset {asset_id}.")
-        finally:
-            db.close()
-            
-    async def _save_crypto_data(self, payload: dict):
-        db = self.get_db()
-        try:
-            crypto_data = schemas.CryptoData.model_validate(payload.get('data', {}))
-            asset_id = payload.get('asset_id')
-            if crypto_data and asset_id:
-                crud_crypto.upsert_crypto_data(db, asset_id, crypto_data)
-                logger.info(f"Saved crypto info for asset {asset_id}.")
-        finally:
-            db.close()
-
-    async def _save_onchain_metric(self, payload: dict):
-        db = self.get_db()
-        try:
-            metric_data = [schemas.OnchainMetricDataPoint.model_validate(item) for item in payload.get('data', [])]
-            asset_id = payload.get('asset_id')
-            metric_name = payload.get('metric_name')
-            if metric_data and asset_id and metric_name:
-                crud_onchain.upsert_onchain_metrics(db, asset_id, metric_name, metric_data)
-                logger.info(f"Saved {len(metric_data)} records for onchain metric '{metric_name}'.")
-        finally:
-            db.close()
+    # ETF, Crypto, Onchain save methods removed - CRUD files deleted
+    # These will be handled by the main DataProcessor service

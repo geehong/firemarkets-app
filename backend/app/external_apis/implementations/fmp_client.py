@@ -161,6 +161,22 @@ class FMPClient(TradFiAPIClient):
                     employees=safe_float(raw_data.get("fullTimeEmployees")),
                     currency=raw_data.get("currency"),
                     market_cap=safe_float(raw_data.get("mktCap")),
+                    # 주소 정보
+                    address=raw_data.get("address"),
+                    city=raw_data.get("city"),
+                    state=raw_data.get("state"),  # CA, NY 등
+                    zip_code=raw_data.get("zip"),  # 우편번호
+                    # 기업 정보
+                    ceo=raw_data.get("ceo"),
+                    phone=raw_data.get("phone"),
+                    logo_image_url=raw_data.get("image"),
+                    ipo_date=safe_date_parse(raw_data.get("ipoDate")),
+                    # 거래소 및 식별자 정보
+                    exchange=raw_data.get("exchange"),  # NASDAQ, NYSE 등
+                    exchange_full_name=raw_data.get("exchange"),  # FMP는 exchange에 전체 명칭 제공
+                    cik=raw_data.get("cik"),
+                    isin=raw_data.get("isin"),
+                    cusip=raw_data.get("cusip"),
                     timestamp_utc=datetime.now()
                 )
                 return profile
@@ -247,39 +263,75 @@ class FMPClient(TradFiAPIClient):
         return None
     
     async def get_stock_financials(self, symbol: str) -> Optional[StockFinancialsData]:
-        """Get stock financial data from FMP (profile-symbol spec)."""
+        """Get stock financial data from FMP (profile + quote APIs)."""
         if not self.api_key:
             raise ValueError("No FMP API key configured")
 
         try:
             async with httpx.AsyncClient() as client:
-                url = f"{self.base_url}/profile/{symbol}?apikey={self.api_key}"
-                data = await self._fetch_async(client, url, "FMP Profile", symbol)
+                # Profile API에서 기본 재무 데이터 가져오기
+                profile_url = f"{self.base_url}/profile/{symbol}?apikey={self.api_key}"
+                profile_data = await self._fetch_async(client, profile_url, "FMP Profile", symbol)
 
-                if isinstance(data, list) and len(data) > 0:
-                    raw = data[0]
-                elif isinstance(data, dict) and data.get('symbol'):
-                    raw = data
+                if isinstance(profile_data, list) and len(profile_data) > 0:
+                    profile_raw = profile_data[0]
+                elif isinstance(profile_data, dict) and profile_data.get('symbol'):
+                    profile_raw = profile_data
                 else:
                     return None
 
+                # Quote API에서 52주 고저점과 이동평균 데이터 가져오기
+                quote_url = f"{self.base_url}/quote/{symbol}?apikey={self.api_key}"
+                quote_data = await self._fetch_async(client, quote_url, "FMP Quote", symbol)
+                
+                quote_raw = {}
+                if isinstance(quote_data, list) and len(quote_data) > 0:
+                    quote_raw = quote_data[0]
+                    logger.info(f"Quote data extracted: yearHigh={quote_raw.get('yearHigh')}, yearLow={quote_raw.get('yearLow')}")
+                elif isinstance(quote_data, dict) and quote_data.get('symbol'):
+                    quote_raw = quote_data
+                    logger.info(f"Quote data extracted from dict: yearHigh={quote_raw.get('yearHigh')}, yearLow={quote_raw.get('yearLow')}")
+                else:
+                    logger.warning(f"Quote data not in expected format: {type(quote_data)}")
+
+                # Profile과 Quote 데이터를 병합하여 사용
                 # 일부 키는 프로필 응답에서 대체 키로 제공됨(mktCap 등)
+                logger.info(f"Creating StockFinancialsData with quote_raw: {quote_raw}")
                 financials = StockFinancialsData(
                     symbol=symbol,
-                    market_cap=safe_float(raw.get("marketCap", raw.get("mktCap"))),
-                    pe_ratio=safe_float(raw.get("pe")),
-                    eps=safe_float(raw.get("eps")),
-                    dividend_yield=safe_float(raw.get("dividendYield")),
-                    dividend_per_share=safe_float(raw.get("lastDividend", raw.get("lastDiv"))),
-                    beta=safe_float(raw.get("beta")),
-                    peg_ratio=safe_float(raw.get("pegRatio", raw.get("peg"))),
-                    price_to_book_ratio=safe_float(raw.get("priceToBookRatio")),
-                    profit_margin_ttm=safe_float(raw.get("profitMargin")),
-                    return_on_equity_ttm=safe_float(raw.get("returnOnEquity")),
-                    revenue_ttm=safe_float(raw.get("revenueTTM")),
-                    ebitda=safe_float(raw.get("ebitda")),
-                    shares_outstanding=safe_float(raw.get("sharesOutstanding")),
-                    currency=raw.get("currency", "USD"),
+                    market_cap=safe_float(profile_raw.get("marketCap", profile_raw.get("mktCap")) or quote_raw.get("marketCap")),
+                    pe_ratio=safe_float(profile_raw.get("pe") or quote_raw.get("pe")),
+                    eps=safe_float(profile_raw.get("eps") or quote_raw.get("eps")),
+                    dividend_yield=safe_float(profile_raw.get("dividendYield")),
+                    dividend_per_share=safe_float(profile_raw.get("lastDividend", profile_raw.get("lastDiv"))),
+                    beta=safe_float(profile_raw.get("beta")),
+                    peg_ratio=safe_float(profile_raw.get("pegRatio", profile_raw.get("peg"))),
+                    price_to_book_ratio=safe_float(profile_raw.get("priceToBookRatio")),
+                    profit_margin_ttm=safe_float(profile_raw.get("profitMargin")),
+                    return_on_equity_ttm=safe_float(profile_raw.get("returnOnEquity")),
+                    revenue_ttm=safe_float(profile_raw.get("revenueTTM")),
+                    ebitda=safe_float(profile_raw.get("ebitda")),
+                    shares_outstanding=safe_float(profile_raw.get("sharesOutstanding") or quote_raw.get("sharesOutstanding")),
+                    currency=profile_raw.get("currency", "USD"),
+                    # 52주 고저점 및 이동평균 (Quote API에서 가져옴)
+                    week_52_high=safe_float(quote_raw.get("yearHigh")),
+                    week_52_low=safe_float(quote_raw.get("yearLow")),
+                    day_50_moving_avg=safe_float(quote_raw.get("priceAvg50")),
+                    day_200_moving_avg=safe_float(quote_raw.get("priceAvg200")),
+                    # FMP에서 제공하지 않는 추가 필드들은 None으로 설정
+                    book_value=None,
+                    revenue_per_share_ttm=None,
+                    operating_margin_ttm=None,
+                    return_on_assets_ttm=None,
+                    gross_profit_ttm=None,
+                    quarterly_earnings_growth_yoy=None,
+                    quarterly_revenue_growth_yoy=None,
+                    analyst_target_price=None,
+                    trailing_pe=None,
+                    forward_pe=None,
+                    price_to_sales_ratio_ttm=None,
+                    ev_to_revenue=None,
+                    ev_to_ebitda=None,
                     snapshot_date=datetime.now(),
                     timestamp_utc=datetime.now(),
                 )
@@ -331,6 +383,17 @@ class FMPClient(TradFiAPIClient):
                         revenue_high=row.get("revenueHigh"),
                         revenue_avg=row.get("revenueAvg"),
                         ebitda_avg=row.get("ebitdaAvg"),
+                        ebitda_low=row.get("ebitdaLow"),
+                        ebitda_high=row.get("ebitdaHigh"),
+                        ebit_avg=row.get("ebitAvg"),
+                        ebit_low=row.get("ebitLow"),
+                        ebit_high=row.get("ebitHigh"),
+                        net_income_avg=row.get("netIncomeAvg"),
+                        net_income_low=row.get("netIncomeLow"),
+                        net_income_high=row.get("netIncomeHigh"),
+                        sga_expense_avg=row.get("sgaExpenseAvg"),
+                        sga_expense_low=row.get("sgaExpenseLow"),
+                        sga_expense_high=row.get("sgaExpenseHigh"),
                         eps_avg=row.get("epsAvg"),
                         eps_high=row.get("epsHigh"),
                         eps_low=row.get("epsLow"),

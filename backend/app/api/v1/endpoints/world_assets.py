@@ -6,8 +6,7 @@ from typing import List, Dict, Any
 from datetime import datetime, date
 
 from ....core.database import get_db
-from ....models.world_assets import WorldAssetsRanking, BondMarketData, ScrapingLogs
-from ....models.asset import AssetType
+from ....models.asset import WorldAssetsRanking, BondMarketData, ScrapingLogs, AssetType
 from ....schemas.world_assets import (
     TreemapResponse, AssetsRankingResponse, BondMarketResponse, ScrapingLogsResponse,
     WorldAssetsStats, MarketCapByCategory, CollectionStatus, TopAssetsResponse,

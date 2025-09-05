@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from ..core.database import SessionLocal
 from ..core.config import GLOBAL_APP_CONFIGS, config_manager
-from ..models.realtime import RealtimeQuote
+from ..models.asset import RealtimeQuote
 from ..models.asset import Asset, OHLCVData
 from ..crud.asset import crud_ohlcv, crud_asset
 from ..utils.logger import logger
@@ -388,9 +388,17 @@ class DataProcessor:
                         country = data.get("country")
                         address = data.get("address")
                         city = data.get("city")
+                        state = data.get("state")  # 주/도
+                        zip_code = data.get("zip_code") or data.get("zip")  # 우편번호
                         ceo = data.get("ceo") or data.get("CEO")
                         phone = data.get("phone")
                         logo_image_url = data.get("image") or data.get("logo")
+                        # 거래소 및 식별자 정보
+                        exchange = data.get("exchange")
+                        exchange_full_name = data.get("exchange_full_name") or data.get("exchangeFullName")
+                        cik = data.get("cik")
+                        isin = data.get("isin")
+                        cusip = data.get("cusip")
                         # ipo_date 파싱
                         ipo_date_val = data.get("ipoDate") or data.get("ipo_date")
                         ipo_date = None
@@ -429,6 +437,22 @@ class DataProcessor:
                                 profile.logo_image_url = logo_image_url
                             if ipo_date is not None:
                                 profile.ipo_date = ipo_date
+                            # 새로운 주소 필드들
+                            if state is not None:
+                                profile.state = state
+                            if zip_code is not None:
+                                profile.zip_code = zip_code
+                            # 새로운 거래소 필드들
+                            if exchange is not None:
+                                profile.exchange = exchange
+                            if exchange_full_name is not None:
+                                profile.exchange_full_name = exchange_full_name
+                            if cik is not None:
+                                profile.cik = cik
+                            if isin is not None:
+                                profile.isin = isin
+                            if cusip is not None:
+                                profile.cusip = cusip
                         else:
                             profile = StockProfile(
                                 asset_id=asset_id,
@@ -441,10 +465,18 @@ class DataProcessor:
                                 country=country,
                                 address=address,
                                 city=city,
+                                state=state,  # 주/도
+                                zip_code=zip_code,  # 우편번호
                                 ceo=ceo,
                                 phone=phone,
                                 logo_image_url=logo_image_url,
                                 ipo_date=ipo_date,
+                                # 거래소 및 식별자 정보
+                                exchange=exchange,
+                                exchange_full_name=exchange_full_name,
+                                cik=cik,
+                                isin=isin,
+                                cusip=cusip,
                             )
                             db.add(profile)
 
@@ -605,10 +637,24 @@ class DataProcessor:
                     "return_on_equity_ttm",
                     "revenue_ttm",
                     "price_to_book_ratio",
-                    "_52_week_high",
-                    "_52_week_low",
-                    "_50_day_moving_avg",
-                    "_200_day_moving_avg",
+                    "week_52_high",
+                    "week_52_low",
+                    "day_50_moving_avg",
+                    "day_200_moving_avg",
+                    # 추가 재무 지표
+                    "book_value",
+                    "revenue_per_share_ttm",
+                    "operating_margin_ttm",
+                    "return_on_assets_ttm",
+                    "gross_profit_ttm",
+                    "quarterly_earnings_growth_yoy",
+                    "quarterly_revenue_growth_yoy",
+                    "analyst_target_price",
+                    "trailing_pe",
+                    "forward_pe",
+                    "price_to_sales_ratio_ttm",
+                    "ev_to_revenue",
+                    "ev_to_ebitda",
                 }
 
                 for item in items:
@@ -623,7 +669,7 @@ class DataProcessor:
                             "market_cap", "ebitda", "shares_outstanding", "pe_ratio", "peg_ratio",
                             "beta", "eps", "dividend_yield", "dividend_per_share", "profit_margin_ttm",
                             "return_on_equity_ttm", "revenue_ttm", "price_to_book_ratio",
-                            "_52_week_high", "_52_week_low", "_50_day_moving_avg", "_200_day_moving_avg",
+                            "week_52_high", "week_52_low", "day_50_moving_avg", "day_200_moving_avg",
                         ]
                         if not any((data.get(k) is not None) for k in meaningful_keys):
                             # 저장할 실질 값이 없으면 건너뜀
@@ -699,7 +745,10 @@ class DataProcessor:
                     "revenue_avg", "revenue_low", "revenue_high",
                     "eps_avg", "eps_low", "eps_high",
                     "revenue_analysts_count", "eps_analysts_count",
-                    "ebitda", "ebit", "net_income",
+                    "ebitda_avg", "ebitda_low", "ebitda_high",
+                    "ebit_avg", "ebit_low", "ebit_high",
+                    "net_income_avg", "net_income_low", "net_income_high",
+                    "sga_expense_avg", "sga_expense_low", "sga_expense_high",
                 }
 
                 for item in items:

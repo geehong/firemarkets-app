@@ -128,7 +128,7 @@ class AlpacaWSConsumer:
             today = datetime.utcnow().date()
             
             # realtime_quotes 테이블에서 오늘 데이터 확인
-            from ..models.realtime import RealtimeQuote
+            from ..models.asset import RealtimeQuote
             existing = db.query(RealtimeQuote).filter(
                 RealtimeQuote.ticker == ticker,
                 RealtimeQuote.fetched_at >= today

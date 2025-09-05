@@ -32,16 +32,37 @@ class ApiStrategyManager:
 
         ]
         
-        # 2. 주식 데이터용 클라이언트 (기업 프로필, 재무, 추정치)
-        self.stock_clients = [
-            TiingoClient(),       # 1순위
-            FMPClient(),          # 2순위
-            AlphaVantageClient(), # 3순위
+        # 2. 주식 프로필용 클라이언트 (기업 프로필 데이터)
+        self.stock_profiles_clients = [
+            FMPClient(),          # 1순위 (완전한 프로필 데이터)
+            AlphaVantageClient(), # 2순위
+            TiingoClient(),       # 3순위
             PolygonClient(),      # 4순위
             TwelveDataClient(),   # 5순위
         ]
         
-        # 3. 커머디티용 클라이언트 (커머디티 지원 확인된 API만)
+        # 3. 주식 재무용 클라이언트 (재무 데이터)
+        self.stock_financials_clients = [
+            AlphaVantageClient(), # 1순위 (재무 데이터 풍부)
+            FMPClient(),          # 2순위
+            TiingoClient(),       # 3순위
+            PolygonClient(),      # 4순위
+            TwelveDataClient(),   # 5순위
+        ]
+        
+        # 4. 주식 추정치용 클라이언트 (애널리스트 추정치)
+        self.stock_analyst_estimates_clients = [
+            FMPClient(),          # 1순위 (추정치 데이터 전문)
+            AlphaVantageClient(), # 2순위
+            TiingoClient(),       # 3순위
+            PolygonClient(),      # 4순위
+            TwelveDataClient(),   # 5순위
+        ]
+        
+        # 5. 주식 데이터용 클라이언트 (하위 호환성용)
+        self.stock_clients = self.stock_profiles_clients  # 기본값으로 프로필 클라이언트 사용
+        
+        # 6. 커머디티용 클라이언트 (커머디티 지원 확인된 API만)
         self.commodity_clients = [
             FMPClient(),          # 1순위 (가장 포괄적인 커머디티 지원)
             #PolygonClient(),      # 2순위 (주요 커머디티 지원)
@@ -50,7 +71,7 @@ class ApiStrategyManager:
             # AlphaVantageClient() # 선물 심볼 미지원
         ]
         
-        # 4. ETF용 클라이언트
+        # 7. ETF용 클라이언트
         self.etf_clients = [
             AlphaVantageClient(), # 1순위
             TiingoClient(),       # 2순위
@@ -58,7 +79,7 @@ class ApiStrategyManager:
             TwelveDataClient(),   # 4순위
         ]
         
-        # 5. 암호화폐용 클라이언트 (일반 데이터)
+        # 8. 암호화폐용 클라이언트 (일반 데이터)
         self.crypto_clients = [
             CoinMarketCapClient(), # 1순위
             CoinGeckoClient(),     # 2순위
@@ -68,13 +89,13 @@ class ApiStrategyManager:
             TwelveDataClient()     # 6순위
         ]
         
-        # 6. 암호화폐 OHLCV용 클라이언트 (OHLCV 전용)
+        # 9. 암호화폐 OHLCV용 클라이언트 (OHLCV 전용)
         self.crypto_ohlcv_clients = [
             BinanceClient(),       # 1순위
             CoinbaseClient(),      # 2순위
         ]
         
-        # 7. 온체인 메트릭용 클라이언트
+        # 10. 온체인 메트릭용 클라이언트
         self.onchain_clients = [
             BitcoinDataClient(),   # 1순위 (MVRV-Z-Score, NUPL 등)
             # GlassnodeClient(),   # 2순위 (향후 추가 예정)
@@ -708,10 +729,10 @@ class ApiStrategyManager:
         finally:
             db.close()
         
-        # stock_clients 사용 (의도된 우선순위)
-        for i, client in enumerate(self.stock_clients):
+        # stock_profiles_clients 사용 (프로필 전용 우선순위)
+        for i, client in enumerate(self.stock_profiles_clients):
             try:
-                self.logger.info(f"Attempting to fetch company profile for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.stock_clients)})")
+                self.logger.info(f"Attempting to fetch company profile for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.stock_profiles_clients)})")
                 
                 if hasattr(client, 'get_company_profile'):
                     data = await client.get_company_profile(ticker)
@@ -750,20 +771,10 @@ class ApiStrategyManager:
         finally:
             db.close()
         
-        # 재무 데이터는 FMPClient → AlphaVantageClient 순으로만 시도하고, 나머지는 스킵
-        try:
-            # 지연 임포트로 순환 참조 방지
-            from app.external_apis.implementations.fmp_client import FMPClient
-            from app.external_apis.implementations.alpha_vantage_client import AlphaVantageClient
-            preferred_types = (FMPClient, AlphaVantageClient)
-        except Exception:
-            preferred_types = tuple()
-
-        preferred_clients = [c for c in self.stock_clients if isinstance(c, preferred_types)] or []
-        # 지정된 우선순위에 맞춘 리스트를 만든 뒤 해당 리스트만 순회
-        for i, client in enumerate(preferred_clients):
+        # stock_financials_clients 사용 (재무 전용 우선순위)
+        for i, client in enumerate(self.stock_financials_clients):
             try:
-                self.logger.info(f"Attempting to fetch stock financials for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(preferred_clients)})")
+                self.logger.info(f"Attempting to fetch stock financials for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.stock_financials_clients)})")
                 # 우선 순위: get_stock_financials (신규 표준) → get_financials → get_financial_statements (레거시)
                 if hasattr(client, 'get_stock_financials'):
                     data = await client.get_stock_financials(ticker)
@@ -784,7 +795,7 @@ class ApiStrategyManager:
             except Exception as e:
                 self.logger.warning(f"{client.__class__.__name__} failed for stock financials {ticker}. Reason: {e}. Trying next client.")
         
-        self.logger.error(f"All preferred API clients failed to fetch stock financials for {ticker}")
+        self.logger.error(f"All API clients failed to fetch stock financials for {ticker}")
         return None
 
     async def get_analyst_estimates(self, asset_id: int) -> Optional:
@@ -804,10 +815,10 @@ class ApiStrategyManager:
         finally:
             db.close()
         
-        # stock_clients 사용 (의도된 우선순위)
-        for i, client in enumerate(self.stock_clients):
+        # stock_analyst_estimates_clients 사용 (추정치 전용 우선순위)
+        for i, client in enumerate(self.stock_analyst_estimates_clients):
             try:
-                self.logger.info(f"Attempting to fetch analyst estimates for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.stock_clients)})")
+                self.logger.info(f"Attempting to fetch analyst estimates for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.stock_analyst_estimates_clients)})")
                 
                 if hasattr(client, 'get_analyst_estimates'):
                     data = await client.get_analyst_estimates(ticker)
@@ -1233,6 +1244,9 @@ class ApiStrategyManager:
         """
         status = {
             "ohlcv_clients": [client.__class__.__name__ for client in self.ohlcv_clients],
+            "stock_profiles_clients": [client.__class__.__name__ for client in self.stock_profiles_clients],
+            "stock_financials_clients": [client.__class__.__name__ for client in self.stock_financials_clients],
+            "stock_analyst_estimates_clients": [client.__class__.__name__ for client in self.stock_analyst_estimates_clients],
             "crypto_clients": [client.__class__.__name__ for client in self.crypto_clients],
             "commodity_clients": [client.__class__.__name__ for client in self.commodity_clients]
         }

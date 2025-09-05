@@ -14,7 +14,7 @@ import time
 import re
 
 from .base_collector import BaseCollector
-from ..models.world_assets import WorldAssetsRanking, BondMarketData, ScrapingLogs
+from ..models.asset import WorldAssetsRanking, BondMarketData, ScrapingLogs
 from ..models.asset import Asset
 from ..utils.retry import retry_with_backoff, classify_api_error, TransientAPIError, PermanentAPIError
 from ..services.api_strategy_manager import api_manager

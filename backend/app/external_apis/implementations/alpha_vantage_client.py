@@ -11,7 +11,8 @@ from app.external_apis.base.tradfi_client import TradFiAPIClient
 from app.external_apis.base.schemas import (
     OhlcvDataPoint, RealtimeQuoteData, CompanyProfileData,
     StockFinancialsData, StockAnalystEstimatesData,
-    TechnicalIndicatorsData, EtfSectorExposureData
+    TechnicalIndicatorsData, EtfSectorExposureData,
+    EtfInfoData, EtfSectorData, EtfHoldingData
 )
 from app.core.config import (
     ALPHA_VANTAGE_API_KEY_1,
@@ -283,7 +284,28 @@ class AlphaVantageClient(TradFiAPIClient):
                                 profit_margin_ttm=safe_float(data.get('ProfitMargin')),
                                 return_on_equity_ttm=safe_float(data.get('ReturnOnEquityTTM')),
                                 revenue_ttm=safe_float(data.get('RevenueTTM')),
+                                ebitda=safe_float(data.get('EBITDA')),
+                                shares_outstanding=safe_float(data.get('SharesOutstanding')),
                                 currency=data.get('Currency', 'USD'),
+                                # 52주 고저점 및 이동평균
+                                week_52_high=safe_float(data.get('52WeekHigh')),
+                                week_52_low=safe_float(data.get('52WeekLow')),
+                                day_50_moving_avg=safe_float(data.get('50DayMovingAverage')),
+                                day_200_moving_avg=safe_float(data.get('200DayMovingAverage')),
+                                # 추가 재무 지표
+                                book_value=safe_float(data.get('BookValue')),
+                                revenue_per_share_ttm=safe_float(data.get('RevenuePerShareTTM')),
+                                operating_margin_ttm=safe_float(data.get('OperatingMarginTTM')),
+                                return_on_assets_ttm=safe_float(data.get('ReturnOnAssetsTTM')),
+                                gross_profit_ttm=safe_float(data.get('GrossProfitTTM')),
+                                quarterly_earnings_growth_yoy=safe_float(data.get('QuarterlyEarningsGrowthYOY')),
+                                quarterly_revenue_growth_yoy=safe_float(data.get('QuarterlyRevenueGrowthYOY')),
+                                analyst_target_price=safe_float(data.get('AnalystTargetPrice')),
+                                trailing_pe=safe_float(data.get('TrailingPE')),
+                                forward_pe=safe_float(data.get('ForwardPE')),
+                                price_to_sales_ratio_ttm=safe_float(data.get('PriceToSalesRatioTTM')),
+                                ev_to_revenue=safe_float(data.get('EVToRevenue')),
+                                ev_to_ebitda=safe_float(data.get('EVToEBITDA')),
                                 snapshot_date=datetime.now(),
                                 timestamp_utc=datetime.now(),
                             )
@@ -305,6 +327,93 @@ class AlphaVantageClient(TradFiAPIClient):
         logger.warning("AlphaVantageClient has no analyst estimates method")
         return None
     
+    async def get_etf_info(self, symbol: str) -> Optional[EtfInfoData]:
+        """Get ETF profile information from Alpha Vantage ETF_PROFILE endpoint"""
+        try:
+            for api_key in self.api_keys:
+                try:
+                    url = f"https://www.alphavantage.co/query"
+                    params = {
+                        "function": "ETF_PROFILE",
+                        "symbol": symbol,
+                        "apikey": api_key
+                    }
+                    
+                    async with self.session.get(url, params=params) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            
+                            if isinstance(data, dict) and "Note" in data:
+                                logger.warning(f"Alpha Vantage API rate limit reached for ETF profile {symbol}")
+                                continue
+                            elif isinstance(data, dict) and "Error Message" in data:
+                                logger.warning(f"Alpha Vantage API error for ETF profile {symbol}: {data['Error Message']}")
+                                continue
+                            elif isinstance(data, dict) and "profile" in data:
+                                profile = data["profile"]
+                                
+                                # Parse sectors data
+                                sectors = []
+                                if "sectors" in profile and isinstance(profile["sectors"], list):
+                                    for sector in profile["sectors"]:
+                                        sectors.append(EtfSectorData(
+                                            sector=sector.get("sector", ""),
+                                            weight=safe_float(sector.get("weight", 0))
+                                        ))
+                                
+                                # Parse holdings data
+                                holdings = []
+                                if "holdings" in profile and isinstance(profile["holdings"], list):
+                                    for holding in profile["holdings"]:
+                                        holdings.append(EtfHoldingData(
+                                            symbol=holding.get("symbol", ""),
+                                            description=holding.get("description", ""),
+                                            weight=safe_float(holding.get("weight", 0))
+                                        ))
+                                
+                                # Parse inception date
+                                inception_date = None
+                                if "inception_date" in profile and profile["inception_date"]:
+                                    try:
+                                        inception_date = datetime.strptime(profile["inception_date"], "%Y-%m-%d").date()
+                                    except ValueError:
+                                        pass
+                                
+                                # Parse leveraged field
+                                leveraged = None
+                                if "leveraged" in profile:
+                                    leveraged_str = profile["leveraged"].upper()
+                                    if leveraged_str == "YES":
+                                        leveraged = True
+                                    elif leveraged_str == "NO":
+                                        leveraged = False
+                                
+                                etf_info = EtfInfoData(
+                                    symbol=symbol,
+                                    net_assets=safe_float(profile.get("net_assets")),
+                                    net_expense_ratio=safe_float(profile.get("net_expense_ratio")),
+                                    portfolio_turnover=safe_float(profile.get("portfolio_turnover")),
+                                    dividend_yield=safe_float(profile.get("dividend_yield")),
+                                    inception_date=inception_date,
+                                    leveraged=leveraged,
+                                    sectors=sectors if sectors else None,
+                                    holdings=holdings if holdings else None,
+                                    timestamp_utc=datetime.utcnow()
+                                )
+                                return etf_info
+                            else:
+                                logger.warning(f"Unexpected response format for ETF profile {symbol}")
+                                continue
+                        else:
+                            logger.warning(f"Alpha Vantage ETF profile API returned status {response.status} for {symbol}")
+                            continue
+                except Exception as ie:
+                    logger.warning(f"Alpha Vantage ETF profile fetch issue for {symbol} with key {api_key[:8]}...: {ie}")
+                    continue
+        except Exception as e:
+            logger.error(f"Alpha Vantage ETF profile fetch failed for {symbol}: {e}")
+        return None
+
     async def get_etf_sector_exposure(self, symbol: str) -> Optional[List[EtfSectorExposureData]]:
         """Get ETF sector exposure from Alpha Vantage (Not supported)"""
         raise NotImplementedError(f"Alpha Vantage API는 ETF 섹터 노출 데이터를 제공하지 않습니다. {symbol}의 섹터 정보는 FMP API를 사용하세요.")

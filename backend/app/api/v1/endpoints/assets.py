@@ -521,22 +521,26 @@ def get_etf_sector_exposure(
 ):
     """ETF 섹터 노출도 조회"""
     try:
-        from ....models import EtfSectorExposure
-        exposures = db.query(EtfSectorExposure).filter(
-            EtfSectorExposure.etf_info_id == etf_info_id
-        ).order_by(EtfSectorExposure.weight.desc()).all()
+        from ....models.asset import ETFInfo
+        etf_info = db.query(ETFInfo).filter(
+            ETFInfo.etf_info_id == etf_info_id
+        ).first()
         
-        # SQLAlchemy 모델을 딕셔너리로 변환
+        if not etf_info or not etf_info.sectors:
+            return {"data": []}
+        
+        # JSON 컬럼에서 섹터 데이터 추출
         exposures_data = []
-        for exposure in exposures:
+        for sector in etf_info.sectors:
             exposure_dict = {
-                'sector_exposure_id': exposure.sector_exposure_id,
-                'etf_info_id': exposure.etf_info_id,
-                'sector': exposure.sector_name,  # 스키마에서는 sector로 매핑
-                'weight': float(exposure.weight) if exposure.weight else 0.0,
-                'updated_at': exposure.updated_at,
+                'sector': sector.get('sector', ''),
+                'weight': sector.get('weight', 0.0),
+                'updated_at': etf_info.updated_at
             }
             exposures_data.append(exposure_dict)
+        
+        # weight 기준으로 정렬
+        exposures_data.sort(key=lambda x: x['weight'], reverse=True)
         
         return {
             'etf_info_id': etf_info_id,
@@ -554,25 +558,30 @@ def get_etf_holdings(
 ):
     """ETF 보유 종목 조회"""
     try:
-        from ....models import EtfHolding
-        holdings = db.query(EtfHolding).filter(
-            EtfHolding.etf_info_id == etf_info_id
-        ).order_by(EtfHolding.weight.desc()).limit(limit).all()
+        from ....models.asset import ETFInfo
+        etf_info = db.query(ETFInfo).filter(
+            ETFInfo.etf_info_id == etf_info_id
+        ).first()
         
-        # SQLAlchemy 모델을 딕셔너리로 변환
+        if not etf_info or not etf_info.holdings:
+            return {"data": []}
+        
+        # JSON 컬럼에서 보유 종목 데이터 추출
         holdings_data = []
-        for holding in holdings:
+        for holding in etf_info.holdings:
             holding_dict = {
-                'holding_id': holding.holding_id,
-                'etf_info_id': holding.etf_info_id,
-                'ticker': holding.holding_symbol,  # 스키마에서는 ticker로 매핑
-                'name': holding.description,  # 스키마에서는 name으로 매핑
-                'weight': float(holding.weight) if holding.weight else 0.0,
+                'ticker': holding.get('symbol', ''),
+                'name': holding.get('description', ''),
+                'weight': holding.get('weight', 0.0),
                 'shares': None,  # DB에 없음
                 'market_value': None,  # DB에 없음
-                'updated_at': holding.updated_at,
+                'updated_at': etf_info.updated_at,
             }
             holdings_data.append(holding_dict)
+        
+        # weight 기준으로 정렬하고 limit 적용
+        holdings_data.sort(key=lambda x: x['weight'], reverse=True)
+        holdings_data = holdings_data[:limit]
         
         return {
             'etf_info_id': etf_info_id,
@@ -590,7 +599,7 @@ def get_crypto_metrics_for_asset(
     """암호화폐 메트릭 정보 조회"""
     try:
         asset_id = resolve_asset_identifier(db, asset_identifier)
-        from ....models import CryptoData, Asset
+        from ....models.asset import CryptoData, Asset
         
         # asset_id로 자산 정보 조회
         asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
@@ -855,10 +864,10 @@ def get_stock_financials(db: Session, asset_id: int, limit: int):
             'return_on_equity_ttm': float(financial.return_on_equity_ttm) if financial.return_on_equity_ttm else None,
             'revenue_ttm': float(financial.revenue_ttm) if financial.revenue_ttm else None,
             'price_to_book_ratio': float(financial.price_to_book_ratio) if financial.price_to_book_ratio else None,
-            'week_52_high': float(financial._52_week_high) if financial._52_week_high else None,
-            'week_52_low': float(financial._52_week_low) if financial._52_week_low else None,
-            'day_50_moving_avg': float(financial._50_day_moving_avg) if financial._50_day_moving_avg else None,
-            'day_200_moving_avg': float(financial._200_day_moving_avg) if financial._200_day_moving_avg else None,
+            'week_52_high': float(financial.week_52_high) if financial.week_52_high else None,
+            'week_52_low': float(financial.week_52_low) if financial.week_52_low else None,
+            'day_50_moving_avg': float(financial.day_50_moving_avg) if financial.day_50_moving_avg else None,
+            'day_200_moving_avg': float(financial.day_200_moving_avg) if financial.day_200_moving_avg else None,
             'updated_at': financial.updated_at,
         }
         financial_data.append(financial_dict)
@@ -943,10 +952,10 @@ def get_index_info(db: Session, asset_id: int, limit: int):
 
 def get_etf_info(db: Session, asset_id: int):
     """ETF 정보 조회"""
-    from ....models import EtfInfo, Asset
-    etf_info = db.query(EtfInfo).filter(
-        EtfInfo.asset_id == asset_id
-    ).order_by(EtfInfo.snapshot_date.desc()).first()
+    from ....models.asset import ETFInfo, Asset
+    etf_info = db.query(ETFInfo).filter(
+        ETFInfo.asset_id == asset_id
+    ).order_by(ETFInfo.snapshot_date.desc()).first()
     
     if not etf_info:
         return None

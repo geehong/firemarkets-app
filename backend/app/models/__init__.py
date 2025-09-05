@@ -1,38 +1,38 @@
-# backend_temp/app/models/__init__.py
+# backend/app/models/__init__.py
 
-# Asset related models
+# All models are now consolidated in asset.py
 from .asset import (
+    # Core models
     Asset,
     AssetType,
+    
+    # Stock models
     OHLCVData,
     StockProfile,
     StockFinancial,
     StockAnalystEstimate,
+    
+    # ETF models
+    ETFInfo,
+    
+    # Index models
     IndexInfo,
-)
-
-# Crypto related models
-from .crypto import (
-    CryptoMetric,
+    
+    # Crypto models
     CryptoData,
-)
-
-# ETF related models
-from .etf import (
-    EtfInfo,
-    EtfSectorExposure,
-    EtfHolding,
-)
-
-# Onchain related models
-from .onchain import (
-    OnchainMetricsInfo,
-)
-
-# Real-time data models
-from .realtime import (
+    CryptoMetric,
+    
+    # Real-time models
     RealtimeQuote,
     SparklineData,
+    
+    # Onchain models
+    OnchainMetricsInfo,
+    
+    # World assets models
+    WorldAssetsRanking,
+    BondMarketData,
+    ScrapingLogs,
 )
 
 # System related models
@@ -44,39 +44,49 @@ from .system import (
     EconomicIndicator,
 )
 
-# World assets related models
-from .world_assets import (
-    WorldAssetsRanking,
-    BondMarketData,
-    ScrapingLogs,
+# User related models
+from .user import (
+    User,
+)
+
+# Session related models
+from .session import (
+    UserSession,
 )
 
 # Export all models
 __all__ = [
-    # Asset models
+    # Core models
     "Asset",
-    "AssetType", 
+    "AssetType",
+    
+    # Stock models
     "OHLCVData",
     "StockProfile",
     "StockFinancial",
     "StockAnalystEstimate",
+    
+    # ETF models
+    "ETFInfo",
+    
+    # Index models
     "IndexInfo",
     
     # Crypto models
-    "CryptoMetric",
     "CryptoData",
-    
-    # ETF models
-    "EtfInfo",
-    "EtfSectorExposure",
-    "EtfHolding",
-    
-    # Onchain models
-    "OnchainMetricsInfo",
+    "CryptoMetric",
     
     # Real-time models
     "RealtimeQuote",
     "SparklineData",
+    
+    # Onchain models
+    "OnchainMetricsInfo",
+    
+    # World assets models
+    "WorldAssetsRanking",
+    "BondMarketData",
+    "ScrapingLogs",
     
     # System models
     "AppConfiguration",
@@ -85,8 +95,9 @@ __all__ = [
     "TechnicalIndicator",
     "EconomicIndicator",
     
-    # World assets models
-    "WorldAssetsRanking",
-    "BondMarketData",
-    "ScrapingLogs",
+    # User models
+    "User",
+    
+    # Session models
+    "UserSession",
 ]

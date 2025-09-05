@@ -66,10 +66,18 @@ class CompanyProfileData(BaseModel):
     # DB 매핑 확장 필드
     address: Optional[str] = None
     city: Optional[str] = None
+    state: Optional[str] = None  # 주/도 (CA, NY 등)
+    zip_code: Optional[str] = None  # 우편번호
     ceo: Optional[str] = None
     phone: Optional[str] = None
     logo_image_url: Optional[str] = None
     ipo_date: Optional[date] = None
+    # 거래소 및 식별자 정보
+    exchange: Optional[str] = None  # 거래소 코드 (NASDAQ, NYSE 등)
+    exchange_full_name: Optional[str] = None  # 거래소 전체명
+    cik: Optional[str] = None  # CIK 코드
+    isin: Optional[str] = None  # ISIN 코드
+    cusip: Optional[str] = None  # CUSIP 코드
     timestamp_utc: datetime
 
 class StockFinancialsData(BaseModel):
@@ -92,10 +100,24 @@ class StockFinancialsData(BaseModel):
     snapshot_date: Optional[datetime] = None
     timestamp_utc: datetime
     # 이동평균/52주 고저 (DB 스키마 매핑 필드)
-    _52_week_high: Optional[float] = None
-    _52_week_low: Optional[float] = None
-    _50_day_moving_avg: Optional[float] = None
-    _200_day_moving_avg: Optional[float] = None
+    week_52_high: Optional[float] = None
+    week_52_low: Optional[float] = None
+    day_50_moving_avg: Optional[float] = None
+    day_200_moving_avg: Optional[float] = None
+    # 추가 재무 지표
+    book_value: Optional[float] = None  # 장부가치
+    revenue_per_share_ttm: Optional[float] = None  # 주당 매출
+    operating_margin_ttm: Optional[float] = None  # 영업 마진
+    return_on_assets_ttm: Optional[float] = None  # 자산 수익률
+    gross_profit_ttm: Optional[float] = None  # 총 이익
+    quarterly_earnings_growth_yoy: Optional[float] = None  # 분기 수익 성장률
+    quarterly_revenue_growth_yoy: Optional[float] = None  # 분기 매출 성장률
+    analyst_target_price: Optional[float] = None  # 애널리스트 목표가
+    trailing_pe: Optional[float] = None  # 후행 PER
+    forward_pe: Optional[float] = None  # 선행 PER
+    price_to_sales_ratio_ttm: Optional[float] = None  # 주가매출비율
+    ev_to_revenue: Optional[float] = None  # 기업가치매출비율
+    ev_to_ebitda: Optional[float] = None  # 기업가치EBITDA비율
 
 class StockAnalystEstimatesData(BaseModel):
     """주식 애널리스트 추정치 데이터의 표준 구조"""
@@ -111,6 +133,18 @@ class StockAnalystEstimatesData(BaseModel):
     revenue_analysts_count: Optional[int] = None
     eps_analysts_count: Optional[int] = None
     fiscal_date: Optional[date] = None
+    # 추가 재무 추정치 필드
+    ebitda_low: Optional[float] = None
+    ebitda_high: Optional[float] = None
+    ebit_avg: Optional[float] = None
+    ebit_low: Optional[float] = None
+    ebit_high: Optional[float] = None
+    net_income_avg: Optional[float] = None
+    net_income_low: Optional[float] = None
+    net_income_high: Optional[float] = None
+    sga_expense_avg: Optional[float] = None
+    sga_expense_low: Optional[float] = None
+    sga_expense_high: Optional[float] = None
     # 참고: 벤더 고유 필드는 필요 시 별도 확장
     timestamp_utc: datetime
 
@@ -118,32 +152,33 @@ class StockAnalystEstimatesData(BaseModel):
 # ETF 데이터 (ETF Data)
 # ============================================================================
 
+class EtfSectorData(BaseModel):
+    """ETF 섹터 정보"""
+    sector: str
+    weight: float
+
+class EtfHoldingData(BaseModel):
+    """ETF 보유 종목 정보"""
+    symbol: str
+    description: str
+    weight: float
+
 class EtfInfoData(BaseModel):
-    """ETF 정보 데이터의 표준 구조"""
+    """ETF 정보 데이터의 표준 구조 (Alpha Vantage ETF_PROFILE API 호환)"""
     symbol: str
-    name: str
-    description: Optional[str] = None
-    asset_class: Optional[str] = None
-    expense_ratio: Optional[float] = None
-    aum: Optional[float] = None  # Assets Under Management
-    issuer: Optional[str] = None
-    inception_date: Optional[datetime] = None
+    net_assets: Optional[float] = None
+    net_expense_ratio: Optional[float] = None
+    portfolio_turnover: Optional[float] = None
+    dividend_yield: Optional[float] = None
+    inception_date: Optional[date] = None
+    leveraged: Optional[bool] = None
+    sectors: Optional[List[EtfSectorData]] = None
+    holdings: Optional[List[EtfHoldingData]] = None
     timestamp_utc: datetime
 
-class EtfSectorExposureData(BaseModel):
-    """ETF 섹터 노출 데이터의 표준 구조"""
-    sector_name: str
-    weight: float
-    timestamp_utc: datetime
-
-class EtfHoldingsData(BaseModel):
-    """ETF 보유 종목 데이터의 표준 구조"""
-    symbol: str
-    name: str
-    weight: float
-    shares_held: Optional[float] = None
-    market_value: Optional[float] = None
-    timestamp_utc: datetime
+# 기존 호환성을 위한 별칭 (deprecated)
+EtfSectorExposureData = EtfSectorData
+EtfHoldingsData = EtfHoldingData
 
 # ============================================================================
 # 암호화폐 데이터 (Cryptocurrency Data)
