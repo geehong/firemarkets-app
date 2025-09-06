@@ -176,7 +176,7 @@ def get_assets_market_caps(
             thirty_days_ago_ohlcv = db.query(OHLCVData) \
                                      .filter(
                                          OHLCVData.asset_id == asset.asset_id,
-                                         OHLCVData.data_interval == '1d',
+                                         OHLCVData.data_interval.is_(None),
                                          OHLCVData.timestamp_utc >= thirty_days_ago
                                      ) \
                                      .order_by(OHLCVData.timestamp_utc.asc()) \
@@ -285,69 +285,35 @@ def get_ohlcv_data(
         
         # data_interval에 따른 쿼리 처리
         if data_interval.upper() == '1M':
-            # 월별 마지막 거래일 데이터
-            last_day_subquery = db.query(
-                OHLCVData.asset_id,
-                extract('year', OHLCVData.timestamp_utc).label('yr'),
-                extract('month', OHLCVData.timestamp_utc).label('mth'),
-                func.max(OHLCVData.timestamp_utc).label('max_timestamp')
-            ).filter(
+            # 월봉 데이터 (data_interval에 '1M'이 포함된 데이터)
+            query = db.query(OHLCVData).filter(
                 OHLCVData.asset_id == asset_id,
-                OHLCVData.data_interval == '1d'
+                OHLCVData.data_interval.like('%1M%')
             )
             
             if start_date:
-                last_day_subquery = last_day_subquery.filter(OHLCVData.timestamp_utc >= start_date)
+                query = query.filter(OHLCVData.timestamp_utc >= start_date)
             if end_date:
-                last_day_subquery = last_day_subquery.filter(OHLCVData.timestamp_utc <= end_date)
+                query = query.filter(OHLCVData.timestamp_utc <= end_date)
             
-            last_day_subquery = last_day_subquery.group_by(
-                OHLCVData.asset_id,
-                extract('year', OHLCVData.timestamp_utc),
-                extract('month', OHLCVData.timestamp_utc)
-            ).subquery()
-            
-            ohlcv_data = db.query(OHLCVData).join(
-                last_day_subquery,
-                (OHLCVData.asset_id == last_day_subquery.c.asset_id) &
-                (OHLCVData.timestamp_utc == last_day_subquery.c.max_timestamp)
-            ).filter(
-                OHLCVData.data_interval == '1d'
-            ).order_by(OHLCVData.timestamp_utc.asc()).limit(limit).all()
+            ohlcv_data = query.order_by(OHLCVData.timestamp_utc.asc()).limit(limit).all()
             
         elif data_interval.upper() == '1W':
-            # 주별 마지막 거래일 데이터
-            last_day_subquery = db.query(
-                OHLCVData.asset_id,
-                extract('year', OHLCVData.timestamp_utc).label('yr'),
-                extract('week', OHLCVData.timestamp_utc).label('wk'),
-                func.max(OHLCVData.timestamp_utc).label('max_timestamp')
-            ).filter(
+            # 주봉 데이터 (data_interval에 '1W'가 포함된 데이터)
+            query = db.query(OHLCVData).filter(
                 OHLCVData.asset_id == asset_id,
-                OHLCVData.data_interval == '1d'
+                OHLCVData.data_interval.like('%1W%')
             )
             
             if start_date:
-                last_day_subquery = last_day_subquery.filter(OHLCVData.timestamp_utc >= start_date)
+                query = query.filter(OHLCVData.timestamp_utc >= start_date)
             if end_date:
-                last_day_subquery = last_day_subquery.filter(OHLCVData.timestamp_utc <= end_date)
+                query = query.filter(OHLCVData.timestamp_utc <= end_date)
             
-            last_day_subquery = last_day_subquery.group_by(
-                OHLCVData.asset_id,
-                extract('year', OHLCVData.timestamp_utc),
-                extract('week', OHLCVData.timestamp_utc)
-            ).subquery()
-            
-            ohlcv_data = db.query(OHLCVData).join(
-                last_day_subquery,
-                (OHLCVData.asset_id == last_day_subquery.c.asset_id) &
-                (OHLCVData.timestamp_utc == last_day_subquery.c.max_timestamp)
-            ).filter(
-                OHLCVData.data_interval == '1d'
-            ).order_by(OHLCVData.timestamp_utc.asc()).limit(limit).all()
+            ohlcv_data = query.order_by(OHLCVData.timestamp_utc.asc()).limit(limit).all()
             
         else:
-            # 일반적인 간격 데이터
+            # 일반적인 간격 데이터 (일봉 등)
             ohlcv_data = db_get_ohlcv_data(db, asset_id, start_date, end_date, data_interval, limit)
         
         # SQLAlchemy 모델을 Pydantic 스키마로 변환
@@ -361,7 +327,7 @@ def get_ohlcv_data(
                 'close_price': float(ohlcv.close_price) if ohlcv.close_price else None,
                 'volume': float(ohlcv.volume) if ohlcv.volume else None,
                 'change_percent': float(ohlcv.change_percent) if ohlcv.change_percent else None,
-                'data_interval': ohlcv.data_interval,
+                'data_interval': ohlcv.data_interval or '1d',  # None이면 '1d'로 변환
             }
             ohlcv_data_points.append(ohlcv_dict)
         
@@ -395,14 +361,46 @@ def get_price_data(
         logger.info(f"Resolved asset_id: {asset_id} for identifier: {asset_identifier}")
 
         # 필요한 컬럼만 조회 (성능 최적화)
-        query = db.query(
-            OHLCVData.timestamp_utc,
-            OHLCVData.close_price,
-            OHLCVData.change_percent
-        ).filter(
-            OHLCVData.asset_id == asset_id,
-            OHLCVData.data_interval == data_interval
-        )
+        if data_interval == '1d':
+            # 일봉 데이터 - 모든 데이터 조회 (주말/월말 포함)
+            query = db.query(
+                OHLCVData.timestamp_utc,
+                OHLCVData.close_price,
+                OHLCVData.change_percent
+            ).filter(
+                OHLCVData.asset_id == asset_id
+                # data_interval 필터링 제거 - 모든 일봉 데이터 조회
+            )
+        elif data_interval.upper() == '1M':
+            # 월봉 데이터
+            query = db.query(
+                OHLCVData.timestamp_utc,
+                OHLCVData.close_price,
+                OHLCVData.change_percent
+            ).filter(
+                OHLCVData.asset_id == asset_id,
+                OHLCVData.data_interval.like('%1M%')
+            )
+        elif data_interval.upper() == '1W':
+            # 주봉 데이터
+            query = db.query(
+                OHLCVData.timestamp_utc,
+                OHLCVData.close_price,
+                OHLCVData.change_percent
+            ).filter(
+                OHLCVData.asset_id == asset_id,
+                OHLCVData.data_interval.like('%1W%')
+            )
+        else:
+            # 다른 간격 데이터 (4h, 1h 등)
+            query = db.query(
+                OHLCVData.timestamp_utc,
+                OHLCVData.close_price,
+                OHLCVData.change_percent
+            ).filter(
+                OHLCVData.asset_id == asset_id,
+                OHLCVData.data_interval == data_interval
+            )
 
         if start_date:
             query = query.filter(OHLCVData.timestamp_utc >= start_date)
@@ -618,14 +616,14 @@ def get_crypto_metrics_for_asset(
         yesterday = datetime.now() - timedelta(days=1)
         old_ohlcv = db.query(OHLCVData).filter(
             OHLCVData.asset_id == asset_id,
-            OHLCVData.data_interval == '1d',
+            OHLCVData.data_interval.is_(None),
             OHLCVData.timestamp_utc <= yesterday
         ).order_by(OHLCVData.timestamp_utc.desc()).first()
         
         # 최신 데이터 조회
         latest_ohlcv = db.query(OHLCVData).filter(
             OHLCVData.asset_id == asset_id,
-            OHLCVData.data_interval == '1d'
+            OHLCVData.data_interval.is_(None)
         ).order_by(OHLCVData.timestamp_utc.desc()).first()
         
         # 24시간 가격 변화 계산
@@ -703,7 +701,7 @@ def get_ticker_summary(
                 # 최신 OHLCV 데이터 조회
                 latest_ohlcv = db.query(OHLCVData).filter(
                     OHLCVData.asset_id == asset.asset_id,
-                    OHLCVData.data_interval == '1d'
+                    OHLCVData.data_interval.is_(None)
                 ).order_by(OHLCVData.timestamp_utc.desc()).first()
                 
                 if not latest_ohlcv:
@@ -721,7 +719,7 @@ def get_ticker_summary(
                 seven_months_ago = datetime.now() - timedelta(days=210)
                 old_ohlcv = db.query(OHLCVData).filter(
                     OHLCVData.asset_id == asset.asset_id,
-                    OHLCVData.data_interval == '1d',
+                    OHLCVData.data_interval.is_(None),
                     OHLCVData.timestamp_utc <= seven_months_ago
                 ).order_by(OHLCVData.timestamp_utc.desc()).first()
                 
@@ -737,7 +735,7 @@ def get_ticker_summary(
                 seven_months_ago = datetime.now() - timedelta(days=210)
                 monthly_data = db.query(OHLCVData).filter(
                     OHLCVData.asset_id == asset.asset_id,
-                    OHLCVData.data_interval == '1d',
+                    OHLCVData.data_interval.is_(None),
                     OHLCVData.timestamp_utc >= seven_months_ago
                 ).order_by(OHLCVData.timestamp_utc.desc()).all()
                 
@@ -786,18 +784,26 @@ def get_ticker_summary(
 
 # Helper functions
 def get_latest_ohlcv(db: Session, asset_id: int):
-    """최신 OHLCV 데이터 조회"""
+    """최신 OHLCV 데이터 조회 (일봉 데이터)"""
     return db.query(OHLCVData).filter(
-        OHLCVData.asset_id == asset_id,
-        OHLCVData.data_interval == '1d'
+        OHLCVData.asset_id == asset_id
+        # data_interval 필터링 제거 - 모든 일봉 데이터 조회
     ).order_by(OHLCVData.timestamp_utc.desc()).first()
 
 def db_get_ohlcv_data(db: Session, asset_id: int, start_date: Optional[date], end_date: Optional[date], data_interval: str, limit: int = 50000):
     """OHLCV 데이터 조회 (데이터베이스 함수)"""
-    query = db.query(OHLCVData).filter(
-        OHLCVData.asset_id == asset_id,
-        OHLCVData.data_interval == data_interval
-    )
+    # 일봉 데이터 - 모든 데이터 조회 (주말/월말 포함)
+    if data_interval == '1d':
+        query = db.query(OHLCVData).filter(
+            OHLCVData.asset_id == asset_id
+            # data_interval 필터링 제거 - 모든 일봉 데이터 조회
+        )
+    else:
+        # 다른 간격 데이터 (4h, 1h 등)
+        query = db.query(OHLCVData).filter(
+            OHLCVData.asset_id == asset_id,
+            OHLCVData.data_interval == data_interval
+        )
     
     if start_date:
         query = query.filter(OHLCVData.timestamp_utc >= start_date)

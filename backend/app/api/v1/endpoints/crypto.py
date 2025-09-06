@@ -83,12 +83,12 @@ async def get_bitcoin_halving_data(
         if not bitcoin_asset:
             raise HTTPException(status_code=503, detail="Bitcoin asset not found (BTC or BTCUSDT). Cannot fetch halving data.")
         
-        # OHLCV 데이터 조회
+        # OHLCV 데이터 조회 (모든 일봉 데이터 - 주말/월말 포함)
         ohlcv_records = db.query(OHLCVData).filter(
             OHLCVData.asset_id == bitcoin_asset.asset_id,
-            OHLCVData.data_interval == '1d',
             OHLCVData.timestamp_utc >= start_date_obj,
             OHLCVData.timestamp_utc < (end_date_obj + timedelta(days=1))
+            # data_interval 필터링 제거 - 모든 일봉 데이터 조회
         ).order_by(OHLCVData.timestamp_utc).all()
 
         # 데이터 변환
@@ -132,9 +132,9 @@ async def get_bitcoin_halving_data(
             
             fourth_ohlcv = db.query(OHLCVData).filter(
                 OHLCVData.asset_id == bitcoin_asset.asset_id,
-                OHLCVData.data_interval == '1d',
                 OHLCVData.timestamp_utc >= fourth_start_date,
                 OHLCVData.timestamp_utc < (fourth_start_date + timedelta(days=1))
+                # data_interval 필터링 제거 - 모든 일봉 데이터 조회
             ).order_by(OHLCVData.timestamp_utc).first()
             
             if fourth_ohlcv:

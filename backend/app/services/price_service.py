@@ -119,7 +119,7 @@ async def get_realtime_stock_prices(symbols: List[str]) -> Dict[str, Dict[str, A
                     continue
                 latest = (
                     db.query(OHLCVData)
-                    .filter(OHLCVData.asset_id == asset.asset_id, OHLCVData.data_interval == '1d')
+                    .filter(OHLCVData.asset_id == asset.asset_id, OHLCVData.data_interval.is_(None))  # 일봉 데이터는 data_interval이 NULL
                     .order_by(OHLCVData.timestamp_utc.desc())
                     .first()
                 )

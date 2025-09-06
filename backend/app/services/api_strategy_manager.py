@@ -38,7 +38,7 @@ class ApiStrategyManager:
         # 2. 주식 프로필용 클라이언트 (기업 프로필 데이터)
         self.stock_profiles_clients = [
             FMPClient(),          # 1순위 (완전한 프로필 데이터)
-            AlphaVantageClient(), # 2순위
+            # AlphaVantageClient(), # 2순위 - 주석처리
             TiingoClient(),       # 3순위
             PolygonClient(),      # 4순위
             TwelveDataClient(),   # 5순위

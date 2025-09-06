@@ -41,8 +41,8 @@ def get_price_data_for_asset(db: Session, asset_id: int, start_date: Optional[da
         OHLCVData.close_price,
         OHLCVData.change_percent
     ).filter(
-        OHLCVData.asset_id == asset_id,
-        OHLCVData.data_interval == '1d'  # 일별 데이터만
+        OHLCVData.asset_id == asset_id
+        # data_interval 필터링 제거 - 모든 일봉 데이터 조회 (주말/월말 포함)
     )
 
     if start_date:

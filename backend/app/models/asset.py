@@ -87,7 +87,7 @@ class Asset(Base):
 
 
 class OHLCVData(Base):
-    __tablename__ = "ohlcv_data"
+    __tablename__ = "ohlcv_day_data"
     ohlcv_id = Column(Integer, primary_key=True, index=True)
     asset_id = Column(
         Integer,
@@ -103,6 +103,26 @@ class OHLCVData(Base):
     close_price = Column(DECIMAL(24, 10), nullable=False)
     volume = Column(DECIMAL(30, 10), nullable=False)
     change_percent = Column(DECIMAL(10, 4))  # 일일 변동률
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+
+class OHLCVIntradayData(Base):
+    __tablename__ = "ohlcv_intraday_data"
+    ohlcv_id = Column(Integer, primary_key=True, index=True)
+    asset_id = Column(
+        Integer,
+        ForeignKey("assets.asset_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    timestamp_utc = Column(DateTime, nullable=False, index=True)
+    data_interval = Column(String(10), default="1d")
+    open_price = Column(DECIMAL(24, 10), nullable=False)
+    high_price = Column(DECIMAL(24, 10), nullable=False)
+    low_price = Column(DECIMAL(24, 10), nullable=False)
+    close_price = Column(DECIMAL(24, 10), nullable=False)
+    volume = Column(DECIMAL(30, 10), nullable=False)
+    change_percent = Column(DECIMAL(10, 4))  # 변동률
     created_at = Column(TIMESTAMP, server_default=func.now())
 
 
@@ -436,12 +456,27 @@ class CryptoMetric(Base):
     active_addresses = Column(Integer, nullable=True)
     transaction_count = Column(Integer, nullable=True)
     hash_rate = Column(DECIMAL(30, 10), nullable=True)
+    hashrate = Column(DECIMAL(30, 10), nullable=True)  # 데이터베이스 필드명과 일치
     difficulty = Column(DECIMAL(30, 10), nullable=True)
+    miner_reserves = Column(DECIMAL(24, 10), nullable=True)
     
     # Market metrics
     market_cap = Column(DECIMAL(30, 2), nullable=True)
     realized_cap = Column(DECIMAL(30, 2), nullable=True)
     mvrv_ratio = Column(DECIMAL(10, 4), nullable=True)
+    mvrv_z_score = Column(DECIMAL(18, 10), nullable=True)
+    realized_price = Column(DECIMAL(24, 10), nullable=True)
+    sopr = Column(DECIMAL(18, 10), nullable=True)
+    nupl = Column(DECIMAL(18, 10), nullable=True)
+    cdd_90dma = Column(DECIMAL(18, 10), nullable=True)
+    true_market_mean = Column(DECIMAL(24, 10), nullable=True)
+    nrpl_btc = Column(DECIMAL(24, 10), nullable=True)
+    aviv = Column(DECIMAL(18, 10), nullable=True)
+    thermo_cap = Column(DECIMAL(30, 2), nullable=True)
+    hodl_waves_supply = Column(DECIMAL(18, 10), nullable=True)
+    etf_btc_total = Column(DECIMAL(24, 10), nullable=True)
+    etf_btc_flow = Column(DECIMAL(24, 10), nullable=True)
+    open_interest_futures = Column(JSON, nullable=True)
     
     # Metadata
     data_source = Column(String(100), nullable=True)

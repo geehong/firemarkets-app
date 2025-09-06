@@ -144,7 +144,7 @@ class OHLCVCollector(BaseCollector):
                 ]
 
                 await self.redis_queue_manager.push_batch_task(
-                    "ohlcv_data",
+                    "ohlcv_day_data",
                     {
                         "items": items,
                         "metadata": {

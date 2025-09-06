@@ -9,7 +9,7 @@ from sqlalchemy import and_, or_, desc, func
 from datetime import date, datetime
 
 from .base import CRUDBase
-from ..models.asset import Asset, AssetType, OHLCVData, StockFinancial, StockProfile, StockAnalystEstimate, IndexInfo, WorldAssetsRanking, BondMarketData, ScrapingLogs
+from ..models.asset import Asset, AssetType, OHLCVData, OHLCVIntradayData, StockFinancial, StockProfile, StockAnalystEstimate, IndexInfo, WorldAssetsRanking, BondMarketData, ScrapingLogs
 # CryptoMetric removed - using CryptoData instead
 
 logger = logging.getLogger(__name__)
@@ -251,7 +251,7 @@ class CRUDOHLCV(CRUDBase[OHLCVData]):
                     and_(
                         OHLCVData.asset_id == ohlcv_data['asset_id'],
                         OHLCVData.timestamp_utc == ohlcv_data['timestamp_utc'],
-                        OHLCVData.data_interval == ohlcv_data.get('data_interval', '1d')
+                        OHLCVData.data_interval == (ohlcv_data.get('data_interval') if ohlcv_data.get('data_interval') != '1d' else None)
                     )
                 ).first()
                 
@@ -277,6 +277,142 @@ class CRUDOHLCV(CRUDBase[OHLCVData]):
             
         except Exception as e:
             logger.error(f"Bulk OHLCV upsert failed: {e}")
+            db.rollback()
+            return 0
+
+    def bulk_upsert_ohlcv_daily(self, db: Session, ohlcv_list: List[Dict[str, Any]]) -> int:
+        """Bulk upsert OHLCV daily data to ohlcv_day_data table."""
+        if not ohlcv_list:
+            return 0
+        
+        added_count = 0
+        updated_count = 0
+        
+        try:
+            # Coerce timestamp_utc to UTC-naive datetime for MySQL DATETIME compatibility
+            from datetime import datetime, timezone
+            def _normalize_ts(ts_val: Any) -> Any:
+                try:
+                    if isinstance(ts_val, datetime):
+                        if ts_val.tzinfo is not None and ts_val.tzinfo.utcoffset(ts_val) is not None:
+                            ts_val = ts_val.astimezone(timezone.utc).replace(tzinfo=None)
+                        return ts_val.replace(microsecond=0)
+                    # handle strings like '2024-09-05T00:00:00Z' or '2024-09-05 00:00:00+00:00'
+                    s = str(ts_val)
+                    if not s:
+                        return ts_val
+                    if s.endswith('Z'):
+                        s = s[:-1]
+                    s = s.replace('T', ' ')
+                    if '+' in s:
+                        s = s.split('+')[0]
+                    if '.' in s:
+                        s = s.split('.', 1)[0]
+                    return datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    return ts_val
+
+            for ohlcv_data in ohlcv_list:
+                # Normalize timestamp before querying/inserting
+                if 'timestamp_utc' in ohlcv_data:
+                    ohlcv_data['timestamp_utc'] = _normalize_ts(ohlcv_data['timestamp_utc'])
+                # Check if record already exists
+                existing = db.query(OHLCVData).filter(
+                    and_(
+                        OHLCVData.asset_id == ohlcv_data['asset_id'],
+                        OHLCVData.timestamp_utc == ohlcv_data['timestamp_utc']
+                    )
+                ).first()
+                
+                if existing:
+                    # Update existing record
+                    updated = False
+                    for key, value in ohlcv_data.items():
+                        if hasattr(existing, key) and getattr(existing, key) != value:
+                            setattr(existing, key, value)
+                            updated = True
+                    if updated:
+                        updated_count += 1
+                else:
+                    # Create new record
+                    new_ohlcv = OHLCVData(**ohlcv_data)
+                    db.add(new_ohlcv)
+                    added_count += 1
+            
+            db.commit()
+            return added_count
+            
+        except Exception as e:
+            db.rollback()
+            return 0
+
+    def bulk_upsert_ohlcv_intraday(self, db: Session, ohlcv_list: List[Dict[str, Any]]) -> int:
+        """Bulk upsert OHLCV intraday data to ohlcv_intraday_data table."""
+        if not ohlcv_list:
+            return 0
+        
+        added_count = 0
+        updated_count = 0
+        
+        try:
+            # Import the intraday model
+            from ..models.asset import OHLCVIntradayData
+            
+            # Coerce timestamp_utc to UTC-naive datetime for MySQL DATETIME compatibility
+            from datetime import datetime, timezone
+            def _normalize_ts(ts_val: Any) -> Any:
+                try:
+                    if isinstance(ts_val, datetime):
+                        if ts_val.tzinfo is not None and ts_val.tzinfo.utcoffset(ts_val) is not None:
+                            ts_val = ts_val.astimezone(timezone.utc).replace(tzinfo=None)
+                        return ts_val.replace(microsecond=0)
+                    # handle strings like '2024-09-05T00:00:00Z' or '2024-09-05 00:00:00+00:00'
+                    s = str(ts_val)
+                    if not s:
+                        return ts_val
+                    if s.endswith('Z'):
+                        s = s[:-1]
+                    s = s.replace('T', ' ')
+                    if '+' in s:
+                        s = s.split('+')[0]
+                    if '.' in s:
+                        s = s.split('.', 1)[0]
+                    return datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    return ts_val
+
+            for ohlcv_data in ohlcv_list:
+                # Normalize timestamp before querying/inserting
+                if 'timestamp_utc' in ohlcv_data:
+                    ohlcv_data['timestamp_utc'] = _normalize_ts(ohlcv_data['timestamp_utc'])
+                # Check if record already exists
+                existing = db.query(OHLCVIntradayData).filter(
+                    and_(
+                        OHLCVIntradayData.asset_id == ohlcv_data['asset_id'],
+                        OHLCVIntradayData.timestamp_utc == ohlcv_data['timestamp_utc'],
+                        OHLCVIntradayData.data_interval == ohlcv_data.get('data_interval', '1d')
+                    )
+                ).first()
+                
+                if existing:
+                    # Update existing record
+                    updated = False
+                    for key, value in ohlcv_data.items():
+                        if hasattr(existing, key) and getattr(existing, key) != value:
+                            setattr(existing, key, value)
+                            updated = True
+                    if updated:
+                        updated_count += 1
+                else:
+                    # Create new record
+                    new_ohlcv = OHLCVIntradayData(**ohlcv_data)
+                    db.add(new_ohlcv)
+                    added_count += 1
+            
+            db.commit()
+            return added_count
+            
+        except Exception as e:
             db.rollback()
             return 0
 

@@ -61,7 +61,7 @@ async def check_db_results(db, asset_id: int, ticker: str, expected_count: int):
             SELECT COUNT(*) as total_records, 
                    MAX(timestamp_utc) as latest_record,
                    MIN(timestamp_utc) as earliest_record
-            FROM ohlcv_data 
+            FROM ohlcv_day_data 
             WHERE asset_id = {asset_id}
         """)).fetchone()
         
@@ -81,7 +81,7 @@ async def check_db_results(db, asset_id: int, ticker: str, expected_count: int):
             # 최근 3개 레코드 확인
             recent_records = db.execute(text(f"""
                 SELECT timestamp_utc, open_price, high_price, low_price, close_price, volume
-                FROM ohlcv_data 
+                FROM ohlcv_day_data 
                 WHERE asset_id = {asset_id}
                 ORDER BY timestamp_utc DESC 
                 LIMIT 3
@@ -115,7 +115,7 @@ async def generate_summary_report(db, test_assets):
                 COUNT(*) as total_records,
                 MIN(timestamp_utc) as earliest_data,
                 MAX(timestamp_utc) as latest_data
-            FROM ohlcv_data
+            FROM ohlcv_day_data
         """)).fetchone()
         
         if total_stats:
@@ -135,7 +135,7 @@ async def generate_summary_report(db, test_assets):
                     COUNT(*) as records,
                     MAX(timestamp_utc) as latest,
                     MIN(timestamp_utc) as earliest
-                FROM ohlcv_data 
+                FROM ohlcv_day_data 
                 WHERE asset_id = {asset_id}
             """)).fetchone()
             

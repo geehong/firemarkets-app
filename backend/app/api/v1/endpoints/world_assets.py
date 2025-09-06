@@ -902,7 +902,7 @@ async def get_performance_treemap_data(
         # OHLCV 데이터가 있는 자산만 필터링하는 서브쿼리
         assets_with_ohlcv_subquery = (
             db.query(OHLCVData.asset_id)
-            .filter(OHLCVData.data_interval == '1d')
+            .filter(OHLCVData.data_interval.is_(None))  # 일봉 데이터는 data_interval이 NULL
             .group_by(OHLCVData.asset_id)
             .subquery()
         )
@@ -932,7 +932,7 @@ async def get_performance_treemap_data(
             .outerjoin(OHLCVData, 
                 and_(
                     WorldAssetsRanking.asset_id == OHLCVData.asset_id,
-                    OHLCVData.data_interval == '1d',
+                    OHLCVData.data_interval.is_(None),  # 일봉 데이터는 data_interval이 NULL
                     OHLCVData.timestamp_utc >= start_date,
                     OHLCVData.timestamp_utc <= end_date
                 )
@@ -964,7 +964,7 @@ async def get_performance_treemap_data(
                         db.query(OHLCVData)
                         .filter(
                             OHLCVData.asset_id == asset.asset_id,
-                            OHLCVData.data_interval == '1d'
+                            OHLCVData.data_interval.is_(None)  # 일봉 데이터는 data_interval이 NULL
                         )
                         .order_by(OHLCVData.timestamp_utc.desc())
                         .limit(2)
@@ -975,7 +975,7 @@ async def get_performance_treemap_data(
                         db.query(OHLCVData)
                         .filter(
                             OHLCVData.asset_id == asset.asset_id,
-                            OHLCVData.data_interval == '1d',
+                            OHLCVData.data_interval.is_(None),  # 일봉 데이터는 data_interval이 NULL
                             OHLCVData.timestamp_utc >= start_date,
                             OHLCVData.timestamp_utc <= end_date
                         )

@@ -51,7 +51,7 @@ async def test_redis_direct():
         
         # 3. Redis 큐에 데이터 올리기
         print("3. Redis 큐에 데이터 올리기")
-        await redis_queue_manager.push_batch_task("ohlcv_data", test_payload)
+        await redis_queue_manager.push_batch_task("ohlcv_day_data", test_payload)
         print("✅ 데이터를 큐에 올렸습니다")
         
         # 4. 큐 상태 다시 확인

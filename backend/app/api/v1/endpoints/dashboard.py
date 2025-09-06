@@ -146,7 +146,7 @@ def get_latest_ohlcv(db: Session, asset_id: int):
     """최신 OHLCV 데이터 조회"""
     return db.query(OHLCVData).filter(
         OHLCVData.asset_id == asset_id,
-        OHLCVData.data_interval == '1d'
+        OHLCVData.data_interval.is_(None)  # 일봉 데이터는 data_interval이 NULL
     ).order_by(OHLCVData.timestamp_utc.desc()).first()
 
 def get_asset_by_ticker(db: Session, ticker: str):

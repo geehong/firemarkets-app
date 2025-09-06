@@ -56,7 +56,7 @@ async def test_ohlcv_data_conversion():
             try:
                 items = [item.model_dump() for item in ohlcv_data]
                 await redis_queue_manager.push_batch_task(
-                    "ohlcv_data",
+                    "ohlcv_day_data",
                     {
                         "items": items,
                         "metadata": {

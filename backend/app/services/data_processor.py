@@ -303,10 +303,10 @@ class DataProcessor:
                 return await self._save_etf_info(items)
             elif task_type in ("crypto_info", "crypto_data"):
                 return await self._save_crypto_data(items)
-            elif task_type == "ohlcv_data":
+            elif task_type in ("ohlcv_data", "ohlcv_day_data", "ohlcv_intraday_data"):
                 # metadata 정보 추출
                 metadata = payload.get("metadata", {}) if isinstance(payload, dict) else {}
-                logger.info(f"Processing ohlcv_data task: items_count={len(items)}, metadata={metadata}")
+                logger.info(f"Processing {task_type} task: items_count={len(items)}, metadata={metadata}")
                 return await self._save_ohlcv_data(items, metadata)
             elif task_type == "index_data":
                 return await self._save_index_data(items)
@@ -453,10 +453,6 @@ class DataProcessor:
                                 profile.isin = isin
                             if cusip is not None:
                                 profile.cusip = cusip
-                            
-                            # updated_at을 명시적으로 업데이트
-                            from datetime import datetime
-                            profile.updated_at = datetime.now()
                         else:
                             profile = StockProfile(
                                 asset_id=asset_id,
@@ -508,7 +504,7 @@ class DataProcessor:
         return True
 
     async def _save_ohlcv_data(self, items: List[Dict[str, Any]], metadata: Dict[str, Any] = None) -> bool:
-        """OHLCV 데이터 저장"""
+        """OHLCV 데이터 저장 - 일봉과 인트라데이 데이터를 적절한 테이블에 분리 저장"""
         if not items:
             return True
         
@@ -520,7 +516,11 @@ class DataProcessor:
             logger.warning(f"OHLCV 데이터 저장 실패: asset_id={asset_id}, interval={interval} 정보 부족")
             return False
         
-        logger.info(f"OHLCV 데이터 저장 시작: asset_id={asset_id}, interval={interval}, records={len(items)}")
+        # interval에 따라 저장할 테이블 결정
+        is_daily_data = interval in ["1d", "daily"]
+        table_name = "ohlcv_day_data" if is_daily_data else "ohlcv_intraday_data"
+        
+        logger.info(f"OHLCV 데이터 저장 시작: asset_id={asset_id}, interval={interval}, table={table_name}, records={len(items)}")
         
         async with self.get_db_session() as db:
             try:
@@ -598,15 +598,18 @@ class DataProcessor:
 
                     ohlcv_data_list.append(item_dict)
                 
-                # CRUD를 사용하여 데이터 저장
+                # CRUD를 사용하여 데이터 저장 - 테이블별로 분리
                 from app.crud.asset import crud_ohlcv
-                added_count = crud_ohlcv.bulk_upsert_ohlcv(db, ohlcv_data_list)
+                if is_daily_data:
+                    added_count = crud_ohlcv.bulk_upsert_ohlcv_daily(db, ohlcv_data_list)
+                else:
+                    added_count = crud_ohlcv.bulk_upsert_ohlcv_intraday(db, ohlcv_data_list)
                 
-                logger.info(f"OHLCV 데이터 저장 완료: asset_id={asset_id}, interval={interval}, added={added_count}개 레코드")
+                logger.info(f"OHLCV 데이터 저장 완료: asset_id={asset_id}, interval={interval}, table={table_name}, added={added_count}개 레코드")
                 return True
                 
             except Exception as e:
-                logger.error(f"OHLCV 데이터 저장 실패: asset_id={asset_id}, interval={interval}, error={e}", exc_info=True)
+                logger.error(f"OHLCV 데이터 저장 실패: asset_id={asset_id}, interval={interval}, table={table_name}, error={e}", exc_info=True)
                 return False
 
     async def _save_stock_financials(self, items: List[Dict[str, Any]]) -> bool:
@@ -697,7 +700,7 @@ class DataProcessor:
 
                         existing: StockFinancial = (
                             db.query(StockFinancial)
-                            .filter(StockFinancial.asset_id == asset_id)
+                            .filter(StockFinancial.asset_id == asset_id, StockFinancial.snapshot_date == parsed_snapshot)
                             .first()
                         )
 

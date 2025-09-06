@@ -260,7 +260,7 @@ class AssetsTableService:
         base_query = base_query.filter(
             db.query(OHLCVData).filter(
                 OHLCVData.asset_id == Asset.asset_id,
-                OHLCVData.data_interval == '1d'
+                OHLCVData.data_interval.is_(None)  # 일봉 데이터는 data_interval이 NULL
             ).exists()
         )
         
@@ -393,7 +393,7 @@ class AssetsTableService:
             # 기본 OHLCV 데이터 조회
             latest_ohlcv = db.query(OHLCVData).filter(
                 OHLCVData.asset_id == asset.asset_id,
-                OHLCVData.data_interval == '1d'
+                OHLCVData.data_interval.is_(None)  # 일봉 데이터는 data_interval이 NULL
             ).order_by(desc(OHLCVData.timestamp_utc)).first()
             
             # 시총 및 랭크 (우선순위: WorldAssetsRanking -> StockFinancials)
@@ -520,7 +520,7 @@ class AssetsTableService:
             func.min(OHLCVData.close_price).label('year_ago_price')
         ).filter(
             OHLCVData.asset_id.in_(asset_ids),
-            OHLCVData.data_interval == '1d'
+            OHLCVData.data_interval.is_(None)  # 일봉 데이터는 data_interval이 NULL
         ).group_by(OHLCVData.asset_id).all()
         
         ohlcv_dict = {item.asset_id: item for item in ohlcv_data}
@@ -578,7 +578,7 @@ class AssetsTableService:
                     # OHLCV에서 최신 가격 조회
                     latest_ohlcv = db.query(OHLCVData).filter(
                         OHLCVData.asset_id == asset_id,
-                        OHLCVData.data_interval == '1d'
+                        OHLCVData.data_interval.is_(None)  # 일봉 데이터는 data_interval이 NULL
                     ).order_by(desc(OHLCVData.timestamp_utc)).first()
                     
                     if latest_ohlcv and latest_ohlcv.close_price:
@@ -590,7 +590,7 @@ class AssetsTableService:
                 # 최근 2일 종가로 today 변동률 계산
                 last_two = db.query(OHLCVData).filter(
                     OHLCVData.asset_id == asset_id,
-                    OHLCVData.data_interval == '1d'
+                    OHLCVData.data_interval.is_(None)  # 일봉 데이터는 data_interval이 NULL
                 ).order_by(desc(OHLCVData.timestamp_utc)).limit(2).all()
                 if len(last_two) >= 2 and last_two[0].close_price and last_two[1].close_price:
                     try:
@@ -605,7 +605,7 @@ class AssetsTableService:
                 # 최신 OHLCV의 거래량 사용
                 latest_ohlcv_v = db.query(OHLCVData).filter(
                     OHLCVData.asset_id == asset_id,
-                    OHLCVData.data_interval == '1d'
+                    OHLCVData.data_interval.is_(None)  # 일봉 데이터는 data_interval이 NULL
                 ).order_by(desc(OHLCVData.timestamp_utc)).first()
                 if latest_ohlcv_v and latest_ohlcv_v.volume is not None:
                     try:
@@ -688,7 +688,7 @@ class AssetsTableService:
             # 최신 가격
             latest_ohlcv = db.query(OHLCVData).filter(
                 OHLCVData.asset_id == asset_id,
-                OHLCVData.data_interval == '1d'
+                OHLCVData.data_interval.is_(None)  # 일봉 데이터는 data_interval이 NULL
             ).order_by(desc(OHLCVData.timestamp_utc)).first()
             
             if not latest_ohlcv or not latest_ohlcv.close_price:
@@ -698,7 +698,7 @@ class AssetsTableService:
             year_ago = datetime.now() - timedelta(days=365)
             year_ago_ohlcv = db.query(OHLCVData).filter(
                 OHLCVData.asset_id == asset_id,
-                OHLCVData.data_interval == '1d',
+                OHLCVData.data_interval.is_(None),  # 일봉 데이터는 data_interval이 NULL
                 OHLCVData.timestamp_utc >= year_ago
             ).order_by(OHLCVData.timestamp_utc).first()
             
@@ -718,7 +718,7 @@ class AssetsTableService:
         try:
             sparkline_data = db.query(OHLCVData.close_price).filter(
                 OHLCVData.asset_id == asset_id,
-                OHLCVData.data_interval == '1d'
+                OHLCVData.data_interval.is_(None)  # 일봉 데이터는 data_interval이 NULL
             ).order_by(desc(OHLCVData.timestamp_utc)).limit(30).all()
             
             if sparkline_data:
