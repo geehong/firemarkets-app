@@ -53,6 +53,7 @@ from .asset import (
 from .asset import (
     UserSession,
     TokenBlacklist,
+    AuditLog,
 )
 
 # Export all models
@@ -102,4 +103,5 @@ __all__ = [
     # Session models
     "UserSession",
     "TokenBlacklist",
+    "AuditLog",
 ]

@@ -339,9 +339,10 @@ class AlphaVantageClient(TradFiAPIClient):
                         "apikey": api_key
                     }
                     
-                    async with self.session.get(url, params=params) as response:
-                        if response.status == 200:
-                            data = await response.json()
+                    async with httpx.AsyncClient() as client:
+                        response = await client.get(url, params=params, timeout=self.api_timeout)
+                        if response.status_code == 200:
+                            data = response.json()
                             
                             if isinstance(data, dict) and "Note" in data:
                                 logger.warning(f"Alpha Vantage API rate limit reached for ETF profile {symbol}")

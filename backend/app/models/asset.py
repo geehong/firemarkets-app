@@ -413,55 +413,43 @@ class ScrapingLogs(Base):
 
 class CryptoMetric(Base):
     __tablename__ = 'crypto_metrics'
-
-    # DB-aligned primary key and core identifiers
-    metric_id = Column(BIGINT, primary_key=True, autoincrement=True)
+    
+    id = Column(Integer, primary_key=True)
     asset_id = Column(Integer, ForeignKey('assets.asset_id'), nullable=False, index=True)
-    # DB column is DATE; we accept Date or DateTime but store as Date-compatible
-    timestamp_utc = Column(Date, nullable=False, index=True)
-
-    # HODL Waves (match DB column names)
+    timestamp_utc = Column(DateTime, nullable=False, index=True)
+    
+    # HODL Waves (Bitcoin age distribution)
     hodl_age_0d_1d = Column(DECIMAL(20, 10), nullable=True)
     hodl_age_1d_1w = Column(DECIMAL(20, 10), nullable=True)
     hodl_age_1w_1m = Column(DECIMAL(20, 10), nullable=True)
     hodl_age_1m_3m = Column(DECIMAL(20, 10), nullable=True)
     hodl_age_3m_6m = Column(DECIMAL(20, 10), nullable=True)
-    hodl_age_4y_5y = Column(DECIMAL(20, 10), nullable=True)
-    hodl_age_3y_4y = Column(DECIMAL(20, 10), nullable=True)
-    hodl_age_5y_7y = Column(DECIMAL(20, 10), nullable=True)
     hodl_age_6m_1y = Column(DECIMAL(20, 10), nullable=True)
     hodl_age_1y_2y = Column(DECIMAL(20, 10), nullable=True)
     hodl_age_2y_3y = Column(DECIMAL(20, 10), nullable=True)
+    hodl_age_3y_5y = Column(DECIMAL(20, 10), nullable=True)
+    hodl_age_5y_7y = Column(DECIMAL(20, 10), nullable=True)
     hodl_age_7y_10y = Column(DECIMAL(20, 10), nullable=True)
-    hodl_age_10y = Column(DECIMAL(20, 10), nullable=True)
-    hodl_waves_supply = Column(DECIMAL(20, 10), nullable=True)
-
-    # Network/market metrics (DB-aligned names)
+    hodl_age_10y_plus = Column(DECIMAL(20, 10), nullable=True)
+    
+    # Network metrics
+    active_addresses = Column(Integer, nullable=True)
+    transaction_count = Column(Integer, nullable=True)
+    hash_rate = Column(DECIMAL(30, 10), nullable=True)
     difficulty = Column(DECIMAL(30, 10), nullable=True)
-    hashrate = Column(DECIMAL(30, 10), nullable=True)
+    
+    # Market metrics
+    market_cap = Column(DECIMAL(30, 2), nullable=True)
     realized_cap = Column(DECIMAL(30, 2), nullable=True)
-    realized_price = Column(DECIMAL(30, 10), nullable=True)
-    mvrv_z_score = Column(DECIMAL(20, 10), nullable=True)
-    nupl = Column(DECIMAL(20, 10), nullable=True)
-    sopr = Column(DECIMAL(20, 10), nullable=True)
-    miner_reserves = Column(DECIMAL(30, 10), nullable=True)
-    open_interest_futures = Column(JSON, nullable=True)
-    etf_btc_flow = Column(DECIMAL(30, 10), nullable=True)
-    etf_btc_total = Column(DECIMAL(30, 10), nullable=True)
-
-    # Additional metrics from DB schema
-    cdd_90dma = Column(DECIMAL(30, 10), nullable=True)
-    true_market_mean = Column(DECIMAL(30, 10), nullable=True)
-    nrpl_btc = Column(DECIMAL(30, 10), nullable=True)
-    aviv = Column(DECIMAL(30, 10), nullable=True)
-    thermo_cap = Column(DECIMAL(30, 10), nullable=True)
-
-    # Timestamps
+    mvrv_ratio = Column(DECIMAL(10, 4), nullable=True)
+    
+    # Metadata
+    data_source = Column(String(100), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     def __repr__(self):
-        return f"<CryptoMetric(metric_id={self.metric_id}, asset_id={self.asset_id}, timestamp={self.timestamp_utc})>"
+        return f"<CryptoMetric(id={self.id}, asset_id={self.asset_id}, timestamp={self.timestamp_utc})>"
 
 
 class SparklineData(Base):
@@ -490,10 +478,8 @@ class AppConfiguration(Base):
     config_key = Column(String(100), unique=True, nullable=False, index=True)
     config_value = Column(Text, nullable=True)
     data_type = Column(String(20), default='string')  # string, int, float, boolean, json
+    is_active = Column(Boolean, default=True)
     description = Column(Text, nullable=True)
-    is_sensitive = Column(Boolean, default=False)
-    is_active = Column(Boolean, default=True, index=True)
-    category = Column(String(50), default='general', index=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     
@@ -519,6 +505,7 @@ class SchedulerLog(Base):
     checkpoint_data = Column(JSON, nullable=True)
     retry_count = Column(Integer, default=0)
     strategy_used = Column(String(100), nullable=True)
+    created_at = Column(TIMESTAMP, server_default=func.now())
     
     def __repr__(self):
         return f"<SchedulerLog(log_id={self.log_id}, job='{self.job_name}', status='{self.status}')>"
@@ -626,65 +613,6 @@ class DataCollectionLog(Base):
         return f"<DataCollectionLog(id={self.id}, collector='{self.collector_name}', status='{self.status}')>"
 
 
-class User(Base):
-    """사용자 테이블"""
-    __tablename__ = 'users'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    username = Column(String(50), unique=True, nullable=False, index=True)
-    email = Column(String(100), unique=True, nullable=False, index=True)
-    password_hash = Column(String(255), nullable=False)
-    role = Column(String(50), nullable=False, index=True)  # e.g., 'user', 'admin', 'super_admin'
-    permissions = Column(JSON, nullable=True)
-    full_name = Column(String(100), nullable=True)
-    address = Column(Text, nullable=True)
-    avatar_url = Column(String(255), nullable=True)
-    phone_number = Column(String(50), nullable=True)
-    is_active = Column(Boolean, default=True)
-    last_login = Column(DateTime, nullable=True)
-    locked_until = Column(DateTime, nullable=True)
-    login_attempts = Column(Integer, nullable=False, default=0)
-    deleted_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
-    
-    def __repr__(self):
-        return f"<User(id={self.id}, username='{self.username}')>"
-
-
-class UserSession(Base):
-    """사용자 세션 테이블"""
-    __tablename__ = 'user_sessions'
-    
-    id = Column(BIGINT, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
-    session_id = Column(String(64), unique=True, nullable=False, index=True)
-    refresh_token_hash = Column(String(255), nullable=False)
-    issued_at = Column(DateTime, server_default=func.now())
-    expires_at = Column(DateTime, nullable=False, index=True)
-    is_revoked = Column(Boolean, default=False)
-    last_used_at = Column(DateTime, nullable=True)
-    user_agent = Column(Text, nullable=True)
-    ip_address = Column(String(100), nullable=True)
-    
-    def __repr__(self):
-        return f"<UserSession(id={self.id}, user_id={self.user_id})>"
-
-
-class TokenBlacklist(Base):
-    """토큰 블랙리스트 테이블"""
-    __tablename__ = 'token_blacklist'
-    
-    id = Column(BIGINT, primary_key=True, autoincrement=True)
-    token_hash = Column(String(255), unique=True, nullable=False, index=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
-    expires_at = Column(DateTime, nullable=False, index=True)
-    created_at = Column(DateTime, server_default=func.now())
-    
-    def __repr__(self):
-        return f"<TokenBlacklist(id={self.id}, token='{self.token[:10]}...')>"
-
-
 class AuditLog(Base):
     """감사 로그 테이블"""
     __tablename__ = 'audit_logs'
@@ -701,4 +629,63 @@ class AuditLog(Base):
     
     def __repr__(self):
         return f"<AuditLog(id={self.id}, action='{self.action}', user_id={self.user_id})>"
+
+
+class User(Base):
+    """사용자 테이블"""
+    __tablename__ = 'users'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    role = Column(String(30), nullable=False, default='user', index=True)
+    permissions = Column(JSON, nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+    full_name = Column(String(100), nullable=True)
+    phone_number = Column(String(20), nullable=True)
+    address = Column(Text, nullable=True)
+    avatar_url = Column(String(255), nullable=True)
+    login_attempts = Column(Integer, nullable=False, default=0)
+    locked_until = Column(TIMESTAMP, nullable=True)
+    last_login = Column(TIMESTAMP, nullable=True)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    deleted_at = Column(TIMESTAMP, nullable=True)
+    
+    def __repr__(self):
+        return f"<User(id={self.id}, username='{self.username}', role='{self.role}')>"
+
+
+class UserSession(Base):
+    """사용자 세션 테이블"""
+    __tablename__ = 'user_sessions'
+    
+    id = Column(BIGINT, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    session_id = Column(String(36), unique=True, nullable=False)  # UUID
+    refresh_token_hash = Column(String(255), nullable=False)
+    ip_address = Column(String(45), nullable=True)
+    user_agent = Column(Text, nullable=True)
+    issued_at = Column(TIMESTAMP, server_default=func.now())
+    expires_at = Column(TIMESTAMP, nullable=False)
+    last_used_at = Column(TIMESTAMP, nullable=True)
+    is_revoked = Column(Boolean, nullable=False, default=False)
+    
+    def __repr__(self):
+        return f"<UserSession(id={self.id}, user_id={self.user_id}, session_id='{self.session_id}')>"
+
+
+class TokenBlacklist(Base):
+    """토큰 블랙리스트 테이블"""
+    __tablename__ = 'token_blacklist'
+    
+    id = Column(BIGINT, primary_key=True, autoincrement=True)
+    token_hash = Column(String(255), unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    expires_at = Column(TIMESTAMP, nullable=False, index=True)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    
+    def __repr__(self):
+        return f"<TokenBlacklist(id={self.id}, user_id={self.user_id}, token_hash='{self.token_hash[:10]}...')>"
 
