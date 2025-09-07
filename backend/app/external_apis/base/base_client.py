@@ -64,9 +64,9 @@ class BaseAPIClient(ABC):
             raise
         finally:
             # API 호출 로그 기록
-            await self._log_api_call(api_name, url, status_code, start_time, success, error_message, ticker)
+            self._log_api_call(api_name, url, status_code, start_time, success, error_message, ticker)
     
-    async def _log_api_call(self, api_name: str, url: str, status_code: int, start_time: datetime, success: bool, error_message: str = None, ticker: str = None):
+    def _log_api_call(self, api_name: str, url: str, status_code: int, start_time: datetime, success: bool, error_message: str = None, ticker: str = None):
         """외부 API 호출을 데이터베이스에 로그 - ApiLoggingHelper 사용"""
         try:
             from app.utils.logging_helper import ApiLoggingHelper

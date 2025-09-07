@@ -235,7 +235,7 @@ class TiingoClient(TradFiAPIClient):
 
     async def get_analyst_estimates(self, symbol: str) -> Optional[List[StockAnalystEstimatesData]]:
         """Tiingo does not provide analyst estimates; return None."""
-        logger.warning("TiingoClient has no analyst estimates method")
+        logger.warning("TiingoClient does not support analyst estimates")
         return None
 
     async def get_etf_sector_exposure(self, symbol: str) -> Optional[List[Dict[str, Any]]]:

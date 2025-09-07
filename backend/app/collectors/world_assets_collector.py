@@ -409,6 +409,9 @@ class WorldAssetsCollector(BaseCollector):
             self.logging_helper.log_info("Fetching BIS bond market data")
             
             response = requests.get(self.bis_url, headers=self.headers, timeout=30)
+            if response.status_code == 404:
+                self.logging_helper.log_warning("BIS URL not found (404), skipping bond data collection")
+                return None
             response.raise_for_status()
             
             # CSV 데이터 파싱

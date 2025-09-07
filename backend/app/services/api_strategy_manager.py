@@ -2,6 +2,7 @@
 API 전략 관리자: 여러 외부 API를 순서대로 호출하고 실패 시 자동 전환하는 Failover 메커니즘
 """
 
+import asyncio
 import pandas as pd
 import time
 from typing import Optional, List, Dict, Any, Tuple
@@ -25,64 +26,70 @@ class ApiStrategyManager:
     def __init__(self, config_manager=None):
         """API 클라이언트들을 우선순위 순서로 초기화"""
         self.config_manager = config_manager
-        # 1. OHLCV (주식, ETF, 지수) - 의도된 우선순위
-        self.ohlcv_clients = [
-            TiingoClient(),
-            PolygonClient(),
-            FMPClient(),  
-            AlphaVantageClient(),        # 2순위
-            TwelveDataClient(),          # 3순위
-
+        # 1. 일봉 OHLCV 클라이언트 (주식, ETF, 지수, 커머디티, 통화)
+        self.ohlcv_day_clients = [
+            TiingoClient(),       # 1순위
+            PolygonClient(),      # 2순위
+            TwelveDataClient(),   # 3순위
+            FMPClient(),          # 4순위
         ]
         
-        # 2. 주식 프로필용 클라이언트 (기업 프로필 데이터)
+        # 2. 인트라데이 OHLCV 클라이언트 (4h, 1h 등)
+        self.ohlcv_intraday_clients = [
+            FMPClient(),          # 1순위 (4h 데이터 지원 우수)
+            # AlphaVantageClient(), # 2순위 (asyncio 오류로 임시 비활성화)
+        ]
+        
+        # 3. 암호화폐 OHLCV 클라이언트 (1d, 4h, 1h 등)
+        self.crypto_ohlcv_clients = [
+            BinanceClient(),       # 1순위
+            CoinbaseClient(),      # 2순위
+        ]
+        
+        # 4. 주식 프로필용 클라이언트 (기업 프로필 데이터)
         self.stock_profiles_clients = [
             FMPClient(),          # 1순위 (완전한 프로필 데이터)
-            # AlphaVantageClient(), # 2순위 - 주석처리
-            TiingoClient(),       # 3순위
-            PolygonClient(),      # 4순위
-            TwelveDataClient(),   # 5순위
+            TiingoClient(),       # 2순위
+            PolygonClient(),      # 3순위
+            TwelveDataClient(),   # 4순위
         ]
         
-        # 3. 주식 재무용 클라이언트 (재무 데이터)
+        # 5. 주식 재무용 클라이언트 (재무 데이터)
         self.stock_financials_clients = [
-            AlphaVantageClient(), # 1순위 (재무 데이터 풍부)
+            #AlphaVantageClient(), # 1순위 (재무 데이터 풍부)
             FMPClient(),          # 2순위
             TiingoClient(),       # 3순위
             PolygonClient(),      # 4순위
             TwelveDataClient(),   # 5순위
         ]
         
-        # 4. 주식 추정치용 클라이언트 (애널리스트 추정치)
+        # 6. 주식 추정치용 클라이언트 (애널리스트 추정치)
         self.stock_analyst_estimates_clients = [
             FMPClient(),          # 1순위 (추정치 데이터 전문)
-            AlphaVantageClient(), # 2순위
+            #AlphaVantageClient(), # 2순위
             TiingoClient(),       # 3순위
             PolygonClient(),      # 4순위
             TwelveDataClient(),   # 5순위
         ]
         
-        # 5. 주식 데이터용 클라이언트 (하위 호환성용)
-        self.stock_clients = self.stock_profiles_clients  # 기본값으로 프로필 클라이언트 사용
-        
-        # 6. 커머디티용 클라이언트 (커머디티 지원 확인된 API만)
+        # 7. 커머디티용 클라이언트 (커머디티 지원 확인된 API만)
         self.commodity_clients = [
             FMPClient(),          # 1순위 (가장 포괄적인 커머디티 지원)
-            #PolygonClient(),      # 2순위 (주요 커머디티 지원)
+            # PolygonClient(),    # 2순위 (주요 커머디티 지원)
             # TiingoClient(),     # 커머디티 지원 불확실
             # TwelveDataClient()  # 커머디티 지원 불확실
-            # AlphaVantageClient() # 선물 심볼 미지원
         ]
         
-        # 7. ETF용 클라이언트 (AlphaVantage 전용)
+        # 8. ETF용 클라이언트 (ETF 정보 수집)
         self.etf_clients = [
-            AlphaVantageClient(),  # AlphaVantage만 사용
-            # TiingoClient(),
+            AlphaVantageClient(),  # 1순위 (ETF_PROFILE 전용, rate limit 있음)
+            # FMPClient(),           # ETF 정보 제공 안함
+            # TiingoClient(),        # ETF 정보 제공 안함
             # PolygonClient(),
             # TwelveDataClient(),
         ]
         
-        # 8. 암호화폐용 클라이언트 (일반 데이터)
+        # 9. 암호화폐 정보용 클라이언트 (일반 정보 데이터)
         self.crypto_clients = [
             CoinMarketCapClient(), # 1순위
             CoinGeckoClient(),     # 2순위
@@ -92,17 +99,15 @@ class ApiStrategyManager:
             TwelveDataClient()     # 6순위
         ]
         
-        # 9. 암호화폐 OHLCV용 클라이언트 (OHLCV 전용)
-        self.crypto_ohlcv_clients = [
-            BinanceClient(),       # 1순위
-            CoinbaseClient(),      # 2순위
-        ]
-        
         # 10. 온체인 메트릭용 클라이언트
         self.onchain_clients = [
             BitcoinDataClient(),   # 1순위 (MVRV-Z-Score, NUPL 등)
             # GlassnodeClient(),   # 2순위 (향후 추가 예정)
         ]
+        
+        # 하위 호환성을 위한 레거시 클라이언트 (기존 코드 호환성)
+        self.ohlcv_clients = self.ohlcv_day_clients  # 기본값으로 일봉 클라이언트 사용
+        self.stock_clients = self.stock_profiles_clients  # 기본값으로 프로필 클라이언트 사용
         
         self.logger = logger
         self.logging_helper = LoggingHelper()
@@ -477,23 +482,21 @@ class ApiStrategyManager:
         
         # 자산 타입과 인터벌에 따라 적절한 클라이언트 선택
         if asset_type and 'crypto' in asset_type.lower():
-            clients_to_use = self.crypto_ohlcv_clients  # OHLCV 전용 클라이언트 사용
+            clients_to_use = self.crypto_ohlcv_clients  # 암호화폐 OHLCV 전용 클라이언트 사용
             self.logger.info(f"Using crypto OHLCV clients for {ticker} (asset_type: {asset_type})")
         elif asset_type and 'commodity' in asset_type.lower():
             clients_to_use = self.commodity_clients
             self.logger.info(f"Using commodity clients for {ticker} (asset_type: {asset_type})")
         else:
-            # 4h 인터벌의 경우 Alpha Vantage 우선 (4h 지원이 제한적이므로)
-            if interval == "4h":
-                # Alpha Vantage를 첫 번째로, 나머지는 순서대로
-                alpha_vantage_clients = [client for client in self.ohlcv_clients if 'AlphaVantage' in client.__class__.__name__]
-                other_clients = [client for client in self.ohlcv_clients if 'AlphaVantage' not in client.__class__.__name__]
-                clients_to_use = alpha_vantage_clients + other_clients
-                self.logger.info(f"Using 4h-optimized client order for {ticker} (Alpha Vantage first)")
+            # 주식, ETF, 지수, 통화 등 - 인터벌에 따라 클라이언트 선택
+            if interval in ["4h", "1h", "30m", "15m", "5m", "1m"]:
+                # 인트라데이 데이터 (4h, 1h 등)
+                clients_to_use = self.ohlcv_intraday_clients
+                self.logger.info(f"Using intraday OHLCV clients for {ticker} (interval: {interval})")
             else:
-                # 주식, ETF, 지수, 통화 등은 모두 ohlcv_clients 사용
-                clients_to_use = self.ohlcv_clients
-                self.logger.info(f"Using ohlcv clients for {ticker} (asset_type: {asset_type})")
+                # 일봉 데이터 (1d, 1w, 1m 등)
+                clients_to_use = self.ohlcv_day_clients
+                self.logger.info(f"Using daily OHLCV clients for {ticker} (interval: {interval})")
         
         # 활성화된 클라이언트만 필터링
         active_clients = [client for client in clients_to_use if client is not None]
@@ -960,7 +963,9 @@ class ApiStrategyManager:
             try:
                 self.logger.info(f"Attempting to fetch crypto info for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.crypto_clients)})")
                 
-                if hasattr(client, 'get_crypto_info'):
+                if hasattr(client, 'get_crypto_data'):
+                    data = await client.get_crypto_data(ticker)
+                elif hasattr(client, 'get_crypto_info'):
                     data = await client.get_crypto_info(ticker)
                 elif hasattr(client, 'get_profile'):
                     data = await client.get_profile(ticker)
@@ -1299,12 +1304,16 @@ class ApiStrategyManager:
         각 API 클라이언트의 상태를 반환합니다.
         """
         status = {
-            "ohlcv_clients": [client.__class__.__name__ for client in self.ohlcv_clients],
+            "ohlcv_day_clients": [client.__class__.__name__ for client in self.ohlcv_day_clients],
+            "ohlcv_intraday_clients": [client.__class__.__name__ for client in self.ohlcv_intraday_clients],
+            "crypto_ohlcv_clients": [client.__class__.__name__ for client in self.crypto_ohlcv_clients],
             "stock_profiles_clients": [client.__class__.__name__ for client in self.stock_profiles_clients],
             "stock_financials_clients": [client.__class__.__name__ for client in self.stock_financials_clients],
             "stock_analyst_estimates_clients": [client.__class__.__name__ for client in self.stock_analyst_estimates_clients],
             "crypto_clients": [client.__class__.__name__ for client in self.crypto_clients],
-            "commodity_clients": [client.__class__.__name__ for client in self.commodity_clients]
+            "commodity_clients": [client.__class__.__name__ for client in self.commodity_clients],
+            "etf_clients": [client.__class__.__name__ for client in self.etf_clients],
+            "onchain_clients": [client.__class__.__name__ for client in self.onchain_clients]
         }
         return status
 

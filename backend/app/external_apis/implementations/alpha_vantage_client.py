@@ -344,7 +344,7 @@ class AlphaVantageClient(TradFiAPIClient):
                         if response.status_code == 200:
                             data = response.json()
                             
-                            if isinstance(data, dict) and "Note" in data:
+                            if isinstance(data, dict) and ("Note" in data or "Information" in data):
                                 logger.warning(f"Alpha Vantage API rate limit reached for ETF profile {symbol}")
                                 continue
                             elif isinstance(data, dict) and "Error Message" in data:

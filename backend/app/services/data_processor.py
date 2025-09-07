@@ -51,7 +51,7 @@ class DataProcessor:
         try:
             self.max_retries = int(self.max_retries)
         except Exception:
-            self.max_retries = 3
+        self.max_retries = 3
         self.retry_delay = 5  # 초
         
         # 스트림 및 큐 설정 (실시간 스트림은 일시적으로 비활성화)
@@ -122,6 +122,33 @@ class DataProcessor:
             # 모든 파싱이 실패하면 현재 시간 반환
             logger.warning(f"타임스탬프 파싱 실패: {timestamp_str}, 현재 시간 사용")
             return datetime.utcnow()
+
+    def _determine_actual_interval(self, current_ts: datetime, items: List[Dict], current_index: int) -> Optional[str]:
+        """timestamp_utc를 분석해서 실제 주기를 판단합니다."""
+        try:
+            if not isinstance(current_ts, datetime):
+                return None
+                
+            # 현재 데이터가 월말인지 확인 (월의 마지막 날)
+            from calendar import monthrange
+            year, month = current_ts.year, current_ts.month
+            last_day_of_month = monthrange(year, month)[1]
+            is_month_end = current_ts.day == last_day_of_month
+            
+            # 현재 데이터가 주말인지 확인 (금요일)
+            is_weekend = current_ts.weekday() == 4  # 4 = 금요일
+            
+            # 단순한 날짜 패턴 판단
+            if is_month_end:
+                return "1m"  # 월말이면 월봉
+            elif is_weekend:
+                return "1w"  # 주말이면 주봉
+            else:
+                return None  # 기본 일봉
+                
+        except Exception as e:
+            logger.warning(f"주기 판단 실패: {e}")
+            return None
 
     @asynccontextmanager
     async def get_db_session(self):
@@ -242,18 +269,18 @@ class DataProcessor:
 
                 if not task_wrapper:
                     break
-
+                    
                 # Retry loop per task
                 attempts = 0
                 while attempts <= self.max_retries:
                     attempts += 1
                     try:
                         success = await self._process_batch_task(task_wrapper)
-                        if success:
+                    if success:
                             logger.info(f"Task {task_wrapper.get('type')} processed successfully.")
-                            processed_count += 1
+                        processed_count += 1
                             break # 성공 시 루프 종료
-                        else:
+                    else:
                             # 처리 로직에서 False를 반환한 경우 (일시적 오류일 수 있음)
                             raise RuntimeError(f"Task processing for {task_wrapper.get('type')} returned False.")
                     except Exception as e:
@@ -267,7 +294,7 @@ class DataProcessor:
                             if self.queue_manager:
                                 await self.queue_manager.move_to_dlq(raw_json, str(e))
                             logger.error(f"Task failed after max retries, moving to DLQ: {e}")
-                            self.stats["errors"] += 1
+                        self.stats["errors"] += 1
                             break
                         # 재시도 전 잠시 대기
                         await asyncio.sleep(self.retry_delay)
@@ -286,7 +313,7 @@ class DataProcessor:
             
             if not task_type or not payload:
                 return False
-            
+                
             # 표준 페이로드: {"items": [...]} 우선 사용, 아니면 기존 payload를 리스트로 래핑
             items = payload.get("items") if isinstance(payload, dict) else None
             if items is None:
@@ -344,11 +371,11 @@ class DataProcessor:
                                     setattr(existing_quote, key, value)
                         else:
                             # 새 레코드 생성
-                            quote = RealtimeQuote(**record_data)
-                            db.add(quote)
+                    quote = RealtimeQuote(**record_data)
+                    db.add(quote)
                         
                         # 각 레코드마다 개별적으로 커밋하여 race condition 방지
-                        db.commit()
+                db.commit()
                         
                     except Exception as e:
                         logger.warning(f"개별 실시간 인용 데이터 저장 실패: {e}")
@@ -364,7 +391,7 @@ class DataProcessor:
         """주식 프로필 데이터 저장 (업서트)"""
         try:
             if not items:
-                return True
+        return True
 
             logger.info(f"주식 프로필 데이터 저장: {len(items)}개 레코드")
 
@@ -492,10 +519,93 @@ class DataProcessor:
             return False
 
     async def _save_etf_info(self, items: List[Dict[str, Any]]) -> bool:
-        """ETF 정보 데이터 저장"""
-        # TODO: 실제 CRUD 함수 호출
-        logger.info(f"ETF 정보 데이터 저장: {len(items)}개 레코드")
-        return True
+        """ETF 정보 데이터 저장 (UPSERT 로직)"""
+        try:
+            if not items:
+                return True
+
+            logger.info(f"ETF 정보 데이터 저장: {len(items)}개 레코드")
+
+            async with self.get_db_session() as db:
+                from ..models.asset import ETFInfo
+                from datetime import datetime, date
+
+                for item in items:
+                    try:
+                        asset_id = item.get("asset_id") or item.get("assetId")
+                        data = item.get("data") if isinstance(item, dict) and "data" in item else item
+                        if not asset_id or not isinstance(data, dict):
+                            continue
+
+                        # snapshot_date 파싱
+                        snapshot = data.get("snapshot_date") or data.get("snapshotDate")
+                        parsed_snapshot = None
+                        if snapshot:
+                            try:
+                                if isinstance(snapshot, str):
+                                    s = snapshot.split("T")[0]
+                                    parsed_snapshot = datetime.strptime(s, "%Y-%m-%d").date()
+                                elif isinstance(snapshot, datetime):
+                                    parsed_snapshot = snapshot.date()
+                            except Exception:
+                                parsed_snapshot = None
+                        if parsed_snapshot is None:
+                            parsed_snapshot = datetime.utcnow().date()
+
+                        # 기존 ETF 정보 조회 (asset_id로만 조회 - unique constraint)
+                        existing: ETFInfo = (
+                            db.query(ETFInfo)
+                            .filter(ETFInfo.asset_id == asset_id)
+                            .first()
+                        )
+
+                        if existing:
+                            # 기존 레코드 업데이트
+                            if data.get("net_assets") is not None:
+                                existing.net_assets = data.get("net_assets")
+                            if data.get("net_expense_ratio") is not None:
+                                existing.net_expense_ratio = data.get("net_expense_ratio")
+                            if data.get("portfolio_turnover") is not None:
+                                existing.portfolio_turnover = data.get("portfolio_turnover")
+                            if data.get("dividend_yield") is not None:
+                                existing.dividend_yield = data.get("dividend_yield")
+                            if data.get("inception_date") is not None:
+                                existing.inception_date = data.get("inception_date")
+                            if data.get("leveraged") is not None:
+                                existing.leveraged = data.get("leveraged")
+                            if data.get("sectors") is not None:
+                                existing.sectors = data.get("sectors")
+                            if data.get("holdings") is not None:
+                                existing.holdings = data.get("holdings")
+                            existing.snapshot_date = parsed_snapshot
+                        else:
+                            # 새 레코드 생성
+                            etf_info = ETFInfo(
+                                asset_id=asset_id,
+                                snapshot_date=parsed_snapshot,
+                                net_assets=data.get("net_assets"),
+                                net_expense_ratio=data.get("net_expense_ratio"),
+                                portfolio_turnover=data.get("portfolio_turnover"),
+                                dividend_yield=data.get("dividend_yield"),
+                                inception_date=data.get("inception_date"),
+                                leveraged=data.get("leveraged"),
+                                sectors=data.get("sectors"),
+                                holdings=data.get("holdings")
+                            )
+                            db.add(etf_info)
+
+                        db.commit()
+                        logger.info(f"ETF 정보 저장 완료: asset_id={asset_id}")
+                        
+                    except Exception as e:
+                        logger.warning(f"개별 ETF 정보 저장 실패(asset_id={item.get('asset_id')}): {e}")
+                        db.rollback()
+                        continue
+
+            return True
+        except Exception as e:
+            logger.error(f"ETF 정보 데이터 저장 실패: {e}")
+            return False
 
     async def _save_crypto_data(self, items: List[Dict[str, Any]]) -> bool:
         """크립토 데이터 저장"""
@@ -516,8 +626,9 @@ class DataProcessor:
             logger.warning(f"OHLCV 데이터 저장 실패: asset_id={asset_id}, interval={interval} 정보 부족")
             return False
         
-        # interval에 따라 저장할 테이블 결정
-        is_daily_data = interval in ["1d", "daily"]
+        # interval에 따라 저장할 테이블 결정 (실제 주기 기반)
+        # 1d, 1w, 1m는 ohlcv_day_data, 나머지는 ohlcv_intraday_data
+        is_daily_data = interval in ["1d", "daily", "1w", "1m"] or interval is None
         table_name = "ohlcv_day_data" if is_daily_data else "ohlcv_intraday_data"
         
         logger.info(f"OHLCV 데이터 저장 시작: asset_id={asset_id}, interval={interval}, table={table_name}, records={len(items)}")
@@ -594,7 +705,10 @@ class DataProcessor:
                             pass
 
                     item_dict['asset_id'] = asset_id
-                    item_dict['data_interval'] = interval
+                    
+                    # timestamp_utc를 분석해서 실제 주기 판단
+                    actual_interval = self._determine_actual_interval(ts, items, i)
+                    item_dict['data_interval'] = actual_interval
 
                     ohlcv_data_list.append(item_dict)
                 
@@ -700,7 +814,7 @@ class DataProcessor:
 
                         existing: StockFinancial = (
                             db.query(StockFinancial)
-                            .filter(StockFinancial.asset_id == asset_id, StockFinancial.snapshot_date == parsed_snapshot)
+                            .filter(StockFinancial.asset_id == asset_id)
                             .first()
                         )
 
