@@ -139,3 +139,4 @@ def format_trading_status_message(date: datetime, country: str = 'US') -> str:
             return f"공휴일입니다 ({date.strftime('%Y-%m-%d')})"
     else:
         return f"거래일입니다 ({date.strftime('%Y-%m-%d %A')})"
+

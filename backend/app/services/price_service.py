@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.external_apis.implementations import BinanceClient, CoinGeckoClient, TwelveDataClient
+from app.external_apis.implementations.finnhub_client import FinnhubClient
+from app.core.config import GLOBAL_APP_CONFIGS
 from ..models import Asset, OHLCVData
 from ..api import deps
 
@@ -17,6 +19,8 @@ logger = logging.getLogger(__name__)
 binance_client = BinanceClient()
 coingecko_client = CoinGeckoClient()
 twelve_client = TwelveDataClient()
+finnhub_api_key = GLOBAL_APP_CONFIGS.get('FINNHUB_API_KEY')
+finnhub_client: FinnhubClient | None = FinnhubClient(finnhub_api_key) if finnhub_api_key else None
 
 
 async def get_realtime_crypto_prices(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
@@ -79,6 +83,26 @@ async def get_realtime_crypto_prices(symbols: List[str]) -> Dict[str, Dict[str, 
     except Exception as e:
         logger.error(f"CoinGecko 암호화폐 가격 조회 실패: {e}")
 
+    # 최후의 수단: Finnhub quote로 시도 (BINANCE:{SYMBOL}USDT)
+    if finnhub_client:
+        fallback_prices: Dict[str, Dict[str, Any]] = {}
+        for symbol in symbols:
+            finnhub_symbol = f"BINANCE:{symbol.upper()}USDT"
+            try:
+                quote = await finnhub_client.get_realtime_quote(finnhub_symbol)
+                if quote and getattr(quote, 'price', None):
+                    fallback_prices[symbol.upper()] = {
+                        'price': float(quote.price),
+                        'change_percent': float(getattr(quote, 'change_percent', 0)) if getattr(quote, 'change_percent', None) is not None else None,
+                        'market_cap': None,
+                        'volume': float(getattr(quote, 'volume', 0)) if getattr(quote, 'volume', None) is not None else None
+                    }
+            except Exception as e:
+                logger.warning(f"Finnhub 암호화폐 가격 조회 실패 ({finnhub_symbol}): {e}")
+        if fallback_prices:
+            logger.info(f"Finnhub에서 {len(fallback_prices)}개 암호화폐 가격 조회 완료 (fallback)")
+            return fallback_prices
+
     # 모든 API 실패 시 빈 딕셔너리 반환
     logger.error("모든 암호화폐 API 실패")
     return {}
@@ -108,8 +132,27 @@ async def get_realtime_stock_prices(symbols: List[str]) -> Dict[str, Dict[str, A
     except Exception as e:
         logger.warning(f"TwelveData quote fetch failed, will fallback to price only: {e}")
 
-    # 2) 누락된 심볼은 기본 가격만 DB에서 보완
+    # 2-a) 누락된 심볼은 Finnhub quote로 보완 시도
     missing = [s for s in symbols if s.upper() not in results]
+    if missing and finnhub_client:
+        for symbol in list(missing):
+            try:
+                quote = await finnhub_client.get_realtime_quote(symbol.upper())
+                if quote and getattr(quote, 'price', None):
+                    results[symbol.upper()] = {
+                        'price': float(quote.price),
+                        'change_percent': float(getattr(quote, 'change_percent', 0)) if getattr(quote, 'change_percent', None) is not None else None,
+                        'market_cap': None,
+                        'volume': float(getattr(quote, 'volume', 0)) if getattr(quote, 'volume', None) is not None else None
+                    }
+                    try:
+                        missing.remove(symbol)
+                    except ValueError:
+                        pass
+            except Exception as e:
+                logger.warning(f"Finnhub 주식 가격 조회 실패 ({symbol}): {e}")
+
+    # 2-b) 여전히 누락된 심볼은 기본 가격만 DB에서 보완
     if missing:
         try:
             db = next(deps.get_db())

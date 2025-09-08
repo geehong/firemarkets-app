@@ -7,6 +7,7 @@ import { DocsExample } from 'src/components'
 import WidgetsBrand from './WidgetsBrand'
 import WidgetsDropdown from './WidgetsDropdown'
 import AssetPriceWidget from './AssetPriceWidget'
+import RealtimeTickerWidget from './RealtimeTickerWidget'
 import StatsWidget, {
   createStatsBWidgets,
   createStatsCWidgets,
@@ -141,6 +142,9 @@ const Widgets = ({
 
   return (
     <>
+      {/* 새로운 실시간 간단 위젯 */}
+      <RealtimeTickerWidget cryptoSymbols={['BTC', 'ETH', 'ADA']} stockSymbols={['AAPL', 'MSFT', 'TSLA']} />
+
       {/* 실시간 자산 가격 위젯 */}
       {showAssetPrices && (
         <AssetPriceWidget

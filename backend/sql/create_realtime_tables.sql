@@ -65,6 +65,22 @@ CREATE TABLE IF NOT EXISTS sparkline_data (
     UNIQUE KEY uq_ticker_asset_type_sparkline (ticker, asset_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='스파크라인 차트용 30일 가격 데이터';
 
+-- 최소 스키마 실시간 가격 테이블 (신규)
+CREATE TABLE IF NOT EXISTS realtime_quotes_rt (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    asset_id INT NOT NULL,
+    timestamp_utc DATETIME(6) NOT NULL,
+    price DECIMAL(18,8) NOT NULL,
+    volume DECIMAL(18,8) NULL,
+    change DECIMAL(18,8) NULL,
+    change_percent DECIMAL(9,4) NULL,
+    data_source VARCHAR(32) NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX ix_rt_asset_time (asset_id, timestamp_utc DESC),
+    INDEX ix_rt_source_time (data_source, timestamp_utc),
+    CONSTRAINT fk_rt_asset FOREIGN KEY (asset_id) REFERENCES assets(asset_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Minimal real-time quotes';
+
 
 
 

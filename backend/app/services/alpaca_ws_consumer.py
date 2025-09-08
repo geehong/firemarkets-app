@@ -78,6 +78,7 @@ class AlpacaWSConsumer:
     async def _store_to_redis(self, data: Dict):
         """데이터를 Redis Stream에 저장"""
         if not self.redis_client:
+            logger.error(f"Alpaca WebSocket: Redis 클라이언트가 연결되지 않음 - {data.get('ticker', 'Unknown')} 데이터 저장 실패")
             return
         
         try:
@@ -87,7 +88,8 @@ class AlpacaWSConsumer:
             )
             self.total_messages_stored += 1
         except Exception as e:
-            logger.error(f"Redis 저장 실패: {e}")
+            logger.error(f"Alpaca WebSocket: Redis 저장 실패: {e}")
+            logger.error(f"Alpaca WebSocket: 실패한 데이터: {data}")
             self.last_error = str(e)
     
     def _is_market_open(self, now: datetime) -> bool:
@@ -216,6 +218,10 @@ class AlpacaWSConsumer:
             self.total_messages_received += 1
             self.last_tick_at = datetime.utcnow()
             
+            # 시장 개장 여부 확인
+            is_market_open = self._is_market_open(datetime.utcnow())
+            market_status = "개장" if is_market_open else "폐장"
+            
             # Alpaca 거래 데이터를 표준 형식으로 변환
             data = {
                 "timestamp": trade_data.timestamp.isoformat() if hasattr(trade_data.timestamp, 'isoformat') else datetime.utcnow().isoformat(),
@@ -230,10 +236,15 @@ class AlpacaWSConsumer:
             # Redis Stream에 저장
             await self._store_to_redis(data)
             
-            logger.debug(f"Alpaca 실시간 데이터 수신: {trade_data.symbol} ${trade_data.price:,.2f} ({trade_data.size} shares)")
+            # 상세 로깅 (시장 개장 시 더 자세한 정보)
+            if is_market_open:
+                logger.info(f"🔥 [시장개장] Alpaca 실시간 거래 데이터 수신: {trade_data.symbol} | 가격: ${trade_data.price:,.2f} | 거래량: {trade_data.size:,.0f} shares | 시간: {data['timestamp']}")
+            else:
+                logger.info(f"🌙 [시장폐장] Alpaca 데이터 수신: {trade_data.symbol} | 가격: ${trade_data.price:,.2f} | 거래량: {trade_data.size:,.0f} shares")
             
         except Exception as e:
-            logger.error(f"거래 데이터 처리 실패: {e}")
+            logger.error(f"Alpaca WebSocket: 거래 데이터 처리 실패: {e}")
+            logger.error(f"Alpaca WebSocket: 실패한 데이터: {trade_data}")
             self.last_error = str(e)
     
     async def start(self, tickers: List[str]):
@@ -355,6 +366,14 @@ class AlpacaWSConsumer:
             "total_messages_stored": self.total_messages_stored,
             "redis_connected": self.redis_client is not None
         }
+    
+    def log_status(self):
+        """상태 정보를 로그로 출력"""
+        status = self.get_status()
+        is_market_open = self._is_market_open(datetime.utcnow())
+        market_status = "개장" if is_market_open else "폐장"
+        
+        logger.info(f"📊 Alpaca Consumer 상태 [{market_status}]: 연결={status['is_connected']} | 구독={len(status['subscriptions'])}개 | 수신={status['total_messages_received']}개 | 저장={status['total_messages_stored']}개 | 마지막틱={status['last_tick_at']} | 오류={status['last_error']}")
 
 # 시그널 핸들러 설정
 def signal_handler(signum, frame):
@@ -377,8 +396,16 @@ if __name__ == "__main__":
         consumer = AlpacaWSConsumer()
         try:
             await consumer.start(['AAPL', 'MSFT', 'GOOGL'])
+            
+            # 무한 대기하면서 상태 로깅
+            while True:
+                await asyncio.sleep(60)
+                consumer.log_status()
+                
         except KeyboardInterrupt:
             logger.info("사용자에 의해 중단됨")
+        except Exception as e:
+            logger.error(f"Alpaca Consumer 실행 중 오류: {e}")
         finally:
             await consumer.stop()
     

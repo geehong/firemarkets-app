@@ -60,6 +60,8 @@ services:
       COIN_GECKO_API_KEY: ${COIN_GECKO_API_KEY}
       TWELVEDATA_API_KEY: ${TWELVEDATA_API_KEY}
       TIINGO_API_KEY: ${TIINGO_API_KEY}
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY}
+      FINNHUB_SECRET_KEY: ${FINNHUB_SECRET_KEY}
       PORT: 8000
       HOST: 0.0.0.0
       RELOAD: "false"
@@ -104,6 +106,9 @@ services:
       COIN_GECKO_API_KEY: ${COIN_GECKO_API_KEY}
       TWELVEDATA_API_KEY: ${TWELVEDATA_API_KEY}
       TIINGO_API_KEY: ${TIINGO_API_KEY}
+      POLYGON_API_KEY: ${POLYGON_API_KEY}
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY}
+      FINNHUB_SECRET_KEY: ${FINNHUB_SECRET_KEY}
       TZ: Asia/Seoul
     depends_on:
       db:
@@ -166,6 +171,32 @@ services:
       - app_network
       - shared-network
 
+  finnhub_ws_consumer:
+    profiles: ["processing"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fire_markets_finnhub_ws_consumer
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: mysql+mysqlconnector://${DB_USERNAME}:${DB_PASSWORD}@db:3306/${DB_DATABASE}
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY}
+      FINNHUB_SECRET_KEY: ${FINNHUB_SECRET_KEY}
+      TZ: Asia/Seoul
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./.env:/app/.env:ro
+    command: ["python", "-m", "app.services.finnhub_ws_consumer"]
+    networks:
+      - app_network
+      - shared-network
+
   # --- 데이터 프로세서 (Processing 프로필) ---
   data_processor:
     profiles: ["processing"]
@@ -187,6 +218,37 @@ services:
     volumes:
       - ./.env:/app/.env:ro
     command: ["python", "-m", "app.services.run_data_processor"]
+    networks:
+      - app_network
+      - shared-network
+
+  # --- WebSocket 오케스트레이터 (Processing 프로필) ---
+  websocket_orchestrator:
+    profiles: ["processing"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fire_markets_websocket_orchestrator
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: mysql+mysqlconnector://${DB_USERNAME}:${DB_PASSWORD}@db:3306/${DB_DATABASE}
+      TZ: Asia/Seoul
+      # WebSocket API Keys
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY}
+      FINNHUB_SECRET_KEY: ${FINNHUB_SECRET_KEY}
+      TIINGO_API_KEY: ${TIINGO_API_KEY}
+      ALPACA_API_KEY: ${ALPACA_API_KEY}
+      ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./.env:/app/.env:ro
+    command: ["python", "run_websocket_orchestrator.py"]
     networks:
       - app_network
       - shared-network

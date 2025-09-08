@@ -206,12 +206,14 @@ class TiingoWSConsumer:
         
         data = msg.get("data")
         if not data:
+            logger.warning("Tiingo WebSocket: 데이터가 없는 메시지 수신")
             return
         
         # 데이터 메시지 처리 (단일 객체 또는 리스트)
         if isinstance(data, dict):
             await self._store_to_redis(data)
         elif isinstance(data, list):
+            logger.info(f"Tiingo WebSocket: {len(data)}개의 데이터 메시지 수신")
             for item in data:
                 await self._store_to_redis(item)
 
@@ -221,6 +223,7 @@ class TiingoWSConsumer:
             # Tiingo IEX 페이로드 필드 처리
             ticker = (item.get("ticker") or item.get("symbol") or "").upper()
             if not ticker:
+                logger.warning(f"Tiingo WebSocket: 티커 정보가 없는 데이터 수신: {item}")
                 return
             
             price = item.get("last") or item.get("price") or item.get("close")
@@ -234,6 +237,10 @@ class TiingoWSConsumer:
                     change_pct = ((float(price) - float(prev_close)) / float(prev_close)) * 100.0
             except Exception:
                 change_pct = None
+            
+            # 시장 개장 여부 확인
+            is_market_open = self._is_market_open()
+            market_status = "개장" if is_market_open else "폐장"
             
             # Redis Stream에 저장할 데이터 구조
             trade_data = {
@@ -255,10 +262,17 @@ class TiingoWSConsumer:
                 self.total_messages_stored += 1
                 self.last_tick_at = datetime.utcnow()
                 
-                logger.debug(f"TRADE [{ticker}] | Price: ${trade_data['price']:,.2f} -> Redis Stream 저장")
+                # 상세 로깅 (시장 개장 시 더 자세한 정보)
+                if is_market_open:
+                    logger.info(f"🔥 [시장개장] Tiingo 실시간 데이터 수신: {ticker} | 가격: ${trade_data['price']:,.2f} | 거래량: {trade_data['volume']:,.0f} | 변화율: {trade_data['change_percent']:+.2f}% | 이전종가: ${trade_data['prev_close']:,.2f}")
+                else:
+                    logger.info(f"🌙 [시장폐장] Tiingo 데이터 수신: {ticker} | 가격: ${trade_data['price']:,.2f} | 거래량: {trade_data['volume']:,.0f} | 변화율: {trade_data['change_percent']:+.2f}%")
+            else:
+                logger.error(f"Tiingo WebSocket: Redis 클라이언트가 연결되지 않음 - {ticker} 데이터 저장 실패")
             
         except Exception as e:
-            logger.error(f"Redis Stream 저장 실패 ({ticker}): {e}")
+            logger.error(f"Tiingo WebSocket: Redis Stream 저장 실패 ({ticker}): {e}")
+            logger.error(f"Tiingo WebSocket: 실패한 데이터: {item}")
 
     def _should_backfill_due_to_no_ticks(self) -> bool:
         """일정 시간 틱이 없을 때 백필이 필요한지 확인"""
@@ -514,13 +528,17 @@ if __name__ == "__main__":
     async def test_run():
         consumer = TiingoWSConsumer()
         try:
-            # 기본 티커들로 시작
-            await consumer.start(['AAPL', 'MSFT', 'GOOGL'])
+            # 기본 티커들로 시작 (주식 + 암호화폐)
+            await consumer.start(['AAPL', 'MSFT', 'GOOGL', 'BTCUSD', 'ETHUSD', 'ADAUSD'])
             
             # 무한 대기 (실제 운영에서는 다른 방식으로 관리)
             while True:
                 await asyncio.sleep(60)
-                logger.info(f"Tiingo Consumer 상태: {consumer.get_status()}")
+                status = consumer.get_status()
+                is_market_open = consumer._is_market_open()
+                market_status = "개장" if is_market_open else "폐장"
+                
+                logger.info(f"📊 Tiingo Consumer 상태 [{market_status}]: 연결={status['is_connected']} | 구독={len(status['subscriptions'])}개 | 수신={status['total_messages_received']}개 | 저장={status['total_messages_stored']}개 | 마지막틱={status['last_tick_at']} | 오류={status['last_error']}")
                 
         except KeyboardInterrupt:
             logger.info("사용자에 의해 중단됨")

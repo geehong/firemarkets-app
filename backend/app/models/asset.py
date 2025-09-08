@@ -315,42 +315,18 @@ class CryptoData(Base):
 
 
 class RealtimeQuote(Base):
-    """실시간 가격 및 시장 데이터 저장 테이블"""
-    __tablename__ = "realtime_quotes"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    ticker = Column(String(20), nullable=False, index=True, comment="자산 티커")
-    asset_type = Column(String(20), nullable=False, index=True, comment="자산 유형 (stock, crypto, etf)")
-    
-    # 가격 데이터
-    price = Column(DECIMAL(24, 10), nullable=True, comment="현재 가격")
-    change_percent_today = Column(DECIMAL(10, 4), nullable=True, comment="오늘 변화율 (%)")
-    change_amount_today = Column(DECIMAL(24, 10), nullable=True, comment="오늘 변화액")
-    
-    # 시장 데이터
-    market_cap = Column(DECIMAL(30, 2), nullable=True, comment="시가총액")
-    volume_today = Column(DECIMAL(30, 10), nullable=True, comment="오늘 거래량")
-    volume_24h = Column(DECIMAL(30, 10), nullable=True, comment="24시간 거래량")
-    
-    # 52주 데이터
-    high_52w = Column(DECIMAL(24, 10), nullable=True, comment="52주 최고가")
-    low_52w = Column(DECIMAL(24, 10), nullable=True, comment="52주 최저가")
-    change_52w_percent = Column(DECIMAL(10, 4), nullable=True, comment="52주 변화율 (%)")
-    
-    # 추가 데이터
-    pe_ratio = Column(DECIMAL(10, 4), nullable=True, comment="P/E 비율")
-    pb_ratio = Column(DECIMAL(10, 4), nullable=True, comment="P/B 비율")
-    dividend_yield = Column(DECIMAL(10, 4), nullable=True, comment="배당 수익률")
-    
-    # 메타데이터
-    data_source = Column(String(50), nullable=False, comment="데이터 소스 (twelvedata, binance, coingecko, yahoo)")
-    currency = Column(String(10), default="USD", comment="통화")
-    exchange = Column(String(50), nullable=True, comment="거래소")
-    
-    # 타임스탬프
-    fetched_at = Column(DateTime, server_default=func.now(), comment="데이터 수집 시간")
-    created_at = Column(DateTime, server_default=func.now(), comment="생성 시간")
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), comment="수정 시간")
+    """실시간 가격 최소 스키마 테이블"""
+    __tablename__ = 'realtime_quotes'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    asset_id = Column(Integer, ForeignKey('assets.asset_id'), nullable=False, index=True)
+    timestamp_utc = Column(DateTime, nullable=False, index=True)
+    price = Column(DECIMAL(18, 8), nullable=False)
+    volume = Column(DECIMAL(18, 8), nullable=True)
+    change_amount = Column(DECIMAL(18, 8), nullable=True)
+    change_percent = Column(DECIMAL(9, 4), nullable=True)
+    data_source = Column(String(32), nullable=False)
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
 
 class OnchainMetricsInfo(Base):
@@ -493,13 +469,16 @@ class SparklineData(Base):
     id = Column(Integer, primary_key=True)
     ticker = Column(String(20), nullable=False, index=True)
     asset_type = Column(String(20), nullable=False, index=True)
-    data = Column(JSON, nullable=True)  # 스파크라인 데이터 (가격 배열 등)
+    # 실제 DB 컬럼명은 price_data (TEXT) 이므로 이에 맞게 매핑
+    price_data = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     def __repr__(self):
         return f"<SparklineData(id={self.id}, ticker='{self.ticker}', asset_type='{self.asset_type}')>"
 
+
+    # 권장 인덱스: (asset_id, timestamp_utc DESC)
 
 # ============================================================================
 # System Configuration Models
@@ -513,10 +492,8 @@ class AppConfiguration(Base):
     config_key = Column(String(100), unique=True, nullable=False, index=True)
     config_value = Column(Text, nullable=True)
     data_type = Column(String(20), default='string')  # string, int, float, boolean, json
-    is_sensitive = Column(Boolean, default=False)  # 민감한 정보 여부 (API 키, 비밀번호 등)
     is_active = Column(Boolean, default=True)
     description = Column(Text, nullable=True)
-    category = Column(String(50), default='general')  # 설정 카테고리
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     
