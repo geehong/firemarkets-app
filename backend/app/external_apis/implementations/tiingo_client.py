@@ -47,9 +47,18 @@ class TiingoClient(TradFiAPIClient):
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.get(url, params=params, timeout=self.api_timeout)
+                
+                # 404 에러 처리: 지원하지 않는 심볼
+                if resp.status_code == 404:
+                    logger.info(f"Tiingo: Symbol not supported (미지원 티커): {path}")
+                    return None
+                
                 resp.raise_for_status()
                 return resp.json()
         except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                logger.info(f"Tiingo: Symbol not supported (미지원 티커): {path}")
+                return None
             logger.error(f"Tiingo API error: {e.response.status_code} - {e.response.text}")
             raise
         except Exception as e:
@@ -86,10 +95,18 @@ class TiingoClient(TradFiAPIClient):
             return None  # None을 반환하여 다음 클라이언트로 넘어가도록 함
             
         try:
+            # 휴일 감지 및 날짜 범위 최적화
+            from ...utils.trading_calendar import is_trading_day, get_last_trading_day, format_trading_status_message
+            
             params = {}
             if start_date:
                 params["startDate"] = start_date
             if end_date:
+                # 종료일이 휴일인지 확인
+                end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+                if not is_trading_day(end_date_obj):
+                    logger.info(f"Tiingo: {format_trading_status_message(end_date_obj)} - 데이터 요청 스킵")
+                    return None
                 params["endDate"] = end_date
             
             # Use httpx directly to get the raw response content
@@ -97,6 +114,12 @@ class TiingoClient(TradFiAPIClient):
                 url = f"{self.base_url}/tiingo/daily/{symbol.lower()}/prices"
                 params["token"] = self.api_key
                 resp = await client.get(url, params=params, timeout=self.api_timeout)
+                
+                # 404 에러 처리: 지원하지 않는 심볼
+                if resp.status_code == 404:
+                    logger.info(f"Tiingo: Symbol not supported (미지원 티커): {symbol}")
+                    return None
+                
                 resp.raise_for_status()
                 
                 # JSON 응답을 파싱

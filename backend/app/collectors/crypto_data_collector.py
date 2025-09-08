@@ -105,9 +105,14 @@ class CryptoDataCollector(BaseCollector):
 
             # 4. 작업 큐에 넘겨주기 (RedisQueueManager 사용)
             # 표준 큐 페이로드: {"items": [...]}로 통일
+            # datetime 객체를 JSON 직렬화 가능한 형태로 변환
+            # asset_id를 포함하여 전달
+            crypto_data_dict = crypto_data.model_dump(mode='json')
+            crypto_data_dict['asset_id'] = asset_id
+            
             await self.redis_queue_manager.push_batch_task(
                 "crypto_info",
-                {"items": [crypto_data.model_dump()]}
+                {"items": [crypto_data_dict]}
             )
             
             self.logging_helper.log_debug(f"Successfully enqueued crypto info for asset_id {asset_id}.")

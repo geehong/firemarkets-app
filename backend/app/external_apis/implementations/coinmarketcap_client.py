@@ -59,6 +59,41 @@ class CoinMarketCapClient(CryptoAPIClient):
             }
         }
     
+    def _normalize_symbol_for_coinmarketcap(self, symbol: str) -> str:
+        """CoinMarketCap API용 심볼 정규화 (USDT 페어를 기본 심볼로 변환)"""
+        symbol_mapping = {
+            "BTCUSDT": "BTC",
+            "ETHUSDT": "ETH", 
+            "XRPUSDT": "XRP",
+            "ADAUSDT": "ADA",
+            "DOTUSDT": "DOT",
+            "LTCUSDT": "LTC",
+            "BCHUSDT": "BCH",
+            "DOGEUSDT": "DOGE",
+            "BNBUSDT": "BNB",
+            "SOLUSDT": "SOL",
+            "MATICUSDT": "MATIC",
+            "AVAXUSDT": "AVAX",
+            "LINKUSDT": "LINK",
+            "UNIUSDT": "UNI",
+            "ATOMUSDT": "ATOM",
+            "FTMUSDT": "FTM",
+            "NEARUSDT": "NEAR",
+            "ALGOUSDT": "ALGO",
+            "VETUSDT": "VET",
+            "ICPUSDT": "ICP",
+        }
+        
+        # USDT 페어인 경우 기본 심볼로 변환
+        if symbol in symbol_mapping:
+            return symbol_mapping[symbol]
+        elif symbol.endswith('USDT'):
+            # 일반적인 USDT 페어의 경우 USDT 제거
+            return symbol[:-4]
+        else:
+            # 이미 기본 심볼인 경우 그대로 반환
+            return symbol
+    
     async def get_ohlcv_data(
         self, 
         symbol: str, 
@@ -150,12 +185,16 @@ class CoinMarketCapClient(CryptoAPIClient):
     async def get_crypto_data(self, symbol: str) -> Optional[CryptoData]:
         """Get comprehensive cryptocurrency data from CoinMarketCap"""
         try:
+            # 심볼 정규화 (USDT 페어를 기본 심볼로 변환)
+            normalized_symbol = self._normalize_symbol_for_coinmarketcap(symbol)
+            logger.info(f"[{symbol}] CoinMarketCap API 호출 시도 (정규화: {normalized_symbol}): {self.base_url}/cryptocurrency/quotes/latest?symbol={normalized_symbol}&convert=USD")
+            
             async with httpx.AsyncClient() as client:
-                url = f"{self.base_url}/cryptocurrency/quotes/latest?symbol={symbol}&convert=USD"
-                data = await self._fetch_async_with_headers(client, url, "CoinMarketCap Quotes", symbol)
+                url = f"{self.base_url}/cryptocurrency/quotes/latest?symbol={normalized_symbol}&convert=USD"
+                data = await self._fetch_async_with_headers(client, url, "CoinMarketCap Quotes", normalized_symbol)
                 
-                if isinstance(data, dict) and "data" in data and symbol in data["data"]:
-                    coin = data["data"][symbol]
+                if isinstance(data, dict) and "data" in data and normalized_symbol in data["data"]:
+                    coin = data["data"][normalized_symbol]
                     quote = coin.get("quote", {}).get("USD", {})
                     
                     crypto_data = CryptoData(

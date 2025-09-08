@@ -60,7 +60,7 @@ class CoinGeckoClient(CryptoAPIClient):
                     logger.warning(f"CoinGecko only supports daily data, requested interval: {interval}")
                 
                 # CoinGecko는 coin ID를 사용 (예: bitcoin, ethereum)
-                coin_id = symbol.lower()
+                coin_id = self._normalize_symbol_for_coingecko(symbol)
                 
                 # 날짜 범위 설정
                 days = 30  # 기본값
@@ -107,7 +107,7 @@ class CoinGeckoClient(CryptoAPIClient):
         try:
             async with httpx.AsyncClient() as client:
                 # CoinGecko는 coin ID를 사용
-                coin_id = symbol.lower()
+                coin_id = self._normalize_symbol_for_coingecko(symbol)
                 url = f"{self.base_url}/simple/price?ids={coin_id}&vs_currencies=usd&include_24hr_change=true"
                 
                 data = await self._fetch_async(client, url, "CoinGecko", symbol)
@@ -175,12 +175,34 @@ class CoinGeckoClient(CryptoAPIClient):
         
         return None
     
+    def _normalize_symbol_for_coingecko(self, symbol: str) -> str:
+        """CoinGecko API용 심볼 정규화 (USDT 페어를 CoinGecko ID로 변환)"""
+        # USDT 페어를 CoinGecko ID로 매핑
+        symbol_mapping = {
+            "BTCUSDT": "bitcoin",
+            "ETHUSDT": "ethereum", 
+            "XRPUSDT": "ripple",
+            "ADAUSDT": "cardano",
+            "DOTUSDT": "polkadot",
+            "LTCUSDT": "litecoin",
+            "BCHUSDT": "bitcoin-cash",
+            "DOGEUSDT": "dogecoin",
+        }
+        
+        # 매핑이 있으면 사용, 없으면 USDT 제거 후 소문자로 변환
+        if symbol in symbol_mapping:
+            return symbol_mapping[symbol]
+        elif symbol.endswith('USDT'):
+            return symbol[:-4].lower()  # USDT 제거 후 소문자
+        else:
+            return symbol.lower()
+
     async def get_crypto_data(self, symbol: str) -> Optional[CryptoData]:
         """Get comprehensive cryptocurrency data from CoinGecko"""
         try:
             async with httpx.AsyncClient() as client:
                 # CoinGecko는 coin ID를 사용
-                coin_id = symbol.lower()
+                coin_id = self._normalize_symbol_for_coingecko(symbol)
                 url = f"{self.base_url}/coins/{coin_id}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false"
                 
                 data = await self._fetch_async(client, url, "CoinGecko", symbol)

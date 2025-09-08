@@ -6,6 +6,8 @@ import asyncio
 import json
 import logging
 import os
+import signal
+import sys
 import websockets
 import redis.asyncio as redis
 from datetime import datetime
@@ -258,16 +260,14 @@ class TiingoWSConsumer:
         except Exception as e:
             logger.error(f"Redis Stream 저장 실패 ({ticker}): {e}")
 
-    # 백필 관련 메서드들 주석처리 (개장시간 기반 로직으로 대체)
-    """
-    async def _backfill_latest_prices(self, tickers: List[str]):
-        # 백필 로직 주석처리 - 개장시간 기반 로직으로 대체
-        pass
-
     def _should_backfill_due_to_no_ticks(self) -> bool:
-        # 백필 필요성 확인 로직 주석처리
-        return False
-    """
+        """일정 시간 틱이 없을 때 백필이 필요한지 확인"""
+        if self.last_tick_at is None:
+            return False
+        
+        # 마지막 틱으로부터 2분 이상 경과했으면 백필 필요
+        time_since_last_tick = datetime.utcnow() - self.last_tick_at
+        return time_since_last_tick.total_seconds() > self._no_tick_backfill_seconds
 
     def get_status(self) -> dict:
         """컨슈머 상태 정보 반환"""
@@ -492,3 +492,41 @@ def get_consumer() -> TiingoWSConsumer:
     if _consumer is None:
         _consumer = TiingoWSConsumer()
     return _consumer
+
+
+# 시그널 핸들러 설정
+def signal_handler(signum, frame):
+    """시그널 핸들러"""
+    logger.info(f"시그널 {signum} 수신, 프로그램 종료")
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+if __name__ == "__main__":
+    # 로깅 설정
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    
+    # 테스트용 실행
+    async def test_run():
+        consumer = TiingoWSConsumer()
+        try:
+            # 기본 티커들로 시작
+            await consumer.start(['AAPL', 'MSFT', 'GOOGL'])
+            
+            # 무한 대기 (실제 운영에서는 다른 방식으로 관리)
+            while True:
+                await asyncio.sleep(60)
+                logger.info(f"Tiingo Consumer 상태: {consumer.get_status()}")
+                
+        except KeyboardInterrupt:
+            logger.info("사용자에 의해 중단됨")
+        except Exception as e:
+            logger.error(f"Tiingo Consumer 실행 중 오류: {e}")
+        finally:
+            await consumer.cleanup()
+    
+    asyncio.run(test_run())

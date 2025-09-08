@@ -41,9 +41,18 @@ class PolygonClient(TradFiAPIClient):
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.get(url, params=params, timeout=self.api_timeout)
+                
+                # 404 에러 처리: 지원하지 않는 심볼
+                if resp.status_code == 404:
+                    logger.info(f"Polygon: Symbol not supported (미지원 티커): {path}")
+                    return None
+                
                 resp.raise_for_status()
                 return resp.json()
         except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                logger.info(f"Polygon: Symbol not supported (미지원 티커): {path}")
+                return None
             logger.error(f"Polygon API error: {e.response.status_code} - {e.response.text}")
             raise
         except Exception as e:
@@ -64,7 +73,7 @@ class PolygonClient(TradFiAPIClient):
         """Return known public rate limits for Polygon free plan"""
         return {
             "free_tier": {
-                "calls_per_minute": 5,
+                "calls_per_minute": 4,
                 "calls_per_day": 100,
                 "real_time_quotes": False
             }
@@ -80,6 +89,9 @@ class PolygonClient(TradFiAPIClient):
     ) -> List[OhlcvDataPoint]:
         """Get OHLCV data from Polygon"""
         try:
+            # 휴일 감지 및 날짜 범위 최적화
+            from ...utils.trading_calendar import is_trading_day, get_last_trading_day, format_trading_status_message
+            
             # Polygon API는 일간 데이터를 기본으로 제공
             if interval is None:
                 interval = "1"  # 1 day
@@ -89,6 +101,12 @@ class PolygonClient(TradFiAPIClient):
                 start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
             if not end_date:
                 end_date = datetime.now().strftime('%Y-%m-%d')
+            
+            # 종료일이 휴일인지 확인
+            end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+            if not is_trading_day(end_date_obj):
+                logger.info(f"Polygon: {format_trading_status_message(end_date_obj)} - 데이터 요청 스킵")
+                return []
             
             params = {
                 "from": start_date,

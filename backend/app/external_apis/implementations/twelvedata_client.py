@@ -81,6 +81,17 @@ class TwelveDataClient(TradFiAPIClient):
             }
         }
 
+    def _normalize_symbol_for_twelvedata(self, symbol: str) -> str:
+        """TwelveData API용 심볼 정규화"""
+        # 특수 문자가 포함된 심볼들을 TwelveData 형식에 맞게 변환
+        symbol_mapping = {
+            "BRK-B": "BRK.B",  # Berkshire Hathaway Class B
+            "2222.SR": "2222.SR",  # Saudi Aramco (이미 올바른 형식)
+        }
+        
+        # 매핑이 있으면 사용, 없으면 원본 반환
+        return symbol_mapping.get(symbol, symbol)
+
     async def get_ohlcv_data(
         self, 
         symbol: str, 
@@ -91,12 +102,25 @@ class TwelveDataClient(TradFiAPIClient):
     ) -> List[OhlcvDataPoint]:
         """Get OHLCV data from Twelve Data"""
         try:
+            # 휴일 감지 및 날짜 범위 최적화
+            from ...utils.trading_calendar import is_trading_day, get_last_trading_day, format_trading_status_message
+            
             # Normalize interval: 1d -> 1day, 1w -> 1week
             interval_map = {"1d": "1day", "1w": "1week"}
             norm_interval = interval_map.get(interval, interval)
+            
+            # TwelveData API용 심볼 정규화
+            normalized_symbol = self._normalize_symbol_for_twelvedata(symbol)
+
+            # 종료일이 휴일인지 확인
+            if end_date:
+                end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+                if not is_trading_day(end_date_obj):
+                    logger.info(f"TwelveData: {format_trading_status_message(end_date_obj)} - 데이터 요청 스킵")
+                    return []
 
             params: Dict[str, Any] = {
-                "symbol": symbol,
+                "symbol": normalized_symbol,
                 "interval": norm_interval,
                 "format": "JSON",
             }
@@ -179,7 +203,8 @@ class TwelveDataClient(TradFiAPIClient):
     async def get_realtime_quote(self, symbol: str) -> Optional[RealtimeQuoteData]:
         """Get real-time quote from Twelve Data"""
         try:
-            data = await self._request("/quote", {"symbol": symbol})
+            normalized_symbol = self._normalize_symbol_for_twelvedata(symbol)
+            data = await self._request("/quote", {"symbol": normalized_symbol})
             
             if isinstance(data, dict) and data.get("symbol"):
                 quote = RealtimeQuoteData(
@@ -214,7 +239,8 @@ class TwelveDataClient(TradFiAPIClient):
         """Get stock financial data from Twelve Data"""
         try:
             # Twelve Data의 Quote API에서 기본 재무 정보 가져오기
-            data = await self._request("/quote", {"symbol": symbol})
+            normalized_symbol = self._normalize_symbol_for_twelvedata(symbol)
+            data = await self._request("/quote", {"symbol": normalized_symbol})
             
             if isinstance(data, dict) and data.get("symbol"):
                 financials = StockFinancialsData(

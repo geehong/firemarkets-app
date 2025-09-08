@@ -94,16 +94,16 @@ class WorldAssetsCollector(BaseCollector):
             # 1. 자산 데이터 수집
             assets_data = await self.scrape_companies_marketcap()
             
-            # 2. 채권 시장 데이터 수집
-            bond_data = await self.get_bis_bond_data()
+            # 2. 채권 시장 데이터 수집 (temporarily disabled due to 404 errors)
+            # bond_data = await self.get_bis_bond_data()
             
             # 3. 데이터베이스 업데이트
             assets_updated = self._update_assets_database(assets_data)
             
-            if bond_data:
-                bonds_updated = self._update_bond_market_database(bond_data)
-            else:
-                bonds_updated = 0
+            # if bond_data:
+            #     bonds_updated = self._update_bond_market_database(bond_data)
+            # else:
+            bonds_updated = 0
             
             # 스크래핑 로그 완료
             end_time = datetime.now()
@@ -403,43 +403,44 @@ class WorldAssetsCollector(BaseCollector):
         }
         return sector_mapping.get(asset_type_id, 'Unknown')
     
-    async def get_bis_bond_data(self) -> Optional[Dict[str, Any]]:
-        """BIS에서 글로벌 채권 시장 규모 데이터 수집"""
-        try:
-            self.logging_helper.log_info("Fetching BIS bond market data")
-            
-            response = requests.get(self.bis_url, headers=self.headers, timeout=30)
-            if response.status_code == 404:
-                self.logging_helper.log_warning("BIS URL not found (404), skipping bond data collection")
-                return None
-            response.raise_for_status()
-            
-            # CSV 데이터 파싱
-            df = pd.read_csv(io.StringIO(response.text), header=4)
-            
-            # "Total debt securities" 행 찾기
-            total_row = df[df['Title'].str.contains('Total debt securities', na=False)]
-            
-            if total_row.empty:
-                self.logging_helper.log_warning("No total debt securities data found in BIS CSV")
-                return None
-            
-            # 최신 분기 데이터 가져오기
-            latest_value = total_row.iloc[:, -1].iloc[0]
-            latest_quarter = total_row.columns[-1]
-            
-            # 십억 단위를 달러로 변환 (BIS 데이터는 십억 단위)
-            market_size_usd = float(latest_value) * 1e9
-            
-            return {
-                'market_size_usd': market_size_usd,
-                'quarter': latest_quarter,
-                'data_source': 'BIS'
-            }
-            
-        except Exception as e:
-            self.logging_helper.log_error(f"Error fetching BIS bond data: {e}")
-            return None
+    # BIS bond data collection temporarily disabled due to 404 errors
+    # async def get_bis_bond_data(self) -> Optional[Dict[str, Any]]:
+    #     """BIS에서 글로벌 채권 시장 규모 데이터 수집"""
+    #     try:
+    #         self.logging_helper.log_info("Fetching BIS bond market data")
+    #         
+    #         response = requests.get(self.bis_url, headers=self.headers, timeout=30)
+    #         if response.status_code == 404:
+    #             self.logging_helper.log_warning("BIS URL not found (404), skipping bond data collection")
+    #             return None
+    #         response.raise_for_status()
+    #         
+    #         # CSV 데이터 파싱
+    #         df = pd.read_csv(io.StringIO(response.text), header=4)
+    #         
+    #         # "Total debt securities" 행 찾기
+    #         total_row = df[df['Title'].str.contains('Total debt securities', na=False)]
+    #         
+    #         if total_row.empty:
+    #             self.logging_helper.log_warning("No total debt securities data found in BIS CSV")
+    #             return None
+    #         
+    #         # 최신 분기 데이터 가져오기
+    #         latest_value = total_row.iloc[:, -1].iloc[0]
+    #         latest_quarter = total_row.columns[-1]
+    #         
+    #         # 십억 단위를 달러로 변환 (BIS 데이터는 십억 단위)
+    #         market_size_usd = float(latest_value) * 1e9
+    #         
+    #         return {
+    #             'market_size_usd': market_size_usd,
+    #             'quarter': latest_quarter,
+    #             'data_source': 'BIS'
+    #         }
+    #         
+    #     except Exception as e:
+    #         self.logging_helper.log_error(f"Error fetching BIS bond data: {e}")
+    #         return None
 
     def _update_assets_database(self, assets_data: List[AssetData]) -> int:
         """자산 데이터 DB 업데이트 - 히스토리 데이터 보존"""

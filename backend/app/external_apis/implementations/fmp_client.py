@@ -78,6 +78,16 @@ class FMPClient(TradFiAPIClient):
             raise ValueError("No FMP API key configured")
         
         try:
+            # 휴일 감지 및 날짜 범위 최적화
+            from ...utils.trading_calendar import is_trading_day, get_last_trading_day, format_trading_status_message
+            
+            # 종료일이 휴일인지 확인
+            if end_date:
+                end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+                if not is_trading_day(end_date_obj):
+                    logger.info(f"FMP: {format_trading_status_message(end_date_obj)} - 데이터 요청 스킵")
+                    return []
+            
             async with httpx.AsyncClient() as client:
                 base = f"{self.base_url}/historical-price-full/{symbol}?apikey={self.api_key}"
                 if start_date and end_date:
@@ -140,7 +150,14 @@ class FMPClient(TradFiAPIClient):
         try:
             async with httpx.AsyncClient() as client:
                 url = f"{self.base_url}/profile/{symbol}?apikey={self.api_key}"
-                data = await self._fetch_async(client, url, "FMP Profile", symbol)
+                
+                try:
+                    data = await self._fetch_async(client, url, "FMP Profile", symbol)
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 402:
+                        logger.info(f"FMP: Free plan does not support company profile (무료플랜은 지원하지 않습니다): {symbol}")
+                        return None
+                    raise
                 
                 if isinstance(data, list) and len(data) > 0:
                     raw_data = data[0]
@@ -236,7 +253,14 @@ class FMPClient(TradFiAPIClient):
         try:
             async with httpx.AsyncClient() as client:
                 url = f"{self.base_url}/technical-indicators/{symbol}?apikey={self.api_key}"
-                data = await self._fetch_async(client, url, "FMP Technical Indicators", symbol)
+                
+                try:
+                    data = await self._fetch_async(client, url, "FMP Technical Indicators", symbol)
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 402:
+                        logger.info(f"FMP: Free plan does not support technical indicators (무료플랜은 지원하지 않습니다): {symbol}")
+                        return None
+                    raise
                 
                 if isinstance(data, list) and len(data) > 0:
                     return data[0]
@@ -271,7 +295,14 @@ class FMPClient(TradFiAPIClient):
             async with httpx.AsyncClient() as client:
                 # Profile API에서 기본 재무 데이터 가져오기
                 profile_url = f"{self.base_url}/profile/{symbol}?apikey={self.api_key}"
-                profile_data = await self._fetch_async(client, profile_url, "FMP Profile", symbol)
+                
+                try:
+                    profile_data = await self._fetch_async(client, profile_url, "FMP Profile", symbol)
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 402:
+                        logger.info(f"FMP: Free plan does not support stock financials (무료플랜은 지원하지 않습니다): {symbol}")
+                        return None
+                    raise
 
                 if isinstance(profile_data, list) and len(profile_data) > 0:
                     profile_raw = profile_data[0]
@@ -356,7 +387,14 @@ class FMPClient(TradFiAPIClient):
             async with httpx.AsyncClient() as client:
                 # Use the stable analyst-estimates endpoint per FMP docs
                 url = f"https://financialmodelingprep.com/stable/analyst-estimates?symbol={symbol}&period=annual&limit=10&apikey={self.api_key}"
-                data = await self._fetch_async(client, url, "FMP Analyst Estimates", symbol)
+                
+                try:
+                    data = await self._fetch_async(client, url, "FMP Analyst Estimates", symbol)
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 402:
+                        logger.info(f"FMP: Free plan does not support analyst estimates (무료플랜은 지원하지 않습니다): {symbol}")
+                        return None
+                    raise
 
                 if not isinstance(data, list) or not data:
                     return None

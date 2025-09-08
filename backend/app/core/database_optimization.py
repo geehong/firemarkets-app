@@ -60,7 +60,7 @@ class DatabaseOptimizer:
                 LEFT JOIN assets a ON at.asset_type_id = a.asset_type_id
                 LEFT JOIN (
                     SELECT DISTINCT asset_id
-                    FROM ohlcv_data 
+                    FROM ohlcv_day_data 
                     WHERE timestamp_utc > DATE_SUB(NOW(), INTERVAL 30 DAY)
                 ) o ON a.asset_id = o.asset_id
                 GROUP BY at.asset_type_id, at.type_name, at.description
@@ -219,7 +219,7 @@ def get_assets_optimized(db: Session, type_name: Optional[str] = None, has_ohlcv
         if has_ohlcv_data:
             query = text(str(query) + """
                 AND EXISTS (
-                    SELECT 1 FROM ohlcv_data o 
+                    SELECT 1 FROM ohlcv_day_data o 
                     WHERE o.asset_id = a.asset_id
                 )
             """)
@@ -265,7 +265,7 @@ def get_ohlcv_data_optimized(db: Session, asset_id: int, data_interval: str = '1
             volume,
             data_interval,
             change_percent
-        FROM ohlcv_data
+        FROM ohlcv_day_data
         WHERE asset_id = :asset_id
         AND data_interval = :data_interval
     """)

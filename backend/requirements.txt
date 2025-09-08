@@ -8,6 +8,7 @@ passlib[bcrypt]==1.7.4
 PyJWT==2.8.0
 python-jose[cryptography]==3.3.0
 python-multipart==0.0.6
+holidays==0.34
 pydantic==2.5.0
 python-dotenv==1.0.0
 redis==4.6.0

@@ -52,12 +52,11 @@ class BaseCollector(ABC):
 
         # --- 설정 초기화 (오직 ConfigManager만 사용) ---
         self.enable_semaphore = self.config_manager.is_semaphore_enabled()
+        self.semaphore_limit = self.config_manager.get_semaphore_limit() if self.enable_semaphore else None
+        self.semaphore = None  # 지연 초기화
         if self.enable_semaphore:
-            semaphore_limit = self.config_manager.get_semaphore_limit()
-            self.semaphore = asyncio.Semaphore(semaphore_limit)
-            logger.info(f"[{self.collector_name}] Semaphore enabled with limit {semaphore_limit}")
+            logger.info(f"[{self.collector_name}] Semaphore enabled with limit {self.semaphore_limit}")
         else:
-            self.semaphore = None
             logger.info(f"[{self.collector_name}] Semaphore disabled")
 
     async def collect_with_settings(self) -> Dict[str, Any]:
@@ -126,7 +125,16 @@ class BaseCollector(ABC):
 
     async def process_with_semaphore(self, coro: Any) -> Any:
         """Applies concurrency control using the semaphore if it's enabled."""
-        if self.enable_semaphore and self.semaphore:
+        if self.enable_semaphore:
+            # 지연 초기화: 이벤트 루프가 실행 중일 때만 semaphore 생성
+            if self.semaphore is None:
+                try:
+                    self.semaphore = asyncio.Semaphore(self.semaphore_limit)
+                except RuntimeError:
+                    # 이벤트 루프가 없으면 semaphore 없이 실행
+                    logger.warning(f"[{self.collector_name}] No event loop available for semaphore, running without concurrency control")
+                    return await coro
+            
             async with self.semaphore:
                 return await coro
         else:

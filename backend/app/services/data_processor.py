@@ -51,7 +51,7 @@ class DataProcessor:
         try:
             self.max_retries = int(self.max_retries)
         except Exception:
-        self.max_retries = 3
+            self.max_retries = 3
         self.retry_delay = 5  # 초
         
         # 스트림 및 큐 설정 (실시간 스트림은 일시적으로 비활성화)
@@ -128,6 +128,13 @@ class DataProcessor:
         try:
             if not isinstance(current_ts, datetime):
                 return None
+            
+            # 휴일 감지 로직 추가
+            from ..utils.trading_calendar import is_trading_day, format_trading_status_message
+            
+            # 거래일이 아닌 경우 로그 출력
+            if not is_trading_day(current_ts):
+                logger.info(f"Data Processor: {format_trading_status_message(current_ts)} - 데이터 저장 시 주기 판단")
                 
             # 현재 데이터가 월말인지 확인 (월의 마지막 날)
             from calendar import monthrange
@@ -276,11 +283,11 @@ class DataProcessor:
                     attempts += 1
                     try:
                         success = await self._process_batch_task(task_wrapper)
-                    if success:
+                        if success:
                             logger.info(f"Task {task_wrapper.get('type')} processed successfully.")
-                        processed_count += 1
+                            processed_count += 1
                             break # 성공 시 루프 종료
-                    else:
+                        else:
                             # 처리 로직에서 False를 반환한 경우 (일시적 오류일 수 있음)
                             raise RuntimeError(f"Task processing for {task_wrapper.get('type')} returned False.")
                     except Exception as e:
@@ -295,7 +302,7 @@ class DataProcessor:
                                 await self.queue_manager.move_to_dlq(raw_json, str(e))
                             logger.error(f"Task failed after max retries, moving to DLQ: {e}")
                         self.stats["errors"] += 1
-                            break
+                        break
                         # 재시도 전 잠시 대기
                         await asyncio.sleep(self.retry_delay)
                     
@@ -371,11 +378,11 @@ class DataProcessor:
                                     setattr(existing_quote, key, value)
                         else:
                             # 새 레코드 생성
-                    quote = RealtimeQuote(**record_data)
-                    db.add(quote)
+                            quote = RealtimeQuote(**record_data)
+                            db.add(quote)
                         
                         # 각 레코드마다 개별적으로 커밋하여 race condition 방지
-                db.commit()
+                        db.commit()
                         
                     except Exception as e:
                         logger.warning(f"개별 실시간 인용 데이터 저장 실패: {e}")
@@ -391,7 +398,7 @@ class DataProcessor:
         """주식 프로필 데이터 저장 (업서트)"""
         try:
             if not items:
-        return True
+                return True
 
             logger.info(f"주식 프로필 데이터 저장: {len(items)}개 레코드")
 
@@ -608,10 +615,135 @@ class DataProcessor:
             return False
 
     async def _save_crypto_data(self, items: List[Dict[str, Any]]) -> bool:
-        """크립토 데이터 저장"""
-        # TODO: 실제 CRUD 함수 호출
-        logger.info(f"크립토 데이터 저장: {len(items)}개 레코드")
-        return True
+        """암호화폐 데이터 저장 (UPSERT 로직)"""
+        try:
+            if not items:
+                logger.info("암호화폐 데이터 저장: 저장할 데이터가 없습니다")
+                return True
+
+            logger.info(f"암호화폐 데이터 저장: {len(items)}개 레코드")
+            logger.debug(f"저장할 데이터 샘플: {items[0] if items else 'None'}")
+
+            async with self.get_db_session() as db:
+                from ..models.asset import CryptoData
+                from datetime import datetime
+
+                for item in items:
+                    try:
+                        logger.debug(f"처리 중인 아이템: {item}")
+                        asset_id = item.get("asset_id") or item.get("assetId")
+                        data = item.get("data") if isinstance(item, dict) and "data" in item else item
+                        logger.debug(f"추출된 asset_id: {asset_id}, data: {data}")
+                        if not asset_id or not isinstance(data, dict):
+                            logger.warning(f"유효하지 않은 데이터: asset_id={asset_id}, data={data}")
+                            continue
+
+                        # 기존 암호화폐 데이터 조회
+                        existing: CryptoData = (
+                            db.query(CryptoData)
+                            .filter(CryptoData.asset_id == asset_id)
+                            .first()
+                        )
+
+                        if existing:
+                            # 기존 레코드 업데이트
+                            if data.get("symbol") is not None:
+                                existing.symbol = data.get("symbol")
+                            if data.get("name") is not None:
+                                existing.name = data.get("name")
+                            if data.get("market_cap") is not None:
+                                existing.market_cap = data.get("market_cap")
+                            if data.get("circulating_supply") is not None:
+                                existing.circulating_supply = data.get("circulating_supply")
+                            if data.get("total_supply") is not None:
+                                existing.total_supply = data.get("total_supply")
+                            if data.get("max_supply") is not None:
+                                existing.max_supply = data.get("max_supply")
+                            if data.get("current_price") is not None:
+                                existing.current_price = data.get("current_price")
+                            if data.get("volume_24h") is not None:
+                                existing.volume_24h = data.get("volume_24h")
+                            if data.get("percent_change_1h") is not None:
+                                existing.percent_change_1h = data.get("percent_change_1h")
+                            if data.get("percent_change_24h") is not None:
+                                existing.percent_change_24h = data.get("percent_change_24h")
+                            if data.get("percent_change_7d") is not None:
+                                existing.percent_change_7d = data.get("percent_change_7d")
+                            if data.get("percent_change_30d") is not None:
+                                existing.percent_change_30d = data.get("percent_change_30d")
+                            if data.get("cmc_rank") is not None:
+                                existing.cmc_rank = data.get("cmc_rank")
+                            if data.get("category") is not None:
+                                existing.category = data.get("category")
+                            if data.get("description") is not None:
+                                existing.description = data.get("description")
+                            if data.get("logo_url") is not None:
+                                existing.logo_url = data.get("logo_url")
+                            if data.get("website_url") is not None:
+                                existing.website_url = data.get("website_url")
+                            if data.get("price") is not None:
+                                existing.price = data.get("price")
+                            if data.get("slug") is not None:
+                                existing.slug = data.get("slug")
+                            if data.get("date_added") is not None:
+                                existing.date_added = data.get("date_added")
+                            if data.get("platform") is not None:
+                                existing.platform = data.get("platform")
+                            if data.get("explorer") is not None:
+                                existing.explorer = data.get("explorer")
+                            if data.get("source_code") is not None:
+                                existing.source_code = data.get("source_code")
+                            if data.get("tags") is not None:
+                                existing.tags = data.get("tags")
+                            if data.get("is_active") is not None:
+                                existing.is_active = data.get("is_active")
+                            
+                            existing.last_updated = datetime.utcnow()
+                        else:
+                            # 새 레코드 생성
+                            crypto_data = CryptoData(
+                                asset_id=asset_id,
+                                symbol=data.get("symbol"),
+                                name=data.get("name"),
+                                market_cap=data.get("market_cap"),
+                                circulating_supply=data.get("circulating_supply"),
+                                total_supply=data.get("total_supply"),
+                                max_supply=data.get("max_supply"),
+                                current_price=data.get("current_price"),
+                                volume_24h=data.get("volume_24h"),
+                                percent_change_1h=data.get("percent_change_1h"),
+                                percent_change_24h=data.get("percent_change_24h"),
+                                percent_change_7d=data.get("percent_change_7d"),
+                                percent_change_30d=data.get("percent_change_30d"),
+                                cmc_rank=data.get("cmc_rank"),
+                                category=data.get("category"),
+                                description=data.get("description"),
+                                logo_url=data.get("logo_url"),
+                                website_url=data.get("website_url"),
+                                price=data.get("price"),
+                                slug=data.get("slug"),
+                                date_added=data.get("date_added"),
+                                platform=data.get("platform"),
+                                explorer=data.get("explorer"),
+                                source_code=data.get("source_code"),
+                                tags=data.get("tags"),
+                                is_active=data.get("is_active", True),
+                                last_updated=datetime.utcnow()
+                            )
+                            db.add(crypto_data)
+
+                        db.commit()
+                        logger.info(f"암호화폐 데이터 저장 완료: asset_id={asset_id}, symbol={data.get('symbol')}")
+                        
+                    except Exception as e:
+                        logger.warning(f"개별 암호화폐 데이터 저장 실패(asset_id={item.get('asset_id')}): {e}")
+                        db.rollback()
+                        continue
+
+            return True
+        except Exception as e:
+            logger.error(f"암호화폐 데이터 저장 실패: {e}")
+            return False
 
     async def _save_ohlcv_data(self, items: List[Dict[str, Any]], metadata: Dict[str, Any] = None) -> bool:
         """OHLCV 데이터 저장 - 일봉과 인트라데이 데이터를 적절한 테이블에 분리 저장"""
@@ -706,9 +838,10 @@ class DataProcessor:
 
                     item_dict['asset_id'] = asset_id
                     
-                    # timestamp_utc를 분석해서 실제 주기 판단
+                    # timestamp_utc를 분석해서 실제 주기 판단 (로깅용)
                     actual_interval = self._determine_actual_interval(ts, items, i)
-                    item_dict['data_interval'] = actual_interval
+                    # 원본 interval 유지 (테이블 분리를 위해)
+                    item_dict['data_interval'] = interval
 
                     ohlcv_data_list.append(item_dict)
                 
@@ -814,7 +947,10 @@ class DataProcessor:
 
                         existing: StockFinancial = (
                             db.query(StockFinancial)
-                            .filter(StockFinancial.asset_id == asset_id)
+                            .filter(
+                                StockFinancial.asset_id == asset_id,
+                                StockFinancial.snapshot_date == parsed_snapshot
+                            )
                             .first()
                         )
 

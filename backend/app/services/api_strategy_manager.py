@@ -82,7 +82,7 @@ class ApiStrategyManager:
         
         # 8. ETF용 클라이언트 (ETF 정보 수집)
         self.etf_clients = [
-            AlphaVantageClient(),  # 1순위 (ETF_PROFILE 전용, rate limit 있음)
+            #AlphaVantageClient(),  # 1순위 (ETF_PROFILE 전용, rate limit 있음)
             # FMPClient(),           # ETF 정보 제공 안함
             # TiingoClient(),        # ETF 정보 제공 안함
             # PolygonClient(),
@@ -926,6 +926,7 @@ class ApiStrategyManager:
             leveraged = True if leveraged_str in ("YES", "Y", "TRUE", "1") else False if leveraged_str in ("NO", "N", "FALSE", "0") else None
 
             etf_data = EtfInfoData(
+                symbol=ticker,
                 net_assets=to_float(payload.get("net_assets")),
                 net_expense_ratio=to_float(payload.get("net_expense_ratio")),
                 portfolio_turnover=to_float(payload.get("portfolio_turnover")),
@@ -934,7 +935,7 @@ class ApiStrategyManager:
                 leveraged=leveraged,
                 sectors=payload.get("sectors"),
                 holdings=payload.get("holdings"),
-                snapshot_date=datetime.now().date()
+                timestamp_utc=datetime.now()
             )
             return etf_data
         except Exception as e:
@@ -1071,7 +1072,46 @@ class ApiStrategyManager:
             max_historical_days = int(max_days_conf.config_value) if max_days_conf else 10950 # Default to ~30 years
 
             # Get both the newest and oldest timestamps
-            oldest_ts, newest_ts = crud_ohlcv.get_date_range(db, asset_id, interval)
+            # interval에 따라 올바른 테이블에서 데이터 조회
+            is_daily_interval = interval in ["1d", "daily", "1w", "1m"] or interval is None
+            
+            # 휴일 감지 및 날짜 범위 최적화
+            from ..utils.trading_calendar import is_trading_day, get_last_trading_day, format_trading_status_message
+            if is_daily_interval:
+                oldest_ts, newest_ts = crud_ohlcv.get_date_range(db, asset_id, interval)
+            else:
+                # 인트라데이 데이터의 경우 OHLCVIntradayData 모델 사용
+                from app.models.asset import OHLCVIntradayData
+                from sqlalchemy import and_, desc
+                
+                # 가장 오래된 데이터 조회
+                oldest_record = (
+                    db.query(OHLCVIntradayData.timestamp_utc)
+                    .filter(
+                        and_(
+                            OHLCVIntradayData.asset_id == asset_id,
+                            OHLCVIntradayData.data_interval == interval
+                        )
+                    )
+                    .order_by(OHLCVIntradayData.timestamp_utc)
+                    .first()
+                )
+                
+                # 가장 최신 데이터 조회
+                newest_record = (
+                    db.query(OHLCVIntradayData.timestamp_utc)
+                    .filter(
+                        and_(
+                            OHLCVIntradayData.asset_id == asset_id,
+                            OHLCVIntradayData.data_interval == interval
+                        )
+                    )
+                    .order_by(desc(OHLCVIntradayData.timestamp_utc))
+                    .first()
+                )
+                
+                oldest_ts = oldest_record[0] if oldest_record else None
+                newest_ts = newest_record[0] if newest_record else None
             
             today = datetime.now().date()
             
@@ -1154,15 +1194,44 @@ class ApiStrategyManager:
                     self.logger.info(f"Asset {asset_id} ({asset_type}): Data fully populated from {min_required_date} to {max_required_date}. No backfill needed.")
                     return None
                 else:
-                    # 암호화폐의 경우 기존 로직 유지
-                    if current_depth < max_historical_days:
-                        self.logger.info(f"Asset {asset_id} (crypto): Data is up-to-date. Deepening history from {oldest_date}.")
-                        end_date = oldest_date - timedelta(days=1)
-                        start_date = end_date - timedelta(days=historical_days)
-                        return {"start_date": start_date.strftime('%Y-%m-%d'), "end_date": end_date.strftime('%Y-%m-%d'), "limit": historical_days + 5}
-                    else:
-                        self.logger.info(f"Asset {asset_id} (crypto): Historical data is fully populated to {max_historical_days} days. No backfill needed.")
-                        return None # No action needed
+                    # 암호화폐의 경우 주식과 동일한 체계적인 백필 로직 적용
+                    # 암호화폐는 2010년부터 데이터가 있으므로 2010-01-01을 최소 히스토리 날짜로 설정
+                    min_required_date = datetime(2010, 1, 1).date()
+                    max_required_date = today - timedelta(days=historical_days)
+                    
+                    # 최신 데이터가 충분히 있는지 확인 (현재날짜 - historical_days 이후)
+                    if newest_ts.date() < max_required_date:
+                        # 최신 데이터 백필 필요
+                        self.logger.info(f"Asset {asset_id} (crypto): Backfilling recent data from {newest_ts.date() + timedelta(days=1)} to {max_required_date}")
+                        return {
+                            "start_date": (newest_ts.date() + timedelta(days=1)).strftime('%Y-%m-%d'),
+                            "end_date": max_required_date.strftime('%Y-%m-%d'),
+                            "limit": max(1, (max_required_date - newest_ts.date()).days + 5)
+                        }
+                    
+                    # 과거 데이터가 충분히 있는지 확인 (2010-01-01부터)
+                    if oldest_date > min_required_date:
+                        # 과거 데이터 백필 필요
+                        self.logger.info(f"Asset {asset_id} (crypto): Backfilling historical data from {min_required_date} to {oldest_date - timedelta(days=1)}")
+                        return {
+                            "start_date": min_required_date.strftime('%Y-%m-%d'),
+                            "end_date": (oldest_date - timedelta(days=1)).strftime('%Y-%m-%d'),
+                            "limit": max(1, (oldest_date - min_required_date).days + 5)
+                        }
+                    
+                    # 중간 갭 확인 및 처리
+                    gap_info = self._check_data_gaps(db, asset_id, interval, min_required_date, max_required_date)
+                    if gap_info:
+                        self.logger.info(f"Asset {asset_id} (crypto): Found data gap from {gap_info['start_date']} to {gap_info['end_date']}")
+                        return {
+                            "start_date": gap_info['start_date'],
+                            "end_date": gap_info['end_date'],
+                            "limit": max(1, gap_info['days'] + 5)
+                        }
+                    
+                    # 모든 조건 만족 - 백필 불필요
+                    self.logger.info(f"Asset {asset_id} (crypto): Data fully populated from {min_required_date} to {max_required_date}. No backfill needed.")
+                    return None
 
             # Subcase 2.3: Data is up-to-date and backfill is disabled.
             self.logger.info(f"Asset {asset_id}: Data is up-to-date and backfill is disabled.")
@@ -1187,13 +1256,17 @@ class ApiStrategyManager:
         try:
             from sqlalchemy import text
             
+            # interval에 따라 올바른 테이블 사용
+            is_daily_interval = interval in ["1d", "daily", "1w", "1m"] or interval is None
+            table_name = "ohlcv_day_data" if is_daily_interval else "ohlcv_intraday_data"
+            
             # 간단한 방식: 최근 데이터와 최초 데이터만 확인
-            query = text("""
+            query = text(f"""
                 SELECT 
                     MIN(timestamp_utc) as earliest_date,
                     MAX(timestamp_utc) as latest_date,
                     COUNT(*) as total_records
-                FROM ohlcv_data
+                FROM {table_name}
                 WHERE asset_id = :asset_id 
                 AND data_interval = :interval
                 AND timestamp_utc >= CAST(:min_date AS DATE)

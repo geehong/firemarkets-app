@@ -85,6 +85,16 @@ class AlphaVantageClient(TradFiAPIClient):
         if not self.api_keys:
             raise ValueError("No Alpha Vantage API keys configured")
         
+        # 휴일 감지 및 날짜 범위 최적화
+        from ...utils.trading_calendar import is_trading_day, get_last_trading_day, format_trading_status_message
+        
+        # 종료일이 휴일인지 확인
+        if end_date:
+            end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+            if not is_trading_day(end_date_obj):
+                logger.info(f"Alpha Vantage: {format_trading_status_message(end_date_obj)} - 데이터 요청 스킵")
+                return []
+        
         for api_key in self.api_keys:
             try:
                 async with httpx.AsyncClient() as client:

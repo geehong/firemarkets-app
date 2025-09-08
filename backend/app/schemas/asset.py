@@ -483,8 +483,8 @@ class MarketCapByCategory(BaseModel):
 class CollectionStatus(BaseModel):
     """수집 상태 스키마"""
     status: str
-    last_collection: Optional[datetime]
-    next_collection: Optional[datetime]
+    last_collection: Optional[datetime] = None
+    next_collection: Optional[datetime] = None
 
 class TopAssetsResponse(BaseModel):
     """상위 자산 응답 스키마"""
