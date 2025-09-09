@@ -11,9 +11,13 @@ from app.utils.logger import logger
 
 async def main():
     """메인 실행 함수"""
+    logger.info("DataProcessor main() 시작")
     config_manager = ConfigManager()
+    logger.info("ConfigManager 생성 완료")
     redis_queue_manager = RedisQueueManager(config_manager)
+    logger.info("RedisQueueManager 생성 완료")
     processor = DataProcessor(config_manager, redis_queue_manager)
+    logger.info("DataProcessor 인스턴스 생성 완료")
 
     def signal_handler(signum, frame):
         logger.info(f"Signal {signum} received, stopping Data Processor...")

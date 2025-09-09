@@ -43,6 +43,14 @@ class WebSocketConfig:
             priority=1,  # 동일 우선순위로 분산 배정
             reconnect_interval=30,
             health_check_interval=60
+        ),
+        'binance': ProviderConfig(
+            max_subscriptions=50,  # 바이낸스는 더 많은 구독 지원
+            supported_asset_types=[AssetType.CRYPTO],  # 암호화폐 전용
+            rate_limit_per_minute=300,
+            priority=1,  # 동일 우선순위로 분산 배정
+            reconnect_interval=30,
+            health_check_interval=60
         )
     }
     

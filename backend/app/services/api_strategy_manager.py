@@ -12,7 +12,8 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from app.utils.logger import logger
 from app.external_apis.implementations import (
-    FMPClient, TiingoClient, AlphaVantageClient, PolygonClient, TwelveDataClient,
+    FMPClient, # TiingoClient,  # 대역폭 한도 초과로 일시 중단
+    AlphaVantageClient, PolygonClient, TwelveDataClient,
     BinanceClient, CoinbaseClient, CoinGeckoClient, CoinMarketCapClient,
     BitcoinDataClient
 )
@@ -28,10 +29,10 @@ class ApiStrategyManager:
         self.config_manager = config_manager
         # 1. 일봉 OHLCV 클라이언트 (주식, ETF, 지수, 커머디티, 통화)
         self.ohlcv_day_clients = [
-            TiingoClient(),       # 1순위
-            PolygonClient(),      # 2순위
-            TwelveDataClient(),   # 3순위
-            FMPClient(),          # 4순위
+            # TiingoClient(),       # 1순위 - 대역폭 한도 초과로 일시 중단
+            PolygonClient(),      # 1순위 (기존 2순위에서 승격)
+            TwelveDataClient(),   # 2순위 (기존 3순위에서 승격)
+            FMPClient(),          # 3순위 (기존 4순위에서 승격)
         ]
         
         # 2. 인트라데이 OHLCV 클라이언트 (4h, 1h 등)
@@ -49,27 +50,27 @@ class ApiStrategyManager:
         # 4. 주식 프로필용 클라이언트 (기업 프로필 데이터)
         self.stock_profiles_clients = [
             FMPClient(),          # 1순위 (완전한 프로필 데이터)
-            TiingoClient(),       # 2순위
-            PolygonClient(),      # 3순위
-            TwelveDataClient(),   # 4순위
+            # TiingoClient(),       # 2순위 - 대역폭 한도 초과로 일시 중단
+            PolygonClient(),      # 2순위 (기존 3순위에서 승격)
+            TwelveDataClient(),   # 3순위 (기존 4순위에서 승격)
         ]
         
         # 5. 주식 재무용 클라이언트 (재무 데이터)
         self.stock_financials_clients = [
             #AlphaVantageClient(), # 1순위 (재무 데이터 풍부)
-            FMPClient(),          # 2순위
-            TiingoClient(),       # 3순위
-            PolygonClient(),      # 4순위
-            TwelveDataClient(),   # 5순위
+            FMPClient(),          # 1순위 (기존 2순위에서 승격)
+            # TiingoClient(),       # 3순위 - 대역폭 한도 초과로 일시 중단
+            PolygonClient(),      # 2순위 (기존 4순위에서 승격)
+            TwelveDataClient(),   # 3순위 (기존 5순위에서 승격)
         ]
         
         # 6. 주식 추정치용 클라이언트 (애널리스트 추정치)
         self.stock_analyst_estimates_clients = [
             FMPClient(),          # 1순위 (추정치 데이터 전문)
             #AlphaVantageClient(), # 2순위
-            TiingoClient(),       # 3순위
-            PolygonClient(),      # 4순위
-            TwelveDataClient(),   # 5순위
+            # TiingoClient(),       # 3순위 - 대역폭 한도 초과로 일시 중단
+            PolygonClient(),      # 2순위 (기존 4순위에서 승격)
+            TwelveDataClient(),   # 3순위 (기존 5순위에서 승격)
         ]
         
         # 7. 커머디티용 클라이언트 (커머디티 지원 확인된 API만)
@@ -281,9 +282,9 @@ class ApiStrategyManager:
             API 이름 문자열
         """
         class_name = client.__class__.__name__
-        if 'Tiingo' in class_name:
-            return 'tiingo'
-        elif 'Polygon' in class_name:
+        # if 'Tiingo' in class_name:
+        #     return 'tiingo'
+        if 'Polygon' in class_name:
             return 'polygon'
         elif 'FMP' in class_name:
             return 'fmp'
@@ -520,7 +521,7 @@ class ApiStrategyManager:
                 self.logger.info(f"Attempting to fetch OHLCV for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(clients_to_use)})")
                 
                 # 각 클라이언트의 메서드명이 다를 수 있으므로 적응적으로 호출
-                if hasattr(client, 'get_ohlcv_data') and not isinstance(client, TiingoClient):
+                if hasattr(client, 'get_ohlcv_data'):
                     # FMP, Alpha Vantage, Binance, Coinbase 클라이언트 (Tiingo 제외)
                     if hasattr(client, '__class__') and 'FMPClient' in str(client.__class__):
                         # FMP 클라이언트의 경우 limit 파라미터 전달
@@ -575,37 +576,9 @@ class ApiStrategyManager:
                             self.logger.debug(f"First row data: {data.iloc[0].to_dict()}")
                         
                         data = self._validate_ohlcv_dataframe(data, api_name, ticker)
-                elif hasattr(client, 'get_historical_prices') or isinstance(client, TiingoClient):
-                    # Tiingo, TwelveData, Polygon 클라이언트
-                    if isinstance(client, TiingoClient):
-                        # Tiingo는 get_ohlcv_data를 사용 (내부적으로 prices 엔드포인트 호출)
-                        data = await client.get_ohlcv_data(ticker, interval=interval, start_date=start_date, end_date=end_date)
-                        if data is not None and len(data) > 0:
-                            # TiingoClient는 이미 List[OhlcvDataPoint]를 반환하므로 DataFrame으로 변환
-                            df_data = []
-                            for item in data:
-                                item_dict = {
-                                    'timestamp_utc': item.timestamp_utc,
-                                    'open_price': item.open_price,
-                                    'high_price': item.high_price,
-                                    'low_price': item.low_price,
-                                    'close_price': item.close_price,
-                                    'volume': item.volume,
-                                    'change_percent': item.change_percent
-                                }
-                                df_data.append(item_dict)
-                            
-                            data = pd.DataFrame(df_data)
-                            self.logger.info(f"{client.__class__.__name__} raw frame shape={data.shape}, columns={list(data.columns)}")
-                            
-                            # 디버깅: DataFrame의 첫 번째 행 확인
-                            if not data.empty:
-                                self.logger.debug(f"First row data: {data.iloc[0].to_dict()}")
-                            
-                            data = self._validate_ohlcv_dataframe(data, api_name, ticker)
-                        else:
-                            data = None
-                    elif hasattr(client, '__class__') and 'PolygonClient' in str(client.__class__):
+                elif hasattr(client, 'get_historical_prices'):
+                    # TwelveData, Polygon 클라이언트
+                    if hasattr(client, '__class__') and 'PolygonClient' in str(client.__class__):
                         # Polygon - start_date, end_date, interval 순서
                         data = await client.get_historical_prices(ticker, start_date, end_date, interval)
                     else:

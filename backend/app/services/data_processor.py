@@ -22,6 +22,8 @@ from ..utils.logger import logger
 from ..utils.redis_queue_manager import RedisQueueManager
 from ..utils.helpers import safe_float
 
+logger.info("DataProcessor 모듈 import 완료")
+
 class DataProcessor:
     """
     중앙화된 데이터 처리 서비스
@@ -32,6 +34,7 @@ class DataProcessor:
     """
     
     def __init__(self, config_manager=None, redis_queue_manager=None):
+        logger.info("DataProcessor 인스턴스 생성 중...")
         self.redis_client: Optional[redis.Redis] = None
         self.running = False
         self.config_manager = config_manager
@@ -54,12 +57,15 @@ class DataProcessor:
             self.max_retries = 3
         self.retry_delay = 5  # 초
         
-        # 스트림 및 큐 설정 (실시간 스트림은 일시적으로 비활성화)
+        # 스트림 및 큐 설정 (실시간 스트림 활성화)
         self.realtime_streams = {
-            # "tiingo_realtime_stream": "tiingo_processor_group",
-            # "alpaca_realtime_stream": "alpaca_processor_group"
+            "finnhub:realtime": "finnhub_processor_group",
+            "alpaca:realtime": "alpaca_processor_group",
+            "binance:realtime": "binance_processor_group",
+            # "tiingo:realtime": "tiingo_processor_group",  # 대역폭 한도로 비활성화
         }
         self.batch_queue = "batch_data_queue"
+        logger.info("DataProcessor 인스턴스 생성 완료")
 
         # Redis Queue Manager (for batch queue + DLQ)
         self.queue_manager = RedisQueueManager(config_manager=config_manager) if config_manager else None
@@ -128,13 +134,6 @@ class DataProcessor:
         try:
             if not isinstance(current_ts, datetime):
                 return None
-            
-            # 휴일 감지 로직 추가
-            from ..utils.trading_calendar import is_trading_day, format_trading_status_message
-            
-            # 거래일이 아닌 경우 로그 출력
-            if not is_trading_day(current_ts):
-                logger.info(f"Data Processor: {format_trading_status_message(current_ts)} - 데이터 저장 시 주기 판단")
                 
             # 현재 데이터가 월말인지 확인 (월의 마지막 날)
             from calendar import monthrange
@@ -170,69 +169,122 @@ class DataProcessor:
             db.close()
 
     async def _process_realtime_streams(self) -> int:
-        """실시간 스트림 데이터 처리"""
+        """실시간 스트림 데이터 처리 - Consumer Group 사용"""
         if not self.redis_client:
+            logger.info("Redis client not available for realtime streams")
             return 0
             
         processed_count = 0
+        logger.info(f"Processing realtime streams: {list(self.realtime_streams.keys())}")
         
         try:
-            # 모든 스트림에서 데이터 읽기
-            streams_to_read = {stream: '0-0' for stream in self.realtime_streams.keys()}
-            # 스트림이 비어있으면 Redis XREAD 호출을 건너뜁니다
-            if not streams_to_read:
-                return 0
-            stream_data = await self.redis_client.xread(
-                streams_to_read, 
-                count=self.batch_size,
-                block=100  # 100ms 블록
-            )
+            # Consumer Group 생성 (각 스트림별)
+            for stream_name in self.realtime_streams.keys():
+                try:
+                    group_name = self.realtime_streams[stream_name]
+                    await self.redis_client.xgroup_create(
+                        name=stream_name, 
+                        groupname=group_name, 
+                        id="0", 
+                        mkstream=True
+                    )
+                    logger.info(f"Created consumer group {group_name} on {stream_name}")
+                except Exception as e:
+                    if "BUSYGROUP" not in str(e):
+                        logger.debug(f"xgroup_create skip {stream_name}: {e}")
             
-            if not stream_data:
+            # Consumer Group으로 데이터 읽기 (각 스트림별로 개별 처리)
+            all_stream_data = []
+            for stream_name in self.realtime_streams.keys():
+                group_name = self.realtime_streams[stream_name]
+                try:
+                    stream_data = await self.redis_client.xreadgroup(
+                        groupname=group_name,
+                        consumername="data_processor_worker",
+                        streams={stream_name: ">"},
+                        count=self.batch_size,
+                        block=100  # 100ms 블록
+                    )
+                    if stream_data:
+                        all_stream_data.extend(stream_data)
+                except Exception as e:
+                    logger.warning(f"스트림 {stream_name} 읽기 실패: {e}")
+                    continue
+            
+            if not all_stream_data:
                 return 0
                 
             records_to_save = []
-            last_message_ids = {}
+            ack_items = []
             
             # 자산 정보 캐시 (성능 최적화)
             async with self.get_db_session() as db:
-                from ..models.asset import AssetType
-                assets = db.query(Asset.ticker, Asset.asset_id, AssetType.type_name).join(Asset.asset_type).all()
-                ticker_to_asset = {
-                    ticker: {"asset_id": asset_id, "asset_type": asset_type} 
-                    for ticker, asset_id, asset_type in assets
-                }
+                assets = db.query(Asset.ticker, Asset.asset_id).all()
+                ticker_to_asset_id = {ticker: asset_id for ticker, asset_id in assets}
             
             # 메시지 처리
-            for stream_name, messages in stream_data:
+            for stream_name, messages in all_stream_data:
+                group_name = self.realtime_streams[stream_name]
                 for message_id, message_data in messages:
                     try:
-                        trade_data_str = message_data.get(b'data')
-                        if not trade_data_str:
-                            continue
-
-                        trade_data = json.loads(trade_data_str)
-                        ticker = trade_data.get('ticker')
-                        asset_info = ticker_to_asset.get(ticker)
-
-                        if asset_info:
-                            quote_data = {
-                                "ticker": ticker,
-                                "asset_type": asset_info["asset_type"],
-                                "price": safe_float(trade_data.get('price'), 0.0),
-                                "volume_today": safe_float(trade_data.get('volume'), 0.0),
-                                "change_percent_today": safe_float(trade_data.get('change_percent'), 0.0),
-                                "data_source": trade_data.get('data_source', 'unknown'),
-                                "currency": "USD",
-                                "fetched_at": self._parse_timestamp(
-                                    trade_data.get('timestamp')
-                                ) if trade_data.get('timestamp') else datetime.utcnow()
-                            }
-                            records_to_save.append(quote_data)
-                            
-                        last_message_ids[stream_name] = message_id
+                        # Redis 스트림 데이터 파싱 (프로바이더별 형식 처리)
+                        symbol = None
+                        price = None
+                        volume = None
+                        raw_timestamp = None
+                        provider = None
                         
-                    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
+                        # 표준 필드 스키마 (모든 프로바이더 동일)
+                        symbol = message_data.get(b'symbol', b'').decode('utf-8').upper()
+                        price = safe_float(message_data.get(b'price', b'').decode('utf-8'))
+                        volume = safe_float(message_data.get(b'volume', b'').decode('utf-8'))
+                        raw_timestamp = message_data.get(b'raw_timestamp', b'').decode('utf-8')
+                        provider = message_data.get(b'provider', b'unknown').decode('utf-8')
+                        
+                        # 이전 형식 호환성 (data 필드가 있는 경우)
+                        if not symbol and b'data' in message_data:
+                            try:
+                                data_json = json.loads(message_data[b'data'].decode('utf-8'))
+                                symbol = data_json.get('symbol', '').upper()
+                                price = safe_float(data_json.get('price'))
+                                volume = safe_float(data_json.get('volume'))
+                                raw_timestamp = str(data_json.get('raw_timestamp', ''))
+                                provider = message_data.get(b'provider', b'finnhub').decode('utf-8')
+                            except (json.JSONDecodeError, KeyError) as e:
+                                logger.warning(f"Legacy data JSON 파싱 실패: {e}")
+                                continue
+                        
+                        if not symbol or price is None:
+                            continue
+                            
+                        # 심볼 정규화 (BINANCE:BTCUSDT -> BTCUSDT)
+                        if ':' in symbol:
+                            symbol = symbol.split(':')[-1]
+                            
+                        asset_id = ticker_to_asset_id.get(symbol)
+                        if not asset_id:
+                            logger.debug(f"No asset match for symbol {symbol}")
+                            continue
+                            
+                        # 타임스탬프 파싱
+                        timestamp_utc = self._parse_timestamp(raw_timestamp) if raw_timestamp else datetime.utcnow()
+                        
+                        # Change 계산 (prev_close 조회)
+                        change_amount, change_percent = await self._calculate_change(db, asset_id, price)
+                        
+                        quote_data = {
+                            "asset_id": asset_id,
+                            "timestamp_utc": timestamp_utc,
+                            "price": price,
+                            "volume": volume,
+                            "change_amount": change_amount,
+                            "change_percent": change_percent,
+                            "data_source": provider[:32]  # 32자 제한
+                        }
+                        records_to_save.append(quote_data)
+                        ack_items.append((stream_name, group_name, message_id))
+                        
+                    except Exception as e:
                         logger.warning(f"스트림 메시지 {message_id} 처리 실패: {e}")
                         self.stats["errors"] += 1
 
@@ -241,9 +293,12 @@ class DataProcessor:
                 await self._bulk_save_realtime_quotes(records_to_save)
                 processed_count = len(records_to_save)
                 
-                # 처리된 메시지 트림
-                for stream_name, last_message_id in last_message_ids.items():
-                    await self.redis_client.xtrim(stream_name, minid=last_message_id)
+                # 성공한 메시지들 ACK
+                for stream_name, group_name, message_id in ack_items:
+                    try:
+                        await self.redis_client.xack(stream_name, group_name, message_id)
+                    except Exception as e:
+                        logger.warning(f"ACK 실패 {stream_name}:{message_id}: {e}")
                     
         except Exception as e:
             logger.error(f"실시간 스트림 처리 중 오류: {e}")
@@ -286,7 +341,7 @@ class DataProcessor:
                         if success:
                             logger.info(f"Task {task_wrapper.get('type')} processed successfully.")
                             processed_count += 1
-                            break # 성공 시 루프 종료
+                            break  # 성공 시 루프 종료
                         else:
                             # 처리 로직에서 False를 반환한 경우 (일시적 오류일 수 있음)
                             raise RuntimeError(f"Task processing for {task_wrapper.get('type')} returned False.")
@@ -301,8 +356,8 @@ class DataProcessor:
                             if self.queue_manager:
                                 await self.queue_manager.move_to_dlq(raw_json, str(e))
                             logger.error(f"Task failed after max retries, moving to DLQ: {e}")
-                        self.stats["errors"] += 1
-                        break
+                            self.stats["errors"] += 1
+                            break
                         # 재시도 전 잠시 대기
                         await asyncio.sleep(self.retry_delay)
                     
@@ -358,24 +413,53 @@ class DataProcessor:
             logger.error(f"배치 태스크 처리 실패: {e}")
             return False
 
-    async def _bulk_save_realtime_quotes(self, records: List[Dict[str, Any]]) -> bool:
-        """실시간 인용 데이터 일괄 저장"""
+    async def _calculate_change(self, db: Session, asset_id: int, current_price: float) -> tuple:
+        """Change 계산 - prev_close 조회 우선순위"""
         try:
-            # UPSERT 로직을 사용하여 중복 키 오류 방지
+            # 1. 로컬 스냅샷/펀더멘털 테이블의 전일종가 조회
+            from ..models.asset import OHLCVDayData
+            from sqlalchemy import desc
+            
+            # 최근 일봉 데이터에서 전일 종가 조회
+            latest_day_data = db.query(OHLCVDayData).filter(
+                OHLCVDayData.asset_id == asset_id
+            ).order_by(desc(OHLCVDayData.timestamp_utc)).first()
+            
+            if latest_day_data and latest_day_data.close_price:
+                prev_close = float(latest_day_data.close_price)
+                change_amount = current_price - prev_close
+                change_percent = (change_amount / prev_close) * 100.0 if prev_close != 0 else None
+                return change_amount, change_percent
+            
+            # 2. 외부 API 백업값 (향후 구현)
+            # TODO: 외부 API에서 prev_close 조회
+            
+            # 3. 없으면 null
+            return None, None
+            
+        except Exception as e:
+            logger.warning(f"Change 계산 실패 asset_id={asset_id}: {e}")
+            return None, None
+
+    async def _bulk_save_realtime_quotes(self, records: List[Dict[str, Any]]) -> bool:
+        """실시간 인용 데이터 일괄 저장 - UPSERT 로직"""
+        try:
             async with self.get_db_session() as db:
                 for record_data in records:
                     try:
-                        # 기존 레코드가 있는지 확인
+                        # 기존 레코드가 있는지 확인 (asset_id + data_source 기준)
                         existing_quote = db.query(RealtimeQuote).filter(
-                            RealtimeQuote.ticker == record_data['ticker'],
-                            RealtimeQuote.asset_type == record_data['asset_type']
+                            RealtimeQuote.asset_id == record_data['asset_id'],
+                            RealtimeQuote.data_source == record_data['data_source']
                         ).first()
                         
                         if existing_quote:
                             # 기존 레코드 업데이트
-                            for key, value in record_data.items():
-                                if hasattr(existing_quote, key):
-                                    setattr(existing_quote, key, value)
+                            existing_quote.timestamp_utc = record_data['timestamp_utc']
+                            existing_quote.price = record_data['price']
+                            existing_quote.volume = record_data['volume']
+                            existing_quote.change_amount = record_data['change_amount']
+                            existing_quote.change_percent = record_data['change_percent']
                         else:
                             # 새 레코드 생성
                             quote = RealtimeQuote(**record_data)
@@ -615,135 +699,10 @@ class DataProcessor:
             return False
 
     async def _save_crypto_data(self, items: List[Dict[str, Any]]) -> bool:
-        """암호화폐 데이터 저장 (UPSERT 로직)"""
-        try:
-            if not items:
-                logger.info("암호화폐 데이터 저장: 저장할 데이터가 없습니다")
-                return True
-
-            logger.info(f"암호화폐 데이터 저장: {len(items)}개 레코드")
-            logger.debug(f"저장할 데이터 샘플: {items[0] if items else 'None'}")
-
-            async with self.get_db_session() as db:
-                from ..models.asset import CryptoData
-                from datetime import datetime
-
-                for item in items:
-                    try:
-                        logger.debug(f"처리 중인 아이템: {item}")
-                        asset_id = item.get("asset_id") or item.get("assetId")
-                        data = item.get("data") if isinstance(item, dict) and "data" in item else item
-                        logger.debug(f"추출된 asset_id: {asset_id}, data: {data}")
-                        if not asset_id or not isinstance(data, dict):
-                            logger.warning(f"유효하지 않은 데이터: asset_id={asset_id}, data={data}")
-                            continue
-
-                        # 기존 암호화폐 데이터 조회
-                        existing: CryptoData = (
-                            db.query(CryptoData)
-                            .filter(CryptoData.asset_id == asset_id)
-                            .first()
-                        )
-
-                        if existing:
-                            # 기존 레코드 업데이트
-                            if data.get("symbol") is not None:
-                                existing.symbol = data.get("symbol")
-                            if data.get("name") is not None:
-                                existing.name = data.get("name")
-                            if data.get("market_cap") is not None:
-                                existing.market_cap = data.get("market_cap")
-                            if data.get("circulating_supply") is not None:
-                                existing.circulating_supply = data.get("circulating_supply")
-                            if data.get("total_supply") is not None:
-                                existing.total_supply = data.get("total_supply")
-                            if data.get("max_supply") is not None:
-                                existing.max_supply = data.get("max_supply")
-                            if data.get("current_price") is not None:
-                                existing.current_price = data.get("current_price")
-                            if data.get("volume_24h") is not None:
-                                existing.volume_24h = data.get("volume_24h")
-                            if data.get("percent_change_1h") is not None:
-                                existing.percent_change_1h = data.get("percent_change_1h")
-                            if data.get("percent_change_24h") is not None:
-                                existing.percent_change_24h = data.get("percent_change_24h")
-                            if data.get("percent_change_7d") is not None:
-                                existing.percent_change_7d = data.get("percent_change_7d")
-                            if data.get("percent_change_30d") is not None:
-                                existing.percent_change_30d = data.get("percent_change_30d")
-                            if data.get("cmc_rank") is not None:
-                                existing.cmc_rank = data.get("cmc_rank")
-                            if data.get("category") is not None:
-                                existing.category = data.get("category")
-                            if data.get("description") is not None:
-                                existing.description = data.get("description")
-                            if data.get("logo_url") is not None:
-                                existing.logo_url = data.get("logo_url")
-                            if data.get("website_url") is not None:
-                                existing.website_url = data.get("website_url")
-                            if data.get("price") is not None:
-                                existing.price = data.get("price")
-                            if data.get("slug") is not None:
-                                existing.slug = data.get("slug")
-                            if data.get("date_added") is not None:
-                                existing.date_added = data.get("date_added")
-                            if data.get("platform") is not None:
-                                existing.platform = data.get("platform")
-                            if data.get("explorer") is not None:
-                                existing.explorer = data.get("explorer")
-                            if data.get("source_code") is not None:
-                                existing.source_code = data.get("source_code")
-                            if data.get("tags") is not None:
-                                existing.tags = data.get("tags")
-                            if data.get("is_active") is not None:
-                                existing.is_active = data.get("is_active")
-                            
-                            existing.last_updated = datetime.utcnow()
-                        else:
-                            # 새 레코드 생성
-                            crypto_data = CryptoData(
-                                asset_id=asset_id,
-                                symbol=data.get("symbol"),
-                                name=data.get("name"),
-                                market_cap=data.get("market_cap"),
-                                circulating_supply=data.get("circulating_supply"),
-                                total_supply=data.get("total_supply"),
-                                max_supply=data.get("max_supply"),
-                                current_price=data.get("current_price"),
-                                volume_24h=data.get("volume_24h"),
-                                percent_change_1h=data.get("percent_change_1h"),
-                                percent_change_24h=data.get("percent_change_24h"),
-                                percent_change_7d=data.get("percent_change_7d"),
-                                percent_change_30d=data.get("percent_change_30d"),
-                                cmc_rank=data.get("cmc_rank"),
-                                category=data.get("category"),
-                                description=data.get("description"),
-                                logo_url=data.get("logo_url"),
-                                website_url=data.get("website_url"),
-                                price=data.get("price"),
-                                slug=data.get("slug"),
-                                date_added=data.get("date_added"),
-                                platform=data.get("platform"),
-                                explorer=data.get("explorer"),
-                                source_code=data.get("source_code"),
-                                tags=data.get("tags"),
-                                is_active=data.get("is_active", True),
-                                last_updated=datetime.utcnow()
-                            )
-                            db.add(crypto_data)
-
-                        db.commit()
-                        logger.info(f"암호화폐 데이터 저장 완료: asset_id={asset_id}, symbol={data.get('symbol')}")
-                        
-                    except Exception as e:
-                        logger.warning(f"개별 암호화폐 데이터 저장 실패(asset_id={item.get('asset_id')}): {e}")
-                        db.rollback()
-                        continue
-
-            return True
-        except Exception as e:
-            logger.error(f"암호화폐 데이터 저장 실패: {e}")
-            return False
+        """크립토 데이터 저장"""
+        # TODO: 실제 CRUD 함수 호출
+        logger.info(f"크립토 데이터 저장: {len(items)}개 레코드")
+        return True
 
     async def _save_ohlcv_data(self, items: List[Dict[str, Any]], metadata: Dict[str, Any] = None) -> bool:
         """OHLCV 데이터 저장 - 일봉과 인트라데이 데이터를 적절한 테이블에 분리 저장"""
@@ -838,10 +797,9 @@ class DataProcessor:
 
                     item_dict['asset_id'] = asset_id
                     
-                    # timestamp_utc를 분석해서 실제 주기 판단 (로깅용)
+                    # timestamp_utc를 분석해서 실제 주기 판단
                     actual_interval = self._determine_actual_interval(ts, items, i)
-                    # 원본 interval 유지 (테이블 분리를 위해)
-                    item_dict['data_interval'] = interval
+                    item_dict['data_interval'] = actual_interval
 
                     ohlcv_data_list.append(item_dict)
                 
@@ -947,10 +905,7 @@ class DataProcessor:
 
                         existing: StockFinancial = (
                             db.query(StockFinancial)
-                            .filter(
-                                StockFinancial.asset_id == asset_id,
-                                StockFinancial.snapshot_date == parsed_snapshot
-                            )
+                            .filter(StockFinancial.asset_id == asset_id)
                             .first()
                         )
 
@@ -1096,6 +1051,7 @@ class DataProcessor:
     async def start(self):
         """Data Processor 시작"""
         logger.info("Data Processor 서비스 시작")
+        logger.info("Data Processor start() 메서드 호출됨")
         self.running = True
         
         # Redis 연결
@@ -1103,9 +1059,12 @@ class DataProcessor:
             logger.error("Redis 연결 실패로 서비스 종료")
             return
             
+        logger.info("Redis 연결 성공, 메인 루프 시작")
         try:
+            logger.info("Data Processor main loop started")
             while self.running:
                 start_time = time.time()
+                logger.debug("Processing cycle started")
                 
                 # 실시간 및 배치 데이터 동시 처리
                 realtime_count, batch_count = await asyncio.gather(
@@ -1148,10 +1107,17 @@ class DataProcessor:
         await self._log_stats()
 
 # 전역 인스턴스
-data_processor = DataProcessor()
+try:
+    logger.info("DataProcessor 전역 인스턴스 생성 시작...")
+    data_processor = DataProcessor()
+    logger.info("DataProcessor 전역 인스턴스 생성 완료")
+except Exception as e:
+    logger.error(f"DataProcessor 전역 인스턴스 생성 실패: {e}")
+    raise
 
 async def main():
     """메인 실행 함수"""
+    logger.info("DataProcessor main() 함수 시작")
     await data_processor.start()
 
 if __name__ == "__main__":

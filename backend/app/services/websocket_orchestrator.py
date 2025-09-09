@@ -12,8 +12,9 @@ from app.services.websocket.base_consumer import BaseWSConsumer, AssetType
 from app.services.asset_manager import AssetManager, Asset
 from app.core.websocket_config import WebSocketConfig
 from app.services.websocket.finnhub_consumer import FinnhubWSConsumer
-from app.services.websocket.tiingo_consumer import TiingoWSConsumer
+# from app.services.websocket.tiingo_consumer import TiingoWSConsumer  # 대역폭 한도 초과로 일시 중단
 from app.services.websocket.alpaca_consumer import AlpacaWSConsumer
+from app.services.websocket.binance_consumer import BinanceWSConsumer
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +40,9 @@ class WebSocketOrchestrator:
         # Consumer 클래스 등록
         self.consumer_classes = {
             'finnhub': FinnhubWSConsumer,
-            'tiingo': TiingoWSConsumer,
-            'alpaca': AlpacaWSConsumer
+            # 'tiingo': TiingoWSConsumer,  # 대역폭 한도 초과로 일시 중단
+            'alpaca': AlpacaWSConsumer,
+            'binance': BinanceWSConsumer
         }
     
     async def start(self):
@@ -262,16 +264,17 @@ class WebSocketOrchestrator:
             logger.info(f"   {provider_name}: {len(assignment.assigned_tickers)} tickers, connected={consumer.is_connected}")
 
     async def _start_sample_consumers(self):
-        """테스트용 강제 샘플 배정: tiingo/alpaca에 소량 티커 구독 및 실행"""
+        """테스트용 강제 샘플 배정: alpaca/binance에 소량 티커 구독 및 실행"""
         try:
-            # Tiingo: 주식+코인 샘플
-            if 'tiingo' in self.consumers:
-                tiingo = self.consumers['tiingo']
-                sample_tickers_tiingo = ['AAPL', 'MSFT', 'BTCUSDT']
-                logger.info(f"🧪 Starting sample for tiingo: {sample_tickers_tiingo}")
-                # 실행 루프를 별도로 시작하지 않고, 샘플 티커만 선구독
-                await tiingo.subscribe(sample_tickers_tiingo)
-                logger.info("✅ tiingo sample subscribed to 3 tickers")
+            # Tiingo: 주식+코인 샘플 (대역폭 한도 초과로 일시 중단)
+            # if 'tiingo' in self.consumers:
+            #     tiingo = self.consumers['tiingo']
+            #     sample_tickers_tiingo = ['AAPL', 'MSFT', 'BTCUSDT']
+            #     logger.info(f"🧪 Starting sample for tiingo: {sample_tickers_tiingo}")
+            #     # 실행 루프를 별도로 시작하지 않고, 샘플 티커만 선구독
+            #     await tiingo.subscribe(sample_tickers_tiingo)
+            #     logger.info("✅ tiingo sample subscribed to 3 tickers")
+            
             # Alpaca: 주식/ETF 샘플
             if 'alpaca' in self.consumers:
                 alpaca = self.consumers['alpaca']
@@ -280,6 +283,15 @@ class WebSocketOrchestrator:
                 # 실행 루프를 별도로 시작하지 않고, 샘플 티커만 선구독
                 await alpaca.subscribe(sample_tickers_alpaca)
                 logger.info("✅ alpaca sample subscribed to 3 tickers")
+            
+            # Binance: 암호화폐 샘플
+            if 'binance' in self.consumers:
+                binance = self.consumers['binance']
+                sample_tickers_binance = ['BTCUSDT', 'ETHUSDT', 'ADAUSDT']
+                logger.info(f"🧪 Starting sample for binance: {sample_tickers_binance}")
+                # 실행 루프를 별도로 시작하지 않고, 샘플 티커만 선구독
+                await binance.subscribe(sample_tickers_binance)
+                logger.info("✅ binance sample subscribed to 3 tickers")
         except Exception as e:
             logger.error(f"❌ Failed to start sample consumers: {e}")
 
