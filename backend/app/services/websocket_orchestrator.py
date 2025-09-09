@@ -12,9 +12,10 @@ from app.services.websocket.base_consumer import BaseWSConsumer, AssetType
 from app.services.asset_manager import AssetManager, Asset
 from app.core.websocket_config import WebSocketConfig
 from app.services.websocket.finnhub_consumer import FinnhubWSConsumer
-# from app.services.websocket.tiingo_consumer import TiingoWSConsumer  # 대역폭 한도 초과로 일시 중단
+from app.services.websocket.tiingo_consumer import TiingoWSConsumer
 from app.services.websocket.alpaca_consumer import AlpacaWSConsumer
 from app.services.websocket.binance_consumer import BinanceWSConsumer
+from app.core.config import GLOBAL_APP_CONFIGS
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class WebSocketOrchestrator:
         # Consumer 클래스 등록
         self.consumer_classes = {
             'finnhub': FinnhubWSConsumer,
-            # 'tiingo': TiingoWSConsumer,  # 대역폭 한도 초과로 일시 중단
+            'tiingo': TiingoWSConsumer,
             'alpaca': AlpacaWSConsumer,
             'binance': BinanceWSConsumer
         }
@@ -58,8 +59,7 @@ class WebSocketOrchestrator:
             # 2. Consumer 초기화
             await self._initialize_consumers()
             
-            # 2-1. 강제 샘플 배정(테스트용) - tiingo/alpaca 가시성 확보
-            await self._start_sample_consumers()
+            # 2-1. 샘플 배정 제거 - 모든 Consumer가 동적 배분으로 처리
 
             # 3. 최적 할당 실행
             await self._rebalance_assignments(assets)
@@ -90,16 +90,24 @@ class WebSocketOrchestrator:
         await self.asset_manager.close()
     
     async def _initialize_consumers(self):
-        """Consumer 초기화"""
+        """Consumer 초기화 - 데이터베이스 설정에 따라 활성화/비활성화"""
         for provider_name, consumer_class in self.consumer_classes.items():
             try:
+                # 데이터베이스에서 Consumer 활성화 여부 확인
+                enabled_key = f"WEBSOCKET_{provider_name.upper()}_ENABLED"
+                is_enabled = GLOBAL_APP_CONFIGS.get(enabled_key, "1") == "1"
+                
+                if not is_enabled:
+                    logger.info(f"⏸️ {provider_name} consumer is disabled in database")
+                    continue
+                
                 config = WebSocketConfig.get_provider_config(provider_name)
-                if config:
+                if config and config.max_subscriptions > 0:
                     consumer = consumer_class(config)
                     self.consumers[provider_name] = consumer
-                    logger.info(f"✅ Initialized {provider_name} consumer")
+                    logger.info(f"✅ Initialized {provider_name} consumer (enabled)")
                 else:
-                    logger.warning(f"⚠️ No config found for {provider_name}")
+                    logger.warning(f"⚠️ {provider_name} consumer disabled or no valid config")
             except Exception as e:
                 logger.error(f"❌ Failed to initialize {provider_name}: {e}")
     
@@ -126,32 +134,41 @@ class WebSocketOrchestrator:
         logger.info(f"✅ Rebalancing completed. {len(self.assignments)} consumers assigned")
     
     async def _assign_assets_by_type(self, asset_type: AssetType, assets: List[Asset]):
-        """특정 자산 타입의 자산들을 Consumer에 할당"""
-        # 해당 자산 타입을 지원하는 Consumer 찾기
+        """특정 자산 타입의 자산들을 Consumer에 우선순위 기반으로 할당"""
+        # 해당 자산 타입을 지원하는 활성화된 Consumer 찾기
         available_consumers = []
         for provider_name, consumer in self.consumers.items():
+            # 데이터베이스에서 Consumer 활성화 여부 재확인
+            enabled_key = f"WEBSOCKET_{provider_name.upper()}_ENABLED"
+            is_enabled = GLOBAL_APP_CONFIGS.get(enabled_key, "1") == "1"
+            
+            if not is_enabled:
+                continue
+                
             config = WebSocketConfig.get_provider_config(provider_name)
-            if config and asset_type in config.supported_asset_types:
+            if config and config.max_subscriptions > 0 and asset_type in config.supported_asset_types:
                 available_consumers.append((provider_name, consumer, config))
         
         if not available_consumers:
-            logger.warning(f"⚠️ No consumers available for {asset_type.value}")
+            logger.warning(f"⚠️ No active consumers available for {asset_type.value}")
             return
         
-        # 우선순위별로 정렬
+        # 우선순위별로 정렬 (priority가 낮을수록 우선순위 높음)
         available_consumers.sort(key=lambda x: x[2].priority)
         
-        # 라운드로빈 방식으로 분배
         tickers = [asset.ticker for asset in assets]
-        idx = 0
-        n = len(available_consumers)
+        logger.info(f"📊 Assigning {len(tickers)} {asset_type.value} tickers to {len(available_consumers)} consumers")
+        
+        # 우선순위 기반 순차 할당
         for ticker in tickers:
-            # 라운드로빈으로 제공자 선택 (여러 바퀴 시도해 비어있지 않은 슬롯 찾기)
             assigned = False
-            for attempt in range(n):
-                provider_name, consumer, config = available_consumers[(idx + attempt) % n]
+            
+            # 우선순위 순서대로 할당 시도
+            for provider_name, consumer, config in available_consumers:
                 current_assigned = len(self.assignments.get(provider_name, ConsumerAssignment(consumer, [], [], 0)).assigned_tickers)
+                
                 if current_assigned < config.max_subscriptions:
+                    # 할당 가능
                     if provider_name in self.assignments:
                         self.assignments[provider_name].assigned_tickers.append(ticker)
                     else:
@@ -161,13 +178,21 @@ class WebSocketOrchestrator:
                             asset_types=[asset_type],
                             priority=config.priority
                         )
-                    logger.info(f"📋 Assigned 1 {asset_type.value} ticker {ticker} to {provider_name}")
+                    
+                    logger.info(f"📋 Assigned {asset_type.value} ticker {ticker} to {provider_name} (priority {config.priority}, {current_assigned + 1}/{config.max_subscriptions})")
                     assigned = True
-                    # 다음 라운드로빈 시작 인덱스 이동
-                    idx = (idx + attempt + 1) % n
                     break
+                else:
+                    logger.debug(f"⚠️ {provider_name} is full ({current_assigned}/{config.max_subscriptions})")
+            
             if not assigned:
-                logger.warning(f"⚠️ No available slots for {asset_type.value} ticker {ticker}")
+                logger.warning(f"⚠️ No available slots for {asset_type.value} ticker {ticker} - all consumers at capacity")
+        
+        # 할당 결과 요약
+        for provider_name, assignment in self.assignments.items():
+            if assignment.assigned_tickers and asset_type in assignment.asset_types:
+                config = WebSocketConfig.get_provider_config(provider_name)
+                logger.info(f"✅ {provider_name}: {len(assignment.assigned_tickers)} {asset_type.value} tickers assigned ({len(assignment.assigned_tickers)}/{config.max_subscriptions})")
     
     async def _start_consumers(self):
         """Consumer 시작"""
@@ -263,53 +288,3 @@ class WebSocketOrchestrator:
             consumer = assignment.consumer
             logger.info(f"   {provider_name}: {len(assignment.assigned_tickers)} tickers, connected={consumer.is_connected}")
 
-    async def _start_sample_consumers(self):
-        """테스트용 강제 샘플 배정: alpaca/binance에 소량 티커 구독 및 실행"""
-        try:
-            # Tiingo: 주식+코인 샘플 (대역폭 한도 초과로 일시 중단)
-            # if 'tiingo' in self.consumers:
-            #     tiingo = self.consumers['tiingo']
-            #     sample_tickers_tiingo = ['AAPL', 'MSFT', 'BTCUSDT']
-            #     logger.info(f"🧪 Starting sample for tiingo: {sample_tickers_tiingo}")
-            #     # 실행 루프를 별도로 시작하지 않고, 샘플 티커만 선구독
-            #     await tiingo.subscribe(sample_tickers_tiingo)
-            #     logger.info("✅ tiingo sample subscribed to 3 tickers")
-            
-            # Alpaca: 주식/ETF 샘플
-            if 'alpaca' in self.consumers:
-                alpaca = self.consumers['alpaca']
-                sample_tickers_alpaca = ['AAPL', 'MSFT', 'SPY']
-                logger.info(f"🧪 Starting sample for alpaca: {sample_tickers_alpaca}")
-                # 실행 루프를 별도로 시작하지 않고, 샘플 티커만 선구독
-                await alpaca.subscribe(sample_tickers_alpaca)
-                logger.info("✅ alpaca sample subscribed to 3 tickers")
-            
-            # Binance: 암호화폐 샘플
-            if 'binance' in self.consumers:
-                binance = self.consumers['binance']
-                sample_tickers_binance = ['BTCUSDT', 'ETHUSDT', 'ADAUSDT']
-                logger.info(f"🧪 Starting sample for binance: {sample_tickers_binance}")
-                # 실행 루프를 별도로 시작하지 않고, 샘플 티커만 선구독
-                await binance.subscribe(sample_tickers_binance)
-                logger.info("✅ binance sample subscribed to 3 tickers")
-        except Exception as e:
-            logger.error(f"❌ Failed to start sample consumers: {e}")
-
-    async def _run_consumer_direct(self, consumer: BaseWSConsumer, tickers: List[str]):
-        """할당 객체 없이 직접 실행(테스트용)"""
-        try:
-            if not await consumer.connect():
-                logger.error(f"❌ Failed to connect {consumer.client_name} (sample)")
-                return
-            if not await consumer.subscribe(tickers):
-                logger.error(f"❌ Failed to subscribe {consumer.client_name} (sample)")
-                return
-            logger.info(f"✅ {consumer.client_name} sample subscribed to {len(tickers)} tickers")
-            await consumer.run()
-        except Exception as e:
-            logger.error(f"❌ Error in sample run for {consumer.client_name}: {e}")
-        finally:
-            try:
-                await consumer.disconnect()
-            except Exception:
-                pass

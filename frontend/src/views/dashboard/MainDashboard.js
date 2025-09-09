@@ -18,7 +18,7 @@ const MainDashboard = () => {
         </div>
       </div>
       
-      <RealTimeWidgets tickers={['BTCUSDT', 'AAPL', 'MSFT', 'SPY']} />
+      <RealTimeWidgets />
       
       
       

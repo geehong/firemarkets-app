@@ -57,7 +57,7 @@ class ApiStrategyManager:
         
         # 5. 주식 재무용 클라이언트 (재무 데이터)
         self.stock_financials_clients = [
-            #AlphaVantageClient(), # 1순위 (재무 데이터 풍부)
+            AlphaVantageClient(), # 1순위 (재무 데이터 풍부)
             FMPClient(),          # 1순위 (기존 2순위에서 승격)
             # TiingoClient(),       # 3순위 - 대역폭 한도 초과로 일시 중단
             PolygonClient(),      # 2순위 (기존 4순위에서 승격)
@@ -83,7 +83,7 @@ class ApiStrategyManager:
         
         # 8. ETF용 클라이언트 (ETF 정보 수집)
         self.etf_clients = [
-            #AlphaVantageClient(),  # 1순위 (ETF_PROFILE 전용, rate limit 있음)
+            AlphaVantageClient(),  # 1순위 (ETF_PROFILE 전용, rate limit 있음)
             # FMPClient(),           # ETF 정보 제공 안함
             # TiingoClient(),        # ETF 정보 제공 안함
             # PolygonClient(),

@@ -426,6 +426,7 @@ class AssetTableItem(BaseModel):
     # Metadata
     data_source: Optional[str] = Field(None, description="Source of the data (e.g., 'twelvedata', 'binance', 'db')")
     last_updated: Optional[datetime] = Field(None, description="Last data update timestamp")
+    is_realtime: Optional[bool] = Field(None, description="Whether the data is considered real-time (within freshness threshold)")
 
 
 class AssetsTableResponse(BaseModel):

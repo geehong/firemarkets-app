@@ -4,12 +4,14 @@ Binance WebSocket Consumer 구현
 import asyncio
 import json
 import logging
+import time
 import websockets
 from typing import List, Optional
 import os
 import redis.asyncio as redis
 from datetime import datetime
 from app.services.websocket.base_consumer import BaseWSConsumer, ConsumerConfig, AssetType
+from app.core.config import GLOBAL_APP_CONFIGS
 
 logger = logging.getLogger(__name__)
 
@@ -140,13 +142,18 @@ class BinanceWSConsumer(BaseWSConsumer):
             return False
     
     async def run(self):
-        """메인 실행 루프"""
+        """메인 실행 루프 - 메시지 필터링 모드"""
         if not self.is_connected:
             logger.error(f"❌ {self.client_name} not connected")
             return
         
         self.is_running = True
         logger.info(f"🚀 {self.client_name} started with {len(self.subscribed_tickers)} tickers")
+        
+        # 수신 주기 설정 (기본 15초)
+        self.consumer_interval = int(GLOBAL_APP_CONFIGS.get("WEBSOCKET_CONSUMER_INTERVAL_SECONDS", 15))
+        self.last_save_time = time.time()
+        logger.info(f"⏰ {self.client_name} 저장 주기: {self.consumer_interval}초")
         
         try:
             async for message in self._ws:
@@ -171,9 +178,9 @@ class BinanceWSConsumer(BaseWSConsumer):
             logger.info(f"🛑 {self.client_name} stopped")
     
     async def _handle_message(self, data: dict):
-        """메시지 처리"""
+        """메시지 처리 - 주기적 저장 필터링"""
         try:
-            # 구독 응답 처리
+            # 구독 응답 처리 (저장 주기와 무관하게 처리)
             if "result" in data and "id" in data:
                 if data["result"] is None:
                     logger.debug(f"📨 {self.client_name} subscription response: {data}")
@@ -181,8 +188,16 @@ class BinanceWSConsumer(BaseWSConsumer):
                     logger.info(f"📨 {self.client_name} subscription result: {data}")
                 return
             
-            # 스트림 데이터 처리
+            # 저장 주기 체크 (스트림 데이터만)
             if "stream" in data and "data" in data:
+                current_time = time.time()
+                if current_time - self.last_save_time < self.consumer_interval:
+                    # 아직 저장 시간이 되지 않았으면 메시지만 받고 저장하지 않음
+                    return
+                
+                # 저장 시간이 되었으면 데이터 처리
+                self.last_save_time = current_time
+                
                 stream_name = data["stream"]
                 stream_data = data["data"]
                 

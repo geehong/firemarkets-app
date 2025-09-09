@@ -4,6 +4,7 @@ Alpaca WebSocket Consumer 구현 (Real)
 import asyncio
 import json
 import logging
+import time
 from typing import List, Optional
 import os
 import websockets
@@ -102,6 +103,12 @@ class AlpacaWSConsumer(BaseWSConsumer):
         backoff = 1
         self.is_running = True
         logger.info(f"🚀 {self.client_name} started with {len(self.subscribed_tickers)} tickers")
+        
+        # 수신 주기 설정 (기본 15초)
+        self.consumer_interval = int(GLOBAL_APP_CONFIGS.get("WEBSOCKET_CONSUMER_INTERVAL_SECONDS", 15))
+        self.last_save_time = time.time()
+        logger.info(f"⏰ {self.client_name} 저장 주기: {self.consumer_interval}초")
+        
         while self.is_running:
             try:
                 if not self._ws:
@@ -140,6 +147,16 @@ class AlpacaWSConsumer(BaseWSConsumer):
         except Exception:
             logger.debug(f"{self.client_name} non-json message: {raw}")
             return
+        
+        # 저장 주기 체크
+        current_time = time.time()
+        if current_time - self.last_save_time < self.consumer_interval:
+            # 아직 저장 시간이 되지 않았으면 메시지만 받고 저장하지 않음
+            return
+        
+        # 저장 시간이 되었으면 데이터 처리
+        self.last_save_time = current_time
+        
         # 메시지는 리스트 형태로 배달되는 경우가 많음
         if isinstance(msg, list):
             for item in msg:

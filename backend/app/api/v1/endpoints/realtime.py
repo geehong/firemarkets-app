@@ -39,7 +39,7 @@ class PriceResponse(BaseModel):
 # ============================================================================
 
 @router.get("/table", response_model=AssetsTableResponse)
-@cache_with_invalidation(expire=300)  # 5분 캐시 (실시간 데이터 포함)
+@cache_with_invalidation(expire=15)  # 15초 캐시 (실시간 데이터 표시 주기에 맞춤)
 async def get_assets_table(
     type_name: Optional[str] = Query(None, description="필터링할 자산 유형 이름"),
     page: int = Query(1, ge=1, description="페이지 번호"),

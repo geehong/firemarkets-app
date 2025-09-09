@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from ..core.database import SessionLocal
 from ..core.config import GLOBAL_APP_CONFIGS, config_manager
-from ..models.asset import RealtimeQuote
+from ..models.asset import RealtimeQuote, RealtimeQuoteTimeDelay
 from ..models.asset import Asset, OHLCVData
 from ..crud.asset import crud_ohlcv, crud_asset
 from ..utils.logger import logger
@@ -46,9 +46,11 @@ class DataProcessor:
         self.redis_db = GLOBAL_APP_CONFIGS.get("REDIS_DB", 0)
         self.redis_password = GLOBAL_APP_CONFIGS.get("REDIS_PASSWORD")
         
-        # 처리 설정
-        self.batch_size = int(GLOBAL_APP_CONFIGS.get("BATCH_SIZE", 1000))
-        self.processing_interval = 1.0  # 초
+        # 처리 설정 (DB 설정 우선, 기본값 fallback)
+        self.batch_size = int(GLOBAL_APP_CONFIGS.get("REALTIME_BATCH_SIZE", 1000))
+        self.processing_interval = float(GLOBAL_APP_CONFIGS.get("REALTIME_PROCESSING_INTERVAL_SECONDS", 1.0))
+        self.time_window_minutes = int(GLOBAL_APP_CONFIGS.get("WEBSOCKET_TIME_WINDOW_MINUTES", 15))
+        self.stream_block_ms = int(GLOBAL_APP_CONFIGS.get("REALTIME_STREAM_BLOCK_MS", 100))
         # 우선 순위: DB(ConfigManager) > GLOBAL_APP_CONFIGS
         self.max_retries = (config_manager.get_retry_attempts() if config_manager else GLOBAL_APP_CONFIGS.get("MAX_API_RETRY_ATTEMPTS", 3))
         try:
@@ -98,13 +100,41 @@ class DataProcessor:
             logger.error(f"Redis 연결 실패: {e}")
             return False
 
-    def _parse_timestamp(self, timestamp_str: str) -> datetime:
-        """타임스탬프 문자열을 파싱합니다."""
+    def _get_time_window(self, timestamp: datetime, interval_minutes: int = None) -> datetime:
+        """지정된 분 단위로 시간 윈도우 계산 (설정값 또는 기본 15분 단위로 반올림)"""
+        try:
+            if interval_minutes is None:
+                interval_minutes = self.time_window_minutes
+            
+            # 분 단위로 반올림 (12:07 -> 12:00, 12:22 -> 12:15)
+            minute = (timestamp.minute // interval_minutes) * interval_minutes
+            return timestamp.replace(minute=minute, second=0, microsecond=0)
+        except Exception as e:
+            logger.warning(f"시간 윈도우 계산 실패: {e}")
+            return timestamp
+
+    def _parse_timestamp(self, timestamp_str: str, provider: str = None) -> datetime:
+        """타임스탬프 문자열을 파싱하고 UTC로 변환합니다."""
         try:
             # 먼저 표준 ISO 형식으로 시도
-            return datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+            parsed_time = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+            # UTC로 변환
+            if parsed_time.tzinfo is not None:
+                return parsed_time.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+            return parsed_time
         except ValueError:
             try:
+                # Unix timestamp (milliseconds) 형태인지 확인
+                if timestamp_str.isdigit() and len(timestamp_str) >= 10:
+                    # 밀리초 단위 Unix timestamp를 초 단위로 변환
+                    timestamp_ms = int(timestamp_str)
+                    if len(timestamp_str) > 10:  # 밀리초가 포함된 경우
+                        timestamp_seconds = timestamp_ms / 1000.0
+                    else:  # 초 단위인 경우
+                        timestamp_seconds = timestamp_ms
+                    # Unix timestamp는 이미 UTC 기준이므로 그대로 사용
+                    return datetime.fromtimestamp(timestamp_seconds)
+                
                 # 마이크로초가 6자리를 초과하는 경우 처리
                 if '.' in timestamp_str and len(timestamp_str.split('.')[1]) > 6:
                     # 마이크로초를 6자리로 자르기
@@ -121,12 +151,16 @@ class DataProcessor:
                                     timezone_part = parts[1][i:]
                                     break
                         timestamp_str = f"{base_time}.{microseconds}{timezone_part}"
-                        return datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-            except ValueError:
+                        parsed_time = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                        # UTC로 변환
+                        if parsed_time.tzinfo is not None:
+                            return parsed_time.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+                        return parsed_time
+            except (ValueError, OSError):
                 pass
             
-            # 모든 파싱이 실패하면 현재 시간 반환
-            logger.warning(f"타임스탬프 파싱 실패: {timestamp_str}, 현재 시간 사용")
+            # 모든 파싱이 실패하면 현재 UTC 시간 반환
+            logger.warning(f"타임스탬프 파싱 실패: {timestamp_str}, 현재 UTC 시간 사용")
             return datetime.utcnow()
 
     def _determine_actual_interval(self, current_ts: datetime, items: List[Dict], current_index: int) -> Optional[str]:
@@ -170,6 +204,8 @@ class DataProcessor:
 
     async def _process_realtime_streams(self) -> int:
         """실시간 스트림 데이터 처리 - Consumer Group 사용"""
+        logger.debug("🚀 _process_realtime_streams 시작")
+        
         if not self.redis_client:
             logger.info("Redis client not available for realtime streams")
             return 0
@@ -178,37 +214,55 @@ class DataProcessor:
         logger.info(f"Processing realtime streams: {list(self.realtime_streams.keys())}")
         
         try:
+            logger.debug("✅ try 블록 진입")
+            logger.debug("🔧 Consumer Group 생성 시작")
             # Consumer Group 생성 (각 스트림별)
             for stream_name in self.realtime_streams.keys():
                 try:
                     group_name = self.realtime_streams[stream_name]
+                    logger.debug(f"🔧 Consumer Group 생성 시도: {stream_name} -> {group_name}")
                     await self.redis_client.xgroup_create(
                         name=stream_name, 
                         groupname=group_name, 
                         id="0", 
                         mkstream=True
                     )
-                    logger.info(f"Created consumer group {group_name} on {stream_name}")
+                    logger.info(f"✅ Created consumer group {group_name} on {stream_name}")
                 except Exception as e:
                     if "BUSYGROUP" not in str(e):
-                        logger.debug(f"xgroup_create skip {stream_name}: {e}")
+                        logger.warning(f"⚠️ xgroup_create skip {stream_name}: {e}")
+                    else:
+                        logger.debug(f"ℹ️ Consumer group {group_name} already exists on {stream_name}")
             
+            logger.debug("📖 Consumer Group으로 데이터 읽기 시작")
             # Consumer Group으로 데이터 읽기 (각 스트림별로 개별 처리)
             all_stream_data = []
             for stream_name in self.realtime_streams.keys():
                 group_name = self.realtime_streams[stream_name]
                 try:
+                    logger.debug(f"📖 스트림 {stream_name} 읽기 시도 (group: {group_name})")
+                    
+                    # 스트림 존재 여부 확인
+                    stream_exists = await self.redis_client.exists(stream_name)
+                    if not stream_exists:
+                        logger.debug(f"📭 스트림 {stream_name}이 존재하지 않음, 건너뜀")
+                        continue
+                    
                     stream_data = await self.redis_client.xreadgroup(
                         groupname=group_name,
                         consumername="data_processor_worker",
                         streams={stream_name: ">"},
                         count=self.batch_size,
-                        block=100  # 100ms 블록
+                        block=self.stream_block_ms  # 설정 가능한 블록 시간
                     )
+                    logger.debug(f"📖 스트림 {stream_name} 읽기 결과: {len(stream_data) if stream_data else 0}개 메시지")
                     if stream_data:
                         all_stream_data.extend(stream_data)
                 except Exception as e:
-                    logger.warning(f"스트림 {stream_name} 읽기 실패: {e}")
+                    import traceback
+                    logger.error(f"❌ 스트림 {stream_name} 읽기 실패: {e}")
+                    logger.error(f"🔍 오류 상세: {traceback.format_exc()}")
+                    # 스트림별 오류를 개별적으로 처리하고 계속 진행
                     continue
             
             if not all_stream_data:
@@ -224,9 +278,16 @@ class DataProcessor:
             
             # 메시지 처리
             for stream_name, messages in all_stream_data:
-                group_name = self.realtime_streams[stream_name]
+                # Redis에서 반환되는 스트림 이름이 bytes 타입일 수 있으므로 문자열로 변환
+                stream_name_str = stream_name.decode('utf-8') if isinstance(stream_name, bytes) else stream_name
+                group_name = self.realtime_streams[stream_name_str]
+                logger.info(f"📥 스트림 {stream_name_str}에서 {len(messages)}개 메시지 처리 시작")
+                
                 for message_id, message_data in messages:
                     try:
+                        logger.debug(f"🔍 메시지 {message_id} 처리 시작")
+                        logger.debug(f"📋 원본 메시지 데이터: {message_data}")
+                        
                         # Redis 스트림 데이터 파싱 (프로바이더별 형식 처리)
                         symbol = None
                         price = None
@@ -241,8 +302,11 @@ class DataProcessor:
                         raw_timestamp = message_data.get(b'raw_timestamp', b'').decode('utf-8')
                         provider = message_data.get(b'provider', b'unknown').decode('utf-8')
                         
+                        logger.debug(f"📊 파싱된 데이터 - symbol: {symbol}, price: {price}, volume: {volume}, provider: {provider}")
+                        
                         # 이전 형식 호환성 (data 필드가 있는 경우)
                         if not symbol and b'data' in message_data:
+                            logger.debug("🔄 이전 형식 데이터 감지, JSON 파싱 시도")
                             try:
                                 data_json = json.loads(message_data[b'data'].decode('utf-8'))
                                 symbol = data_json.get('symbol', '').upper()
@@ -250,27 +314,35 @@ class DataProcessor:
                                 volume = safe_float(data_json.get('volume'))
                                 raw_timestamp = str(data_json.get('raw_timestamp', ''))
                                 provider = message_data.get(b'provider', b'finnhub').decode('utf-8')
+                                logger.debug(f"✅ JSON 파싱 성공 - symbol: {symbol}, price: {price}")
                             except (json.JSONDecodeError, KeyError) as e:
-                                logger.warning(f"Legacy data JSON 파싱 실패: {e}")
+                                logger.warning(f"❌ Legacy data JSON 파싱 실패: {e}")
                                 continue
                         
                         if not symbol or price is None:
+                            logger.warning(f"⚠️ 필수 데이터 누락 - symbol: {symbol}, price: {price}")
                             continue
                             
                         # 심볼 정규화 (BINANCE:BTCUSDT -> BTCUSDT)
+                        original_symbol = symbol
                         if ':' in symbol:
                             symbol = symbol.split(':')[-1]
+                            logger.debug(f"🔄 심볼 정규화: {original_symbol} -> {symbol}")
                             
                         asset_id = ticker_to_asset_id.get(symbol)
                         if not asset_id:
-                            logger.debug(f"No asset match for symbol {symbol}")
+                            logger.warning(f"❌ 자산 매칭 실패 - symbol: {symbol} (사용 가능한 자산: {list(ticker_to_asset_id.keys())[:10]}...)")
                             continue
                             
-                        # 타임스탬프 파싱
-                        timestamp_utc = self._parse_timestamp(raw_timestamp) if raw_timestamp else datetime.utcnow()
+                        logger.debug(f"✅ 자산 매칭 성공 - symbol: {symbol} -> asset_id: {asset_id}")
+                        
+                        # 타임스탬프 파싱 (UTC로 변환)
+                        timestamp_utc = self._parse_timestamp(raw_timestamp, provider) if raw_timestamp else datetime.utcnow()
+                        logger.debug(f"⏰ 타임스탬프: {timestamp_utc}")
                         
                         # Change 계산 (prev_close 조회)
                         change_amount, change_percent = await self._calculate_change(db, asset_id, price)
+                        logger.debug(f"📈 Change 계산 - amount: {change_amount}, percent: {change_percent}")
                         
                         quote_data = {
                             "asset_id": asset_id,
@@ -281,27 +353,50 @@ class DataProcessor:
                             "change_percent": change_percent,
                             "data_source": provider[:32]  # 32자 제한
                         }
+                        
+                        logger.debug(f"💾 저장할 데이터: {quote_data}")
                         records_to_save.append(quote_data)
-                        ack_items.append((stream_name, group_name, message_id))
+                        ack_items.append((stream_name_str, group_name, message_id))
+                        logger.debug(f"✅ 메시지 {message_id} 처리 완료")
                         
                     except Exception as e:
-                        logger.warning(f"스트림 메시지 {message_id} 처리 실패: {e}")
+                        import traceback
+                        logger.error(f"❌ 스트림 메시지 {message_id} 처리 실패: {e}")
+                        logger.error(f"🔍 오류 상세: {traceback.format_exc()}")
                         self.stats["errors"] += 1
 
             # 데이터베이스에 저장
             if records_to_save:
-                await self._bulk_save_realtime_quotes(records_to_save)
-                processed_count = len(records_to_save)
-                
-                # 성공한 메시지들 ACK
-                for stream_name, group_name, message_id in ack_items:
-                    try:
-                        await self.redis_client.xack(stream_name, group_name, message_id)
-                    except Exception as e:
-                        logger.warning(f"ACK 실패 {stream_name}:{message_id}: {e}")
+                logger.info(f"💾 {len(records_to_save)}개 레코드를 DB에 저장 시작")
+                save_success = await self._bulk_save_realtime_quotes(records_to_save)
+                if save_success:
+                    processed_count = len(records_to_save)
+                    logger.info(f"✅ DB 저장 성공: {processed_count}개 레코드")
+                    
+                    # 성공한 메시지들 ACK
+                    ack_count = 0
+                    for stream_name, group_name, message_id in ack_items:
+                        try:
+                            await self.redis_client.xack(stream_name, group_name, message_id)
+                            ack_count += 1
+                        except Exception as e:
+                            logger.warning(f"❌ ACK 실패 {stream_name}:{message_id}: {e}")
+                    logger.info(f"✅ ACK 완료: {ack_count}/{len(ack_items)}개 메시지")
+                else:
+                    logger.error("❌ DB 저장 실패 - ACK하지 않음")
+            else:
+                logger.info("📭 저장할 레코드가 없음")
                     
         except Exception as e:
-            logger.error(f"실시간 스트림 처리 중 오류: {e}")
+            import traceback
+            # 예외 메시지가 스트림 이름인 경우 특별 처리
+            error_msg = str(e)
+            if error_msg.startswith("b'") and error_msg.endswith("'"):
+                logger.error(f"실시간 스트림 처리 중 스트림 이름 오류: {error_msg}")
+                logger.error("이는 스트림 데이터 형식 오류일 가능성이 높습니다.")
+            else:
+                logger.error(f"실시간 스트림 처리 중 오류: {error_msg}")
+            logger.error(f"오류 상세: {traceback.format_exc()}")
             self.stats["errors"] += 1
             
         return processed_count
@@ -417,13 +512,13 @@ class DataProcessor:
         """Change 계산 - prev_close 조회 우선순위"""
         try:
             # 1. 로컬 스냅샷/펀더멘털 테이블의 전일종가 조회
-            from ..models.asset import OHLCVDayData
+            from ..models.asset import OHLCVData
             from sqlalchemy import desc
             
             # 최근 일봉 데이터에서 전일 종가 조회
-            latest_day_data = db.query(OHLCVDayData).filter(
-                OHLCVDayData.asset_id == asset_id
-            ).order_by(desc(OHLCVDayData.timestamp_utc)).first()
+            latest_day_data = db.query(OHLCVData).filter(
+                OHLCVData.asset_id == asset_id
+            ).order_by(desc(OHLCVData.timestamp_utc)).first()
             
             if latest_day_data and latest_day_data.close_price:
                 prev_close = float(latest_day_data.close_price)
@@ -442,40 +537,82 @@ class DataProcessor:
             return None, None
 
     async def _bulk_save_realtime_quotes(self, records: List[Dict[str, Any]]) -> bool:
-        """실시간 인용 데이터 일괄 저장 - UPSERT 로직"""
+        """실시간 인용 데이터 일괄 저장 - UPSERT 로직 (실시간 + 15분 지연 테이블)"""
         try:
+            logger.info(f"💾 RealtimeQuote 저장 시작: {len(records)}개 레코드")
             async with self.get_db_session() as db:
-                for record_data in records:
+                success_count = 0
+                for i, record_data in enumerate(records):
                     try:
-                        # 기존 레코드가 있는지 확인 (asset_id + data_source 기준)
+                        logger.debug(f"🔍 레코드 {i+1}/{len(records)} 처리: asset_id={record_data.get('asset_id')}, data_source={record_data.get('data_source')}")
+                        
+                        # 1. 실시간 테이블 저장 (UPSERT) - asset_id만으로 유니크
                         existing_quote = db.query(RealtimeQuote).filter(
-                            RealtimeQuote.asset_id == record_data['asset_id'],
-                            RealtimeQuote.data_source == record_data['data_source']
+                            RealtimeQuote.asset_id == record_data['asset_id']
                         ).first()
                         
                         if existing_quote:
                             # 기존 레코드 업데이트
+                            logger.debug(f"🔄 실시간 레코드 업데이트: ID={existing_quote.id}")
                             existing_quote.timestamp_utc = record_data['timestamp_utc']
                             existing_quote.price = record_data['price']
                             existing_quote.volume = record_data['volume']
                             existing_quote.change_amount = record_data['change_amount']
                             existing_quote.change_percent = record_data['change_percent']
+                            existing_quote.data_source = record_data['data_source']
                         else:
                             # 새 레코드 생성
+                            logger.debug(f"➕ 실시간 새 레코드 생성")
                             quote = RealtimeQuote(**record_data)
                             db.add(quote)
                         
+                        # 2. 시간 윈도우 지연 테이블 저장 (UPSERT)
+                        time_window = self._get_time_window(record_data['timestamp_utc'])
+                        delay_record_data = record_data.copy()
+                        delay_record_data['timestamp_utc'] = time_window
+                        delay_record_data['data_interval'] = f'{self.time_window_minutes}m'
+                        
+                        # 기존 지연 레코드 확인
+                        existing_delay_quote = db.query(RealtimeQuoteTimeDelay).filter(
+                            RealtimeQuoteTimeDelay.asset_id == delay_record_data['asset_id'],
+                            RealtimeQuoteTimeDelay.timestamp_utc == time_window,
+                            RealtimeQuoteTimeDelay.data_source == delay_record_data['data_source']
+                        ).first()
+                        
+                        if existing_delay_quote:
+                            # 기존 레코드 업데이트
+                            logger.debug(f"🔄 지연 레코드 업데이트: ID={existing_delay_quote.id}")
+                            existing_delay_quote.price = delay_record_data['price']
+                            existing_delay_quote.volume = delay_record_data['volume']
+                            existing_delay_quote.change_amount = delay_record_data['change_amount']
+                            existing_delay_quote.change_percent = delay_record_data['change_percent']
+                        else:
+                            # 새 레코드 생성
+                            logger.debug(f"➕ 지연 새 레코드 생성")
+                            delay_quote = RealtimeQuoteTimeDelay(**delay_record_data)
+                            db.add(delay_quote)
+                        
+                        logger.debug(f"📊 {self.time_window_minutes}분 지연 레코드 처리: {time_window}")
+                        
                         # 각 레코드마다 개별적으로 커밋하여 race condition 방지
                         db.commit()
+                        success_count += 1
+                        logger.debug(f"✅ 레코드 {i+1} 저장 성공")
                         
                     except Exception as e:
-                        logger.warning(f"개별 실시간 인용 데이터 저장 실패: {e}")
+                        import traceback
+                        logger.error(f"❌ 레코드 {i+1} 저장 실패: {e}")
+                        logger.error(f"🔍 오류 상세: {traceback.format_exc()}")
+                        logger.error(f"📋 실패한 레코드 데이터: {record_data}")
                         db.rollback()
                         continue
                         
-            return True
+            logger.info(f"✅ RealtimeQuote 저장 완료: {success_count}/{len(records)}개 성공")
+            return success_count > 0
         except Exception as e:
-            logger.error(f"실시간 인용 데이터 저장 실패: {e}")
+            import traceback
+            logger.error(f"❌ RealtimeQuote 저장 실패: {e}")
+            logger.error(f"🔍 오류 상세: {traceback.format_exc()}")
             return False
 
     async def _save_stock_profile(self, items: List[Dict[str, Any]]) -> bool:
@@ -1067,11 +1204,20 @@ class DataProcessor:
                 logger.debug("Processing cycle started")
                 
                 # 실시간 및 배치 데이터 동시 처리
-                realtime_count, batch_count = await asyncio.gather(
-                    self._process_realtime_streams(),
-                    self._process_batch_queue(),
-                    return_exceptions=True
-                )
+                logger.debug("🔄 실시간 스트림 처리 시작")
+                try:
+                    logger.debug("🔄 asyncio.gather 호출 전")
+                    realtime_count, batch_count = await asyncio.gather(
+                        self._process_realtime_streams(),
+                        self._process_batch_queue(),
+                        return_exceptions=True
+                    )
+                    logger.debug(f"🔄 실시간 스트림 처리 완료: {realtime_count}")
+                except Exception as e:
+                    import traceback
+                    logger.error(f"❌ asyncio.gather 오류: {e}")
+                    logger.error(f"🔍 오류 상세: {traceback.format_exc()}")
+                    realtime_count, batch_count = 0, 0
                 
                 # 결과 처리
                 if isinstance(realtime_count, Exception):

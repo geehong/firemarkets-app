@@ -4,6 +4,7 @@ Tiingo WebSocket Consumer 구현 (Real)
 import asyncio
 import json
 import logging
+import time
 from typing import List, Optional
 import os
 import websockets
@@ -92,10 +93,16 @@ class TiingoWSConsumer(BaseWSConsumer):
             return False
     
     async def run(self):
-        """메인 실행 루프 (실제)"""
+        """메인 실행 루프 - 메시지 필터링 모드"""
         backoff = 1
         self.is_running = True
         logger.info(f"🚀 {self.client_name} started with {len(self.subscribed_tickers)} tickers")
+        
+        # 수신 주기 설정 (기본 15초)
+        self.consumer_interval = int(GLOBAL_APP_CONFIGS.get("WEBSOCKET_CONSUMER_INTERVAL_SECONDS", 15))
+        self.last_save_time = time.time()
+        logger.info(f"⏰ {self.client_name} 저장 주기: {self.consumer_interval}초")
+        
         while self.is_running:
             try:
                 if not self._ws:
@@ -144,20 +151,30 @@ class TiingoWSConsumer(BaseWSConsumer):
         except Exception:
             logger.debug(f"{self.client_name} non-json message: {raw}")
             return
+        
         mtype = msg.get("messageType")
         if mtype == "H":
             return
         if mtype in ("I", "E"):
             logger.info(f"{self.client_name} info: {msg}")
             return
+        
+        # 저장 주기 체크 (데이터 메시지만)
         data = msg.get("data")
-        if not data:
-            return
-        if isinstance(data, dict):
-            await self._store_from_tiingo_item(data)
-        elif isinstance(data, list):
-            for item in data:
-                await self._store_from_tiingo_item(item)
+        if data:
+            current_time = time.time()
+            if current_time - self.last_save_time < self.consumer_interval:
+                # 아직 저장 시간이 되지 않았으면 메시지만 받고 저장하지 않음
+                return
+            
+            # 저장 시간이 되었으면 데이터 처리
+            self.last_save_time = current_time
+            
+            if isinstance(data, dict):
+                await self._store_from_tiingo_item(data)
+            elif isinstance(data, list):
+                for item in data:
+                    await self._store_from_tiingo_item(item)
     
     async def _store_from_tiingo_item(self, item: dict):
         try:

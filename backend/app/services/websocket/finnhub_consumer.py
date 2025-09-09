@@ -4,6 +4,7 @@ Finnhub WebSocket Consumer 구현
 import asyncio
 import json
 import logging
+import time
 import websockets
 from typing import List, Optional
 import os
@@ -121,13 +122,18 @@ class FinnhubWSConsumer(BaseWSConsumer):
             return False
     
     async def run(self):
-        """메인 실행 루프"""
+        """메인 실행 루프 - 메시지 필터링 모드"""
         if not self.is_connected:
             logger.error(f"❌ {self.client_name} not connected")
             return
         
         self.is_running = True
         logger.info(f"🚀 {self.client_name} started with {len(self.subscribed_tickers)} tickers")
+        
+        # 수신 주기 설정 (기본 15초)
+        self.consumer_interval = int(GLOBAL_APP_CONFIGS.get("WEBSOCKET_CONSUMER_INTERVAL_SECONDS", 15))
+        self.last_save_time = time.time()
+        logger.info(f"⏰ {self.client_name} 저장 주기: {self.consumer_interval}초")
         
         try:
             async for message in self.websocket:
@@ -152,8 +158,17 @@ class FinnhubWSConsumer(BaseWSConsumer):
             logger.info(f"🛑 {self.client_name} stopped")
     
     async def _handle_message(self, data: dict):
-        """메시지 처리"""
+        """메시지 처리 - 주기적 저장 필터링"""
         try:
+            # 저장 주기 체크
+            current_time = time.time()
+            if current_time - self.last_save_time < self.consumer_interval:
+                # 아직 저장 시간이 되지 않았으면 메시지만 받고 저장하지 않음
+                return
+            
+            # 저장 시간이 되었으면 데이터 처리
+            self.last_save_time = current_time
+            
             if data.get('type') == 'trade':
                 # 거래 데이터 처리
                 trade_data = data.get('data', [])
@@ -195,6 +210,7 @@ class FinnhubWSConsumer(BaseWSConsumer):
                 
         except Exception as e:
             logger.error(f"❌ {self.client_name} message processing error: {e}")
+            # 메시지 처리 오류가 발생해도 연결은 유지
     
     async def _process_trade(self, trade: dict):
         """거래 데이터 처리"""
@@ -238,6 +254,12 @@ class FinnhubWSConsumer(BaseWSConsumer):
         try:
             r = await self._get_redis()
             stream_key = 'finnhub:realtime'
+            
+            # 데이터 유효성 검사
+            if not data.get('symbol') or data.get('price') is None:
+                logger.warning(f"⚠️ {self.client_name} invalid data for redis store: {data}")
+                return
+            
             # 표준 필드 스키마로 정규화
             entry = {
                 'symbol': str(data.get('symbol', '')),
@@ -246,9 +268,24 @@ class FinnhubWSConsumer(BaseWSConsumer):
                 'raw_timestamp': str(data.get('timestamp', '')),
                 'provider': 'finnhub',
             }
+            
+            # Redis 연결 상태 확인
+            try:
+                await r.ping()
+            except Exception as ping_error:
+                logger.error(f"❌ {self.client_name} redis connection lost: {ping_error}")
+                # Redis 재연결 시도
+                self._redis = None
+                r = await self._get_redis()
+            
             await r.xadd(stream_key, entry)
+            logger.debug(f"✅ {self.client_name} stored to redis: {data.get('symbol')} = {data.get('price')}")
+            
         except Exception as e:
             logger.error(f"❌ {self.client_name} redis store error: {e}")
+            logger.error(f"🔍 Data that failed to store: {data}")
+            # Redis 연결 재설정
+            self._redis = None
     
     async def _perform_health_check(self) -> bool:
         """헬스체크 수행"""

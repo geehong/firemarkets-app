@@ -329,6 +329,22 @@ class RealtimeQuote(Base):
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
 
+class RealtimeQuoteTimeDelay(Base):
+    """15분 지연 누적 데이터 테이블"""
+    __tablename__ = 'realtime_quotes_time_delay'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    asset_id = Column(Integer, ForeignKey('assets.asset_id'), nullable=False, index=True)
+    timestamp_utc = Column(DateTime, nullable=False, index=True)
+    price = Column(DECIMAL(18, 8), nullable=False)
+    volume = Column(DECIMAL(18, 8), nullable=True)
+    change_amount = Column(DECIMAL(18, 8), nullable=True)
+    change_percent = Column(DECIMAL(9, 4), nullable=True)
+    data_source = Column(String(32), nullable=False)
+    data_interval = Column(String(10), nullable=False, default='15m')
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+
 class OnchainMetricsInfo(Base):
     __tablename__ = "onchain_metrics_info"
     
