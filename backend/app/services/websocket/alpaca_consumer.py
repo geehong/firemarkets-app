@@ -63,6 +63,7 @@ class AlpacaWSConsumer(BaseWSConsumer):
             return True
         except Exception as e:
             logger.error(f"❌ {self.client_name} connection failed: {e}")
+            logger.error(f"❌ {self.client_name} connection details: api_key={self.api_key[:10]}..., secret_key={'***' if self.secret_key else 'None'}, ws_url={self.ws_url}")
             self.connection_errors += 1
             self.is_connected = False
             self._ws = None
@@ -136,8 +137,16 @@ class AlpacaWSConsumer(BaseWSConsumer):
             return
         # Alpaca는 채널별 구독 형식. trades(T), quotes(Q), bars(B) 등
         try:
-            await self._ws.send(json.dumps({"action": "subscribe", "trades": sorted(list(self.subscribed_tickers))}))
-            logger.info(f"📋 {self.client_name} subscribed trades: {sorted(list(self.subscribed_tickers))}")
+            tickers = sorted(list(self.subscribed_tickers))
+            # 폐장 시간에도 데이터를 받기 위해 quotes와 bars도 구독
+            subscribe_msg = {
+                "action": "subscribe", 
+                "trades": tickers,
+                "quotes": tickers,
+                "bars": tickers
+            }
+            await self._ws.send(json.dumps(subscribe_msg))
+            logger.info(f"📋 {self.client_name} subscribed trades/quotes/bars: {tickers}")
         except Exception as e:
             logger.warning(f"❌ subscribe send failed: {e}")
     
@@ -148,14 +157,19 @@ class AlpacaWSConsumer(BaseWSConsumer):
             logger.debug(f"{self.client_name} non-json message: {raw}")
             return
         
+        # 폐장 시간 디버깅을 위한 로깅 추가
+        logger.debug(f"📨 {self.client_name} received message: {msg}")
+        
         # 저장 주기 체크
         current_time = time.time()
         if current_time - self.last_save_time < self.consumer_interval:
             # 아직 저장 시간이 되지 않았으면 메시지만 받고 저장하지 않음
+            logger.debug(f"⏰ {self.client_name} skipping message due to interval ({current_time - self.last_save_time:.1f}s < {self.consumer_interval}s)")
             return
         
         # 저장 시간이 되었으면 데이터 처리
         self.last_save_time = current_time
+        logger.debug(f"✅ {self.client_name} processing message after interval")
         
         # 메시지는 리스트 형태로 배달되는 경우가 많음
         if isinstance(msg, list):
@@ -166,31 +180,68 @@ class AlpacaWSConsumer(BaseWSConsumer):
             await self._handle_alpaca_item(msg)
     
     async def _handle_alpaca_item(self, item: dict):
-        # trade 이벤트 타입은 'T'
         try:
-            if item.get('T') == 't':  # trade
-                symbol = item.get('S')
+            msg_type = item.get('T')
+            symbol = item.get('S')
+            
+            # 다양한 메시지 타입 처리
+            if msg_type == 't':  # trade
                 price = item.get('p')
                 size = item.get('s')
-                ts = item.get('t')  # RFC3339 또는 epoch ns
+                ts = item.get('t')
+                logger.debug(f"📈 {self.client_name} trade: {symbol} = ${price} (vol: {size})")
+            elif msg_type == 'q':  # quote
+                bid = item.get('bp')
+                ask = item.get('ap')
+                logger.debug(f"📊 {self.client_name} quote: {symbol} bid=${bid} ask=${ask}")
+                # quote의 경우 중간가격 사용
+                if bid is not None and ask is not None:
+                    price = (float(bid) + float(ask)) / 2
+                else:
+                    price = None
+                size = None
+                ts = item.get('t')
+            elif msg_type == 'b':  # bar (1분 캔들)
+                close = item.get('c')
+                volume = item.get('v')
+                logger.debug(f"📊 {self.client_name} bar: {symbol} close=${close} vol={volume}")
+                price = close
+                size = volume
+                ts = item.get('t')
+            else:
+                logger.debug(f"📨 {self.client_name} unknown message type: {msg_type} for {symbol}")
+                return
+            
+            # 타임스탬프 처리
+            ts_ms = None
+            try:
+                if isinstance(ts, int):
+                    ts_ms = int(ts / 1_000_000)  # epoch ns → ms
+                elif isinstance(ts, str):
+                    # RFC3339 형식 처리
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                    ts_ms = int(dt.timestamp() * 1000)
+            except Exception as e:
+                logger.debug(f"⏰ {self.client_name} timestamp parse error: {e}")
                 ts_ms = None
-                try:
-                    # epoch ns → ms
-                    if isinstance(ts, int):
-                        ts_ms = int(ts / 1_000_000)
-                    else:
-                        ts_ms = None
-                except Exception:
-                    ts_ms = None
+            
+            # 유효한 가격 데이터가 있을 때만 저장
+            if symbol and price is not None:
                 await self._store_to_redis({
                     'symbol': symbol,
-                    'price': float(price) if price is not None else None,
+                    'price': float(price),
                     'volume': float(size) if size is not None else None,
                     'timestamp': ts_ms,
                     'provider': self.client_name,
                 })
+                logger.debug(f"💾 {self.client_name} stored: {symbol} = ${price}")
+            else:
+                logger.debug(f"⚠️ {self.client_name} invalid data: symbol={symbol}, price={price}")
+                
         except Exception as e:
-            logger.debug(f"parse/store error: {e}")
+            logger.error(f"❌ {self.client_name} item processing error: {e}")
+            logger.debug(f"🔍 Problematic item: {item}")
 
     def _build_redis_url(self) -> str:
         host = os.getenv('REDIS_HOST', 'redis')

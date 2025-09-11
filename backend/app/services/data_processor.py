@@ -64,6 +64,8 @@ class DataProcessor:
             "finnhub:realtime": "finnhub_processor_group",
             "alpaca:realtime": "alpaca_processor_group",
             "binance:realtime": "binance_processor_group",
+            "fmp:realtime": "fmp_processor_group",
+            "twelvedata:realtime": "twelvedata_processor_group",
             # "tiingo:realtime": "tiingo_processor_group",  # 대역폭 한도로 비활성화
         }
         self.batch_queue = "batch_data_queue"
@@ -837,9 +839,75 @@ class DataProcessor:
 
     async def _save_crypto_data(self, items: List[Dict[str, Any]]) -> bool:
         """크립토 데이터 저장"""
-        # TODO: 실제 CRUD 함수 호출
-        logger.info(f"크립토 데이터 저장: {len(items)}개 레코드")
-        return True
+        if not items:
+            return True
+            
+        try:
+            logger.info(f"크립토 데이터 저장: {len(items)}개 레코드")
+            
+            async with self.get_db_session() as db:
+                from app.crud.asset import crud_crypto_data
+                
+                saved_count = 0
+                for item in items:
+                    try:
+                        # asset_id 추출
+                        asset_id = item.get('asset_id')
+                        if not asset_id:
+                            logger.warning(f"crypto_data 저장 실패: asset_id 없음 - {item}")
+                            continue
+                        
+                        # CryptoData 스키마에 맞게 데이터 변환
+                        crypto_data_dict = {
+                            'asset_id': asset_id,
+                            'symbol': item.get('symbol', ''),
+                            'name': item.get('name', ''),
+                            'market_cap': item.get('market_cap'),
+                            'circulating_supply': item.get('circulating_supply'),
+                            'total_supply': item.get('total_supply'),
+                            'max_supply': item.get('max_supply'),
+                            'current_price': item.get('price') or item.get('current_price'),
+                            'volume_24h': item.get('volume_24h'),
+                            'percent_change_1h': item.get('percent_change_1h'),
+                            'percent_change_24h': item.get('change_24h') or item.get('percent_change_24h'),
+                            'percent_change_7d': item.get('percent_change_7d'),
+                            'percent_change_30d': item.get('percent_change_30d'),
+                            'cmc_rank': item.get('rank'),
+                            'category': item.get('category'),
+                            'description': item.get('description'),
+                            'logo_url': item.get('logo_url'),
+                            'website_url': item.get('website_url'),
+                            'price': item.get('price'),
+                            'slug': item.get('slug'),
+                            'date_added': item.get('date_added'),
+                            'platform': item.get('platform'),
+                            'explorer': item.get('explorer'),
+                            'source_code': item.get('source_code'),
+                            'tags': item.get('tags'),
+                            'is_active': True
+                        }
+                        
+                        # None 값 제거
+                        crypto_data_dict = {k: v for k, v in crypto_data_dict.items() if v is not None}
+                        
+                        # 데이터베이스에 저장
+                        result = crud_crypto_data.upsert_crypto_data(db, crypto_data_dict)
+                        if result:
+                            saved_count += 1
+                            logger.debug(f"crypto_data 저장 성공: asset_id={asset_id}, symbol={item.get('symbol')}")
+                        else:
+                            logger.warning(f"crypto_data 저장 실패: asset_id={asset_id}")
+                            
+                    except Exception as e:
+                        logger.error(f"crypto_data 저장 중 오류: asset_id={item.get('asset_id')}, error={e}")
+                        continue
+                
+                logger.info(f"크립토 데이터 저장 완료: {saved_count}/{len(items)}개 레코드")
+                return saved_count > 0
+            
+        except Exception as e:
+            logger.error(f"crypto_data 저장 중 전체 오류: {e}")
+            return False
 
     async def _save_ohlcv_data(self, items: List[Dict[str, Any]], metadata: Dict[str, Any] = None) -> bool:
         """OHLCV 데이터 저장 - 일봉과 인트라데이 데이터를 적절한 테이블에 분리 저장"""

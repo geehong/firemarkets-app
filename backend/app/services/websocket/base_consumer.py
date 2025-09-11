@@ -12,10 +12,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 class AssetType(Enum):
-    STOCK = "stock"
-    CRYPTO = "crypto"
-    FOREX = "forex"
-    COMMODITY = "commodity"
+    STOCK = "stock"           # 개별 주식
+    ETF = "etf"              # ETF/펀드
+    CRYPTO = "crypto"        # 암호화폐
+    FOREX = "forex"          # 외환
+    COMMODITY = "commodity"  # 커머디티
+    FOREIGN = "foreign"      # 외국계 주식
 
 @dataclass
 class ConsumerConfig:

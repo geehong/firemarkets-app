@@ -9,7 +9,7 @@ from sqlalchemy import and_, or_, desc, func
 from datetime import date, datetime
 
 from .base import CRUDBase
-from ..models.asset import Asset, AssetType, OHLCVData, OHLCVIntradayData, StockFinancial, StockProfile, StockAnalystEstimate, IndexInfo, WorldAssetsRanking, BondMarketData, ScrapingLogs
+from ..models.asset import Asset, AssetType, OHLCVData, OHLCVIntradayData, StockFinancial, StockProfile, StockAnalystEstimate, IndexInfo, WorldAssetsRanking, BondMarketData, ScrapingLogs, CryptoData
 # CryptoMetric removed - using CryptoData instead
 
 logger = logging.getLogger(__name__)
@@ -621,6 +621,42 @@ class CRUDIndexInfo(CRUDBase[IndexInfo]):
             return False
 
 
+class CRUDCryptoData(CRUDBase[CryptoData]):
+    """CRUD operations for Crypto Data."""
+    
+    def __init__(self):
+        super().__init__(CryptoData)
+    
+    def get_crypto_data(self, db: Session, asset_id: int) -> Optional[CryptoData]:
+        """Get crypto data for an asset."""
+        return db.query(CryptoData).filter(CryptoData.asset_id == asset_id).first()
+    
+    def upsert_crypto_data(self, db: Session, crypto_data: Dict[str, Any]) -> bool:
+        """Upsert crypto data."""
+        try:
+            asset_id = crypto_data['asset_id']
+            
+            existing = db.query(CryptoData).filter(CryptoData.asset_id == asset_id).first()
+            
+            if existing:
+                # Update existing record
+                for key, value in crypto_data.items():
+                    if key != 'asset_id' and hasattr(existing, key):
+                        setattr(existing, key, value)
+            else:
+                # Create new record
+                new_crypto = CryptoData(**crypto_data)
+                db.add(new_crypto)
+            
+            db.commit()
+            return True
+            
+        except Exception as e:
+            logger.error(f"Crypto data upsert failed: {e}")
+            db.rollback()
+            return False
+
+
 # Create instances
 crud_asset = CRUDAsset()
 crud_ohlcv = CRUDOHLCV()
@@ -628,6 +664,7 @@ crud_stock_financial = CRUDStockFinancial()
 crud_stock_profile = CRUDStockProfile()
 crud_stock_estimate = CRUDStockEstimate()
 crud_index_info = CRUDIndexInfo()
+crud_crypto_data = CRUDCryptoData()
 
 
 # CRUDCryptoMetric removed - using CryptoData model instead

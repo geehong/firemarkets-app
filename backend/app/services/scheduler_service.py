@@ -20,7 +20,7 @@ from app.utils.redis_queue_manager import RedisQueueManager
 # --- Import all available collectors ---
 from app.collectors.base_collector import BaseCollector
 from app.collectors.ohlcv_collector import OHLCVCollector
-# from app.collectors.onchain_collector import OnchainCollector  # Temporarily disabled during v2 transition
+from app.collectors.onchain_collector import OnchainCollector
 from app.collectors.stock_collector import StockCollector
 from app.collectors.etf_collector import ETFCollector
 from app.collectors.crypto_data_collector import CryptoDataCollector
@@ -35,7 +35,7 @@ class SchedulerService:
     # This makes the service data-driven and easy to extend.
     JOB_MAPPING = {
         "OHLCV": {"class": OHLCVCollector, "config_key": "is_ohlcv_collection_enabled"},
-        # "Onchain": {"class": OnchainCollector, "config_key": "is_onchain_collection_enabled"},
+        "Onchain": {"class": OnchainCollector, "config_key": "is_onchain_collection_enabled"},
         "StockProfile": {"class": StockCollector, "config_key": "is_stock_collection_enabled"},
         "ETFInfo": {"class": ETFCollector, "config_key": "is_etf_collection_enabled"},
         "CryptoInfo": {"class": CryptoDataCollector, "config_key": "is_crypto_collection_enabled"},

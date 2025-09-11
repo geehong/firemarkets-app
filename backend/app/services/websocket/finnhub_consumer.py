@@ -74,6 +74,8 @@ class FinnhubWSConsumer(BaseWSConsumer):
     def _normalize_symbol(self, ticker: str) -> str:
         """Finnhub 심볼 규격으로 정규화
         - 크립토: USDT로 끝나고 접두사가 없으면 'BINANCE:' 접두사 부여
+        - 특수 티커 처리: BRK-B -> BRK.B, TCEHY -> TCEHY (중국 주식)
+        - 해외 주식: 2222.SR -> 2222.SR (사우디아라비아)
         - 기본: 그대로 반환
         """
         t = (ticker or '').upper().strip()
@@ -81,6 +83,15 @@ class FinnhubWSConsumer(BaseWSConsumer):
             return t
         if t.endswith('USDT'):
             return f"BINANCE:{t}"
+        
+        # 특수 티커 처리
+        if t == 'BRK-B':
+            return 'BRK.B'  # Finnhub에서 BRK-B는 BRK.B로 표기
+        elif t == 'TCEHY':
+            return 'TCEHY'  # 중국 주식은 그대로
+        elif t == '2222.SR':
+            return '2222.SR'  # 사우디아라비아 주식은 그대로
+        
         return t
 
     async def subscribe(self, tickers: List[str]) -> bool:
@@ -122,7 +133,7 @@ class FinnhubWSConsumer(BaseWSConsumer):
             return False
     
     async def run(self):
-        """메인 실행 루프 - 메시지 필터링 모드"""
+        """메인 실행 루프 - 메시지 필터링 모드 + 자동 재연결"""
         if not self.is_connected:
             logger.error(f"❌ {self.client_name} not connected")
             return
@@ -135,27 +146,80 @@ class FinnhubWSConsumer(BaseWSConsumer):
         self.last_save_time = time.time()
         logger.info(f"⏰ {self.client_name} 저장 주기: {self.consumer_interval}초")
         
-        try:
-            async for message in self.websocket:
-                if not self.is_running:
-                    break
+        reconnect_delay = 5  # 재연결 대기 시간
+        max_reconnect_attempts = 10
+        reconnect_attempts = 0
+        
+        while self.is_running and reconnect_attempts < max_reconnect_attempts:
+            try:
+                # 메시지 수신 루프 (연결이 끊어져도 계속 시도)
+                while self.is_running and self.is_connected:
+                    try:
+                        # 타임아웃을 설정하여 연결 상태를 주기적으로 확인
+                        message = await asyncio.wait_for(self.websocket.recv(), timeout=30.0)
+                        
+                        try:
+                            data = json.loads(message)
+                            await self._handle_message(data)
+                            # 성공적으로 메시지를 받으면 재연결 시도 횟수 리셋
+                            reconnect_attempts = 0
+                        except json.JSONDecodeError as e:
+                            logger.error(f"❌ {self.client_name} JSON decode error: {e}")
+                        except Exception as e:
+                            logger.error(f"❌ {self.client_name} message handling error: {e}")
+                            
+                    except asyncio.TimeoutError:
+                        # 타임아웃 시 ping으로 연결 상태 확인
+                        try:
+                            await self.websocket.ping()
+                            logger.debug(f"🏓 {self.client_name} ping successful")
+                        except Exception as e:
+                            logger.warning(f"⚠️ {self.client_name} ping failed: {e}")
+                            self.is_connected = False
+                            break
+                            
+                    except websockets.exceptions.ConnectionClosed:
+                        logger.warning(f"⚠️ {self.client_name} connection closed")
+                        self.is_connected = False
+                        break
+                    except Exception as e:
+                        logger.error(f"❌ {self.client_name} message receive error: {e}")
+                        self.is_connected = False
+                        break
+                        
+            except Exception as e:
+                logger.error(f"❌ {self.client_name} run error: {e}")
+                self.is_connected = False
+            
+            # 연결이 끊어진 경우 재연결 시도
+            if not self.is_connected and self.is_running:
+                reconnect_attempts += 1
+                logger.info(f"🔄 {self.client_name} attempting reconnection {reconnect_attempts}/{max_reconnect_attempts}")
                 
-                try:
-                    data = json.loads(message)
-                    await self._handle_message(data)
-                except json.JSONDecodeError as e:
-                    logger.error(f"❌ {self.client_name} JSON decode error: {e}")
-                except Exception as e:
-                    logger.error(f"❌ {self.client_name} message handling error: {e}")
-                    
-        except websockets.exceptions.ConnectionClosed:
-            logger.warning(f"⚠️ {self.client_name} connection closed")
-            self.is_connected = False
-        except Exception as e:
-            logger.error(f"❌ {self.client_name} run error: {e}")
-        finally:
-            self.is_running = False
-            logger.info(f"🛑 {self.client_name} stopped")
+                # 재연결 대기 (지수 백오프)
+                wait_time = reconnect_delay * (1.5 ** min(reconnect_attempts - 1, 5))
+                await asyncio.sleep(min(wait_time, 120))  # 최대 2분 대기
+                
+                # 재연결 시도
+                if await self.connect():
+                    # 재연결 성공 시 구독 복원
+                    if await self.subscribe(list(self.subscribed_tickers)):
+                        logger.info(f"✅ {self.client_name} reconnected and resubscribed to {len(self.subscribed_tickers)} tickers")
+                        reconnect_attempts = 0  # 성공 시 리셋
+                        reconnect_delay = 5  # 대기 시간 리셋
+                    else:
+                        logger.error(f"❌ {self.client_name} failed to resubscribe after reconnection")
+                        self.is_connected = False
+                else:
+                    logger.error(f"❌ {self.client_name} reconnection failed")
+                    # 재연결 실패 시 대기 시간 증가
+                    reconnect_delay = min(reconnect_delay * 1.2, 60)
+        
+        if reconnect_attempts >= max_reconnect_attempts:
+            logger.error(f"❌ {self.client_name} max reconnection attempts reached")
+        
+        self.is_running = False
+        logger.info(f"🛑 {self.client_name} stopped")
     
     async def _handle_message(self, data: dict):
         """메시지 처리 - 주기적 저장 필터링"""

@@ -21,34 +21,34 @@ class WebSocketConfig:
     # API 제공자별 설정
     PROVIDERS = {
         'finnhub': ProviderConfig(
-            max_subscriptions=50,  # 주식 전용, 50개 한계
-            supported_asset_types=[AssetType.STOCK],  # 주식만 지원
+            max_subscriptions=20,
+            supported_asset_types=[AssetType.STOCK, AssetType.CRYPTO, AssetType.FOREX],
             rate_limit_per_minute=60,
-            priority=1,  # 주식 1순위
-            reconnect_interval=30,
-            health_check_interval=60
-        ),
-        'binance': ProviderConfig(
-            max_subscriptions=200,  # 코인 전용, 200개 한계
-            supported_asset_types=[AssetType.CRYPTO],  # 암호화폐 전용
-            rate_limit_per_minute=300,
-            priority=1,  # 코인 1순위
-            reconnect_interval=30,
-            health_check_interval=60
-        ),
-        'alpaca': ProviderConfig(
-            max_subscriptions=30,  # Alpaca 실제 한계: 30개
-            supported_asset_types=[AssetType.STOCK],  # 주식(ETF 포함) 지원
-            rate_limit_per_minute=200,
-            priority=2,  # 주식 2순위
+            priority=1,  # 동일 우선순위로 분산 배정
             reconnect_interval=30,
             health_check_interval=60
         ),
         'tiingo': ProviderConfig(
-            max_subscriptions=0,  # 대역폭 제한으로 비활성화
-            supported_asset_types=[],  # 비활성화
-            rate_limit_per_minute=0,
-            priority=99,  # 최저 우선순위
+            max_subscriptions=20,
+            supported_asset_types=[AssetType.STOCK, AssetType.CRYPTO],
+            rate_limit_per_minute=100,
+            priority=1,  # 동일 우선순위로 분산 배정
+            reconnect_interval=30,
+            health_check_interval=60
+        ),
+        'alpaca': ProviderConfig(
+            max_subscriptions=20,
+            supported_asset_types=[AssetType.STOCK],  # 주식(ETF 포함) 지원
+            rate_limit_per_minute=200,
+            priority=1,  # 동일 우선순위로 분산 배정
+            reconnect_interval=30,
+            health_check_interval=60
+        ),
+        'binance': ProviderConfig(
+            max_subscriptions=50,  # 바이낸스는 더 많은 구독 지원
+            supported_asset_types=[AssetType.CRYPTO],  # 암호화폐 전용
+            rate_limit_per_minute=300,
+            priority=1,  # 동일 우선순위로 분산 배정
             reconnect_interval=30,
             health_check_interval=60
         )

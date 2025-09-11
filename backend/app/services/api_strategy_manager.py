@@ -30,9 +30,9 @@ class ApiStrategyManager:
         # 1. 일봉 OHLCV 클라이언트 (주식, ETF, 지수, 커머디티, 통화)
         self.ohlcv_day_clients = [
             # TiingoClient(),       # 1순위 - 대역폭 한도 초과로 일시 중단
-            PolygonClient(),      # 1순위 (기존 2순위에서 승격)
-            TwelveDataClient(),   # 2순위 (기존 3순위에서 승격)
-            FMPClient(),          # 3순위 (기존 4순위에서 승격)
+            FMPClient(),          # 1순위 (WebSocket 백업용으로 승격)
+            PolygonClient(),      # 2순위 (기존 1순위에서 조정)
+            TwelveDataClient(),   # 3순위 (기존 2순위에서 조정)
         ]
         
         # 2. 인트라데이 OHLCV 클라이언트 (4h, 1h 등)

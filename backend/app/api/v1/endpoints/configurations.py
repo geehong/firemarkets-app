@@ -32,9 +32,7 @@ class ConfigurationResponse(BaseModel):
     config_value: Optional[str]
     data_type: str
     description: Optional[str]
-    is_sensitive: bool
     is_active: bool
-    category: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -64,8 +62,9 @@ def get_configurations(
 ):
     """모든 활성 설정을 조회합니다."""
     query = db.query(AppConfiguration).filter(AppConfiguration.is_active == True)
-    if category:
-        query = query.filter(AppConfiguration.category == category)
+    # Note: AppConfiguration 모델에 category 필드가 없으므로 category 필터링 제거
+    # if category:
+    #     query = query.filter(AppConfiguration.category == category)
     configs = query.all()
     return configs
 

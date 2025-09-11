@@ -360,8 +360,9 @@ class AlphaVantageClient(TradFiAPIClient):
                             elif isinstance(data, dict) and "Error Message" in data:
                                 logger.warning(f"Alpha Vantage API error for ETF profile {symbol}: {data['Error Message']}")
                                 continue
-                            elif isinstance(data, dict) and "profile" in data:
-                                profile = data["profile"]
+                            elif isinstance(data, dict) and ("net_assets" in data or "profile" in data):
+                                # ETF_PROFILE API는 직접 ETF 데이터를 반환하거나 "profile" 키 안에 데이터를 반환할 수 있음
+                                profile = data.get("profile", data)
                                 
                                 # Parse sectors data
                                 sectors = []

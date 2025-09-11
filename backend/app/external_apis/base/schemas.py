@@ -176,6 +176,15 @@ class EtfInfoData(BaseModel):
     holdings: Optional[List[EtfHoldingData]] = None
     timestamp_utc: datetime
 
+    def model_dump(self, **kwargs) -> dict:
+        """JSON 직렬화를 위해 날짜 객체를 문자열로 변환"""
+        data = super().model_dump(**kwargs)
+        if data.get('inception_date'):
+            data['inception_date'] = data['inception_date'].isoformat()
+        if data.get('timestamp_utc'):
+            data['timestamp_utc'] = data['timestamp_utc'].isoformat()
+        return data
+
 # 기존 호환성을 위한 별칭 (deprecated)
 EtfSectorExposureData = EtfSectorData
 EtfHoldingsData = EtfHoldingData
