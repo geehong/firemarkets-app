@@ -96,7 +96,7 @@ class OHLCVData(Base):
         index=True,
     )
     timestamp_utc = Column(DateTime, nullable=False, index=True)
-    data_interval = Column(String(10), default="1d")
+    data_interval = Column(String(10))
     open_price = Column(DECIMAL(24, 10), nullable=False)
     high_price = Column(DECIMAL(24, 10), nullable=False)
     low_price = Column(DECIMAL(24, 10), nullable=False)
@@ -116,7 +116,7 @@ class OHLCVIntradayData(Base):
         index=True,
     )
     timestamp_utc = Column(DateTime, nullable=False, index=True)
-    data_interval = Column(String(10), default="1d")
+    data_interval = Column(String(10))
     open_price = Column(DECIMAL(24, 10), nullable=False)
     high_price = Column(DECIMAL(24, 10), nullable=False)
     low_price = Column(DECIMAL(24, 10), nullable=False)

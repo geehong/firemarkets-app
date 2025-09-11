@@ -1,4 +1,5 @@
 import React from 'react'
+import useRealtimePrices from 'src/hooks/useRealtimePrices'
 
 const OverViewHeader = ({
   asset,
@@ -19,8 +20,8 @@ const OverViewHeader = ({
     cryptoData,
   })
 
-  // 현재가와 변동률 계산 (공통)
-  const getCurrentPrice = () => {
+  // 현재가와 변동률 계산 (공통) - OHLCV 기반 Fallback
+  const getFallbackPrice = () => {
     if (!ohlcvData || ohlcvData.length === 0) return { price: 0, change: 0, changePercent: 0 }
     const latest = ohlcvData[0]
     const previous = ohlcvData[1]
@@ -33,6 +34,38 @@ const OverViewHeader = ({
     const changePercent = (change / previousClose) * 100
     return { price: latestClose, change, changePercent }
   }
+
+  // 실시간 가격 훅 (티커 단일 사용)
+  const ticker = asset?.ticker
+  const assetType = asset?.type_name === 'Stocks' ? 'stock' : 'crypto'
+  const { data: liveMap } = useRealtimePrices(
+    ticker ? [ticker] : [],
+    assetType,
+    { enabled: !!ticker, refetchInterval: 15000, staleTime: 14000 }
+  )
+
+  const live = ticker ? liveMap?.[ticker] : undefined
+  const livePrice = live != null ? Number(live.price ?? live.close ?? live.last_price ?? live.last) : undefined
+  const liveChangePercent = live != null
+    ? Number(
+        live.change_percent ??
+        live.changePercent ??
+        live.change_percent_today ??
+        live.percent_change
+      )
+    : undefined
+  const liveChange = live != null
+    ? Number(
+        live.change ??
+        live.change_amount ??
+        (livePrice != null && liveChangePercent != null ? (livePrice * liveChangePercent) / 100 : undefined)
+      )
+    : undefined
+
+  const { price: fbPrice, change: fbChange, changePercent: fbChangePercent } = getFallbackPrice()
+  const currentPrice = (typeof livePrice === 'number' && !Number.isNaN(livePrice)) ? livePrice : fbPrice
+  const currentChangePercent = (typeof liveChangePercent === 'number' && !Number.isNaN(liveChangePercent)) ? liveChangePercent : fbChangePercent
+  const currentChange = (typeof liveChange === 'number' && !Number.isNaN(liveChange)) ? liveChange : fbChange
 
   // 재무 데이터에서 시가총액과 PER 가져오기
   const getFinancialMetrics = () => {
@@ -221,7 +254,9 @@ const OverViewHeader = ({
     )
   }
 
-  const { price, change, changePercent } = getCurrentPrice()
+  const price = currentPrice
+  const change = currentChange
+  const changePercent = currentChangePercent
   const isPositive = change >= 0
   const hierarchyInfo = getHierarchyInfo()
 
@@ -264,9 +299,7 @@ const OverViewHeader = ({
           <div className="card p-3">
             <div className="d-flex align-items-center">
               <div className="text-center border-end pe-3 me-3">
-                <div className="fs-5 fw-bold">
-                  ${typeof price === 'number' ? price.toFixed(2) : '0.00'}
-                </div>
+                <div className="fs-5 fw-bold">${typeof price === 'number' ? price.toFixed(2) : '0.00'}</div>
                 <div className={`small ${isPositive ? 'text-success' : 'text-danger'}`}>
                   {isPositive ? '+' : ''}
                   {typeof change === 'number' ? change.toFixed(2) : '0.00'} (

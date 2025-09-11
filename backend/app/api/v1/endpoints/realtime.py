@@ -9,13 +9,11 @@ import logging
 from pydantic import BaseModel
 
 from ....core.database import get_db
-from ....services.tiingo_ws_consumer import get_consumer
-from ....services.scheduler_service import scheduler_service as get_scheduler
-from ....services import price_service
+# Tiingo consumer import removed - using direct implementation
+# scheduler_service import removed - not used in current endpoints
 from ....core.cache import cache_with_invalidation
-from app.external_apis.implementations import TiingoClient
 from ....schemas.asset import AssetsTableResponse
-from ....services.assets_table_service import AssetsTableService
+from ....services.endpoint.assets_table_service import AssetsTableService
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +24,7 @@ router = APIRouter()
 # ============================================================================
 # Pydantic Models
 # ============================================================================
-
-class PriceResponse(BaseModel):
-    """실시간 가격 응답 모델"""
-    prices: dict[str, dict[str, float | None]]
-    asset_type: str
-    symbol_count: int
+# PriceResponse 모델 제거됨 - 직접 외부 API 호출 엔드포인트 제거로 인해 불필요
 
 
 # ============================================================================
@@ -70,191 +63,180 @@ async def get_assets_table(
 
 
 # ============================================================================
-# 실시간 가격 데이터 조회 API
+# 실시간 가격 데이터 조회 API - REMOVED
+# 클라이언트가 직접 외부 API를 호출하는 엔드포인트들은 제거됨
+# 대신 데이터베이스에 저장된 실시간 데이터를 조회하는 엔드포인트 사용
 # ============================================================================
-
-@router.get("/prices/crypto", response_model=PriceResponse)
-@cache_with_invalidation(expire=10)  # 암호화폐는 변동성이 크므로 캐시 시간을 10초로 짧게 설정
-async def get_crypto_prices(
-    symbols: List[str] = Query(..., description="암호화폐 심볼 리스트 (예: BTC, ETH)")
-):
-    """
-    여러 암호화폐 심볼에 대한 실시간 가격을 Binance에서 조회합니다.
-    """
-    try:
-        prices = await price_service.get_realtime_crypto_prices(symbols=symbols)
-        
-        return PriceResponse(
-            prices=prices,
-            asset_type="crypto",
-            symbol_count=len(prices)
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch crypto prices: {str(e)}")
-
-
-@router.get("/prices/stock", response_model=PriceResponse)
-async def get_stock_prices(
-    symbols: List[str] = Query(..., description="주식 심볼 리스트 (예: AAPL, GOOGL)")
-):
-    """
-    여러 주식 심볼에 대한 실시간 가격을 Yahoo Finance에서 조회합니다.
-    """
-    try:
-        prices = await price_service.get_realtime_stock_prices(symbols=symbols)
-        
-        return PriceResponse(
-            prices=prices,
-            asset_type="stock",
-            symbol_count=len(prices)
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch stock prices: {str(e)}")
-
-
-@router.get("/prices/tiingo", response_model=PriceResponse)
-@cache_with_invalidation(expire=900)  # Tiingo는 15분 지연이므로 15분 캐싱
-async def get_tiingo_prices(
-    symbols: List[str] = Query(..., description="주식/ETF 심볼 리스트 (예: AAPL, SPY)")
-):
-    """
-    여러 주식/ETF 심볼에 대한 가격을 Tiingo에서 조회합니다.
-    """
-    try:
-        tiingo_client = TiingoClient()
-        quotes = await tiingo_client.get_batch_quotes(symbols)
-        
-        # 응답 형식 변환
-        prices = {}
-        for symbol, quote_data in quotes.items():
-            prices[symbol] = {
-                'price': quote_data.get('last'),
-                'change_percent': quote_data.get('changePercent'),
-                'market_cap': None,  # Tiingo 무료 플랜에서는 제공하지 않음
-                'volume': quote_data.get('volume')
-            }
-        
-        return PriceResponse(
-            prices=prices,
-            asset_type="tiingo",
-            symbol_count=len(prices)
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch Tiingo prices: {str(e)}")
-
-
-@router.get("/prices/{asset_type}", response_model=PriceResponse)
-@cache_with_invalidation(expire=30)  # 기본 30초 캐싱
-async def get_prices_by_type(
-    asset_type: str,
-    symbols: List[str] = Query(..., description="자산 심볼 리스트")
-):
-    """
-    자산 유형에 따른 실시간 가격을 조회합니다.
-    """
-    try:
-        prices = await price_service.get_realtime_prices_by_type(symbols=symbols, asset_type=asset_type)
-        
-        return PriceResponse(
-            prices=prices,
-            asset_type=asset_type,
-            symbol_count=len(prices)
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch {asset_type} prices: {str(e)}")
 
 
 # ============================================================================
-# 실시간 데이터 수집기 관리 API
+# 실시간 데이터 수집기 관리 API - REMOVED
+# realtime_collector가 정의되지 않아 제거됨
+# 수집기 관리는 websocket_orchestrator와 scheduler_service를 통해 처리
 # ============================================================================
-
-@router.post("/collectors/run")
-async def start_realtime_collectors(asset_types: Optional[List[str]] = None):
-    """실시간 데이터 수집기 시작 (Tiingo WebSocket + 스케줄러)"""
-    try:
-        # RealtimeCollector를 사용하여 수집기 시작
-        result = await realtime_collector.collect_with_settings()
-        
-        if result['success']:
-            return {
-                "status": "started",
-                "websocket": "running",
-                "scheduler": "running",
-                "message": result['message']
-            }
-        else:
-            raise HTTPException(status_code=500, detail=result['message'])
-        
-    except Exception as e:
-        logger.error(f"Failed to start realtime collectors: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to start realtime collectors: {str(e)}")
-
-
-@router.post("/collectors/stop")
-async def stop_realtime_collectors(asset_types: Optional[List[str]] = None):
-    """실시간 데이터 수집기 중지 (Tiingo WebSocket + 스케줄러)"""
-    try:
-        # RealtimeCollector를 사용하여 수집기 중지
-        result = await realtime_collector.stop_collectors()
-        
-        if result['success']:
-            return {
-                "status": "stopped",
-                "websocket": "stopped",
-                "scheduler": "stopped",
-                "message": result['message']
-            }
-        else:
-            raise HTTPException(status_code=500, detail=result['message'])
-        
-    except Exception as e:
-        logger.error(f"Failed to stop realtime collectors: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to stop realtime collectors: {str(e)}")
-
-
-@router.get("/collectors/status")
-async def get_realtime_collectors_status():
-    """실시간 데이터 수집기 상태 조회"""
-    try:
-        # RealtimeCollector를 사용하여 상태 조회
-        status = realtime_collector.get_status()
-        
-        if 'error' in status:
-            raise HTTPException(status_code=500, detail=status['error'])
-        
-        return status
-        
-    except Exception as e:
-        logger.error(f"Failed to get realtime collectors status: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get status: {str(e)}")
 
 
 # ============================================================================
 # WebSocket 구독 관리 API
 # ============================================================================
 
-@router.get("/ws/subscriptions")
-async def list_ws_subscriptions():
-    """WebSocket 구독 목록 조회"""
-    consumer = get_consumer()
-    return {"subscriptions": consumer.list_subscriptions()}
+# WebSocket subscription endpoints - DISABLED (using websocket_orchestrator instead)
+# @router.get("/ws/subscriptions")
+# async def list_ws_subscriptions():
+#     """WebSocket 구독 목록 조회"""
+#     # consumer = get_consumer()
+#     # return {"subscriptions": consumer.list_subscriptions()}
+#     return {"message": "WebSocket subscriptions managed by websocket_orchestrator"}
+
+# @router.post("/ws/subscriptions/add")
+# async def add_ws_subscriptions(tickers: List[str]):
+#     """WebSocket 구독 종목 추가"""
+#     if not tickers:
+#         raise HTTPException(status_code=400, detail="tickers is required")
+#     # consumer = get_consumer()
+#     # await consumer.add_tickers(tickers)
+#     return {"status": "added", "tickers": sorted({t.upper() for t in tickers})}
+
+# @router.post("/ws/subscriptions/remove")
+# async def remove_ws_subscriptions(tickers: List[str]):
+#     """WebSocket 구독 종목 제거"""
+#     if not tickers:
+#         raise HTTPException(status_code=400, detail="tickers is required")
+#     # consumer = get_consumer()
+#     # await consumer.remove_tickers(tickers)
+#     return {"status": "removed", "tickers": sorted({t.upper() for t in tickers})}
 
 
-@router.post("/ws/subscriptions/add")
-async def add_ws_subscriptions(tickers: List[str]):
-    """WebSocket 구독 종목 추가"""
-    if not tickers:
-        raise HTTPException(status_code=400, detail="tickers is required")
-    consumer = get_consumer()
-    await consumer.add_tickers(tickers)
-    return {"status": "added", "tickers": sorted({t.upper() for t in tickers})}
+# ============================================================================
+# 실시간 가격 데이터 조회 API (개선된 버전)
+# ============================================================================
+
+@router.get("/quotes-price")
+async def get_realtime_quotes_price(
+    asset_identifier: str = Query(..., description="Asset ID (integer) or Ticker (string)"),
+    db: Session = Depends(get_db)
+):
+    """
+    실시간 가격 데이터 조회 (거의 라이브)
+    asset_identifier: Asset ID (integer) 또는 Ticker (string)
+    """
+    try:
+        from ....services.endpoint.realtime_quotes_service import RealtimeQuotesService
+        
+        # asset_identifier가 숫자인지 확인 (Asset ID)
+        if asset_identifier.isdigit():
+            asset_id = int(asset_identifier)
+            quotes = await RealtimeQuotesService.get_latest_quotes_by_asset_id(db, asset_id)
+        else:
+            # Ticker로 조회
+            quotes = await RealtimeQuotesService.get_latest_quotes_by_ticker(db, asset_identifier)
+        
+        if not quotes:
+            raise HTTPException(status_code=404, detail="No realtime quotes found")
+        
+        return {
+            "asset_identifier": asset_identifier,
+            "quotes": quotes,
+            "data_source": "realtime_quotes",
+            "timestamp": quotes[0].timestamp_utc if quotes else None
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get realtime quotes: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get realtime quotes: {str(e)}")
 
 
-@router.post("/ws/subscriptions/remove")
-async def remove_ws_subscriptions(tickers: List[str]):
-    """WebSocket 구독 종목 제거"""
-    if not tickers:
-        raise HTTPException(status_code=400, detail="tickers is required")
-    consumer = get_consumer()
-    await consumer.remove_tickers(tickers)
-    return {"status": "removed", "tickers": sorted({t.upper() for t in tickers})}
+@router.get("/quotes-delay-price")
+async def get_realtime_quotes_delay_price(
+    asset_identifier: str = Query(..., description="Asset ID (integer) or Ticker (string)"),
+    data_interval: str = Query("15m", description="Data interval (15m, 30m, 1h, etc.)"),
+    db: Session = Depends(get_db)
+):
+    """
+    실시간 가격 데이터 조회 (15분 지연)
+    asset_identifier: Asset ID (integer) 또는 Ticker (string)
+    data_interval: 데이터 간격 (기본값: 15m)
+    """
+    try:
+        from ....services.endpoint.realtime_quotes_service import RealtimeQuotesService
+        
+        # asset_identifier가 숫자인지 확인 (Asset ID)
+        if asset_identifier.isdigit():
+            asset_id = int(asset_identifier)
+            quotes = await RealtimeQuotesService.get_delay_quotes_by_asset_id(
+                db, asset_id, data_interval
+            )
+        else:
+            # Ticker로 조회
+            quotes = await RealtimeQuotesService.get_delay_quotes_by_ticker(
+                db, asset_identifier, data_interval
+            )
+        
+        if not quotes:
+            raise HTTPException(status_code=404, detail="No delay quotes found")
+        
+        return {
+            "asset_identifier": asset_identifier,
+            "quotes": quotes,
+            "data_source": "realtime_quotes_time_delay",
+            "data_interval": data_interval,
+            "timestamp": quotes[0].timestamp_utc if quotes else None
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get delay quotes: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get delay quotes: {str(e)}")
+
+
+@router.get("/intraday-ohlcv")
+async def get_ohlcv_intraday(
+    asset_identifier: str = Query(..., description="Asset ID (integer) or Ticker (string)"),
+    ohlcv: bool = Query(True, description="true=OHLCV 데이터, false=close price만"),
+    data_interval: str = Query("4h", description="Data interval (1h, 4h, etc.)"),
+    db: Session = Depends(get_db)
+):
+    """
+    OHLCV 인트라데이 데이터 조회
+    asset_identifier: Asset ID (integer) 또는 Ticker (string)
+    ohlcv: true=OHLCV 데이터, false=close price만
+    data_interval: 데이터 간격 (기본값: 4h)
+    """
+    try:
+        from ....services.endpoint.ohlcv_service import OHLCVService
+        
+        # asset_identifier가 숫자인지 확인 (Asset ID)
+        if asset_identifier.isdigit():
+            asset_id = int(asset_identifier)
+        else:
+            # Ticker로 조회
+            from ....models import Asset
+            asset = db.query(Asset).filter(Asset.ticker == asset_identifier.upper()).first()
+            if not asset:
+                raise HTTPException(status_code=404, detail=f"Asset not found with ticker: {asset_identifier}")
+            asset_id = asset.asset_id
+        
+        # OHLCV 데이터 조회
+        ohlcv_data = await OHLCVService.get_ohlcv_data(
+            db=db,
+            asset_id=asset_id,
+            data_interval=data_interval,
+            include_ohlcv=ohlcv
+        )
+        
+        if not ohlcv_data:
+            raise HTTPException(status_code=404, detail="No OHLCV data found")
+        
+        return {
+            "asset_identifier": asset_identifier,
+            "asset_id": asset_id,
+            "ohlcv": ohlcv,
+            "data_interval": data_interval,
+            "data": ohlcv_data,
+            "count": len(ohlcv_data)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get OHLCV data: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get OHLCV data: {str(e)}")

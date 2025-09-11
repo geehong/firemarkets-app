@@ -40,15 +40,7 @@ const HistoryTableAgGrid = ({
   const gridRef = useRef()
   const [gridApi, setGridApi] = useState(null)
 
-  // 디버깅 로그
-  console.log('🔍 HistoryTableAgGrid Debug:', {
-    dataLength: data?.length,
-    columnDefsLength: customColumnDefs?.length,
-    loading,
-    error: error?.message,
-    dataType,
-    dataSample: data?.slice(0, 2)
-  })
+  // (debug logs removed)
 
   // onGridSizeChanged 함수 추가 (temp_debug.js에서 가져옴)
   const onGridSizeChanged = (params) => {
@@ -264,6 +256,23 @@ const HistoryTableAgGrid = ({
     ]
   };
 
+  // 백엔드 OHLCV 스키마(timestamp_utc, open_price...)를 그리드 스키마(Date, Price...)로 정규화
+  const normalizedData = useMemo(() => {
+    if (!Array.isArray(data)) return []
+    if (dataType !== 'ohlcv') return data
+    return data.map((row) => ({
+      Date: row.timestamp_utc ?? row.Date ?? row.date,
+      Price: row.close_price ?? row.Price ?? row.close,
+      Change_Percent: row.change_percent ?? row.Change_Percent ?? row.change,
+      Open: row.open_price ?? row.Open ?? row.open,
+      High: row.high_price ?? row.High ?? row.high,
+      Low: row.low_price ?? row.Low ?? row.low,
+      Volume: row.volume ?? row.Volume
+    }))
+  }, [data, dataType])
+
+  // (debug logs removed)
+
   // 데이터 기반 컬럼 자동 생성
   const generateColumnsFromData = (data) => {
     if (!data || data.length === 0) return [];
@@ -434,7 +443,7 @@ const HistoryTableAgGrid = ({
     );
   }
 
-  console.log('🔍 HistoryTableAgGrid: Rendering grid with data length:', data?.length);
+  // (debug logs removed)
 
   return (
     <div style={{ 
@@ -445,7 +454,7 @@ const HistoryTableAgGrid = ({
       <AgGridReact
         ref={gridRef}
         columnDefs={columnDefs}
-        rowData={data}
+        rowData={normalizedData}
         gridOptions={gridOptions}
         theme={themeQuartz} // 새로운 Theming API 사용
         pagination={true}

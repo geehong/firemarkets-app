@@ -64,8 +64,8 @@ class DataProcessor:
             "finnhub:realtime": "finnhub_processor_group",
             "alpaca:realtime": "alpaca_processor_group",
             "binance:realtime": "binance_processor_group",
-            "fmp:realtime": "fmp_processor_group",
             "twelvedata:realtime": "twelvedata_processor_group",
+            "swissquote:realtime": "swissquote_processor_group",
             # "tiingo:realtime": "tiingo_processor_group",  # 대역폭 한도로 비활성화
         }
         self.batch_queue = "batch_data_queue"
@@ -330,6 +330,16 @@ class DataProcessor:
                         if ':' in symbol:
                             symbol = symbol.split(':')[-1]
                             logger.debug(f"🔄 심볼 정규화: {original_symbol} -> {symbol}")
+                        
+                        # Swissquote provider의 경우 심볼 역정규화 (XAU/USD -> GCUSD, XAG/USD -> SIUSD)
+                        if provider == 'swissquote':
+                            swissquote_mapping = {
+                                'XAU/USD': 'GCUSD',
+                                'XAG/USD': 'SIUSD'
+                            }
+                            if symbol in swissquote_mapping:
+                                symbol = swissquote_mapping[symbol]
+                                logger.debug(f"🔄 Swissquote 심볼 역정규화: {original_symbol} -> {symbol}")
                             
                         asset_id = ticker_to_asset_id.get(symbol)
                         if not asset_id:

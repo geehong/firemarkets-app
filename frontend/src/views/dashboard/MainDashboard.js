@@ -1,10 +1,9 @@
 import React from 'react'
-import { CRow, CCol } from '@coreui/react'
-import Widgets from 'src/components/widgets/WidgetsDropdown'
+import { CRow, CCol, CCard, CCardHeader, CCardBody, CCardTitle } from '@coreui/react'
 import DashboardChart from 'src/components/charts/DashboardChart'
 import DashboardTable from 'src/components/tables/DashboardTable'
 import PerformanceTreeMap from 'src/components/charts/PerformanceTreeMap'
-import RealTimeWidgets from 'src/components/widgets/RealTimeWidgets'
+import RealTimeWidgetsTypeA from 'src/components/widgets/RealTimeWidgetsTypeA'
  
 
 const MainDashboard = () => {
@@ -18,11 +17,14 @@ const MainDashboard = () => {
         </div>
       </div>
       
-      <RealTimeWidgets />
-      
-      
-      
-      <Widgets />
+      <CCard className="mb-4">
+        <CCardHeader>
+          <CCardTitle className="card-title">Real-time Widgets</CCardTitle>
+        </CCardHeader>
+        <CCardBody>
+          <RealTimeWidgetsTypeA symbols={[ 'BTCUSDT', 'ETHUSDT', 'GCUSD', 'NVDA', 'MSFT', 'AAPL', 'SPY', 'QQQ' ]} />
+        </CCardBody>
+      </CCard>
       <DashboardChart />
       <DashboardTable />
     </>

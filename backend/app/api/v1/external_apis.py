@@ -5,7 +5,7 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from ...services.external_data_service import ExternalDataService
+from ...services.endpoint.external_data_service import ExternalDataService
 from ...external_apis import (
     AlphaVantageClient,
     FMPClient,

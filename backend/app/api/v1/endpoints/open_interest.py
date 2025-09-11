@@ -5,7 +5,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, date, timedelta
 
 from ....core.database import get_db
-from ....services.open_interest_service import OpenInterestService
+from ....services.endpoint.open_interest_service import OpenInterestService
 from ....schemas.open_interest import (
     OpenInterestAnalysisResponse,
     ExchangeAnalysisResponse,

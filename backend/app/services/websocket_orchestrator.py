@@ -12,10 +12,10 @@ from app.services.websocket.base_consumer import BaseWSConsumer, AssetType
 from app.services.asset_manager import AssetManager, Asset
 from app.core.websocket_config import WebSocketConfig
 from app.services.websocket.finnhub_consumer import FinnhubWSConsumer
-from app.services.websocket.tiingo_consumer import TiingoWSConsumer
+#from app.services.websocket.tiingo_consumer import TiingoWSConsumer
 from app.services.websocket.alpaca_consumer import AlpacaWSConsumer
 from app.services.websocket.binance_consumer import BinanceWSConsumer
-from app.services.websocket.fmp_consumer import FMPWSConsumer
+from app.services.websocket.swissquote_consumer import SwissquoteWSConsumer
 # DISABLED: TwelveData WebSocket Consumer
 # from app.services.websocket.twelvedata_consumer import TwelveDataWSConsumer
 from app.core.config import GLOBAL_APP_CONFIGS
@@ -44,10 +44,10 @@ class WebSocketOrchestrator:
         # Consumer 클래스 등록
         self.consumer_classes = {
             'finnhub': FinnhubWSConsumer,
-            'tiingo': TiingoWSConsumer,
+            #'tiingo': TiingoWSConsumer,
             'alpaca': AlpacaWSConsumer,
             'binance': BinanceWSConsumer,
-            'fmp': FMPWSConsumer,
+            'swissquote': SwissquoteWSConsumer,
             # DISABLED: TwelveData WebSocket Consumer
             # 'twelvedata': TwelveDataWSConsumer
         }

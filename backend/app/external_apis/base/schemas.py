@@ -18,6 +18,7 @@ class OhlcvDataPoint(BaseModel):
     close_price: float
     volume: Optional[float] = None
     change_percent: Optional[float] = None
+    data_interval: Optional[str] = None  # 데이터 간격 (1d, 1w, 1m 등)
 
 class RealtimeQuoteData(BaseModel):
     """모든 실시간 시세 데이터의 표준 구조"""

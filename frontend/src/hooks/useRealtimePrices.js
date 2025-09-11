@@ -12,14 +12,34 @@ const useRealtimePrices = (symbols, assetType = 'crypto', options = {}) => {
     // queryKey에 assetType을 포함하여 캐시가 섞이지 않도록 함
     queryKey: ['realtimePrices', assetType, symbols],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      symbols.forEach(symbol => params.append('symbols', symbol));
-      
-      // assetType에 따라 다른 엔드포인트를 호출
-      const endpoint = assetType === 'crypto' ? '/realtime/prices/crypto' : '/realtime/prices/stock';
-      
-      const response = await realtimeAPI.getPricesByType(assetType, symbols);
-      return response.data.prices || {};
+      // 백엔드가 단건만 허용할 가능성을 대비해 순차 호출로 병합
+      const results = {}
+      for (const sym of symbols) {
+        try {
+          const r = await realtimeAPI.getQuotesPrice(sym)
+          // { prices: {SYM: {...}} } 또는 {SYM: {...}} 형태 허용
+          const payload = r.data?.prices || r.data || {}
+          // 디버그: 각 심볼 응답 스냅샷
+          try {
+            // eslint-disable-next-line no-console
+            console.log('[quotes-price] symbol=', sym, 'payload=', payload)
+          } catch {}
+          if (payload[sym]) {
+            results[sym] = payload[sym]
+          } else if (Array.isArray(payload.quotes) && payload.quotes.length > 0) {
+            // 백엔드: { asset_identifier, quotes: [ { price, change_percent, ... } ] }
+            results[sym] = payload.quotes[0]
+          } else if (payload.price != null) {
+            results[sym] = payload
+          }
+        } catch {}
+      }
+      const prices = results
+      try {
+        // eslint-disable-next-line no-console
+        console.log('[quotes-price] merged=', prices)
+      } catch {}
+      return prices;
     },
     enabled: !!symbols && symbols.length > 0,
     refetchInterval: assetType === 'crypto' ? 10000 : 300000, // 암호화폐는 10초, 주식은 5분
@@ -47,6 +67,47 @@ export const useCryptoPrices = (symbols, options = {}) => {
  */
 export const useStockPrices = (symbols, options = {}) => {
   return useRealtimePrices(symbols, 'stock', options);
+};
+
+/**
+ * 지연 스파크라인(1일) 데이터 훅: quotes-delay-price를 사용
+ */
+export const useDelaySparkline = (symbols = [], dataInterval = '15m', limit = 96, options = {}) => {
+  return useQuery({
+    queryKey: ['delaySparkline', symbols, dataInterval, limit],
+    queryFn: async () => {
+      const out = {}
+      for (const sym of symbols) {
+        try {
+          // 1) 우선 quotes-delay-price 시도
+          const r = await realtimeAPI.getQuotesDelayPrice(sym, dataInterval, limit)
+          let payload = r.data?.data || r.data || []
+          try {
+            // eslint-disable-next-line no-console
+            console.log('[quotes-delay-price] symbol=', sym, 'points=', Array.isArray(payload) ? payload.length : (Array.isArray(payload[sym]) ? payload[sym].length : 0))
+          } catch {}
+          let points = Array.isArray(payload) ? payload : (payload[sym] || [])
+
+          // 2) 비어 있으면 인트라데이 OHLCV(4h) 백업으로 사용
+          if (!Array.isArray(points) || points.length === 0) {
+            try {
+              const o = await realtimeAPI.getIntradayOhlcv(sym, '4h', true)
+              const arr = o.data?.data || []
+              points = arr.map(d => ({ timestamp_utc: d.timestamp || d.timestamp_utc, price: d.close }))
+            } catch {}
+          }
+
+          out[sym] = points
+        } catch {}
+      }
+      return out
+    },
+    enabled: !!symbols && symbols.length > 0,
+    staleTime: 60000,
+    gcTime: 300000,
+    refetchInterval: 60000,
+    ...options,
+  });
 };
 
 /**

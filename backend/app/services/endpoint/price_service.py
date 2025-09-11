@@ -10,8 +10,8 @@ from sqlalchemy import func
 from app.external_apis.implementations import BinanceClient, CoinGeckoClient, TwelveDataClient
 from app.external_apis.implementations.finnhub_client import FinnhubClient
 from app.core.config import GLOBAL_APP_CONFIGS
-from ..models import Asset, OHLCVData
-from ..api import deps
+from ...models import Asset, OHLCVData
+from ...api import deps
 
 logger = logging.getLogger(__name__)
 

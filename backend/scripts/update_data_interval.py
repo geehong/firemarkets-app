@@ -44,14 +44,14 @@ class DataIntervalUpdater:
                 else:
                     await db.execute(text("UPDATE ohlcv_day_data SET data_interval = NULL"))
                 
-                # 2. 주말(금요일) 데이터를 1W로 설정
+                # 2. 주말(금요일, 토요일) 데이터를 1W로 설정
                 if asset_id:
                     weekly_result = await db.execute(
                         text("""
                             UPDATE ohlcv_day_data 
                             SET data_interval = '1W' 
                             WHERE asset_id = :asset_id 
-                            AND DAYOFWEEK(timestamp_utc) = 6
+                            AND DAYOFWEEK(timestamp_utc) IN (6, 7)
                         """),
                         {"asset_id": asset_id}
                     )
@@ -60,7 +60,7 @@ class DataIntervalUpdater:
                         text("""
                             UPDATE ohlcv_day_data 
                             SET data_interval = '1W' 
-                            WHERE DAYOFWEEK(timestamp_utc) = 6
+                            WHERE DAYOFWEEK(timestamp_utc) IN (6, 7)
                         """)
                     )
                 

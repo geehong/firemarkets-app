@@ -35,18 +35,7 @@ const OHLCVTable = ({
     isSuccess 
   } = useAssetData(assetId, selectedInterval, showAll ? 10000 : 1000) // showAll이 true면 더 많은 데이터
 
-  // 디버깅 로그
-  console.log('🔍 OHLCVTable Debug:', {
-    assetId,
-    asset: asset?.name,
-    ohlcvDataLength: ohlcvData?.length,
-    loading,
-    error: error?.message,
-    isSuccess,
-    selectedInterval,
-    showAll,
-    rawData: ohlcvData?.slice(0, 2) // 처음 2개만 로그
-  })
+  // (debug logs removed)
 
   // 기본 컬럼 정의
   const baseColumns = [
@@ -216,12 +205,8 @@ const OHLCVTable = ({
 
   // OHLCV 데이터를 AG Grid 형식으로 변환
   const processedData = useMemo(() => {
-    if (!ohlcvData || ohlcvData.length === 0) {
-      console.log('🔍 OHLCVTable: No data to process');
-      return [];
-    }
+    if (!ohlcvData || ohlcvData.length === 0) return [];
 
-    console.log('🔍 OHLCVTable: Processing data, count:', ohlcvData.length);
 
     const processed = ohlcvData.map((item, index, arr) => {
       // Change_Percent 계산 (이전 날짜 대비)
@@ -245,9 +230,10 @@ const OHLCVTable = ({
       };
     }).sort((a, b) => new Date(b.Date) - new Date(a.Date)); // 최신 날짜순 정렬
 
-    console.log('🔍 OHLCVTable: Processed data sample:', processed.slice(0, 2));
     return processed;
   }, [ohlcvData]);
+
+  // (apiUrl debug removed)
 
   // 헤더 컴포넌트
   const HeaderComponent = () => (

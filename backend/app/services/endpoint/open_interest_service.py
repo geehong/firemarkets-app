@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 import statistics
 
-from ..models import CryptoMetric, Asset
-from ..schemas.open_interest import OpenInterestDataPoint, ExchangeData
+from ...models import CryptoMetric, Asset
+from ...schemas.open_interest import OpenInterestDataPoint, ExchangeData
 
 logger = logging.getLogger(__name__)
 

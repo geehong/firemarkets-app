@@ -1,4 +1,5 @@
 import React from 'react'
+import useRealtimePrices from 'src/hooks/useRealtimePrices'
 
 const OverViewHeaderMobile = ({
   asset,
@@ -9,8 +10,8 @@ const OverViewHeaderMobile = ({
   cryptoMetrics,
   cryptoData,
 }) => {
-  // 현재가와 변동률 계산
-  const getCurrentPrice = () => {
+  // 현재가와 변동률 계산 - OHLCV 기반 Fallback
+  const getFallbackPrice = () => {
     if (!ohlcvData || ohlcvData.length === 0) return { price: 0, change: 0, changePercent: 0 }
     const latest = ohlcvData[0]
     const previous = ohlcvData[1]
@@ -24,7 +25,37 @@ const OverViewHeaderMobile = ({
     return { price: latestClose, change, changePercent }
   }
 
-  const { price, change, changePercent } = getCurrentPrice()
+  // 실시간 가격 훅
+  const ticker = asset?.ticker
+  const assetType = asset?.type_name === 'Stocks' ? 'stock' : 'crypto'
+  const { data: liveMap } = useRealtimePrices(
+    ticker ? [ticker] : [],
+    assetType,
+    { enabled: !!ticker, refetchInterval: 15000, staleTime: 14000 }
+  )
+
+  const live = ticker ? liveMap?.[ticker] : undefined
+  const livePrice = live != null ? Number(live.price ?? live.close ?? live.last_price ?? live.last) : undefined
+  const liveChangePercent = live != null
+    ? Number(
+        live.change_percent ??
+        live.changePercent ??
+        live.change_percent_today ??
+        live.percent_change
+      )
+    : undefined
+  const liveChange = live != null
+    ? Number(
+        live.change ??
+        live.change_amount ??
+        (livePrice != null && liveChangePercent != null ? (livePrice * liveChangePercent) / 100 : undefined)
+      )
+    : undefined
+
+  const { price: fbPrice, change: fbChange, changePercent: fbChangePercent } = getFallbackPrice()
+  const price = (typeof livePrice === 'number' && !Number.isNaN(livePrice)) ? livePrice : fbPrice
+  const changePercent = (typeof liveChangePercent === 'number' && !Number.isNaN(liveChangePercent)) ? liveChangePercent : fbChangePercent
+  const change = (typeof liveChange === 'number' && !Number.isNaN(liveChange)) ? liveChange : fbChange
 
   return (
     <div className="card mb-4">

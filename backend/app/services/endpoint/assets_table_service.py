@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import json
 import logging
 
-from ..models import (
+from ...models import (
     Asset,
     AssetType,
     OHLCVData,
@@ -18,8 +18,8 @@ from ..models import (
     StockFinancial,
 )
 from app.external_apis.implementations import TwelveDataClient, BinanceClient, CoinGeckoClient
-from ..core.cache import cache_with_invalidation
-from ..core.config import GLOBAL_APP_CONFIGS
+from ...core.cache import cache_with_invalidation
+from ...core.config import GLOBAL_APP_CONFIGS
 
 logger = logging.getLogger(__name__)
 

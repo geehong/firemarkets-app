@@ -38,7 +38,7 @@ class WebSocketConfig:
         ),
         'alpaca': ProviderConfig(
             max_subscriptions=20,
-            supported_asset_types=[AssetType.STOCK],  # 주식(ETF 포함) 지원
+            supported_asset_types=[AssetType.STOCK, AssetType.ETF],  # 주식 + ETF 지원
             rate_limit_per_minute=200,
             priority=1,  # 동일 우선순위로 분산 배정
             reconnect_interval=30,
@@ -49,6 +49,14 @@ class WebSocketConfig:
             supported_asset_types=[AssetType.CRYPTO],  # 암호화폐 전용
             rate_limit_per_minute=300,
             priority=1,  # 동일 우선순위로 분산 배정
+            reconnect_interval=30,
+            health_check_interval=60
+        ),
+        'swissquote': ProviderConfig(
+            max_subscriptions=10,  # Swissquote는 제한적 구독
+            supported_asset_types=[AssetType.FOREX, AssetType.COMMODITY],  # 외환/커머디티 전용
+            rate_limit_per_minute=60,  # 무료 API이므로 제한적
+            priority=2,  # 커머디티/외환 전용이므로 낮은 우선순위
             reconnect_interval=30,
             health_check_interval=60
         )
