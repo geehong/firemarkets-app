@@ -186,11 +186,11 @@ class DataProcessor:
             elif is_weekend:
                 return "1w"  # 주말이면 주봉
             else:
-                return None  # 기본 일봉
+                return "1d"  # 기본 일봉 (None 대신 명시적으로 1d 반환)
                 
         except Exception as e:
             logger.warning(f"주기 판단 실패: {e}")
-            return None
+            return "1d"  # 실패 시에도 기본값으로 1d 반환
 
     @asynccontextmanager
     async def get_db_session(self):
@@ -932,10 +932,10 @@ class DataProcessor:
             logger.warning(f"OHLCV 데이터 저장 실패: asset_id={asset_id}, interval={interval} 정보 부족")
             return False
         
-        # interval에 따라 저장할 테이블 결정 (실제 주기 기반)
+        # interval에 따라 저장할 테이블 결정 (요청 주기 기반, 이후 실제 주기 검증로직에서 재조정)
         # 1d, 1w, 1m는 ohlcv_day_data, 나머지는 ohlcv_intraday_data
-        is_daily_data = interval in ["1d", "daily", "1w", "1m"] or interval is None
-        table_name = "ohlcv_day_data" if is_daily_data else "ohlcv_intraday_data"
+        is_daily_request = interval in ["1d", "daily", "1w", "1m"] or interval is None
+        table_name = "ohlcv_day_data" if is_daily_request else "ohlcv_intraday_data"
         
         logger.info(f"OHLCV 데이터 저장 시작: asset_id={asset_id}, interval={interval}, table={table_name}, records={len(items)}")
         
@@ -976,6 +976,9 @@ class DataProcessor:
                 from datetime import datetime, timezone
 
                 ohlcv_data_list = []
+                # 인트라데이 요청시 실제 주기 불일치 감지를 위한 플래그
+                intraday_request = not is_daily_request
+                wrong_interval_count = 0
                 for i, ohlcv_item in enumerate(ohlcv_list):
                     # model_dump(mode='python')을 사용하여 datetime을 그대로 유지
                     item_dict = ohlcv_item.model_dump(mode='python')
@@ -1012,15 +1015,27 @@ class DataProcessor:
 
                     item_dict['asset_id'] = asset_id
                     
-                    # timestamp_utc를 분석해서 실제 주기 판단
-                    actual_interval = self._determine_actual_interval(ts, items, i)
+                    # metadata의 interval을 우선 사용, 없으면 timestamp 분석으로 판단
+                    actual_interval = interval if interval else self._determine_actual_interval(ts, items, i)
                     item_dict['data_interval'] = actual_interval
 
                     ohlcv_data_list.append(item_dict)
+
+                    # 인트라데이 요청인데 실제가 1d/1w/1m면 카운트
+                    if intraday_request and actual_interval in ["1d", "daily", "1w", "1m"]:
+                        wrong_interval_count += 1
+
+                # 인트라데이 요청에 대한 가드: 전체의 과반이 일봉/주봉이면 리라우팅
+                if intraday_request and wrong_interval_count > 0:
+                    if wrong_interval_count >= max(1, len(ohlcv_data_list) // 2):
+                        logger.warning(
+                            f"인트라데이 요청(interval={interval})이지만 실제 데이터의 과반({wrong_interval_count}/{len(ohlcv_data_list)})가 일봉/주봉입니다. 일봉 테이블로 리라우팅합니다.")
+                        table_name = "ohlcv_day_data"
+                        is_daily_request = True
                 
                 # CRUD를 사용하여 데이터 저장 - 테이블별로 분리
                 from app.crud.asset import crud_ohlcv
-                if is_daily_data:
+                if is_daily_request:
                     added_count = crud_ohlcv.bulk_upsert_ohlcv_daily(db, ohlcv_data_list)
                 else:
                     added_count = crud_ohlcv.bulk_upsert_ohlcv_intraday(db, ohlcv_data_list)

@@ -89,7 +89,14 @@ class FMPClient(TradFiAPIClient):
                     return []
             
             async with httpx.AsyncClient() as client:
-                base = f"{self.base_url}/historical-price-full/{symbol}?apikey={self.api_key}"
+                # interval에 따라 다른 엔드포인트 사용
+                if interval in ["4h", "1h", "30m", "15m", "5m", "1m"]:
+                    # 인트라데이 데이터용 엔드포인트
+                    base = f"{self.base_url}/historical-chart/{interval}/{symbol}?apikey={self.api_key}"
+                else:
+                    # 일봉 데이터용 엔드포인트 (기본값)
+                    base = f"{self.base_url}/historical-price-full/{symbol}?apikey={self.api_key}"
+                
                 if start_date and end_date:
                     url = f"{base}&from={start_date}&to={end_date}"
                 else:

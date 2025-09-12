@@ -122,7 +122,7 @@ def load_and_set_global_configs():
         "RETRY_MAX_DELAY": config_loader.get("retry.max_delay", 30.0),
         "ENABLE_JITTER": config_loader.get("retry.enable_jitter", True),
         "RATE_LIMIT_DELAY": config_loader.get("api_limits.rate_limit_delay", 0.5),
-        "HISTORICAL_DATA_DAYS_PER_RUN": config_loader.get("historical_data.days_per_run", 1000),
+        "HISTORICAL_DATA_DAYS_PER_RUN": config_loader.get("historical_data.days_per_run", 500),
         "MAX_HISTORICAL_DAYS": config_loader.get("historical_data.max_historical_days", 10950),
         "ENABLE_HISTORICAL_BACKFILL": config_loader.get("historical_data.enable_backfill", True),
         "MIN_HISTORICAL_DATE": config_loader.get("historical_data.min_historical_date", "1999-11-01"),

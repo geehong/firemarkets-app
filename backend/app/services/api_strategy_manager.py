@@ -36,9 +36,11 @@ class ApiStrategyManager:
         ]
         
         # 2. 인트라데이 OHLCV 클라이언트 (4h, 1h 등)
+        # FMP는 실질적으로 일봉 위주이므로 인트라데이에서는 비활성화
         self.ohlcv_intraday_clients = [
-            FMPClient(),          # 1순위 (4h 데이터 지원 우수)
-            # AlphaVantageClient(), # 2순위 (asyncio 오류로 임시 비활성화)
+            TwelveDataClient(),  
+            AlphaVantageClient(), # (4h, 1h 데이터 지원)
+            # FMPClient(),          # 비활성화: 인트라데이 미지원/부정확
         ]
         
         # 3. 암호화폐 OHLCV 클라이언트 (1d, 4h, 1h 등)
@@ -439,6 +441,19 @@ class ApiStrategyManager:
         Returns:
             DataFrame 또는 None (모든 API 실패 시)
         """
+        # historical_days를 먼저 가져오기
+        from app.models import AppConfiguration
+        from app.core.database import get_db
+        
+        db = next(get_db())
+        try:
+            historical_days_config = db.query(AppConfiguration).filter(
+                AppConfiguration.config_key == "HISTORICAL_DATA_DAYS_PER_RUN"
+            ).first()
+            historical_days = int(historical_days_config.config_value) if historical_days_config else 165
+        finally:
+            db.close()
+        
         # asset_id가 있으면 DB 상태를 확인하여 최적 파라미터 결정
         if asset_id:
             params = self._get_fetch_parameters(asset_id, interval)
@@ -453,30 +468,22 @@ class ApiStrategyManager:
             self.logger.info(f"Using optimized parameters for asset {asset_id}: {start_date} to {end_date}, limit={adjusted_limit}")
         else:
             # 기존 로직 유지 (하위 호환성)
-            from app.models import AppConfiguration
-            from app.core.database import get_db
-            
-            db = next(get_db())
-            try:
-                historical_days_config = db.query(AppConfiguration).filter(
-                    AppConfiguration.config_key == "HISTORICAL_DATA_DAYS_PER_RUN"
-                ).first()
-                historical_days = int(historical_days_config.config_value) if historical_days_config else 165
-            finally:
-                db.close()
-            
-            # 간격별 limit 조정
-            if interval == '4h':
-                adjusted_limit = historical_days
+            # 간격별 limit 조정 (TwelveData 5000개 제한 고려)
+            if interval == '1h':
+                # 1h: 24배 (24시간 * historical_days)
+                adjusted_limit = historical_days * 24
+            elif interval == '4h':
+                # 4h: 6배 (6개 * historical_days)
+                adjusted_limit = historical_days * 6
             else:
                 adjusted_limit = limit
             
             # 날짜 범위 계산 (지원하는 API용)
             start_date, end_date = self._calculate_date_range(adjusted_limit)
         
-        # 4h 인터벌의 경우 특별 처리
-        if interval == "4h":
-            self.logger.info(f"4h interval requested for {ticker}. Some APIs may not support 4h data well.")
+        # 인트라데이 인터벌의 경우 특별 처리
+        if interval in ["4h", "1h"]:
+            self.logger.info(f"{interval} interval requested for {ticker}. Using adjusted limit: {adjusted_limit} (base: {historical_days})")
         
         yahoo_period = self._calculate_yahoo_period(adjusted_limit)
         last_exception = None
@@ -486,8 +493,11 @@ class ApiStrategyManager:
             clients_to_use = self.crypto_ohlcv_clients  # 암호화폐 OHLCV 전용 클라이언트 사용
             self.logger.info(f"Using crypto OHLCV clients for {ticker} (asset_type: {asset_type})")
         elif asset_type and 'commodity' in asset_type.lower():
-            clients_to_use = self.commodity_clients
-            self.logger.info(f"Using commodity clients for {ticker} (asset_type: {asset_type})")
+            # clients_to_use = self.commodity_clients  # 주석처리
+            # self.logger.info(f"Using commodity clients for {ticker} (asset_type: {asset_type})")  # 주석처리
+            # 커머디티는 일봉 클라이언트 사용
+            clients_to_use = self.ohlcv_day_clients
+            self.logger.info(f"Using daily OHLCV clients for commodity {ticker} (asset_type: {asset_type})")
         else:
             # 주식, ETF, 지수, 통화 등 - 인터벌에 따라 클라이언트 선택
             if interval in ["4h", "1h", "30m", "15m", "5m", "1m"]:
@@ -691,336 +701,336 @@ class ApiStrategyManager:
         """
         return await self.get_ohlcv(ticker, interval, limit, asset_type='stock')
     
-    async def get_company_profile(self, asset_id: int) -> Optional:
-        """
-        기업 프로필 데이터를 가져오는 메서드 (수집기용)
-        """
-        # asset_id로 ticker 조회
-        from app.models.asset import Asset
-        from app.core.database import SessionLocal
-        
-        db = SessionLocal()
-        try:
-            asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
-            if not asset:
-                return None
-            ticker = asset.ticker
-        finally:
-            db.close()
-        
-        # stock_profiles_clients 사용 (프로필 전용 우선순위)
-        for i, client in enumerate(self.stock_profiles_clients):
-            try:
-                self.logger.info(f"Attempting to fetch company profile for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.stock_profiles_clients)})")
-                
-                if hasattr(client, 'get_company_profile'):
-                    data = await client.get_company_profile(ticker)
-                elif hasattr(client, 'get_profile'):
-                    data = await client.get_profile(ticker)
-                else:
-                    self.logger.warning(f"{client.__class__.__name__} has no company profile method")
-                    continue
-                
-                if data is not None:
-                    self.logger.info(f"Successfully fetched company profile for {ticker} from {client.__class__.__name__}")
-                    return data
-                else:
-                    self.logger.warning(f"{client.__class__.__name__} returned empty company profile for {ticker}")
-                    
-            except Exception as e:
-                self.logger.warning(f"{client.__class__.__name__} failed for company profile {ticker}. Reason: {e}. Trying next client.")
-        
-        self.logger.error(f"All API clients failed to fetch company profile for {ticker}")
-        return None
+    # async def get_company_profile(self, asset_id: int) -> Optional:  # 주석처리
+    #     """
+    #     기업 프로필 데이터를 가져오는 메서드 (수집기용)
+    #     """
+    #     # asset_id로 ticker 조회
+    #     from app.models.asset import Asset
+    #     from app.core.database import SessionLocal
+    #     
+    #     db = SessionLocal()
+    #     try:
+    #         asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
+    #         if not asset:
+    #             return None
+    #         ticker = asset.ticker
+    #     finally:
+    #         db.close()
+    #     
+    #     # stock_profiles_clients 사용 (프로필 전용 우선순위)
+    #     for i, client in enumerate(self.stock_profiles_clients):
+    #         try:
+    #             self.logger.info(f"Attempting to fetch company profile for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.stock_profiles_clients)})")
+    #             
+    #             if hasattr(client, 'get_company_profile'):
+    #                 data = await client.get_company_profile(ticker)
+    #             elif hasattr(client, 'get_profile'):
+    #                 data = await client.get_profile(ticker)
+    #             else:
+    #                 self.logger.warning(f"{client.__class__.__name__} has no company profile method")
+    #                 continue
+    #             
+    #             if data is not None:
+    #                 self.logger.info(f"Successfully fetched company profile for {ticker} from {client.__class__.__name__}")
+    #                 return data
+    #             else:
+    #                 self.logger.warning(f"{client.__class__.__name__} returned empty company profile for {ticker}")
+    #                 
+    #         except Exception as e:
+    #             self.logger.warning(f"{client.__class__.__name__} failed for company profile {ticker}. Reason: {e}. Trying next client.")
+    #     
+    #     self.logger.error(f"All API clients failed to fetch company profile for {ticker}")
+    #     return None
 
-    async def get_stock_financials(self, asset_id: int) -> Optional:
-        """
-        주식 재무 데이터를 가져오는 메서드 (수집기용)
-        """
-        # asset_id로 ticker 조회
-        from app.models.asset import Asset
-        from app.core.database import SessionLocal
-        
-        db = SessionLocal()
-        try:
-            asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
-            if not asset:
-                return None
-            ticker = asset.ticker
-        finally:
-            db.close()
-        
-        # stock_financials_clients 사용 (재무 전용 우선순위)
-        for i, client in enumerate(self.stock_financials_clients):
-            try:
-                self.logger.info(f"Attempting to fetch stock financials for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.stock_financials_clients)})")
-                # 우선 순위: get_stock_financials (신규 표준) → get_financials → get_financial_statements (레거시)
-                if hasattr(client, 'get_stock_financials'):
-                    data = await client.get_stock_financials(ticker)
-                elif hasattr(client, 'get_financials'):
-                    data = await client.get_financials(ticker)
-                elif hasattr(client, 'get_financial_statements'):
-                    data = await client.get_financial_statements(ticker)
-                else:
-                    self.logger.warning(f"{client.__class__.__name__} has no financials method")
-                    continue
-                
-                if data is not None:
-                    self.logger.info(f"Successfully fetched stock financials for {ticker} from {client.__class__.__name__}")
-                    return data
-                else:
-                    self.logger.warning(f"{client.__class__.__name__} returned empty stock financials for {ticker}")
-                    
-            except Exception as e:
-                self.logger.warning(f"{client.__class__.__name__} failed for stock financials {ticker}. Reason: {e}. Trying next client.")
-        
-        self.logger.error(f"All API clients failed to fetch stock financials for {ticker}")
-        return None
+    # async def get_stock_financials(self, asset_id: int) -> Optional:  # 주석처리
+    #     """
+    #     주식 재무 데이터를 가져오는 메서드 (수집기용)
+    #     """
+    #     # asset_id로 ticker 조회
+    #     from app.models.asset import Asset
+    #     from app.core.database import SessionLocal
+    #     
+    #     db = SessionLocal()
+    #     try:
+    #         asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
+    #         if not asset:
+    #             return None
+    #         ticker = asset.ticker
+    #     finally:
+    #         db.close()
+    #     
+    #     # stock_financials_clients 사용 (재무 전용 우선순위)
+    #     for i, client in enumerate(self.stock_financials_clients):
+    #         try:
+    #             self.logger.info(f"Attempting to fetch stock financials for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.stock_financials_clients)})")
+    #             # 우선 순위: get_stock_financials (신규 표준) → get_financials → get_financial_statements (레거시)
+    #             if hasattr(client, 'get_stock_financials'):
+    #                 data = await client.get_stock_financials(ticker)
+    #             elif hasattr(client, 'get_financials'):
+    #                 data = await client.get_financials(ticker)
+    #             elif hasattr(client, 'get_financial_statements'):
+    #                 data = await client.get_financial_statements(ticker)
+    #             else:
+    #                 self.logger.warning(f"{client.__class__.__name__} has no financials method")
+    #                 continue
+    #             
+    #             if data is not None:
+    #                 self.logger.info(f"Successfully fetched stock financials for {ticker} from {client.__class__.__name__}")
+    #                 return data
+    #             else:
+    #                 self.logger.warning(f"{client.__class__.__name__} returned empty stock financials for {ticker}")
+    #                 
+    #         except Exception as e:
+    #             self.logger.warning(f"{client.__class__.__name__} failed for stock financials {ticker}. Reason: {e}. Trying next client.")
+    #     
+    #     self.logger.error(f"All API clients failed to fetch stock financials for {ticker}")
+    #     return None
 
-    async def get_analyst_estimates(self, asset_id: int) -> Optional:
-        """
-        애널리스트 추정치 데이터를 가져오는 메서드 (수집기용)
-        """
-        # asset_id로 ticker 조회
-        from app.models.asset import Asset
-        from app.core.database import SessionLocal
-        
-        db = SessionLocal()
-        try:
-            asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
-            if not asset:
-                return None
-            ticker = asset.ticker
-        finally:
-            db.close()
-        
-        # stock_analyst_estimates_clients 사용 (추정치 전용 우선순위)
-        for i, client in enumerate(self.stock_analyst_estimates_clients):
-            try:
-                self.logger.info(f"Attempting to fetch analyst estimates for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.stock_analyst_estimates_clients)})")
-                
-                if hasattr(client, 'get_analyst_estimates'):
-                    data = await client.get_analyst_estimates(ticker)
-                elif hasattr(client, 'get_estimates'):
-                    data = await client.get_estimates(ticker)
-                else:
-                    self.logger.warning(f"{client.__class__.__name__} has no analyst estimates method")
-                    continue
-                
-                if data is not None:
-                    self.logger.info(f"Successfully fetched analyst estimates for {ticker} from {client.__class__.__name__}")
-                    return data
-                else:
-                    self.logger.warning(f"{client.__class__.__name__} returned empty analyst estimates for {ticker}")
-                    
-            except Exception as e:
-                self.logger.warning(f"{client.__class__.__name__} failed for analyst estimates {ticker}. Reason: {e}. Trying next client.")
-        
-        self.logger.error(f"All API clients failed to fetch analyst estimates for {ticker}")
-        return None
+    # async def get_analyst_estimates(self, asset_id: int) -> Optional:  # 주석처리
+    #     """
+    #     애널리스트 추정치 데이터를 가져오는 메서드 (수집기용)
+    #     """
+    #     # asset_id로 ticker 조회
+    #     from app.models.asset import Asset
+    #     from app.core.database import SessionLocal
+    #     
+    #     db = SessionLocal()
+    #     try:
+    #         asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
+    #         if not asset:
+    #             return None
+    #         ticker = asset.ticker
+    #     finally:
+    #         db.close()
+    #     
+    #     # stock_analyst_estimates_clients 사용 (추정치 전용 우선순위)
+    #     for i, client in enumerate(self.stock_analyst_estimates_clients):
+    #         try:
+    #             self.logger.info(f"Attempting to fetch analyst estimates for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.stock_analyst_estimates_clients)})")
+    #             
+    #             if hasattr(client, 'get_analyst_estimates'):
+    #                 data = await client.get_analyst_estimates(ticker)
+    #             elif hasattr(client, 'get_estimates'):
+    #                 data = await client.get_estimates(ticker)
+    #             else:
+    #                 self.logger.warning(f"{client.__class__.__name__} has no analyst estimates method")
+    #                 continue
+    #             
+    #             if data is not None:
+    #                 self.logger.info(f"Successfully fetched analyst estimates for {ticker} from {client.__class__.__name__}")
+    #                 return data
+    #             else:
+    #                 self.logger.warning(f"{client.__class__.__name__} returned empty analyst estimates for {ticker}")
+    #                 
+    #         except Exception as e:
+    #             self.logger.warning(f"{client.__class__.__name__} failed for analyst estimates {ticker}. Reason: {e}. Trying next client.")
+    #     
+    #     self.logger.error(f"All API clients failed to fetch analyst estimates for {ticker}")
+    #     return None
 
-    async def get_etf_info(self, asset_id: int) -> Optional:
-        """
-        ETF 정보를 가져오는 메서드 (수집기용)
-        """
-        # asset_id로 ticker 조회
-        from app.models.asset import Asset
-        from app.core.database import SessionLocal
-        
-        db = SessionLocal()
-        try:
-            asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
-            if not asset:
-                return None
-            ticker = asset.ticker
-        finally:
-            db.close()
-        
-        # etf_clients 사용 (의도된 우선순위)
-        for i, client in enumerate(self.etf_clients):
-            try:
-                self.logger.info(f"Attempting to fetch ETF info for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.etf_clients)})")
-                
-                if hasattr(client, 'get_etf_info'):
-                    data = await client.get_etf_info(ticker)
-                elif hasattr(client, 'get_etf_profile'):
-                    data = await client.get_etf_profile(ticker)
-                elif hasattr(client, 'get_overview'):
-                    data = await client.get_overview(ticker)
-                elif hasattr(client, 'get_profile'):
-                    data = await client.get_profile(ticker)
-                elif 'AlphaVantage' in client.__class__.__name__:
-                    # 직접 AlphaVantage ETF_PROFILE 호출 (클라이언트에 메서드가 없는 경우)
-                    data = await self._fetch_alpha_vantage_etf_profile(ticker)
-                else:
-                    self.logger.warning(f"{client.__class__.__name__} has no ETF info method")
-                    continue
-                
-                if data is not None:
-                    self.logger.info(f"Successfully fetched ETF info for {ticker} from {client.__class__.__name__}")
-                    return data
-                else:
-                    self.logger.warning(f"{client.__class__.__name__} returned empty ETF info for {ticker}")
-                    
-            except Exception as e:
-                self.logger.warning(f"{client.__class__.__name__} failed for ETF info {ticker}. Reason: {e}. Trying next client.")
-        
-        self.logger.error(f"All API clients failed to fetch ETF info for {ticker}")
-        return None
+    # async def get_etf_info(self, asset_id: int) -> Optional:  # 주석처리
+    #     """
+    #     ETF 정보를 가져오는 메서드 (수집기용)
+    #     """
+    #     # asset_id로 ticker 조회
+    #     from app.models.asset import Asset
+    #     from app.core.database import SessionLocal
+    #     
+    #     db = SessionLocal()
+    #     try:
+    #         asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
+    #         if not asset:
+    #             return None
+    #         ticker = asset.ticker
+    #     finally:
+    #         db.close()
+    #     
+    #     # etf_clients 사용 (의도된 우선순위)
+    #     for i, client in enumerate(self.etf_clients):
+    #         try:
+    #             self.logger.info(f"Attempting to fetch ETF info for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.etf_clients)})")
+    #             
+    #             if hasattr(client, 'get_etf_info'):
+    #                 data = await client.get_etf_info(ticker)
+    #             elif hasattr(client, 'get_etf_profile'):
+    #                 data = await client.get_etf_profile(ticker)
+    #             elif hasattr(client, 'get_overview'):
+    #                 data = await client.get_overview(ticker)
+    #             elif hasattr(client, 'get_profile'):
+    #                 data = await client.get_profile(ticker)
+    #             elif 'AlphaVantage' in client.__class__.__name__:
+    #                 # 직접 AlphaVantage ETF_PROFILE 호출 (클라이언트에 메서드가 없는 경우)
+    #                 data = await self._fetch_alpha_vantage_etf_profile(ticker)
+    #             else:
+    #                 self.logger.warning(f"{client.__class__.__name__} has no ETF info method")
+    #                 continue
+    #             
+    #             if data is not None:
+    #                 self.logger.info(f"Successfully fetched ETF info for {ticker} from {client.__class__.__name__}")
+    #                 return data
+    #             else:
+    #                 self.logger.warning(f"{client.__class__.__name__} returned empty ETF info for {ticker}")
+    #                 
+    #         except Exception as e:
+    #             self.logger.warning(f"{client.__class__.__name__} failed for ETF info {ticker}. Reason: {e}. Trying next client.")
+    #     
+    #     self.logger.error(f"All API clients failed to fetch ETF info for {ticker}")
+    #     return None
 
-    async def _fetch_alpha_vantage_etf_profile(self, ticker: str) -> Optional[EtfInfoData]:
-        """AlphaVantage ETF_PROFILE 직접 호출 후 EtfInfoData로 매핑"""
-        try:
-            api_key = None
-            # ConfigManager 우선, 없으면 환경변수
-            if self.config_manager and hasattr(self.config_manager, 'get_config'):
-                api_key = self.config_manager.get_config('ALPHA_VANTAGE_API_KEY_1') or self.config_manager.get_config('ALPHA_VANTAGE_API_KEY')
-            if not api_key:
-                api_key = os.getenv('ALPHA_VANTAGE_API_KEY_1') or os.getenv('ALPHA_VANTAGE_API_KEY')
-            if not api_key:
-                self.logger.warning("AlphaVantage API key not configured for ETF_PROFILE")
-                return None
+    # async def _fetch_alpha_vantage_etf_profile(self, ticker: str) -> Optional[EtfInfoData]:  # 주석처리
+    #     """AlphaVantage ETF_PROFILE 직접 호출 후 EtfInfoData로 매핑"""
+    #     try:
+    #         api_key = None
+    #         # ConfigManager 우선, 없으면 환경변수
+    #         if self.config_manager and hasattr(self.config_manager, 'get_config'):
+    #             api_key = self.config_manager.get_config('ALPHA_VANTAGE_API_KEY_1') or self.config_manager.get_config('ALPHA_VANTAGE_API_KEY')
+    #         if not api_key:
+    #             api_key = os.getenv('ALPHA_VANTAGE_API_KEY_1') or os.getenv('ALPHA_VANTAGE_API_KEY')
+    #         if not api_key:
+    #             self.logger.warning("AlphaVantage API key not configured for ETF_PROFILE")
+    #             return None
 
-            url = "https://www.alphavantage.co/query"
-            params = {"function": "ETF_PROFILE", "symbol": ticker, "apikey": api_key}
-            async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.get(url, params=params)
-                resp.raise_for_status()
-                payload = resp.json() or {}
+    #         url = "https://www.alphavantage.co/query"
+    #         params = {"function": "ETF_PROFILE", "symbol": ticker, "apikey": api_key}
+    #         async with httpx.AsyncClient(timeout=30) as client:
+    #             resp = await client.get(url, params=params)
+    #             resp.raise_for_status()
+    #             payload = resp.json() or {}
 
-            # 매핑 및 변환
-            def to_float(x):
-                try:
-                    return float(x) if x not in (None, "", "n/a") else None
-                except Exception:
-                    return None
+    #         # 매핑 및 변환
+    #         def to_float(x):
+    #             try:
+    #                 return float(x) if x not in (None, "", "n/a") else None
+    #             except Exception:
+    #                 return None
 
-            leveraged_str = str(payload.get("leveraged") or "").strip().upper()
-            leveraged = True if leveraged_str in ("YES", "Y", "TRUE", "1") else False if leveraged_str in ("NO", "N", "FALSE", "0") else None
+    #         leveraged_str = str(payload.get("leveraged") or "").strip().upper()
+    #         leveraged = True if leveraged_str in ("YES", "Y", "TRUE", "1") else False if leveraged_str in ("NO", "N", "FALSE", "0") else None
 
-            etf_data = EtfInfoData(
-                symbol=ticker,
-                net_assets=to_float(payload.get("net_assets")),
-                net_expense_ratio=to_float(payload.get("net_expense_ratio")),
-                portfolio_turnover=to_float(payload.get("portfolio_turnover")),
-                dividend_yield=to_float(payload.get("dividend_yield")),
-                inception_date=payload.get("inception_date") or None,
-                leveraged=leveraged,
-                sectors=payload.get("sectors"),
-                holdings=payload.get("holdings"),
-                timestamp_utc=datetime.now()
-            )
-            return etf_data
-        except Exception as e:
-            self.logger.warning(f"AlphaVantage ETF_PROFILE fetch failed for {ticker}: {e}")
-            return None
+    #         etf_data = EtfInfoData(
+    #             symbol=ticker,
+    #             net_assets=to_float(payload.get("net_assets")),
+    #             net_expense_ratio=to_float(payload.get("net_expense_ratio")),
+    #             portfolio_turnover=to_float(payload.get("portfolio_turnover")),
+    #             dividend_yield=to_float(payload.get("dividend_yield")),
+    #             inception_date=payload.get("inception_date") or None,
+    #             leveraged=leveraged,
+    #             sectors=payload.get("sectors"),
+    #             holdings=payload.get("holdings"),
+    #             timestamp_utc=datetime.now()
+    #         )
+    #         return etf_data
+    #     except Exception as e:
+    #         self.logger.warning(f"AlphaVantage ETF_PROFILE fetch failed for {ticker}: {e}")
+    #         return None
 
-    async def get_crypto_info(self, asset_id: int) -> Optional:
-        """
-        암호화폐 정보를 가져오는 메서드 (수집기용)
-        """
-        # asset_id로 ticker 조회
-        from app.models.asset import Asset
-        from app.core.database import SessionLocal
-        
-        db = SessionLocal()
-        try:
-            asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
-            if not asset:
-                return None
-            ticker = asset.ticker
-        finally:
-            db.close()
-        
-        # crypto_clients 사용 (의도된 우선순위)
-        for i, client in enumerate(self.crypto_clients):
-            try:
-                self.logger.info(f"Attempting to fetch crypto info for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.crypto_clients)})")
-                
-                if hasattr(client, 'get_crypto_data'):
-                    data = await client.get_crypto_data(ticker)
-                elif hasattr(client, 'get_crypto_info'):
-                    data = await client.get_crypto_info(ticker)
-                elif hasattr(client, 'get_profile'):
-                    data = await client.get_profile(ticker)
-                else:
-                    self.logger.warning(f"{client.__class__.__name__} has no crypto info method")
-                    continue
-                
-                if data is not None:
-                    self.logger.info(f"Successfully fetched crypto info for {ticker} from {client.__class__.__name__}")
-                    return data
-                else:
-                    self.logger.warning(f"{client.__class__.__name__} returned empty crypto info for {ticker}")
-                    
-            except Exception as e:
-                self.logger.warning(f"{client.__class__.__name__} failed for crypto info {ticker}. Reason: {e}. Trying next client.")
-        
-        self.logger.error(f"All API clients failed to fetch crypto info for {ticker}")
-        return None
+    # async def get_crypto_info(self, asset_id: int) -> Optional:  # 주석처리
+    #     """
+    #     암호화폐 정보를 가져오는 메서드 (수집기용)
+    #     """
+    #     # asset_id로 ticker 조회
+    #     from app.models.asset import Asset
+    #     from app.core.database import SessionLocal
+    #     
+    #     db = SessionLocal()
+    #     try:
+    #         asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
+    #         if not asset:
+    #             return None
+    #         ticker = asset.ticker
+    #     finally:
+    #         db.close()
+    #     
+    #     # crypto_clients 사용 (의도된 우선순위)
+    #     for i, client in enumerate(self.crypto_clients):
+    #         try:
+    #             self.logger.info(f"Attempting to fetch crypto info for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.crypto_clients)})")
+    #             
+    #             if hasattr(client, 'get_crypto_data'):
+    #                 data = await client.get_crypto_data(ticker)
+    #             elif hasattr(client, 'get_crypto_info'):
+    #                 data = await client.get_crypto_info(ticker)
+    #             elif hasattr(client, 'get_profile'):
+    #                 data = await client.get_profile(ticker)
+    #             else:
+    #                 self.logger.warning(f"{client.__class__.__name__} has no crypto info method")
+    #                 continue
+    #             
+    #             if data is not None:
+    #                 self.logger.info(f"Successfully fetched crypto info for {ticker} from {client.__class__.__name__}")
+    #                 return data
+    #             else:
+    #                 self.logger.warning(f"{client.__class__.__name__} returned empty crypto info for {ticker}")
+    #                 
+    #         except Exception as e:
+    #             self.logger.warning(f"{client.__class__.__name__} failed for crypto info {ticker}. Reason: {e}. Trying next client.")
+    #     
+    #     self.logger.error(f"All API clients failed to fetch crypto info for {ticker}")
+    #     return None
 
-    async def get_onchain_metric(self, metric_name: str, asset_id: int = None) -> Optional:
-        """
-        온체인 메트릭 데이터를 가져오는 메서드 (수집기용)
-        """
-        # onchain_clients 사용 (의도된 우선순위)
-        for i, client in enumerate(self.onchain_clients):
-            try:
-                self.logger.info(f"Attempting to fetch onchain metric {metric_name} using {client.__class__.__name__} (attempt {i+1}/{len(self.onchain_clients)})")
-                
-                if hasattr(client, 'get_metric'):
-                    data = await client.get_metric(metric_name)
-                elif hasattr(client, 'get_onchain_metric'):
-                    data = await client.get_onchain_metric(metric_name)
-                else:
-                    self.logger.warning(f"{client.__class__.__name__} has no onchain metric method")
-                    continue
-                
-                if data is not None:
-                    self.logger.info(f"Successfully fetched onchain metric {metric_name} from {client.__class__.__name__}")
-                    return data
-                else:
-                    self.logger.warning(f"{client.__class__.__name__} returned empty onchain metric for {metric_name}")
-                    
-            except Exception as e:
-                self.logger.warning(f"{client.__class__.__name__} failed for onchain metric {metric_name}. Reason: {e}. Trying next client.")
-        
-        self.logger.error(f"All API clients failed to fetch onchain metric {metric_name}")
-        return None
+    # async def get_onchain_metric(self, metric_name: str, asset_id: int = None) -> Optional:  # 주석처리
+    #     """
+    #     온체인 메트릭 데이터를 가져오는 메서드 (수집기용)
+    #     """
+    #     # onchain_clients 사용 (의도된 우선순위)
+    #     for i, client in enumerate(self.onchain_clients):
+    #         try:
+    #             self.logger.info(f"Attempting to fetch onchain metric {metric_name} using {client.__class__.__name__} (attempt {i+1}/{len(self.onchain_clients)})")
+    #             
+    #             if hasattr(client, 'get_metric'):
+    #                 data = await client.get_metric(metric_name)
+    #             elif hasattr(client, 'get_onchain_metric'):
+    #                 data = await client.get_onchain_metric(metric_name)
+    #             else:
+    #                 self.logger.warning(f"{client.__class__.__name__} has no onchain metric method")
+    #                 continue
+    #             
+    #             if data is not None:
+    #                 self.logger.info(f"Successfully fetched onchain metric {metric_name} from {client.__class__.__name__}")
+    #                 return data
+    #             else:
+    #                 self.logger.warning(f"{client.__class__.__name__} returned empty onchain metric for {metric_name}")
+    #                 
+    #         except Exception as e:
+    #             self.logger.warning(f"{client.__class__.__name__} failed for onchain metric {metric_name}. Reason: {e}. Trying next client.")
+    #     
+    #     self.logger.error(f"All API clients failed to fetch onchain metric {metric_name}")
+    #     return None
 
-    async def get_company_info(self, ticker: str) -> Optional[Dict[str, Any]]:
-        """
-        회사 정보를 여러 API에서 순서대로 시도하여 가져옵니다.
-        """
-        last_exception = None
-        
-        for i, client in enumerate(self.ohlcv_clients):
-            try:
-                self.logger.info(f"Attempting to fetch company info for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.ohlcv_clients)})")
-                
-                if hasattr(client, 'get_company_info'):
-                    data = await client.get_company_info(ticker)
-                elif hasattr(client, 'get_profile'):
-                    data = await client.get_profile(ticker)
-                elif hasattr(client, 'get_metadata'):
-                    # Tiingo 클라이언트의 경우
-                    data = await client.get_metadata(ticker)
-                else:
-                    self.logger.warning(f"{client.__class__.__name__} has no known company info fetching method")
-                    continue
-                
-                if data is not None:
-                    self.logger.info(f"Successfully fetched company info for {ticker} from {client.__class__.__name__}")
-                    return data
-                else:
-                    self.logger.warning(f"{client.__class__.__name__} returned empty company info for {ticker}")
-                    
-            except Exception as e:
-                self.logger.warning(f"{client.__class__.__name__} failed for company info {ticker}. Reason: {e}. Trying next client.")
-                last_exception = e
-        
-        self.logger.error(f"All API clients failed to fetch company info for {ticker}. Last error: {last_exception}")
-        return None
+    # async def get_company_info(self, ticker: str) -> Optional[Dict[str, Any]]:  # 주석처리
+    #     """
+    #     회사 정보를 여러 API에서 순서대로 시도하여 가져옵니다.
+    #     """
+    #     last_exception = None
+    #     
+    #     for i, client in enumerate(self.ohlcv_clients):
+    #         try:
+    #             self.logger.info(f"Attempting to fetch company info for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.ohlcv_clients)})")
+    #             
+    #             if hasattr(client, 'get_company_info'):
+    #                 data = await client.get_company_info(ticker)
+    #             elif hasattr(client, 'get_profile'):
+    #                 data = await client.get_profile(ticker)
+    #             elif hasattr(client, 'get_metadata'):
+    #                 # Tiingo 클라이언트의 경우
+    #                 data = await client.get_metadata(ticker)
+    #             else:
+    #                 self.logger.warning(f"{client.__class__.__name__} has no known company info fetching method")
+    #                 continue
+    #             
+    #             if data is not None:
+    #                 self.logger.info(f"Successfully fetched company info for {ticker} from {client.__class__.__name__}")
+    #                 return data
+    #             else:
+    #                 self.logger.warning(f"{client.__class__.__name__} returned empty company info for {ticker}")
+    #                 
+    #         except Exception as e:
+    #             self.logger.warning(f"{client.__class__.__name__} failed for company info {ticker}. Reason: {e}. Trying next client.")
+    #             last_exception = e
+    #     
+    #     self.logger.error(f"All API clients failed to fetch company info for {ticker}. Last error: {last_exception}")
+    #     return None
     
     def _get_fetch_parameters(self, asset_id: int, interval: str) -> Optional[Dict[str, Any]]:
         """
@@ -1353,13 +1363,13 @@ class ApiStrategyManager:
             "ohlcv_day_clients": [client.__class__.__name__ for client in self.ohlcv_day_clients],
             "ohlcv_intraday_clients": [client.__class__.__name__ for client in self.ohlcv_intraday_clients],
             "crypto_ohlcv_clients": [client.__class__.__name__ for client in self.crypto_ohlcv_clients],
-            "stock_profiles_clients": [client.__class__.__name__ for client in self.stock_profiles_clients],
-            "stock_financials_clients": [client.__class__.__name__ for client in self.stock_financials_clients],
-            "stock_analyst_estimates_clients": [client.__class__.__name__ for client in self.stock_analyst_estimates_clients],
-            "crypto_clients": [client.__class__.__name__ for client in self.crypto_clients],
-            "commodity_clients": [client.__class__.__name__ for client in self.commodity_clients],
-            "etf_clients": [client.__class__.__name__ for client in self.etf_clients],
-            "onchain_clients": [client.__class__.__name__ for client in self.onchain_clients]
+            # "stock_profiles_clients": [client.__class__.__name__ for client in self.stock_profiles_clients],  # 주석처리
+            # "stock_financials_clients": [client.__class__.__name__ for client in self.stock_financials_clients],  # 주석처리
+            # "stock_analyst_estimates_clients": [client.__class__.__name__ for client in self.stock_analyst_estimates_clients],  # 주석처리
+            # "crypto_clients": [client.__class__.__name__ for client in self.crypto_clients],  # 주석처리
+            # "commodity_clients": [client.__class__.__name__ for client in self.commodity_clients],  # 주석처리
+            # "etf_clients": [client.__class__.__name__ for client in self.etf_clients],  # 주석처리
+            # "onchain_clients": [client.__class__.__name__ for client in self.onchain_clients]  # 주석처리
         }
         return status
 

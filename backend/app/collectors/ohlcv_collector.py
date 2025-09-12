@@ -143,8 +143,11 @@ class OHLCVCollector(BaseCollector):
                     json.loads(item.model_dump_json()) for item in ohlcv_data
                 ]
 
+                # interval에 따라 적절한 태스크 타입 선택
+                task_type = "ohlcv_day_data" if interval in ["1d", "daily", "1w", "1m"] else "ohlcv_intraday_data"
+                
                 await self.redis_queue_manager.push_batch_task(
-                    "ohlcv_day_data",
+                    task_type,
                     {
                         "items": items,
                         "metadata": {

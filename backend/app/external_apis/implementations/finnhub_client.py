@@ -25,23 +25,24 @@ logger = logging.getLogger(__name__)
 class FinnhubClient(TradFiAPIClient):
     """Finnhub API Client for professional financial data"""
     
-    def __init__(self, api_key: str):
-        """
-        Initialize Finnhub client.
-        
-        Args:
-            api_key: Finnhub API key
-        """
-        super().__init__(api_key)
+    def __init__(self):
+        """Initialize Finnhub client."""
+        super().__init__()
         self.name = "Finnhub"
         self.base_url = "https://finnhub.io/api/v1"
         self.session = None
+        
+        # 환경 변수에서 API 키 읽기
+        import os
+        self.api_key = os.getenv("FINNHUB_API_KEY", "")
+        if not self.api_key:
+            logger.warning("FINNHUB_API_KEY is not configured.")
         
         # Rate limiting
         self.requests_per_minute = 59  # Free tier limit
         self.last_request_time = 0
         
-        logger.info(f"Finnhub client initialized with API key: {api_key[:8]}...")
+        logger.info(f"Finnhub client initialized with API key: {self.api_key[:8] if self.api_key else 'None'}...")
     
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create aiohttp session"""

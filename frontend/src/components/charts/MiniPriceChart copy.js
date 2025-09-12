@@ -8,30 +8,14 @@ import 'highcharts/modules/price-indicator';
 import 'highcharts/modules/exporting';
 import 'highcharts/modules/accessibility';
 
-const MiniPriceChartItem = ({ assetIdentifier }) => {
+const MiniPriceChart = ({ assetIdentifier }) => {
   const chartRef = useRef(null);
-  const containerRef = useRef(null);
   const [chartData, setChartData] = useState([]);
   const [isInitialized, setIsInitialized] = useState(false);
   const [basePrice, setBasePrice] = useState(null); // 기준 가격 저장
   const [initialPrice, setInitialPrice] = useState(null); // 초기 가격 저장 (상대적 변화율 계산용)
   const [yAxisRange, setYAxisRange] = useState({ min: null, max: null }); // Y축 범위 고정
   const [xAxisRange, setXAxisRange] = useState({ min: null, max: null }); // X축 범위 고정
-  const [lastPointDirection, setLastPointDirection] = useState(null); // 'up' | 'down' | 'flat'
-  const [chartHeight, setChartHeight] = useState(400); // 동적 높이 (기본 300)
-  
-  // 마지막 가격 포인터에 "빛나는" 효과를 주기 위한 CSS
-  const glowingMarkerStyle = `
-    @keyframes glowing {
-      0% { filter: drop-shadow(0 0 3px #00d4ff); }
-      50% { filter: drop-shadow(0 0 10px #00d4ff) drop-shadow(0 0 10px #00d4ff); }
-      100% { filter: drop-shadow(0 0 3px #00d4ff); }
-    }
-    .highcharts-last-point-marker .highcharts-point {
-      animation: glowing 1.5s infinite;
-      transition: transform 0.5s ease-out;
-    }
-  `;
   
   // Fallback data for testing
   const fallbackData = [
@@ -52,7 +36,7 @@ const MiniPriceChartItem = ({ assetIdentifier }) => {
   const { data: realtimeData } = useRealtimePrices(
     assetIdentifier ? [assetIdentifier] : [],
     'crypto',
-    { refetchInterval: 3000 } // 3초마다 API 호출로 빈도 감소
+    { refetchInterval: 15000 } // 15초마다 API 호출
   );
 
   // Process delay data for initial chart
@@ -92,19 +76,17 @@ const MiniPriceChartItem = ({ assetIdentifier }) => {
           const timestamps = formattedData.map(point => point[0]);
           const minTime = Math.min(...timestamps);
           const maxTime = Math.max(...timestamps);
-          const rightPaddingMs = 4 * 60 * 60 * 1000; // +4h padding
           
           setXAxisRange({
             min: Math.round(minTime),
-            max: Math.round(maxTime + rightPaddingMs)
+            max: Math.round(maxTime)
           });
           
           // 네비게이터 초기 선택 범위 계산 (전체 기간의 80%)
-          const effectiveMaxForCalc = maxTime + rightPaddingMs;
-          const totalTimeRange = effectiveMaxForCalc - minTime;
+          const totalTimeRange = maxTime - minTime;
           const navigatorRange = totalTimeRange * 0.8; // 전체 기간의 80%
-          const navigatorMin = effectiveMaxForCalc - navigatorRange; // 최신+패딩에서 80% 범위만큼 전
-          const navigatorMax = effectiveMaxForCalc; // 최신 시간 + 패딩
+          const navigatorMin = maxTime - navigatorRange; // 최신 시간에서 80% 범위만큼 전
+          const navigatorMax = maxTime; // 최신 시간
           
           // 콘솔에 초기 축 범위 및 네비게이터 범위 출력
           console.log('📊 초기 축 범위 설정:', {
@@ -166,12 +148,6 @@ const MiniPriceChartItem = ({ assetIdentifier }) => {
               // 안전한 데이터 포인트 추가 (소수점 자릿수 제한)
               const safePrice = parseFloat(newPrice.toFixed(4));
               const safeTime = Math.round(currentTime);
-              // 방향 계산 (이전 포인트 대비)
-              if (lastPoint && typeof lastPoint[1] === 'number') {
-                if (safePrice > lastPoint[1]) setLastPointDirection('up');
-                else if (safePrice < lastPoint[1]) setLastPointDirection('down');
-                else setLastPointDirection('flat');
-              }
               newData.push([safeTime, safePrice]);
               
               // Keep only last 200 points
@@ -220,7 +196,7 @@ const MiniPriceChartItem = ({ assetIdentifier }) => {
     }
   }, [realtimeData, assetIdentifier, isInitialized, delayData]);
 
-  // 1500ms마다 랜덤 변화 적용 (빈도 감소)
+  // 500ms마다 랜덤 변화 적용 (원래 기능)
   useEffect(() => {
     if (!basePrice || !isInitialized || !initialPrice) return;
 
@@ -231,8 +207,8 @@ const MiniPriceChartItem = ({ assetIdentifier }) => {
         const newData = [...prevData];
         const lastPoint = newData[newData.length - 1];
         
-        // Add random variation (0.01~0.05% range)
-        const randomVariation = (Math.random() * 0.0004) + 0.0001; // 0.01~0.05% range
+        // Add random variation (0.1~0.5% range)
+        const randomVariation = (Math.random() * 0.004) + 0.001; // 0.1~0.5% range
         const isPositive = Math.random() > 0.5; // 50% 확률로 양수/음수
         const finalVariation = isPositive ? randomVariation : -randomVariation;
         const variedPrice = parseFloat((basePrice * (1 + finalVariation)).toFixed(4));
@@ -240,103 +216,30 @@ const MiniPriceChartItem = ({ assetIdentifier }) => {
         // 안전한 데이터 업데이트 (소수점 자릿수 제한)
         const safePrice = parseFloat(variedPrice.toFixed(4));
         const safeTime = Math.round(lastPoint[0]); // 시간은 변경하지 않음
-        // 방향 계산 (이전 포인트 대비)
-        if (lastPoint && typeof lastPoint[1] === 'number') {
-          if (safePrice > lastPoint[1]) setLastPointDirection('up');
-          else if (safePrice < lastPoint[1]) setLastPointDirection('down');
-          else setLastPointDirection('flat');
-        }
         newData[newData.length - 1] = [safeTime, safePrice];
         
         return newData;
       });
-    }, 1500); // 1.5초마다 업데이트
+    }, 500); // 500ms마다 업데이트
 
     return () => clearInterval(interval);
   }, [basePrice, isInitialized, initialPrice]);
-
-  // 반응형 높이 조절: 컨테이너 너비 기반으로 높이 산정 (min 200px, max 300px)
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const compute = () => {
-      const width = el.clientWidth || 0;
-      // 45% 비율로 높이 산정, 최소 200, 최대 300
-      const target = Math.max(200, Math.min(300, Math.round(width * 0.45)));
-      setChartHeight(target);
-    };
-    compute();
-    const ro = new ResizeObserver(() => compute());
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
 
 
   // Chart options with real data
 const options = {
     title: {
-        text: assetIdentifier ? `${assetIdentifier} Price Chart` : 'Real-time Price Chart',
-        style: { color: '#ffffff' }
-    },
-
-    chart: {
-        backgroundColor: '#1a1a1a',
-        style: { fontFamily: 'Inter, sans-serif' },
-        animation: false, // 애니메이션 비활성화로 SVG 에러 방지
-        events: {
-            load() {
-                const chart = this;
-                if (chart.renderer && chart.renderer.globalAnimation) {
-                    chart.renderer.globalAnimation = false;
-                }
-                // 네비게이터 초기 선택 범위 설정 (전체 데이터의 80%)
-                setTimeout(() => {
-                    if (chart.xAxis && chart.xAxis[0]) {
-                        const xAxis = chart.xAxis[0];
-                        const dataMin = xAxis.dataMin;
-                        const dataMax = xAxis.dataMax;
-                        const rightPaddingMs = 4 * 60 * 60 * 1000; // +4h padding
-                        if (dataMin && dataMax) {
-                            const effectiveMax = dataMax + rightPaddingMs;
-                            const totalRange = effectiveMax - dataMin;
-                            const navigatorRange = totalRange * 0.8; // 80% 범위
-                            const navigatorMin = effectiveMax - navigatorRange;
-                            const navigatorMax = effectiveMax;
-                            xAxis.setExtremes(navigatorMin, navigatorMax);
-                        }
-                    }
-                    // 네비게이터 Y축 범위 고정 설정
-                    if (chart.navigator && chart.navigator.yAxis) {
-                        const navigatorYAxis = chart.navigator.yAxis;
-                        navigatorYAxis.setExtremes(yAxisRange.min, yAxisRange.max);
-                    }
-                }, 100);
-            },
-            error(e) {
-                console.warn('Chart rendering error:', e);
-                if (this && this.redraw) {
-                    setTimeout(() => {
-                        try {
-                            this.redraw();
-                        } catch (err) {
-                            console.error('Chart redraw failed:', err);
-                        }
-                    }, 100);
-                }
-            }
-        }
+        text: assetIdentifier ? `${assetIdentifier} Price Chart` : 'Real-time Price Chart'
     },
 
     xAxis: {
         type: 'datetime',
-        overscroll: 14400000, // 4h overscroll to match right padding
+        overscroll: 500000,
         gridLineWidth: 1,
-        gridLineColor: '#333333',
         min: xAxisRange.min,
         max: xAxisRange.max,
         ordinal: false,
         breaks: [],
-        labels: { style: { color: '#a0a0a0' } },
         dateTimeLabelFormats: {
             millisecond: '%H:%M:%S.%L',
             second: '%H:%M:%S',
@@ -359,24 +262,7 @@ const options = {
         minPadding: 0,
         maxPadding: 0,
         startOnTick: false,
-        endOnTick: false,
-        gridLineColor: '#333333',
-        labels: {
-            style: { color: '#a0a0a0' },
-            formatter: function () { return typeof this.value === 'number' ? this.value.toFixed(2) : this.value; }
-        },
-        lastVisiblePrice: {
-            enabled: true,
-            label: {
-                enabled: true,
-                style: { color: '#000000', fontWeight: 'bold' },
-                backgroundColor: '#00d4ff',
-                borderColor: '#ffffff',
-                borderWidth: 1,
-                borderRadius: 2,
-                padding: 2
-            }
-        }
+        endOnTick: false
     },
 
     rangeSelector: {
@@ -406,21 +292,19 @@ const options = {
                 const chart = this;
                 const buttonIndex = e.buttonIndex;
                 
-                // "4h" 버튼 (index 2) 클릭 시 80% 범위 설정 (+4h padding 포함)
+                // "4h" 버튼 (index 2) 클릭 시 80% 범위 설정
                 if (buttonIndex === 2) {
                     setTimeout(() => {
                         if (chart.xAxis && chart.xAxis[0]) {
                             const xAxis = chart.xAxis[0];
                             const dataMin = xAxis.dataMin;
                             const dataMax = xAxis.dataMax;
-                            const rightPaddingMs = 4 * 60 * 60 * 1000; // +4h padding
                             
                             if (dataMin && dataMax) {
-                                const effectiveMax = dataMax + rightPaddingMs;
-                                const totalRange = effectiveMax - dataMin;
+                                const totalRange = dataMax - dataMin;
                                 const navigatorRange = totalRange * 0.8; // 80% 범위
-                                const navigatorMin = effectiveMax - navigatorRange;
-                                const navigatorMax = effectiveMax;
+                                const navigatorMin = dataMax - navigatorRange;
+                                const navigatorMax = dataMax;
                                 
                                 console.log('🎯 4h 버튼 클릭 - 80% 범위 설정:', {
                                     '설정할 범위': {
@@ -441,11 +325,7 @@ const options = {
 
     navigator: {
         series: {
-            // Extend navigator data to include right padding so the selection bar can extend visually
-            data: (chartData && chartData.length > 0)
-              ? [...chartData, [xAxisRange.max, chartData[chartData.length - 1][1]]]
-              : [],
-            color: '#66bfff' // brighter color for visibility
+            color: '#000000'
         },
         xAxis: {
             dateTimeLabelFormats: {
@@ -478,44 +358,91 @@ const options = {
         enabled: false
     },
 
-    series: [
-        {
-            type: 'spline',
-            name: 'Price',
-            color: '#00d4ff',
-            data: chartData.length > 0 ? chartData : fallbackData,
-            animation: false,
-            lineWidth: 2
-        },
-        {
-            id: 'last-point',
-            type: 'spline',
-            name: 'Last Price',
-            data: chartData.length > 0 ? [chartData[chartData.length - 1]] : [],
-            color: 'transparent',
-            lineWidth: 0,
-            className: 'highcharts-last-point-marker',
-            marker: {
-                enabled: true,
-                symbol: 'circle',
-                radius: 5,
-                fillColor: lastPointDirection === 'down' ? '#ff4d4f' : '#00d4ff',
-                lineColor: '#ffffff',
-                lineWidth: 2
+    series: [{
+        type: 'spline',
+        name: 'Price',
+        color: '#00d4ff',
+        data: chartData.length > 0 ? chartData : fallbackData,
+        animation: false, // 시리즈 애니메이션 비활성화
+        lineWidth: 2,
+    }],
+
+    // 고정된 축 범위로 차트 표시
+    chart: {
+        animation: false, // 애니메이션 비활성화로 SVG 에러 방지
+        events: {
+            load() {
+                const chart = this;
+                // 고정된 축 범위 사용 (동적 스크롤 제거)
+                
+                // SVG 에러 방지를 위한 추가 설정
+                if (chart.renderer && chart.renderer.globalAnimation) {
+                    chart.renderer.globalAnimation = false;
+                }
+                
+                // 네비게이터 초기 선택 범위 설정 (전체 데이터의 80%)
+                setTimeout(() => {
+                    if (chart.xAxis && chart.xAxis[0]) {
+                        const xAxis = chart.xAxis[0];
+                        const dataMin = xAxis.dataMin;
+                        const dataMax = xAxis.dataMax;
+                        
+                        if (dataMin && dataMax) {
+                            const totalRange = dataMax - dataMin;
+                            const navigatorRange = totalRange * 0.8; // 80% 범위
+                            const navigatorMin = dataMax - navigatorRange;
+                            const navigatorMax = dataMax;
+                            
+                            console.log('🎯 네비게이터 초기 범위 설정:', {
+                                '전체 데이터 범위': {
+                                    min: new Date(dataMin).toLocaleString(),
+                                    max: new Date(dataMax).toLocaleString(),
+                                    range: `${((dataMax - dataMin) / (1000 * 60 * 60)).toFixed(1)}시간`
+                                },
+                                '설정할 네비게이터 범위 (80%)': {
+                                    min: new Date(navigatorMin).toLocaleString(),
+                                    max: new Date(navigatorMax).toLocaleString(),
+                                    range: `${((navigatorMax - navigatorMin) / (1000 * 60 * 60)).toFixed(1)}시간`
+                                }
+                            });
+                            
+                            // 네비게이터 범위 설정
+                            xAxis.setExtremes(navigatorMin, navigatorMax);
+                        }
+                    }
+                    
+                    // 네비게이터 Y축 범위 고정 설정
+                    if (chart.navigator && chart.navigator.yAxis) {
+                        const navigatorYAxis = chart.navigator.yAxis;
+                        navigatorYAxis.setExtremes(yAxisRange.min, yAxisRange.max);
+                        
+                        console.log('🎯 네비게이터 Y축 범위 고정:', {
+                            'Y축 범위': {
+                                min: yAxisRange.min,
+                                max: yAxisRange.max,
+                                range: `${(yAxisRange.max - yAxisRange.min).toFixed(2)}`
+                            }
+                        });
+                    }
+                    
+                }, 100);
+                
             },
-            dataLabels: {
-                enabled: true,
-                formatter: function () { return typeof this.y === 'number' ? this.y.toFixed(2) : this.y; },
-                backgroundColor: 'transparent',
-                borderColor: 'transparent',
-                borderWidth: 0,
-                borderRadius: 0,
-                padding: 5,
-                y: -30,
-                style: { color: (lastPointDirection === 'down' ? '#ff4d4f' : '#00d4ff'), fontWeight: 'bold' }
+            error(e) {
+                console.warn('Chart rendering error:', e);
+                // 에러 발생 시 차트 재렌더링 시도
+                if (this && this.redraw) {
+                    setTimeout(() => {
+                        try {
+                            this.redraw();
+                        } catch (err) {
+                            console.error('Chart redraw failed:', err);
+                        }
+                    }, 100);
+                }
             }
         }
-    ]
+    }
 };
 
   // Show loading state only if we have no data at all
@@ -535,8 +462,7 @@ const options = {
   }
 
   return (
-    <div ref={containerRef} style={{ width: '100%', height: `${chartHeight}px`, minHeight: '200px' }}>
-      <style>{glowingMarkerStyle}</style>
+    <div style={{ width: '100%', height: '700px' }}>
       <HighchartsReact
         highcharts={Highcharts}
         constructorType={'stockChart'}
@@ -553,29 +479,6 @@ const options = {
       />
     </div>
   );
-};
-
-const MiniPriceChart = ({ assetIdentifier, symbols }) => {
-  if (Array.isArray(symbols) && symbols.length > 0) {
-    return (
-      <div style={{ width: '100%', padding: '4px' }}>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-            gap: '4px'
-          }}
-        >
-          {symbols.map((sym) => (
-            <div key={sym} style={{ padding: '2px' }}>
-              <MiniPriceChartItem assetIdentifier={sym} />
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-  return <MiniPriceChartItem assetIdentifier={assetIdentifier} />;
 };
 
 export default MiniPriceChart;

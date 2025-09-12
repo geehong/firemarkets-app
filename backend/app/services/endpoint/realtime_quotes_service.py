@@ -72,25 +72,21 @@ class RealtimeQuotesService:
         Asset ID로 지연 가격 데이터 조회 (15분 지연)
         """
         try:
-            from datetime import datetime, timedelta
-            
-            # Calculate date range for the specified days
-            end_date = datetime.utcnow()
-            start_date = end_date - timedelta(days=days)
-            
-            quotes = db.query(RealtimeQuoteTimeDelay)\
+            # 최신 값 우선 반환: 타임존 불일치로 인한 누락 방지를 위해 날짜 범위 필터 제거
+            # 데이터 간격은 유지하고 updated_at DESC로 정렬해 가장 최근 DB 반영 순서를 보장
+            quotes = (
+                db.query(RealtimeQuoteTimeDelay)
                 .filter(
                     and_(
                         RealtimeQuoteTimeDelay.asset_id == asset_id,
                         RealtimeQuoteTimeDelay.data_interval == data_interval,
-                        RealtimeQuoteTimeDelay.timestamp_utc >= start_date,
-                        RealtimeQuoteTimeDelay.timestamp_utc <= end_date
                     )
-                )\
-                .order_by(desc(RealtimeQuoteTimeDelay.timestamp_utc))\
-                .limit(limit)\
+                )
+                .order_by(desc(RealtimeQuoteTimeDelay.updated_at), desc(RealtimeQuoteTimeDelay.timestamp_utc))
+                .limit(limit)
                 .all()
-            
+            )
+
             return quotes
             
         except Exception as e:
