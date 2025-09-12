@@ -301,105 +301,144 @@ def get_ohlcv_data(
         
         # data_interval에 따른 쿼리 처리
         if data_interval.upper() == '1M':
-            # 단순화: 월봉은 항상 일봉에서 월 단위로 집계하여 반환 (태그 무시)
+            # 월봉 데이터 (data_interval에 '1M'이 포함된 데이터)
+            query = db.query(OHLCVData).filter(
+                OHLCVData.asset_id == asset_id,
+                OHLCVData.data_interval.like('%1M%')
+            )
+            if start_date:
+                query = query.filter(OHLCVData.timestamp_utc >= start_date)
+            if end_date:
+                query = query.filter(OHLCVData.timestamp_utc <= end_date)
+            tagged_monthlies = query.order_by(OHLCVData.timestamp_utc.asc()).all()
+
+            # 유효한 조회 범위 계산 (파라미터가 없으면 최근 12개월 기준)
             if start_date is None and end_date is None:
+                from calendar import monthrange
                 today = date.today()
                 range_end = today
-                range_start = date(today.year - 1, today.month, 1)
+                # 12개월 전의 같은 달 1일
+                range_start = (date(today.year - 1, today.month, 1))
             else:
                 range_start = start_date or date(1970, 1, 1)
                 range_end = end_date or date.today()
 
-            daily_rows = db_get_ohlcv_data(db, asset_id, range_start, range_end, '1d', 200000)
-            from collections import defaultdict
-            buckets = defaultdict(list)
-            for r in daily_rows:
-                ym = (r.timestamp_utc.year, r.timestamp_utc.month)
-                buckets[ym].append(r)
+            # 기대 월 수 추정 (최소 6, 최대 24로 가드)
+            expected_months = max(6, min(24, (range_end.year - range_start.year) * 12 + (range_end.month - range_start.month) + 1))
 
-            aggregated = []
-            for (y, m) in sorted(buckets.keys()):
-                rows = sorted(buckets[(y, m)], key=lambda x: x.timestamp_utc)
-                if not rows:
-                    continue
-                first = rows[0]
-                last = rows[-1]
-                open_p = float(first.open_price) if first.open_price is not None else None
-                close_p = float(last.close_price) if last.close_price is not None else None
-                highs = [float(x.high_price) for x in rows if x.high_price is not None]
-                lows = [float(x.low_price) for x in rows if x.low_price is not None]
-                high_p = max(highs) if highs else None
-                low_p = min(lows) if lows else None
-                vol_sum = sum(float(x.volume) for x in rows if x.volume is not None)
+            # 태그만으로 부족하면 일봉을 월 단위로 집계하여 보완 (start_date가 있어도 적용)
+            if len(tagged_monthlies) >= min(expected_months, limit or expected_months):
+                ohlcv_data = tagged_monthlies[:limit] if limit else tagged_monthlies
+            else:
+                daily_rows = db_get_ohlcv_data(db, asset_id, range_start, range_end, '1d', 200000)
+                from collections import defaultdict
+                buckets = defaultdict(list)
+                for r in daily_rows:
+                    ym = (r.timestamp_utc.year, r.timestamp_utc.month)
+                    buckets[ym].append(r)
 
-                class _Candle:
-                    pass
-                c = _Candle()
-                c.timestamp_utc = last.timestamp_utc
-                c.open_price = open_p
-                c.high_price = high_p
-                c.low_price = low_p
-                c.close_price = close_p
-                c.volume = vol_sum
-                c.change_percent = None
-                c.data_interval = '1M'
-                aggregated.append(c)
+                aggregated = []
+                for (y, m) in sorted(buckets.keys()):
+                    rows = sorted(buckets[(y, m)], key=lambda x: x.timestamp_utc)
+                    if not rows:
+                        continue
+                    first = rows[0]
+                    last = rows[-1]
+                    open_p = float(first.open_price) if first.open_price is not None else None
+                    close_p = float(last.close_price) if last.close_price is not None else None
+                    highs = [float(x.high_price) for x in rows if x.high_price is not None]
+                    lows = [float(x.low_price) for x in rows if x.low_price is not None]
+                    high_p = max(highs) if highs else None
+                    low_p = min(lows) if lows else None
+                    vol_sum = sum(float(x.volume) for x in rows if x.volume is not None)
 
-            aggregated = sorted(aggregated, key=lambda x: x.timestamp_utc)
-            if limit:
-                aggregated = aggregated[-limit:]
-            ohlcv_data = aggregated
+                    class _Candle:
+                        pass
+                    c = _Candle()
+                    c.timestamp_utc = last.timestamp_utc
+                    c.open_price = open_p
+                    c.high_price = high_p
+                    c.low_price = low_p
+                    c.close_price = close_p
+                    c.volume = vol_sum
+                    c.change_percent = None
+                    c.data_interval = '1M'
+                    aggregated.append(c)
+
+                aggregated = sorted(aggregated, key=lambda x: x.timestamp_utc)
+                if limit:
+                    aggregated = aggregated[-limit:]
+                ohlcv_data = aggregated
             
         elif data_interval.upper() == '1W':
-            # 단순화: 주봉은 항상 일봉에서 주 단위로 집계하여 반환 (태그 무시)
+            # 주봉 데이터 (data_interval에 '1W'가 포함된 데이터)
+            query = db.query(OHLCVData).filter(
+                OHLCVData.asset_id == asset_id,
+                OHLCVData.data_interval.like('%1W%')
+            )
+            if start_date:
+                query = query.filter(OHLCVData.timestamp_utc >= start_date)
+            if end_date:
+                query = query.filter(OHLCVData.timestamp_utc <= end_date)
+            tagged_weeklies = query.order_by(OHLCVData.timestamp_utc.asc()).all()
+
+            # 조회 범위 계산
             if start_date is None and end_date is None:
                 today = date.today()
+                # 최근 52주 범위
                 range_end = today
                 range_start = today - timedelta(days=365)
             else:
                 range_start = start_date or date(1970, 1, 1)
                 range_end = end_date or date.today()
 
-            daily_rows = db_get_ohlcv_data(db, asset_id, range_start, range_end, '1d', 200000)
-            from collections import defaultdict
-            buckets = defaultdict(list)
-            for r in daily_rows:
-                iso = r.timestamp_utc.isocalendar()
-                key = (iso[0], iso[1])  # (ISO year, ISO week)
-                buckets[key].append(r)
+            # 기대 주 수 추정
+            expected_weeks = max(12, min(104, int((range_end - range_start).days / 7) + 1))
 
-            aggregated = []
-            for key in sorted(buckets.keys()):
-                rows = sorted(buckets[key], key=lambda x: x.timestamp_utc)
-                if not rows:
-                    continue
-                first = rows[0]
-                last = rows[-1]
-                open_p = float(first.open_price) if first.open_price is not None else None
-                close_p = float(last.close_price) if last.close_price is not None else None
-                highs = [float(x.high_price) for x in rows if x.high_price is not None]
-                lows = [float(x.low_price) for x in rows if x.low_price is not None]
-                high_p = max(highs) if highs else None
-                low_p = min(lows) if lows else None
-                vol_sum = sum(float(x.volume) for x in rows if x.volume is not None)
+            if len(tagged_weeklies) >= min(expected_weeks, limit or expected_weeks):
+                ohlcv_data = tagged_weeklies[:limit] if limit else tagged_weeklies
+            else:
+                # 일봉을 주 단위로 집계 (ISO 주 기준)
+                daily_rows = db_get_ohlcv_data(db, asset_id, range_start, range_end, '1d', 200000)
+                from collections import defaultdict
+                buckets = defaultdict(list)
+                for r in daily_rows:
+                    iso = r.timestamp_utc.isocalendar()
+                    key = (iso[0], iso[1])  # (ISO year, ISO week)
+                    buckets[key].append(r)
 
-                class _Candle:
-                    pass
-                c = _Candle()
-                c.timestamp_utc = last.timestamp_utc
-                c.open_price = open_p
-                c.high_price = high_p
-                c.low_price = low_p
-                c.close_price = close_p
-                c.volume = vol_sum
-                c.change_percent = None
-                c.data_interval = '1W'
-                aggregated.append(c)
+                aggregated = []
+                for key in sorted(buckets.keys()):
+                    rows = sorted(buckets[key], key=lambda x: x.timestamp_utc)
+                    if not rows:
+                        continue
+                    first = rows[0]
+                    last = rows[-1]
+                    open_p = float(first.open_price) if first.open_price is not None else None
+                    close_p = float(last.close_price) if last.close_price is not None else None
+                    highs = [float(x.high_price) for x in rows if x.high_price is not None]
+                    lows = [float(x.low_price) for x in rows if x.low_price is not None]
+                    high_p = max(highs) if highs else None
+                    low_p = min(lows) if lows else None
+                    vol_sum = sum(float(x.volume) for x in rows if x.volume is not None)
 
-            aggregated = sorted(aggregated, key=lambda x: x.timestamp_utc)
-            if limit:
-                aggregated = aggregated[-limit:]
-            ohlcv_data = aggregated
+                    class _Candle:
+                        pass
+                    c = _Candle()
+                    c.timestamp_utc = last.timestamp_utc
+                    c.open_price = open_p
+                    c.high_price = high_p
+                    c.low_price = low_p
+                    c.close_price = close_p
+                    c.volume = vol_sum
+                    c.change_percent = None
+                    c.data_interval = '1W'
+                    aggregated.append(c)
+
+                aggregated = sorted(aggregated, key=lambda x: x.timestamp_utc)
+                if limit:
+                    aggregated = aggregated[-limit:]
+                ohlcv_data = aggregated
             
         else:
             # 일반적인 간격 데이터 (일봉 등)

@@ -101,7 +101,6 @@ export const assetAPI = {
     }
     if (startDate) params.start_date = startDate
     if (endDate) params.end_date = endDate
-    // (debug logs removed)
     return cachedApi.get(`/ohlcv/${assetId}`, params, { cacheTtl: 300000 }) // 5분 캐시로 증가
   },
 
@@ -201,16 +200,22 @@ export const realtimeAPI = {
   // 자산 테이블 데이터 조회
   getAssetsTable: (params) => api.get('/realtime/table', { params }),
   
-  // 실시간 가격 데이터 조회 (신규 엔드포인트 연동)
-  // 단일 식별자 전용 (백엔드가 단건 처리일 경우를 대비)
+  // 실시간 가격 데이터 조회 (신규 엔드포인트)
   getQuotesPrice: (symbolOrId) => api.get('/realtime/quotes-price', { params: { asset_identifier: symbolOrId } }),
-  getQuotesDelayPrice: (symbolOrId, dataInterval = '15m', limit = 96) =>
-    api.get('/realtime/quotes-delay-price', { params: { asset_identifier: symbolOrId, data_interval: dataInterval, limit } }),
-  // 인트라데이 OHLCV (백업 스파크라인 소스)
-  getIntradayOhlcv: (assetIdentifier, dataInterval = '4h', ohlcv = true) =>
-    api.get('/realtime/intraday-ohlcv', { params: { asset_identifier: assetIdentifier, data_interval: dataInterval, ohlcv } }),
+  getQuotesDelayPrice: (symbolOrId, dataInterval = '15m', days = 1) =>
+    api.get('/realtime/quotes-delay-price', { params: { asset_identifier: symbolOrId, data_interval: dataInterval, days } }),
+  getIntradayOhlcv: (assetIdentifier, dataInterval = '4h', ohlcv = true, days = 1) =>
+    api.get('/realtime/intraday-ohlcv', { params: { asset_identifier: assetIdentifier, data_interval: dataInterval, ohlcv, days } }),
   
-  // 레거시 타입별 가격 API (호환용)
+  // 장기 OHLCV 데이터 (assets.py 엔드포인트)
+  getAssetsOhlcv: (assetIdentifier, dataInterval = '1d', startDate = null, endDate = null, limit = 1000) => {
+    const params = { data_interval: dataInterval, limit };
+    if (startDate) params.start_date = startDate;
+    if (endDate) params.end_date = endDate;
+    return api.get(`/assets/ohlcv/${assetIdentifier}`, { params });
+  },
+  
+  // 레거시 실시간 가격 데이터 조회
   getCryptoPrices: (symbols) => api.get('/realtime/prices/crypto', { params: { symbols } }),
   getStockPrices: (symbols) => api.get('/realtime/prices/stock', { params: { symbols } }),
   getTiingoPrices: (symbols) => api.get('/realtime/prices/tiingo', { params: { symbols } }),

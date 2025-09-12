@@ -149,27 +149,36 @@ async def get_realtime_quotes_price(
 @router.get("/quotes-delay-price")
 async def get_realtime_quotes_delay_price(
     asset_identifier: str = Query(..., description="Asset ID (integer) or Ticker (string)"),
-    data_interval: str = Query("15m", description="Data interval (15m, 30m, 1h, etc.)"),
+    data_interval: str = Query("15m", description="Data interval (15m, 30m, 1h, 2h, 3h)"),
+    days: int = Query(1, ge=1, le=1, description="Number of days to fetch (limited to 1 day)"),
     db: Session = Depends(get_db)
 ):
     """
-    실시간 가격 데이터 조회 (15분 지연)
+    실시간 가격 데이터 조회 (지연 데이터)
     asset_identifier: Asset ID (integer) 또는 Ticker (string)
-    data_interval: 데이터 간격 (기본값: 15m)
+    data_interval: 데이터 간격 (15m, 30m, 1h, 2h, 3h)
     """
     try:
         from ....services.endpoint.realtime_quotes_service import RealtimeQuotesService
+        
+        # 지원되는 간격 확인
+        supported_intervals = ["15m", "30m", "1h", "2h", "3h"]
+        if data_interval not in supported_intervals:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Unsupported interval: {data_interval}. Supported: {supported_intervals}"
+            )
         
         # asset_identifier가 숫자인지 확인 (Asset ID)
         if asset_identifier.isdigit():
             asset_id = int(asset_identifier)
             quotes = await RealtimeQuotesService.get_delay_quotes_by_asset_id(
-                db, asset_id, data_interval
+                db, asset_id, data_interval, days=days
             )
         else:
             # Ticker로 조회
             quotes = await RealtimeQuotesService.get_delay_quotes_by_ticker(
-                db, asset_identifier, data_interval
+                db, asset_identifier, data_interval, days=days
             )
         
         if not quotes:
@@ -183,6 +192,8 @@ async def get_realtime_quotes_delay_price(
             "timestamp": quotes[0].timestamp_utc if quotes else None
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get delay quotes: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get delay quotes: {str(e)}")
@@ -192,17 +203,26 @@ async def get_realtime_quotes_delay_price(
 async def get_ohlcv_intraday(
     asset_identifier: str = Query(..., description="Asset ID (integer) or Ticker (string)"),
     ohlcv: bool = Query(True, description="true=OHLCV 데이터, false=close price만"),
-    data_interval: str = Query("4h", description="Data interval (1h, 4h, etc.)"),
+    data_interval: str = Query("4h", description="Data interval (4h, 6h, 12h, 24h)"),
+    days: int = Query(1, ge=1, le=1, description="Number of days to fetch (limited to 1 day)"),
     db: Session = Depends(get_db)
 ):
     """
     OHLCV 인트라데이 데이터 조회
     asset_identifier: Asset ID (integer) 또는 Ticker (string)
     ohlcv: true=OHLCV 데이터, false=close price만
-    data_interval: 데이터 간격 (기본값: 4h)
+    data_interval: 데이터 간격 (4h, 6h, 12h, 24h)
     """
     try:
         from ....services.endpoint.ohlcv_service import OHLCVService
+        
+        # 지원되는 간격 확인
+        supported_intervals = ["4h", "6h", "12h", "24h"]
+        if data_interval not in supported_intervals:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Unsupported interval: {data_interval}. Supported: {supported_intervals}"
+            )
         
         # asset_identifier가 숫자인지 확인 (Asset ID)
         if asset_identifier.isdigit():

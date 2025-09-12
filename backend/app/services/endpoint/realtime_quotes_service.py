@@ -3,7 +3,7 @@ Realtime Quotes Service
 실시간 가격 데이터 조회 서비스
 """
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, and_
+from sqlalchemy import desc, asc, and_
 from typing import List, Optional, Union
 from datetime import datetime, timedelta
 import logging
@@ -65,17 +65,26 @@ class RealtimeQuotesService:
         db: Session, 
         asset_id: int, 
         data_interval: str = "15m",
-        limit: int = 100
+        limit: int = 100,
+        days: int = 1
     ) -> List[RealtimeQuoteTimeDelay]:
         """
         Asset ID로 지연 가격 데이터 조회 (15분 지연)
         """
         try:
+            from datetime import datetime, timedelta
+            
+            # Calculate date range for the specified days
+            end_date = datetime.utcnow()
+            start_date = end_date - timedelta(days=days)
+            
             quotes = db.query(RealtimeQuoteTimeDelay)\
                 .filter(
                     and_(
                         RealtimeQuoteTimeDelay.asset_id == asset_id,
-                        RealtimeQuoteTimeDelay.data_interval == data_interval
+                        RealtimeQuoteTimeDelay.data_interval == data_interval,
+                        RealtimeQuoteTimeDelay.timestamp_utc >= start_date,
+                        RealtimeQuoteTimeDelay.timestamp_utc <= end_date
                     )
                 )\
                 .order_by(desc(RealtimeQuoteTimeDelay.timestamp_utc))\
@@ -93,7 +102,8 @@ class RealtimeQuotesService:
         db: Session, 
         ticker: str, 
         data_interval: str = "15m",
-        limit: int = 100
+        limit: int = 100,
+        days: int = 1
     ) -> List[RealtimeQuoteTimeDelay]:
         """
         Ticker로 지연 가격 데이터 조회 (15분 지연)
@@ -106,7 +116,7 @@ class RealtimeQuotesService:
                 return []
             
             return await RealtimeQuotesService.get_delay_quotes_by_asset_id(
-                db, asset.asset_id, data_interval, limit
+                db, asset.asset_id, data_interval, limit, days
             )
             
         except Exception as e:
