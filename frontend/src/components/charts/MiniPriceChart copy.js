@@ -266,6 +266,7 @@ const options = {
     },
 
     rangeSelector: {
+        enabled: window.innerWidth >= 768, // 모바일에서는 비활성화
         buttons: [{
             type: 'minute',
             count: 15,
@@ -324,6 +325,7 @@ const options = {
     },
 
     navigator: {
+        enabled: window.innerWidth >= 768, // 모바일에서는 비활성화
         series: {
             color: '#000000'
         },
@@ -349,13 +351,16 @@ const options = {
             endOnTick: false
         },
         // 네비게이터 초기 선택 범위 설정 (전체 데이터의 80%)
-        enabled: true,
         height: 40,
         margin: 2
     },
 
     tooltip: {
         enabled: false
+    },
+
+    exporting: {
+        enabled: window.innerWidth >= 768 // 모바일에서는 비활성화
     },
 
     series: [{
@@ -380,52 +385,54 @@ const options = {
                     chart.renderer.globalAnimation = false;
                 }
                 
-                // 네비게이터 초기 선택 범위 설정 (전체 데이터의 80%)
-                setTimeout(() => {
-                    if (chart.xAxis && chart.xAxis[0]) {
-                        const xAxis = chart.xAxis[0];
-                        const dataMin = xAxis.dataMin;
-                        const dataMax = xAxis.dataMax;
-                        
-                        if (dataMin && dataMax) {
-                            const totalRange = dataMax - dataMin;
-                            const navigatorRange = totalRange * 0.8; // 80% 범위
-                            const navigatorMin = dataMax - navigatorRange;
-                            const navigatorMax = dataMax;
+                // 네비게이터 초기 선택 범위 설정 (전체 데이터의 80%) - 데스크톱에서만
+                if (window.innerWidth >= 768) {
+                    setTimeout(() => {
+                        if (chart.xAxis && chart.xAxis[0]) {
+                            const xAxis = chart.xAxis[0];
+                            const dataMin = xAxis.dataMin;
+                            const dataMax = xAxis.dataMax;
                             
-                            console.log('🎯 네비게이터 초기 범위 설정:', {
-                                '전체 데이터 범위': {
-                                    min: new Date(dataMin).toLocaleString(),
-                                    max: new Date(dataMax).toLocaleString(),
-                                    range: `${((dataMax - dataMin) / (1000 * 60 * 60)).toFixed(1)}시간`
-                                },
-                                '설정할 네비게이터 범위 (80%)': {
-                                    min: new Date(navigatorMin).toLocaleString(),
-                                    max: new Date(navigatorMax).toLocaleString(),
-                                    range: `${((navigatorMax - navigatorMin) / (1000 * 60 * 60)).toFixed(1)}시간`
+                            if (dataMin && dataMax) {
+                                const totalRange = dataMax - dataMin;
+                                const navigatorRange = totalRange * 0.8; // 80% 범위
+                                const navigatorMin = dataMax - navigatorRange;
+                                const navigatorMax = dataMax;
+                                
+                                console.log('🎯 네비게이터 초기 범위 설정:', {
+                                    '전체 데이터 범위': {
+                                        min: new Date(dataMin).toLocaleString(),
+                                        max: new Date(dataMax).toLocaleString(),
+                                        range: `${((dataMax - dataMin) / (1000 * 60 * 60)).toFixed(1)}시간`
+                                    },
+                                    '설정할 네비게이터 범위 (80%)': {
+                                        min: new Date(navigatorMin).toLocaleString(),
+                                        max: new Date(navigatorMax).toLocaleString(),
+                                        range: `${((navigatorMax - navigatorMin) / (1000 * 60 * 60)).toFixed(1)}시간`
+                                    }
+                                });
+                                
+                                // 네비게이터 범위 설정
+                                xAxis.setExtremes(navigatorMin, navigatorMax);
+                            }
+                        }
+                        
+                        // 네비게이터 Y축 범위 고정 설정
+                        if (chart.navigator && chart.navigator.yAxis) {
+                            const navigatorYAxis = chart.navigator.yAxis;
+                            navigatorYAxis.setExtremes(yAxisRange.min, yAxisRange.max);
+                            
+                            console.log('🎯 네비게이터 Y축 범위 고정:', {
+                                'Y축 범위': {
+                                    min: yAxisRange.min,
+                                    max: yAxisRange.max,
+                                    range: `${(yAxisRange.max - yAxisRange.min).toFixed(2)}`
                                 }
                             });
-                            
-                            // 네비게이터 범위 설정
-                            xAxis.setExtremes(navigatorMin, navigatorMax);
                         }
-                    }
-                    
-                    // 네비게이터 Y축 범위 고정 설정
-                    if (chart.navigator && chart.navigator.yAxis) {
-                        const navigatorYAxis = chart.navigator.yAxis;
-                        navigatorYAxis.setExtremes(yAxisRange.min, yAxisRange.max);
                         
-                        console.log('🎯 네비게이터 Y축 범위 고정:', {
-                            'Y축 범위': {
-                                min: yAxisRange.min,
-                                max: yAxisRange.max,
-                                range: `${(yAxisRange.max - yAxisRange.min).toFixed(2)}`
-                            }
-                        });
-                    }
-                    
-                }, 100);
+                    }, 100);
+                }
                 
             },
             error(e) {
@@ -452,7 +459,8 @@ const options = {
         display: 'flex', 
         justifyContent: 'center', 
         alignItems: 'center', 
-        height: '700px',
+        height: window.innerWidth < 768 ? '280px' : '400px',
+        minHeight: '280px',
         backgroundColor: '#1a1a1a',
         color: '#ffffff'
       }}>
@@ -462,7 +470,25 @@ const options = {
   }
 
   return (
-    <div style={{ width: '100%', height: '700px' }}>
+    <div style={{ 
+      width: '100%', 
+      height: window.innerWidth < 768 ? '280px' : '400px',
+      minHeight: '280px'
+    }}>
+      <style>
+        {window.innerWidth < 768 && `
+          .highcharts-range-selector-group,
+          .highcharts-exporting-group,
+          .highcharts-navigator {
+            display: none !important;
+          }
+          .highcharts-range-selector-buttons,
+          .highcharts-exporting-group,
+          .highcharts-navigator-container {
+            display: none !important;
+          }
+        `}
+      </style>
       <HighchartsReact
         highcharts={Highcharts}
         constructorType={'stockChart'}
@@ -474,6 +500,32 @@ const options = {
             chart.on('error', (e) => {
               console.warn('Chart error:', e);
             });
+          }
+          
+          // 모바일에서 강제로 요소들 숨기기
+          if (window.innerWidth < 768) {
+            setTimeout(() => {
+              const chartContainer = chart.container;
+              if (chartContainer) {
+                // Range selector 숨기기
+                const rangeSelectors = chartContainer.querySelectorAll('.highcharts-range-selector-group, .highcharts-range-selector-buttons');
+                rangeSelectors.forEach(el => {
+                  if (el) el.style.display = 'none';
+                });
+                
+                // Exporting 버튼 숨기기
+                const exportingGroups = chartContainer.querySelectorAll('.highcharts-exporting-group');
+                exportingGroups.forEach(el => {
+                  if (el) el.style.display = 'none';
+                });
+                
+                // Navigator 숨기기
+                const navigators = chartContainer.querySelectorAll('.highcharts-navigator, .highcharts-navigator-container');
+                navigators.forEach(el => {
+                  if (el) el.style.display = 'none';
+                });
+              }
+            }, 100);
           }
         }}
       />

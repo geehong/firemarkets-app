@@ -18,7 +18,7 @@ const MiniPriceChartItem = ({ assetIdentifier }) => {
   const [yAxisRange, setYAxisRange] = useState({ min: null, max: null }); // Y축 범위 고정
   const [xAxisRange, setXAxisRange] = useState({ min: null, max: null }); // X축 범위 고정
   const [lastPointDirection, setLastPointDirection] = useState(null); // 'up' | 'down' | 'flat'
-  const [chartHeight, setChartHeight] = useState(400); // 동적 높이 (기본 300)
+  // 화면 크기 상태 제거 - 모든 화면에서 동일한 설정 사용
   
   // 마지막 가격 포인터에 "빛나는" 효과를 주기 위한 CSS
   const glowingMarkerStyle = `
@@ -92,26 +92,36 @@ const MiniPriceChartItem = ({ assetIdentifier }) => {
           const timestamps = formattedData.map(point => point[0]);
           const minTime = Math.min(...timestamps);
           const maxTime = Math.max(...timestamps);
-          const rightPaddingMs = 4 * 60 * 60 * 1000; // +4h padding
+          
+          // 모든 화면에서 동일한 패딩 적용
+          const rightPaddingMs = 4 * 60 * 60 * 1000; // +4h
+          const leftPaddingMs = 2 * 60 * 60 * 1000; // +2h
           
           setXAxisRange({
-            min: Math.round(minTime),
+            min: Math.round(minTime - leftPaddingMs),
             max: Math.round(maxTime + rightPaddingMs)
           });
           
           // 네비게이터 초기 선택 범위 계산 (전체 기간의 80%)
           const effectiveMaxForCalc = maxTime + rightPaddingMs;
-          const totalTimeRange = effectiveMaxForCalc - minTime;
+          const effectiveMinForCalc = minTime - leftPaddingMs;
+          const totalTimeRange = effectiveMaxForCalc - effectiveMinForCalc;
           const navigatorRange = totalTimeRange * 0.8; // 전체 기간의 80%
           const navigatorMin = effectiveMaxForCalc - navigatorRange; // 최신+패딩에서 80% 범위만큼 전
           const navigatorMax = effectiveMaxForCalc; // 최신 시간 + 패딩
           
           // 콘솔에 초기 축 범위 및 네비게이터 범위 출력
           console.log('📊 초기 축 범위 설정:', {
+            '화면 타입': '통일된 설정',
             'X축 (시간)': {
               min: new Date(minTime).toLocaleString(),
               max: new Date(maxTime).toLocaleString(),
               range: `${((maxTime - minTime) / (1000 * 60 * 60)).toFixed(1)}시간`
+            },
+            'X축 패딩': {
+              left: `${(leftPaddingMs / (1000 * 60 * 60)).toFixed(1)}시간`,
+              right: `${(rightPaddingMs / (1000 * 60 * 60)).toFixed(1)}시간`,
+              total: `${((leftPaddingMs + rightPaddingMs) / (1000 * 60 * 60)).toFixed(1)}시간`
             },
             'Y축 (가격)': {
               min: minPrice.toFixed(2),
@@ -255,27 +265,34 @@ const MiniPriceChartItem = ({ assetIdentifier }) => {
     return () => clearInterval(interval);
   }, [basePrice, isInitialized, initialPrice]);
 
-  // 반응형 높이 조절: 컨테이너 너비 기반으로 높이 산정 (min 200px, max 300px)
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const compute = () => {
-      const width = el.clientWidth || 0;
-      // 45% 비율로 높이 산정, 최소 200, 최대 300
-      const target = Math.max(200, Math.min(300, Math.round(width * 0.45)));
-      setChartHeight(target);
-    };
-    compute();
-    const ro = new ResizeObserver(() => compute());
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+  // 화면 크기 변경 감지 제거 - 모든 화면에서 동일한 설정 사용
 
+  // 티커를 기반으로 차트 타이틀 생성
+  const getChartTitle = (ticker) => {
+    if (!ticker) return 'Real-time Price Chart'
+    
+    // 티커별 표시명 매핑 (회사명(티커) 형식)
+    const tickerMap = {
+      'BTCUSDT': 'Bitcoin (BTCUSDT)',
+      'ETHUSDT': 'Ethereum (ETHUSDT)',
+      'GCUSD': 'Gold Spot (GCUSD)',
+      'AAPL': 'Apple Inc. (AAPL)',
+      'MSFT': 'Microsoft Corporation (MSFT)',
+      'AMZN': 'Amazon.com, Inc. (AMZN)',
+      'NVDA': 'NVIDIA Corporation (NVDA)',
+      'GOOG': 'Alphabet Inc. (GOOG)',
+      'META': 'Meta Platforms Inc. (META)',
+      'SPY': 'SPDR S&P 500 ETF Trust (SPY)',
+      'QQQ': 'Invesco QQQ Trust (QQQ)'
+    }
+    
+    return tickerMap[ticker] || `${ticker} Price Chart`
+  }
 
   // Chart options with real data
 const options = {
     title: {
-        text: assetIdentifier ? `${assetIdentifier} Price Chart` : 'Real-time Price Chart',
+        text: getChartTitle(assetIdentifier),
         style: { color: '#ffffff' }
     },
 
@@ -283,34 +300,13 @@ const options = {
         backgroundColor: '#1a1a1a',
         style: { fontFamily: 'Inter, sans-serif' },
         animation: false, // 애니메이션 비활성화로 SVG 에러 방지
+        height: 300, // 모든 화면에서 300px
         events: {
             load() {
                 const chart = this;
                 if (chart.renderer && chart.renderer.globalAnimation) {
                     chart.renderer.globalAnimation = false;
                 }
-                // 네비게이터 초기 선택 범위 설정 (전체 데이터의 80%)
-                setTimeout(() => {
-                    if (chart.xAxis && chart.xAxis[0]) {
-                        const xAxis = chart.xAxis[0];
-                        const dataMin = xAxis.dataMin;
-                        const dataMax = xAxis.dataMax;
-                        const rightPaddingMs = 4 * 60 * 60 * 1000; // +4h padding
-                        if (dataMin && dataMax) {
-                            const effectiveMax = dataMax + rightPaddingMs;
-                            const totalRange = effectiveMax - dataMin;
-                            const navigatorRange = totalRange * 0.8; // 80% 범위
-                            const navigatorMin = effectiveMax - navigatorRange;
-                            const navigatorMax = effectiveMax;
-                            xAxis.setExtremes(navigatorMin, navigatorMax);
-                        }
-                    }
-                    // 네비게이터 Y축 범위 고정 설정
-                    if (chart.navigator && chart.navigator.yAxis) {
-                        const navigatorYAxis = chart.navigator.yAxis;
-                        navigatorYAxis.setExtremes(yAxisRange.min, yAxisRange.max);
-                    }
-                }, 100);
             },
             error(e) {
                 console.warn('Chart rendering error:', e);
@@ -329,7 +325,7 @@ const options = {
 
     xAxis: {
         type: 'datetime',
-        overscroll: 14400000, // 4h overscroll to match right padding
+        overscroll: 14400000, // 모든 화면에서 4h
         gridLineWidth: 1,
         gridLineColor: '#333333',
         min: xAxisRange.min,
@@ -380,6 +376,7 @@ const options = {
     },
 
     rangeSelector: {
+        enabled: false, // 모든 화면에서 비활성화
         buttons: [{
             type: 'minute',
             count: 15,
@@ -440,6 +437,7 @@ const options = {
     },
 
     navigator: {
+        enabled: false, // 모든 화면에서 비활성화
         series: {
             // Extend navigator data to include right padding so the selection bar can extend visually
             data: (chartData && chartData.length > 0)
@@ -469,13 +467,16 @@ const options = {
             endOnTick: false
         },
         // 네비게이터 초기 선택 범위 설정 (전체 데이터의 80%)
-        enabled: true,
         height: 40,
         margin: 2
     },
 
     tooltip: {
         enabled: false
+    },
+
+    exporting: {
+        enabled: false // 모든 화면에서 비활성화
     },
 
     series: [
@@ -525,7 +526,9 @@ const options = {
         display: 'flex', 
         justifyContent: 'center', 
         alignItems: 'center', 
-        height: '700px',
+        height: '300px',
+        minHeight: '300px',
+        width: '100%',
         backgroundColor: '#1a1a1a',
         color: '#ffffff'
       }}>
@@ -535,13 +538,42 @@ const options = {
   }
 
   return (
-    <div ref={containerRef} style={{ width: '100%', height: `${chartHeight}px`, minHeight: '200px' }}>
-      <style>{glowingMarkerStyle}</style>
+    <div ref={containerRef} style={{ width: '100%', height: '300px', minHeight: '300px' }}>
+      <style>
+        {glowingMarkerStyle}
+        {`
+          .highcharts-range-selector-group,
+          .highcharts-exporting-group {
+            display: none !important;
+          }
+          .highcharts-range-selector-buttons,
+          .highcharts-exporting-group {
+            display: none !important;
+          }
+        `}
+        {`
+          .highcharts-navigator,
+          .highcharts-scrollbar {
+            display: none !important;
+          }
+          .highcharts-navigator-container,
+          .highcharts-scrollbar-container {
+            display: none !important;
+          }
+        `}
+        {`
+          .highcharts-container {
+            height: 300px !important;
+            max-height: 300px !important;
+          }
+        `}
+      </style>
       <HighchartsReact
         highcharts={Highcharts}
         constructorType={'stockChart'}
         options={options}
         ref={chartRef}
+        containerProps={{ style: { height: '300px' } }}
         callback={(chart) => {
           // Add error handling for chart
           if (chart && typeof chart.on === 'function') {
@@ -549,6 +581,42 @@ const options = {
               console.warn('Chart error:', e);
             });
           }
+          
+          // 모든 화면에서 Range selector와 Exporting 버튼 숨기기
+          setTimeout(() => {
+            const chartContainer = chart.container;
+            if (chartContainer) {
+              // Range selector 숨기기
+              const rangeSelectors = chartContainer.querySelectorAll('.highcharts-range-selector-group, .highcharts-range-selector-buttons');
+              rangeSelectors.forEach(el => {
+                if (el) el.style.display = 'none';
+              });
+              
+              // Exporting 버튼 숨기기
+              const exportingGroups = chartContainer.querySelectorAll('.highcharts-exporting-group');
+              exportingGroups.forEach(el => {
+                if (el) el.style.display = 'none';
+              });
+            }
+          }, 100);
+          
+          // 모든 화면에서 Navigator와 Scrollbar 숨기기
+          setTimeout(() => {
+            const chartContainer = chart.container;
+            if (chartContainer) {
+              // Navigator 숨기기
+              const navigators = chartContainer.querySelectorAll('.highcharts-navigator, .highcharts-navigator-container');
+              navigators.forEach(el => {
+                if (el) el.style.display = 'none';
+              });
+              
+              // Scrollbar 숨기기
+              const scrollbars = chartContainer.querySelectorAll('.highcharts-scrollbar, .highcharts-scrollbar-container');
+              scrollbars.forEach(el => {
+                if (el) el.style.display = 'none';
+              });
+            }
+          }, 100);
         }}
       />
     </div>

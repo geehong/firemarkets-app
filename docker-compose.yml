@@ -167,6 +167,14 @@ services:
       TIINGO_API_KEY: ${TIINGO_API_KEY}
       ALPACA_API_KEY: ${ALPACA_API_KEY}
       ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY}
+      BINANCE_API_KEY: ${BINANCE_API_KEY}
+      BINANCE_SECRET_KEY: ${BINANCE_SECRET_KEY}
+      # WebSocket Consumer Enablement Flags
+      WEBSOCKET_BINANCE_ENABLED: "1"
+      WEBSOCKET_FINNHUB_ENABLED: "1"
+      WEBSOCKET_ALPACA_ENABLED: "1"
+      WEBSOCKET_TIINGO_ENABLED: "1"
+      WEBSOCKET_SWISSQUOTE_ENABLED: "1"
     depends_on:
       db:
         condition: service_healthy

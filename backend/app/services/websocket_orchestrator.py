@@ -192,38 +192,49 @@ class WebSocketOrchestrator:
         return assets_by_type
     
     async def _assign_assets_by_type(self, asset_type: AssetType, assets: List[Asset]):
-        """특정 자산 타입의 자산들을 Consumer에 우선순위 기반으로 할당"""
-        # 해당 자산 타입을 지원하는 활성화된 Consumer 찾기
+        """특정 자산 타입의 자산들을 Consumer에 Fallback 순서 기반으로 할당"""
+        # Fallback 순서 가져오기
+        fallback_order = WebSocketConfig.ASSET_TYPE_FALLBACK.get(asset_type, [])
+        
+        if not fallback_order:
+            logger.warning(f"⚠️ No fallback order defined for {asset_type.value}")
+            return
+        
+        # Fallback 순서에 따라 활성화된 Consumer 찾기
         available_consumers = []
-        for provider_name, consumer in self.consumers.items():
-            # 데이터베이스에서 Consumer 활성화 여부 재확인
+        for provider_name in fallback_order:
+            if provider_name not in self.consumers:
+                continue
+                
+            # 데이터베이스에서 Consumer 활성화 여부 확인
             enabled_key = f"WEBSOCKET_{provider_name.upper()}_ENABLED"
             is_enabled = GLOBAL_APP_CONFIGS.get(enabled_key, "1") == "1"
             
             if not is_enabled:
+                logger.debug(f"⏸️ {provider_name} consumer is disabled")
                 continue
                 
             config = WebSocketConfig.get_provider_config(provider_name)
             if config and config.max_subscriptions > 0 and asset_type in config.supported_asset_types:
+                consumer = self.consumers[provider_name]
                 available_consumers.append((provider_name, consumer, config))
+                logger.debug(f"✅ {provider_name} available for {asset_type.value}")
         
         if not available_consumers:
             logger.warning(f"⚠️ No active consumers available for {asset_type.value}")
             return
         
-        # 우선순위별로 정렬 (priority가 낮을수록 우선순위 높음)
-        available_consumers.sort(key=lambda x: x[2].priority)
-        
         # 자산 타입별로 이미 분류되었으므로 추가 필터링 불필요
         
         tickers = [asset.ticker for asset in assets]
-        logger.info(f"📊 Assigning {len(tickers)} {asset_type.value} tickers to {len(available_consumers)} consumers")
+        fallback_names = [c[0] for c in available_consumers]
+        logger.info(f"📊 Assigning {len(tickers)} {asset_type.value} tickers using fallback order: {fallback_names}")
         
-        # 우선순위 기반 순차 할당
+        # Fallback 순서 기반 할당
         for ticker in tickers:
             assigned = False
             
-            # 우선순위 순서대로 할당 시도
+            # Fallback 순서대로 할당 시도
             for provider_name, consumer, config in available_consumers:
                 current_assigned = len(self.assignments.get(provider_name, ConsumerAssignment(consumer, [], [], 0)).assigned_tickers)
                 
@@ -239,7 +250,7 @@ class WebSocketOrchestrator:
                             priority=config.priority
                         )
                     
-                    logger.info(f"📋 Assigned {asset_type.value} ticker {ticker} to {provider_name} (priority {config.priority}, {current_assigned + 1}/{config.max_subscriptions})")
+                    logger.info(f"📋 Assigned {asset_type.value} ticker {ticker} to {provider_name} (fallback order, {current_assigned + 1}/{config.max_subscriptions})")
                     assigned = True
                     break
                 else:

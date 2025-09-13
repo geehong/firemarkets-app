@@ -48,7 +48,7 @@ class WebSocketConfig:
             max_subscriptions=50,  # 바이낸스는 더 많은 구독 지원
             supported_asset_types=[AssetType.CRYPTO],  # 암호화폐 전용
             rate_limit_per_minute=300,
-            priority=1,  # 동일 우선순위로 분산 배정
+            priority=1,  # 암호화폐 1순위
             reconnect_interval=30,
             health_check_interval=60
         ),
@@ -77,6 +77,15 @@ class WebSocketConfig:
         AssetType.CRYPTO: 2,     # 암호화폐
         AssetType.FOREX: 3,      # 외환
         AssetType.COMMODITY: 4   # 상품
+    }
+    
+    # 자산 타입별 Fallback 순서 (1순위 실패 시 다음 순위)
+    ASSET_TYPE_FALLBACK = {
+        AssetType.CRYPTO: ['binance', 'finnhub', 'tiingo'],  # 바이낸스 -> 핀허브 -> 팅고
+        AssetType.STOCK: ['finnhub', 'alpaca', 'tiingo'],    # 핀허브 -> 알파카 -> 팅고
+        AssetType.FOREX: ['finnhub', 'swissquote'],          # 핀허브 -> 스위스쿼트
+        AssetType.COMMODITY: ['swissquote', 'finnhub'],      # 스위스쿼트 -> 핀허브
+        AssetType.ETF: ['alpaca', 'finnhub', 'tiingo']       # 알파카 -> 핀허브 -> 팅고
     }
     
     @classmethod
