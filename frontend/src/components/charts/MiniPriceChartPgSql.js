@@ -86,14 +86,18 @@ const MiniPriceChart = ({ assetIdentifier }) => {
             max: parseFloat((maxPrice + padding).toFixed(4))
           });
           
-          // X축 범위 계산 및 고정 (데이터 전체 범위)
+          // X축 범위 계산 및 고정 (데이터 전체 범위 + 좌/우 패딩 적용)
           const timestamps = formattedData.map(point => point[0]);
           const minTime = Math.min(...timestamps);
           const maxTime = Math.max(...timestamps);
+
+          // 좌/우 패딩: 좌 2시간, 우 4시간 (마지막 포인트가 오른쪽에 붙지 않도록 공간 확보)
+          const leftPaddingMs = 2 * 60 * 60 * 1000;  // 2h
+          const rightPaddingMs = 4 * 60 * 60 * 1000; // 4h
           
           setXAxisRange({
-            min: Math.round(minTime),
-            max: Math.round(maxTime)
+            min: Math.round(minTime - leftPaddingMs),
+            max: Math.round(maxTime + rightPaddingMs)
           });
           
           // 네비게이터 초기 선택 범위 계산 (전체 기간의 80%)
@@ -315,7 +319,8 @@ const options = {
 
     xAxis: {
         type: 'datetime',
-        overscroll: 500000,
+        // 마지막 포인트가 오른쪽 끝에 붙지 않도록 충분한 오버스크롤 적용 (4시간)
+        overscroll: 14400000,
         gridLineWidth: 1,
         gridLineColor: '#333333',
         min: xAxisRange.min,

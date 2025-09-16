@@ -63,6 +63,7 @@ const useTreeMapData = () => {
       }
 
       console.log('[TreeMap] combined items:', combinedData.length)
+      console.log('[TreeMap] sample data:', combinedData.slice(0, 3))
       setData(combinedData)
     } catch (err) {
       setError(err.message)

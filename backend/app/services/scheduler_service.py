@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Dict, Any, Type
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
@@ -47,9 +48,9 @@ class SchedulerService:
         self._setup_logger()
         
         # --- Dependency Injection Singletons ---
-        # These instances are created once and injected into collectors.
+        # Create only loop-agnostic singletons here. ApiStrategyManager creates async
+        # clients/locks under the hood, so it must be created within the target event loop.
         self.config_manager = ConfigManager()
-        self.api_manager = ApiStrategyManager()
         self.redis_queue_manager = RedisQueueManager(config_manager=self.config_manager)
 
     def _setup_logger(self):
@@ -69,10 +70,13 @@ class SchedulerService:
             db: Session = SessionLocal()
             try:
                 # Instantiate the collector with all required dependencies.
+                # IMPORTANT: ApiStrategyManager must be constructed inside this loop to avoid
+                # cross-event-loop Futures/Locks.
+                api_manager = ApiStrategyManager(config_manager=self.config_manager)
                 collector_instance = collector_class(
                     db=db,
                     config_manager=self.config_manager,
-                    api_manager=self.api_manager,
+                    api_manager=api_manager,
                     redis_queue_manager=self.redis_queue_manager,
                 )
                 # The `collect_with_settings` method in BaseCollector handles all logging.
@@ -88,16 +92,116 @@ class SchedulerService:
     def setup_jobs(self, test_mode: bool = False):
         """
         Sets up all data collection jobs based on DB configuration.
-        This method is now data-driven via JOB_MAPPING.
-        
-        Args:
-            test_mode: If True, uses shorter intervals for testing (1, 3, 5 minutes)
-                      If False, uses normal intervals (24 hours)
+        Priority:
+          1) If unified SCHEDULER_CONFIG (JSON) is present, use it to create cron jobs
+          2) Else fallback to legacy interval-based jobs (test vs normal)
         """
         if not self.config_manager.is_scheduler_enabled():
             self.logger.warning("Scheduler is globally disabled via configuration. No jobs will be added.")
             return
 
+        # --- Unified scheduler config path ---
+        try:
+            raw = self.config_manager.get_scheduler_config()
+        except Exception:
+            raw = None
+
+        if raw:
+            self.logger.info("Unified SCHEDULER_CONFIG detected. Scheduling cron-based jobs.")
+            try:
+                import json
+                cfg = json.loads(raw)
+            except Exception as e:
+                self.logger.error(f"Failed to parse SCHEDULER_CONFIG. Falling back. Error: {e}")
+                cfg = None
+
+            if cfg:
+                tz = cfg.get("timezone") or "UTC"
+                # Recreate scheduler with provided timezone if needed
+                if str(self.scheduler.timezone) != tz:
+                    try:
+                        # Shutdown old scheduler if running and create a new one with tz
+                        if self.scheduler.running:
+                            self.scheduler.shutdown()
+                        self.scheduler = BackgroundScheduler(timezone=tz)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to rebuild scheduler with timezone {tz}: {e}. Using existing timezone.")
+
+                schedules = cfg.get("schedules") or []
+                for schedule in schedules:
+                    collectors = schedule.get("collectors") or []
+                    day_of_week = schedule.get("day_of_week")
+                    hour = schedule.get("hour")
+                    minute = schedule.get("minute")
+
+                    trigger = CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute, timezone=self.scheduler.timezone)
+
+                    for name in collectors:
+                        job_id = f"{name}_cron_job"
+                        # Map collector name group to actual collector classes present in JOB_MAPPING
+                        # We schedule via wrapper to call each enabled collector in that logical group
+                        def _make_group_runner(group_name: str):
+                            def _run_group():
+                                loop = asyncio.new_event_loop()
+                                asyncio.set_event_loop(loop)
+                                db: Session = SessionLocal()
+                                try:
+                                    # ApiStrategyManager must be per-event-loop to avoid cross-loop issues
+                                    api_manager = ApiStrategyManager(config_manager=self.config_manager)
+                                    tasks = []
+                                    # Determine which collectors to run from group name
+                                    mapping = {
+                                        "ohlcv_day_clients": ["OHLCV"],
+                                        "ohlcv_intraday_clients": ["OHLCV"],
+                                        "crypto_ohlcv_clients": ["OHLCV"],
+                                        "commodity_ohlcv_clients": ["OHLCV"],
+                                        "stock_profiles_clients": ["StockProfile"],
+                                        "crypto_clients": ["CryptoInfo"],
+                                        "onchain_clients": ["Onchain"],
+                                        "stock_financials_clients": [],
+                                        "stock_analyst_estimates_clients": [],
+                                        "etf_clients": ["ETFInfo"],
+                                    }
+                                    job_names = mapping.get(group_name, [])
+                                    for job_name in job_names:
+                                        meta = self.JOB_MAPPING.get(job_name)
+                                        if not meta:
+                                            continue
+                                        is_enabled_method = getattr(self.config_manager, meta["config_key"])
+                                        if not is_enabled_method():
+                                            continue
+                                        collector_class = meta["class"]
+                                        collector_instance = collector_class(
+                                            db=db,
+                                            config_manager=self.config_manager,
+                                            api_manager=api_manager,
+                                            redis_queue_manager=self.redis_queue_manager,
+                                        )
+                                        tasks.append(collector_instance.collect_with_settings())
+                                    if tasks:
+                                        loop.run_until_complete(asyncio.gather(*tasks))
+                                except Exception as e:
+                                    self.logger.error(f"Group runner error for {group_name}: {e}", exc_info=True)
+                                finally:
+                                    db.close()
+                                    loop.close()
+                            return _run_group
+
+                        self.scheduler.add_job(
+                            _make_group_runner(name),
+                            trigger,
+                            id=job_id,
+                            replace_existing=True,
+                            misfire_grace_time=3600,
+                        )
+                        self.logger.info(f"✅ Scheduled cron job: '{job_id}' ({day_of_week} {hour:02d}:{minute:02d} {self.scheduler.timezone})")
+
+                # Always add heartbeat
+                self.scheduler.add_job(self._update_heartbeat, 'interval', minutes=1, id='scheduler_heartbeat', replace_existing=True)
+                self.logger.info("✅ Scheduled job: 'scheduler_heartbeat'")
+                return
+
+        # --- Legacy interval-based path ---
         mode_text = "TEST MODE" if test_mode else "NORMAL MODE"
         self.logger.info(f"Setting up scheduler jobs in {mode_text}...")
 

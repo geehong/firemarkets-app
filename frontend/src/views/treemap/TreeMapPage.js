@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useTreeMapData } from '../../hooks/useTreeMapData'
 import TreeMapChart from '../../components/charts/TreeMapChart'
+import SimpleTreeMapChart from '../../components/charts/SimpleTreeMapChart'
 import TreeMapLegend from '../../components/charts/TreeMapLegend'
 import CardTools from '../../components/common/CardTools'
 import {
@@ -29,7 +30,7 @@ const TreeMapPage = () => {
 
   const { data, loading, error } = useTreeMapData()
 
-  // console.log('TreeMapPage - data length:', data?.length, 'loading:', loading, 'error:', error)
+  console.log('TreeMapPage - data length:', data?.length, 'loading:', loading, 'error:', error)
 
   const handleCardAction = (action) => {
     switch (action) {

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useMemo, useState } from 'react'
 import Highcharts from 'highcharts'
 import HighchartsReact from 'highcharts-react-official'
-import { usePerformanceTreeMapData } from '../../hooks/useTreeMapData'
+import { usePerformanceTreeMapData, useTreeMapData } from '../../hooks/useTreeMapData'
 
 // Highcharts 모듈들을 최소한으로 로드
 import 'highcharts/modules/treemap'
@@ -39,19 +39,28 @@ const PerformanceTreeMap = () => {
   const chartRef = useRef(null)
   const [performancePeriod, setPerformancePeriod] = useState('1m')
 
-  const { data, loading, error, refreshData } = usePerformanceTreeMapData(performancePeriod, 100)
+  // 성과 데이터가 없으면 일반 TreeMap 데이터 사용
+  const { data: performanceData, loading: performanceLoading, error: performanceError } = usePerformanceTreeMapData(performancePeriod, 100)
+  const { data: fallbackData, loading: fallbackLoading, error: fallbackError } = useTreeMapData()
+  
+  // 성과 데이터가 있으면 사용, 없으면 일반 데이터 사용
+  const data = performanceData && performanceData.length > 0 ? performanceData : fallbackData
+  const loading = performanceLoading || fallbackLoading
+  const error = performanceError || fallbackError
 
-  // console.log('=== PERFORMANCE TREEMAP COMPONENT ===')
-  // console.log('Hook data:', data)
-  // console.log('Hook loading:', loading)
-  // console.log('Hook error:', error)
-  // console.log('Performance period:', performancePeriod)
+  console.log('=== PERFORMANCE TREEMAP COMPONENT ===')
+  console.log('Performance data:', performanceData?.length)
+  console.log('Fallback data:', fallbackData?.length)
+  console.log('Final data:', data?.length)
+  console.log('Loading:', loading)
+  console.log('Error:', error)
+  console.log('Performance period:', performancePeriod)
 
   // TreeMap 데이터 구조 생성
   const createTreeMapData = (assets) => {
-    // console.log('=== CREATE TREEMAP DATA ===')
-    // console.log('Input assets length:', assets.length)
-    // console.log('Sample asset structure:', assets[0])
+    console.log('=== CREATE TREEMAP DATA ===')
+    console.log('Input assets length:', assets.length)
+    console.log('Sample asset structure:', assets[0])
 
     // temp_debug.js와 동일한 3단계 구조 생성
     const data = []
@@ -94,7 +103,8 @@ const PerformanceTreeMap = () => {
       // })
 
       const value = asset.market_cap || asset.market_cap_usd || 1
-      const colorValue = asset.performance || 0 // 정규화하지 않음
+      // 성과 데이터가 없으면 일일 변동률을 사용
+      const colorValue = asset.performance !== undefined ? asset.performance : (asset.daily_change_percent || 0)
 
       const childNode = {
         name: asset.name,
@@ -104,12 +114,14 @@ const PerformanceTreeMap = () => {
         colorValue: colorValue,
         custom: {
           fullName: asset.name,
-          performance:
-            (asset.performance < 0 ? '' : '+') + (asset.performance || 0).toFixed(2) + '%',
+          performance: (() => {
+            const perf = asset.performance !== undefined ? asset.performance : (asset.daily_change_percent || 0)
+            return (perf < 0 ? '' : '+') + perf.toFixed(2) + '%'
+          })(),
           ticker: asset.ticker,
-          price: asset.current_price,
+          price: asset.current_price || asset.price_usd,
           volume: asset.volume || asset.volume_24h || 0,
-          change_24h: asset.change_percent_24h || 0,
+          change_24h: asset.change_percent_24h || asset.daily_change_percent || 0,
         },
       }
 
@@ -350,14 +362,14 @@ const PerformanceTreeMap = () => {
         },
       ],
       title: {
-        text: `Asset Performance TreeMap (${getPeriodLabel(performancePeriod)})`,
+        text: `Asset Performance TreeMap (Daily Change)`,
         align: 'left',
         style: {
           color: 'white',
         },
       },
       subtitle: {
-        text: `Color shows ${getPeriodLabel(performancePeriod).toLowerCase()} performance: Red (loss) → Gray (neutral) → Green (gain). Click to drill down.`,
+        text: `Color shows daily change: Red (loss) → Gray (neutral) → Green (gain). Click to drill down.`,
         align: 'left',
         style: {
           color: 'silver',
@@ -371,18 +383,18 @@ const PerformanceTreeMap = () => {
           '<b>Market Cap:</b>' +
           ' USD {(divide point.value 1000000000):.1f} bln<br/>' +
           '{#if point.custom.performance}' +
-          '<b>1 month performance:</b> {point.custom.performance}{/if}',
+          '<b>Daily Change:</b> {point.custom.performance}{/if}',
       },
       colorAxis: {
         minColor: '#f73539', // 빨간색 (손실)
         maxColor: '#2ecc59', // 초록색 (이익)
         stops: [
-          [0, '#f73539'], // -10% = 빨간색
+          [0, '#f73539'], // -5% = 빨간색
           [0.5, '#414555'], // 0% = 회색
-          [1, '#2ecc59'], // +10% = 초록색
+          [1, '#2ecc59'], // +5% = 초록색
         ],
-        min: -10,
-        max: 10,
+        min: -5,
+        max: 5,
         gridLineWidth: 0,
         labels: {
           overflow: 'allow',
@@ -426,7 +438,12 @@ const PerformanceTreeMap = () => {
       <div
         style={{ height: '600px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       >
-        <div className="text-white">No performance data available</div>
+        <div className="text-white">
+          <p>No performance data available</p>
+          <p>Performance data: {performanceData?.length || 0}</p>
+          <p>Fallback data: {fallbackData?.length || 0}</p>
+          <p>Final data: {data?.length || 0}</p>
+        </div>
       </div>
     )
   }

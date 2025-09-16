@@ -275,6 +275,10 @@ const MiniPriceChartItem = ({ assetIdentifier }) => {
     const tickerMap = {
       'BTCUSDT': 'Bitcoin (BTCUSDT)',
       'ETHUSDT': 'Ethereum (ETHUSDT)',
+      'XRPUSDT': 'Ripple (XRPUSDT)',
+      'ADAUSDT': 'Cardano (ADAUSDT)',
+      'AVGO': 'Broadcom Inc. (AVGO)',
+      'TSLA': 'Tesla Inc. (TSLA)',
       'GCUSD': 'Gold Spot (GCUSD)',
       'AAPL': 'Apple Inc. (AAPL)',
       'MSFT': 'Microsoft Corporation (MSFT)',

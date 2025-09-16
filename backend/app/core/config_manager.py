@@ -113,6 +113,15 @@ class ConfigManager:
     def is_immediate_execution_enabled(self) -> bool:
         return self._get_config("ENABLE_IMMEDIATE_EXECUTION", False, _str_to_bool)
 
+    def get_scheduler_config(self) -> Optional[str]:
+        """Returns raw JSON string for unified scheduler configuration, if any.
+
+        The value is stored under config_key 'SCHEDULER_CONFIG'. When absent,
+        returns None so callers can safely fallback to legacy interval scheduling.
+        """
+        value = self._get_config("SCHEDULER_CONFIG", None, str)
+        return value
+
     # --- Data Collection Enable/Disable Flags ---
     def is_stock_collection_enabled(self) -> bool:
         return self._get_config("ENABLE_STOCK_COLLECTION", True, _str_to_bool)

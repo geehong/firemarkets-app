@@ -126,20 +126,20 @@ const TreeMapChart = ({ data, viewType, filters, searchTerm }) => {
   }
 
   // props 디버깅
-  // console.log('TreeMapChart props:', {
-  //   dataLength: data?.length,
-  //   viewType,
-  //   filters,
-  //   searchTerm,
-  //   data: data,
-  // })
+  console.log('TreeMapChart props:', {
+    dataLength: data?.length,
+    viewType,
+    filters,
+    searchTerm,
+    data: data,
+  })
 
   // 데이터 변환 함수
   const transformData = useMemo(() => {
-    // console.log('transformData called with:', { data, viewType, filters, searchTerm })
+    console.log('transformData called with:', { data, viewType, filters, searchTerm })
 
     if (!data || !Array.isArray(data)) {
-      // console.log('No data or data is not array')
+      console.log('No data or data is not array')
       return []
     }
 
@@ -451,14 +451,18 @@ const TreeMapChart = ({ data, viewType, filters, searchTerm }) => {
     }
 
     // 디버깅: 데이터 구조 확인
-    // console.log('=== TreeMap Data Debug ===')
-    // console.log('Original data length:', data?.length)
-    // console.log('Filtered data length:', filteredData?.length)
-    // console.log('Government Bond:', governmentBond)
-    // console.log('Corporate Bond:', corporateBond)
-    // console.log('Other data length:', otherData?.length)
-    // console.log('Flat TreeMap Data length:', flatData?.length)
-    // console.log('Flat TreeMap Data:', flatData)
+    console.log('=== TreeMap Data Debug ===')
+    console.log('Original data length:', data?.length)
+    console.log('Filtered data length:', filteredData?.length)
+    console.log('Government Bond:', governmentBond)
+    console.log('Corporate Bond:', corporateBond)
+    console.log('Other data length:', otherData?.length)
+    console.log('Flat TreeMap Data length:', flatData?.length)
+    
+    // 샘플 데이터만 로그 출력
+    if (flatData.length > 0) {
+      console.log('Sample TreeMap Data (first 3):', flatData.slice(0, 3))
+    }
 
     // 색상 값이 있는 항목들만 확인
     const itemsWithColor = flatData.filter((item) => item.colorValue !== undefined)
@@ -490,30 +494,34 @@ const TreeMapChart = ({ data, viewType, filters, searchTerm }) => {
   }, [data, viewType, filters, searchTerm])
 
   const chartOptions = useMemo(
-    () => ({
-      chart: {
-        backgroundColor: '#252931',
-        height: 600,
-      },
-      series: [
-        {
-          name: 'All',
-          type: 'treemap',
-          layoutAlgorithm: 'squarified',
-          allowDrillToNode: true,
-          animationLimit: 1000,
-          borderColor: '#252931',
-          color: '#252931',
-          opacity: 0.01,
-          nodeSizeBy: 'leaf',
-          dataLabels: {
-            enabled: true,
-            allowOverlap: true,
-            style: {
-              fontSize: '0.9em',
-              textOutline: 'none',
+    () => {
+      console.log('Creating chart options with data length:', transformData?.length)
+      
+      return {
+        chart: {
+          backgroundColor: '#252931',
+          height: 600,
+        },
+        series: [
+          {
+            name: 'All',
+            type: 'treemap',
+            layoutAlgorithm: 'squarified',
+            allowDrillToNode: true,
+            animationLimit: 1000,
+            borderColor: '#252931',
+            color: '#252931',
+            opacity: 0.01,
+            nodeSizeBy: 'leaf',
+            dataLabels: {
+              enabled: true,
+              allowOverlap: true,
+              style: {
+                fontSize: '0.9em',
+                textOutline: 'none',
+                color: 'white'
+              },
             },
-          },
           levels: [
             {
               level: 1,
@@ -758,13 +766,34 @@ const TreeMapChart = ({ data, viewType, filters, searchTerm }) => {
           useHTML: true,
           y: -2,
         },
-      },
-    }),
+      }
+    }
+  },
     [transformData, viewType],
   )
 
+  // 데이터가 없을 때의 처리
+  if (!transformData || transformData.length === 0) {
+    return (
+      <div style={{ 
+        height: '600px', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        backgroundColor: '#252931',
+        color: 'white'
+      }}>
+        <div>
+          <p>No data available for TreeMap</p>
+          <p>Data length: {data?.length || 0}</p>
+          <p>Transform data length: {transformData?.length || 0}</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div style={{ height: '600px' }}>
+    <div style={{ height: '600px', backgroundColor: '#252931' }}>
       <HighchartsReact highcharts={Highcharts} options={chartOptions} ref={chartRef} />
     </div>
   )

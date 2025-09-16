@@ -4,7 +4,7 @@ import DashboardChart from 'src/components/charts/DashboardChart'
 import DashboardTable from 'src/components/tables/DashboardTable'
 import PerformanceTreeMap from 'src/components/charts/PerformanceTreeMap'
 import RealTimeWidgetsTypeA from 'src/components/widgets/RealTimeWidgetsTypeA'
-import MiniPriceChart from 'src/components/charts/MiniPriceChart'
+import MiniPriceChartPgSql from 'src/components/charts/MiniPriceChartPgSql'
  
 
 const MainDashboard = () => {
@@ -60,6 +60,7 @@ const MainDashboard = () => {
     }
   }, [])
 
+
   // 현재 표시할 심볼들을 계산
   const getCurrentSymbols = () => {
     return chartGroups.map((group, groupIndex) => {
@@ -73,6 +74,9 @@ const MainDashboard = () => {
   return (
     <>
       <CCard className="mb-4">
+        <CCardHeader>
+          <CCardTitle className="card-title">Real-time Price Charts</CCardTitle>
+        </CCardHeader>
         <CCardBody style={{ padding: '8px' }}>
           <CRow>
             {currentSymbols.map((symbol, index) => {
@@ -89,7 +93,7 @@ const MainDashboard = () => {
                     minHeight: '300px',
                     width: '100%'
                   }}>
-                    <MiniPriceChart assetIdentifier={symbol} />
+                    <MiniPriceChartPgSql assetIdentifier={symbol} />
                   </div>
                 </CCol>
               )

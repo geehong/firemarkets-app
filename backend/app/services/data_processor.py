@@ -1250,12 +1250,90 @@ class DataProcessor:
                 
                 # CRUD를 사용하여 데이터 저장 - 테이블별로 분리
                 from app.crud.asset import crud_ohlcv
+                # 1) MySQL 저장 (기존 경로)
+                logger.debug("[OHLCV dual-write] MySQL upsert 시작: count=%s, daily=%s", len(ohlcv_data_list), is_daily_request)
                 if is_daily_request:
                     added_count = crud_ohlcv.bulk_upsert_ohlcv_daily(db, ohlcv_data_list)
                 else:
                     added_count = crud_ohlcv.bulk_upsert_ohlcv_intraday(db, ohlcv_data_list)
-                
-                logger.info(f"OHLCV 데이터 저장 완료: asset_id={asset_id}, interval={interval}, table={table_name}, added={added_count}개 레코드")
+                logger.info(f"[OHLCV dual-write] MySQL 저장 완료: asset_id={asset_id}, interval={interval}, table={table_name}, added={added_count}개")
+
+                # 2) PostgreSQL 저장 (이중 쓰기 - 독립 트랜잭션)
+                try:
+                    from ..core.database import get_postgres_db
+                    pg_db = next(get_postgres_db())
+                    try:
+                        logger.debug("[OHLCV dual-write] PostgreSQL upsert 시작: count=%s, daily=%s", len(ohlcv_data_list), is_daily_request)
+                        # 모델 및 충돌 키 결정
+                        if is_daily_request:
+                            from ..models.asset import OHLCVData as PGDay
+                            model = PGDay
+                            conflict_cols = ['asset_id', 'timestamp_utc']
+                        else:
+                            from ..models.asset import OHLCVIntradayData as PGIntraday
+                            model = PGIntraday
+                            conflict_cols = ['asset_id', 'timestamp_utc', 'data_interval']
+
+                        from sqlalchemy.dialects.postgresql import insert as pg_insert
+                        from sqlalchemy import func
+
+                        # 허용 컬럼(모델 스키마) 집합
+                        allowed_columns = set(model.__table__.columns.keys())
+
+                        upserted = 0
+                        for row in ohlcv_data_list:
+                            logger.debug("[OHLCV dual-write] PG UPSERT row: keys=%s", {k: row.get(k) for k in ('asset_id','timestamp_utc','data_interval') if k in row})
+
+                            # 모델 스키마에 존재하는 컬럼만 사용
+                            filtered_row = {k: v for k, v in row.items() if k in allowed_columns}
+                            # 누락 컬럼이 있으면 디버그 기록
+                            if len(filtered_row) != len(row):
+                                missing = [k for k in row.keys() if k not in allowed_columns]
+                                logger.debug(f"[OHLCV dual-write] PG 모델에 없는 컬럼 제외: {missing}")
+
+                            stmt = pg_insert(model).values(**filtered_row)
+                            # 업데이트 컬럼: 충돌 키를 제외한 나머지(모델에 존재하는 컬럼만) + updated_at
+                            update_set = {}
+                            for k in filtered_row.keys():
+                                if k in conflict_cols:
+                                    continue
+                                try:
+                                    update_set[k] = getattr(stmt.excluded, k)
+                                except AttributeError:
+                                    # 모델에 실제로 없거나 excluded 접근 불가
+                                    logger.debug(f"[OHLCV dual-write] excluded에 없는 컬럼 스킵: {k}")
+                            update_set['updated_at'] = func.now()
+
+                            stmt = stmt.on_conflict_do_update(index_elements=conflict_cols, set_=update_set)
+                            pg_db.execute(stmt)
+                            upserted += 1
+                        pg_db.commit()
+                        logger.info(f"[OHLCV dual-write] PostgreSQL 저장 완료: upserted={upserted} rows, daily={is_daily_request}")
+                    except Exception as e:
+                        pg_db.rollback()
+                        logger.warning(f"[OHLCV dual-write] PostgreSQL 저장 실패, 롤백 수행: {e}")
+                        # DLQ 적재 (원본 목록을 축약하여 기록)
+                        try:
+                            if self.queue_manager:
+                                payload = {
+                                    'type': 'ohlcv_dual_write_pg_failed',
+                                    'items': ohlcv_data_list[:50],
+                                    'meta': {
+                                        'is_daily': is_daily_request,
+                                        'interval': interval,
+                                        'reason': str(e)
+                                    }
+                                }
+                                import json as _json
+                                self.queue_manager.move_to_dlq(_json.dumps(payload, ensure_ascii=False, default=str), str(e))
+                                logger.error("[OHLCV dual-write] DLQ 적재 완료 (PG 실패)")
+                        except Exception as de:
+                            logger.error(f"[OHLCV dual-write] DLQ 적재 실패: {de}")
+                    finally:
+                        pg_db.close()
+                except Exception as e:
+                    logger.warning(f"[OHLCV dual-write] PostgreSQL 연결/경로 초기화 실패(무시): {e}")
+
                 return True
                 
             except Exception as e:
