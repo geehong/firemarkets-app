@@ -611,15 +611,6 @@ VALUES
     'scheduler'
   ),
   (
-    'ENABLE_AUTO_SEEDING_AND_COLLECTION',
-    'false',
-    'boolean',
-    'Enable automatic data seeding and collection',
-    FALSE,
-    TRUE,
-    'scheduler'
-  ),
-  (
     'MAX_API_RETRY_ATTEMPTS',
     '3',
     'int',

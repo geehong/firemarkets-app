@@ -664,43 +664,82 @@ class DataProcessor:
             return None, None
 
     async def _bulk_save_realtime_quotes(self, records: List[Dict[str, Any]]) -> bool:
-        """실시간 인용 데이터 일괄 저장 - UPSERT 로직 (실시간 + 15분 지연 테이블)"""
+        """실시간 인용 데이터 일괄 저장 - 이중 쓰기 (MySQL + PostgreSQL)"""
         try:
-            logger.info(f"💾 RealtimeQuote 저장 시작: {len(records)}개 레코드")
-            async with self.get_db_session() as db:
+            logger.info(f"💾 RealtimeQuote 이중 쓰기 시작: {len(records)}개 레코드")
+            
+            # MySQL과 PostgreSQL 세션 생성
+            from ..core.database import get_mysql_db, get_postgres_db
+            logger.debug("🔗 데이터베이스 세션 생성 중...")
+            mysql_db = next(get_mysql_db())
+            postgres_db = next(get_postgres_db())
+            logger.debug("✅ 데이터베이스 세션 생성 완료")
+            
+            try:
                 success_count = 0
                 for i, record_data in enumerate(records):
                     try:
-                        logger.debug(f"🔍 레코드 {i+1}/{len(records)} 처리: asset_id={record_data.get('asset_id')}, data_source={record_data.get('data_source')}")
+                        logger.debug(f"🔍 레코드 {i+1}/{len(records)} 처리 시작")
+                        logger.debug(f"📋 레코드 데이터: asset_id={record_data.get('asset_id')}, data_source={record_data.get('data_source')}, price={record_data.get('price')}")
                         
-                        # 1. 실시간 테이블 저장 (UPSERT) - asset_id만으로 유니크
-                        existing_quote = db.query(RealtimeQuote).filter(
+                        # 1. MySQL 실시간 테이블 저장 (UPSERT) - asset_id만으로 유니크
+                        logger.debug("🔄 1단계: MySQL 실시간 테이블 처리 시작")
+                        existing_quote = mysql_db.query(RealtimeQuote).filter(
                             RealtimeQuote.asset_id == record_data['asset_id']
                         ).first()
                         
                         if existing_quote:
                             # 기존 레코드 업데이트
-                            logger.debug(f"🔄 실시간 레코드 업데이트: ID={existing_quote.id}")
+                            logger.debug(f"🔄 MySQL 실시간 레코드 업데이트: ID={existing_quote.id}")
                             existing_quote.timestamp_utc = record_data['timestamp_utc']
                             existing_quote.price = record_data['price']
                             existing_quote.volume = record_data['volume']
                             existing_quote.change_amount = record_data['change_amount']
                             existing_quote.change_percent = record_data['change_percent']
                             existing_quote.data_source = record_data['data_source']
+                            logger.debug("✅ MySQL 실시간 레코드 업데이트 완료")
                         else:
                             # 새 레코드 생성
-                            logger.debug(f"➕ 실시간 새 레코드 생성")
+                            logger.debug(f"➕ MySQL 실시간 새 레코드 생성")
                             quote = RealtimeQuote(**record_data)
-                            db.add(quote)
+                            mysql_db.add(quote)
+                            logger.debug("✅ MySQL 실시간 새 레코드 추가 완료")
                         
-                        # 2. 시간 윈도우 지연 테이블 저장 (UPSERT)
+                        # 2. PostgreSQL 실시간 테이블 저장 (UPSERT)
+                        logger.debug("🔄 2단계: PostgreSQL 실시간 테이블 처리 시작")
+                        from sqlalchemy.dialects.postgresql import insert
+                        from sqlalchemy import func
+                        
+                        pg_data = record_data.copy()
+                        logger.debug(f"📋 PostgreSQL 데이터 준비: {pg_data}")
+                        
+                        stmt = insert(RealtimeQuote).values(**pg_data)
+                        stmt = stmt.on_conflict_do_update(
+                            index_elements=['asset_id'],  # asset_id로 유니크 제약
+                            set_={
+                                'timestamp_utc': stmt.excluded.timestamp_utc,
+                                'price': stmt.excluded.price,
+                                'volume': stmt.excluded.volume,
+                                'change_amount': stmt.excluded.change_amount,
+                                'change_percent': stmt.excluded.change_percent,
+                                'data_source': stmt.excluded.data_source,
+                                'updated_at': func.now()
+                            }
+                        )
+                        logger.debug("🔄 PostgreSQL INSERT/UPSERT 실행 중...")
+                        postgres_db.execute(stmt)
+                        logger.debug(f"✅ PostgreSQL 실시간 레코드 저장/업데이트 완료")
+                        
+                        # 3. MySQL 시간 윈도우 지연 테이블 저장 (UPSERT)
+                        logger.debug("🔄 3단계: MySQL 지연 테이블 처리 시작")
                         time_window = self._get_time_window(record_data['timestamp_utc'])
                         delay_record_data = record_data.copy()
                         delay_record_data['timestamp_utc'] = time_window
                         delay_record_data['data_interval'] = f'{self.time_window_minutes}m'
+                        logger.debug(f"📊 시간 윈도우 계산: {time_window} (원본: {record_data['timestamp_utc']})")
                         
                         # 기존 지연 레코드 확인
-                        existing_delay_quote = db.query(RealtimeQuoteTimeDelay).filter(
+                        existing_delay_quote = mysql_db.query(RealtimeQuoteTimeDelay).filter(
                             RealtimeQuoteTimeDelay.asset_id == delay_record_data['asset_id'],
                             RealtimeQuoteTimeDelay.timestamp_utc == time_window,
                             RealtimeQuoteTimeDelay.data_source == delay_record_data['data_source']
@@ -708,37 +747,79 @@ class DataProcessor:
                         
                         if existing_delay_quote:
                             # 기존 레코드 업데이트
-                            logger.debug(f"🔄 지연 레코드 업데이트: ID={existing_delay_quote.id}")
+                            logger.debug(f"🔄 MySQL 지연 레코드 업데이트: ID={existing_delay_quote.id}")
                             existing_delay_quote.price = delay_record_data['price']
                             existing_delay_quote.volume = delay_record_data['volume']
                             existing_delay_quote.change_amount = delay_record_data['change_amount']
                             existing_delay_quote.change_percent = delay_record_data['change_percent']
+                            logger.debug("✅ MySQL 지연 레코드 업데이트 완료")
                         else:
                             # 새 레코드 생성
-                            logger.debug(f"➕ 지연 새 레코드 생성")
+                            logger.debug(f"➕ MySQL 지연 새 레코드 생성")
                             delay_quote = RealtimeQuoteTimeDelay(**delay_record_data)
-                            db.add(delay_quote)
+                            mysql_db.add(delay_quote)
+                            logger.debug("✅ MySQL 지연 새 레코드 추가 완료")
+                        
+                        # 4. PostgreSQL 시간 윈도우 지연 테이블 저장 (UPSERT)
+                        logger.debug("🔄 4단계: PostgreSQL 지연 테이블 처리 시작")
+                        from ..models.asset import RealtimeQuoteTimeDelay as PGRealtimeQuoteTimeDelay
+                        
+                        pg_delay_data = delay_record_data.copy()
+                        logger.debug(f"📋 PostgreSQL 지연 데이터 준비: {pg_delay_data}")
+                        
+                        delay_stmt = insert(PGRealtimeQuoteTimeDelay).values(**pg_delay_data)
+                        delay_stmt = delay_stmt.on_conflict_do_update(
+                            index_elements=['asset_id', 'timestamp_utc', 'data_source'],
+                            set_={
+                                'price': delay_stmt.excluded.price,
+                                'volume': delay_stmt.excluded.volume,
+                                'change_amount': delay_stmt.excluded.change_amount,
+                                'change_percent': delay_stmt.excluded.change_percent,
+                                'updated_at': func.now()
+                            }
+                        )
+                        logger.debug("🔄 PostgreSQL 지연 INSERT/UPSERT 실행 중...")
+                        postgres_db.execute(delay_stmt)
+                        logger.debug(f"✅ PostgreSQL 지연 레코드 저장/업데이트 완료")
                         
                         logger.debug(f"📊 {self.time_window_minutes}분 지연 레코드 처리: {time_window}")
                         
                         # 각 레코드마다 개별적으로 커밋하여 race condition 방지
-                        db.commit()
+                        logger.debug("🔄 MySQL 커밋 실행 중...")
+                        mysql_db.commit()
+                        logger.debug("✅ MySQL 커밋 완료")
+                        
+                        logger.debug("🔄 PostgreSQL 커밋 실행 중...")
+                        postgres_db.commit()
+                        logger.debug("✅ PostgreSQL 커밋 완료")
+                        
                         success_count += 1
-                        logger.debug(f"✅ 레코드 {i+1} 저장 성공")
+                        logger.debug(f"✅ 레코드 {i+1} 이중 쓰기 성공")
                         
                     except Exception as e:
                         import traceback
-                        logger.error(f"❌ 레코드 {i+1} 저장 실패: {e}")
+                        logger.error(f"❌ 레코드 {i+1} 이중 쓰기 실패: {e}")
                         logger.error(f"🔍 오류 상세: {traceback.format_exc()}")
                         logger.error(f"📋 실패한 레코드 데이터: {record_data}")
-                        db.rollback()
+                        logger.debug("🔄 MySQL 롤백 실행 중...")
+                        mysql_db.rollback()
+                        logger.debug("✅ MySQL 롤백 완료")
+                        logger.debug("🔄 PostgreSQL 롤백 실행 중...")
+                        postgres_db.rollback()
+                        logger.debug("✅ PostgreSQL 롤백 완료")
                         continue
                         
-            logger.info(f"✅ RealtimeQuote 저장 완료: {success_count}/{len(records)}개 성공")
+            finally:
+                logger.debug("🔗 데이터베이스 세션 종료 중...")
+                mysql_db.close()
+                postgres_db.close()
+                logger.debug("✅ 데이터베이스 세션 종료 완료")
+                        
+            logger.info(f"✅ RealtimeQuote 이중 쓰기 완료: {success_count}/{len(records)}개 성공")
             return success_count > 0
         except Exception as e:
             import traceback
-            logger.error(f"❌ RealtimeQuote 저장 실패: {e}")
+            logger.error(f"❌ RealtimeQuote 이중 쓰기 실패: {e}")
             logger.error(f"🔍 오류 상세: {traceback.format_exc()}")
             return False
 

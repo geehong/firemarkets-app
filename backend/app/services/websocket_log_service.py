@@ -17,8 +17,8 @@ class WebSocketLogService:
     
     def __init__(self):
         self.log_queue = asyncio.Queue()
-        self.batch_size = 100
-        self.batch_timeout = 30  # 30초마다 배치 저장
+        self.batch_size = 50
+        self.batch_timeout = 10  # 10초마다 배치 저장
     
     async def log_event(
         self,

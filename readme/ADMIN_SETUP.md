@@ -23,8 +23,8 @@ DESCRIBE audit_logs;
 cd backend
 python generate_password_hash.py admin123
 
-# 2. MySQL에 접속하여 스크립트 실행
-mysql -u root -p firemarkets_db < backend/init_admin.sql
+# 2. MySQL에 접속하여 관리자 계정 생성
+# (init_admin.sql 파일은 삭제되었으므로 직접 SQL 실행)
 
 # 또는 직접 SQL 실행:
 mysql -u root -p firemarkets_db

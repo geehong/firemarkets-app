@@ -20,23 +20,43 @@ logger = logging.getLogger(__name__)
 # .env 파일 로드
 load_dotenv()
 
-# 데이터베이스 URL 설정
-DATABASE_URL = os.getenv(
+# MySQL 데이터베이스 URL 설정
+MYSQL_DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "mysql+pymysql://geehong:Power6100@db:3306/markets"
 )
 
-# 비동기 데이터베이스 URL 설정 (aiomysql 사용)
-ASYNC_DATABASE_URL = DATABASE_URL.replace("mysql+pymysql://", "mysql+aiomysql://")
+# PostgreSQL 데이터베이스 URL 설정
+POSTGRES_DATABASE_URL = os.getenv(
+    "POSTGRES_DATABASE_URL",
+    "postgresql+psycopg2://geehong:Power6100@db_postgres:5432/markets"
+)
 
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL 환경 변수가 설정되지 않았습니다.")
+# 비동기 데이터베이스 URL 설정 (aiomysql 사용)
+ASYNC_DATABASE_URL = MYSQL_DATABASE_URL.replace("mysql+pymysql://", "mysql+aiomysql://")
+
+if not MYSQL_DATABASE_URL:
+    raise ValueError("MYSQL_DATABASE_URL 환경 변수가 설정되지 않았습니다.")
 
 # 엔진 생성 - 연결 풀 및 성능 최적화 설정
 def _create_engine_with_retry(url: str, attempts: int = 12, delay_seconds: int = 5):
     last_err = None
     for i in range(attempts):
         try:
+            # MySQL과 PostgreSQL에 따라 다른 connect_args 설정
+            if "mysql" in url:
+                connect_args = {
+                    "charset": "utf8mb4",
+                    "autocommit": False,
+                    "connect_timeout": 10,
+                    "sql_mode": "STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO",
+                    "init_command": "SET SESSION sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO'",
+                }
+            else:  # PostgreSQL
+                connect_args = {
+                    "connect_timeout": 10,
+                }
+            
             eng = create_engine(
                 url,
                 pool_pre_ping=True,
@@ -47,13 +67,7 @@ def _create_engine_with_retry(url: str, attempts: int = 12, delay_seconds: int =
                 pool_timeout=60,
                 pool_reset_on_return='commit',
                 pool_use_lifo=True,
-                connect_args={
-                    "charset": "utf8mb4",
-                    "autocommit": False,
-                    "connect_timeout": 10,
-                    "sql_mode": "STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO",
-                    "init_command": "SET SESSION sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO'",
-                },
+                connect_args=connect_args,
             )
             # probe
             with eng.connect() as conn:
@@ -67,19 +81,20 @@ def _create_engine_with_retry(url: str, attempts: int = 12, delay_seconds: int =
     logger.error(f"Failed to create DB engine after {attempts} attempts: {last_err}")
     raise last_err
 
-engine = _create_engine_with_retry(
-    DATABASE_URL,
-)
+# MySQL 엔진
+mysql_engine = _create_engine_with_retry(MYSQL_DATABASE_URL)
+MySQLSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=mysql_engine)
+
+# PostgreSQL 엔진
+postgres_engine = _create_engine_with_retry(POSTGRES_DATABASE_URL)
+PostgreSQLSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=postgres_engine)
+
+# 기본 엔진 (MySQL - 호환성을 위해)
+engine = mysql_engine
+SessionLocal = MySQLSessionLocal
 
 # SQLAlchemy Base 클래스 생성
 Base = declarative_base()
-
-# 세션 팩토리 생성
-SessionLocal = sessionmaker(
-    autocommit=False, 
-    autoflush=False, 
-    bind=engine
-)
 
 def get_session_local():
     """동기 세션 팩토리 반환"""
@@ -121,9 +136,29 @@ def get_async_session_local():
 # 데이터베이스 의존성 주입 함수
 def get_db():
     """
-    FastAPI 의존성 주입을 위한 데이터베이스 세션 생성 함수
+    FastAPI 의존성 주입을 위한 데이터베이스 세션 생성 함수 (기본: MySQL)
     """
-    db = SessionLocal()
+    db = MySQLSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def get_mysql_db():
+    """
+    FastAPI 의존성 주입을 위한 MySQL 데이터베이스 세션 생성 함수
+    """
+    db = MySQLSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def get_postgres_db():
+    """
+    FastAPI 의존성 주입을 위한 PostgreSQL 데이터베이스 세션 생성 함수
+    """
+    db = PostgreSQLSessionLocal()
     try:
         yield db
     finally:

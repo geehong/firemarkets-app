@@ -207,6 +207,11 @@ export const realtimeAPI = {
   getIntradayOhlcv: (assetIdentifier, dataInterval = '4h', ohlcv = true, days = 1) =>
     api.get('/realtime/intraday-ohlcv', { params: { asset_identifier: assetIdentifier, data_interval: dataInterval, ohlcv, days } }),
   
+  // PostgreSQL 전용 실시간 가격 데이터 조회
+  getQuotesPricePg: (symbolOrId) => api.get('/realtime/pg/quotes-price', { params: { asset_identifier: symbolOrId } }),
+  getQuotesDelayPricePg: (symbolOrId, dataInterval = '15m', days = 1) =>
+    api.get('/realtime/pg/quotes-delay-price', { params: { asset_identifier: symbolOrId, data_interval: dataInterval, days } }),
+  
   // 장기 OHLCV 데이터 (assets.py 엔드포인트)
   getAssetsOhlcv: (assetIdentifier, dataInterval = '1d', startDate = null, endDate = null, limit = 1000) => {
     const params = { data_interval: dataInterval, limit };

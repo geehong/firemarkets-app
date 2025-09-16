@@ -11,11 +11,13 @@ const MainDashboard = () => {
   // 차트 그룹 정의 (그룹별로 다른 딜레이) - 티커 사용
   const chartGroups = [
     { name: 'crypto', symbols: ['BTCUSDT', 'ETHUSDT'], interval: 10000, delay: 0 }, // 0초 후 시작
+    { name: 'crypto2', symbols: ['XRPUSDT', 'ADAUSDT'], interval: 10000, delay: 1000 }, // 1초 후 시작
     { name: 'commodity', symbols: ['GCUSD', 'GCUSD'], interval: 10000, delay: 2000 }, // 2초 후 시작 (금만 사용)
-    { name: 'stock1', symbols: ['AAPL', 'MSFT'], interval: 10000, delay: 4000 }, // 4초 후 시작
-    { name: 'stock2', symbols: ['AMZN', 'NVDA'], interval: 10000, delay: 6000 }, // 6초 후 시작
-    { name: 'stock3', symbols: ['GOOG', 'META'], interval: 10000, delay: 8000 }, // 8초 후 시작
-    { name: 'etf', symbols: ['SPY', 'QQQ'], interval: 10000, delay: 10000 } // 10초 후 시작
+    { name: 'stock1', symbols: ['AAPL', 'MSFT'], interval: 10000, delay: 3000 }, // 3초 후 시작
+    { name: 'stock2', symbols: ['AMZN', 'NVDA'], interval: 10000, delay: 4000 }, // 4초 후 시작
+    { name: 'stock3', symbols: ['GOOG', 'META'], interval: 10000, delay: 5000 }, // 5초 후 시작
+    { name: 'stock4', symbols: ['AVGO', 'TSLA'], interval: 10000, delay: 6000 }, // 6초 후 시작
+    { name: 'etf', symbols: ['SPY', 'QQQ'], interval: 10000, delay: 7000 } // 7초 후 시작
   ]
 
   // 각 그룹의 현재 표시 인덱스 상태

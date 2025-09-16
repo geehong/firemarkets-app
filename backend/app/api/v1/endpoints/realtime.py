@@ -8,7 +8,7 @@ from typing import Optional, List
 import logging
 from pydantic import BaseModel
 
-from ....core.database import get_db
+from ....core.database import get_db, get_postgres_db
 # Tiingo consumer import removed - using direct implementation
 # scheduler_service import removed - not used in current endpoints
 from ....core.cache import cache_with_invalidation
@@ -146,6 +146,42 @@ async def get_realtime_quotes_price(
         raise HTTPException(status_code=500, detail=f"Failed to get realtime quotes: {str(e)}")
 
 
+@router.get("/pg/quotes-price")
+async def get_realtime_quotes_price_postgres(
+    asset_identifier: str = Query(..., description="Asset ID (integer) or Ticker (string)"),
+    postgres_db: Session = Depends(get_postgres_db)
+):
+    """
+    실시간 가격 데이터 조회 (PostgreSQL 전용)
+    asset_identifier: Asset ID (integer) 또는 Ticker (string)
+    """
+    try:
+        from ....services.endpoint.realtime_quotes_service import RealtimeQuotesService
+        
+        # asset_identifier가 숫자인지 확인 (Asset ID)
+        if asset_identifier.isdigit():
+            asset_id = int(asset_identifier)
+            quotes = await RealtimeQuotesService.get_latest_quotes_by_asset_id(postgres_db, asset_id)
+        else:
+            # Ticker로 조회
+            quotes = await RealtimeQuotesService.get_latest_quotes_by_ticker(postgres_db, asset_identifier)
+        
+        if not quotes:
+            raise HTTPException(status_code=404, detail="No realtime quotes found")
+        
+        return {
+            "asset_identifier": asset_identifier,
+            "quotes": quotes,
+            "data_source": "realtime_quotes",
+            "database": "postgresql",
+            "timestamp": quotes[0].timestamp_utc if quotes else None
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get realtime quotes from PostgreSQL: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get realtime quotes from PostgreSQL: {str(e)}")
+
+
 @router.get("/quotes-delay-price")
 async def get_realtime_quotes_delay_price(
     asset_identifier: str = Query(..., description="Asset ID (integer) or Ticker (string)"),
@@ -197,6 +233,60 @@ async def get_realtime_quotes_delay_price(
     except Exception as e:
         logger.error(f"Failed to get delay quotes: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get delay quotes: {str(e)}")
+
+
+@router.get("/pg/quotes-delay-price")
+async def get_realtime_quotes_delay_price_postgres(
+    asset_identifier: str = Query(..., description="Asset ID (integer) or Ticker (string)"),
+    data_interval: str = Query("15m", description="Data interval (15m, 30m, 1h, 2h, 3h)"),
+    days: int = Query(1, ge=1, le=1, description="Number of days to fetch (limited to 1 day)"),
+    postgres_db: Session = Depends(get_postgres_db)
+):
+    """
+    실시간 가격 데이터 조회 (지연 데이터, PostgreSQL 전용)
+    asset_identifier: Asset ID (integer) 또는 Ticker (string)
+    data_interval: 데이터 간격 (15m, 30m, 1h, 2h, 3h)
+    """
+    try:
+        from ....services.endpoint.realtime_quotes_service import RealtimeQuotesService
+        
+        # 지원되는 간격 확인
+        supported_intervals = ["15m", "30m", "1h", "2h", "3h"]
+        if data_interval not in supported_intervals:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Unsupported interval: {data_interval}. Supported: {supported_intervals}"
+            )
+        
+        # asset_identifier가 숫자인지 확인 (Asset ID)
+        if asset_identifier.isdigit():
+            asset_id = int(asset_identifier)
+            quotes = await RealtimeQuotesService.get_delay_quotes_by_asset_id(
+                postgres_db, asset_id, data_interval, days=days
+            )
+        else:
+            # Ticker로 조회
+            quotes = await RealtimeQuotesService.get_delay_quotes_by_ticker(
+                postgres_db, asset_identifier, data_interval, days=days
+            )
+        
+        if not quotes:
+            raise HTTPException(status_code=404, detail="No delay quotes found")
+        
+        return {
+            "asset_identifier": asset_identifier,
+            "quotes": quotes,
+            "data_source": "realtime_quotes_time_delay",
+            "data_interval": data_interval,
+            "database": "postgresql",
+            "timestamp": quotes[0].timestamp_utc if quotes else None
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get delay quotes from PostgreSQL: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get delay quotes from PostgreSQL: {str(e)}")
 
 
 @router.get("/intraday-ohlcv")

@@ -52,8 +52,12 @@ if ! git commit -m "$COMMIT_MESSAGE"; then
 fi
 
 log_message "4. 원격 저장소에 푸시 중..."
-if git push origin main; then
-    log_message "✓ Git 커밋 및 푸시 완료: $COMMIT_MESSAGE"
+# 현재 브랜치 이름 가져오기
+CURRENT_BRANCH=$(git branch --show-current)
+log_message "현재 브랜치: $CURRENT_BRANCH"
+
+if git push origin $CURRENT_BRANCH; then
+    log_message "✓ Git 커밋 및 푸시 완료: $COMMIT_MESSAGE (브랜치: $CURRENT_BRANCH)"
 else
     log_message "✗ Git 푸시 실패"
     exit 1
