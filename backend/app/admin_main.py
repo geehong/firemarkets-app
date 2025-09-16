@@ -1,0 +1,69 @@
+# app/admin_main.py
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.api import auth
+from app.api.v1.api import api_router as api_v1_router
+from app.core.database import engine
+from app.models.asset import User, UserSession, TokenBlacklist, AuditLog
+from app.core.cache import setup_cache
+from app.core.websocket import sio
+import socketio
+
+# 데이터베이스 테이블 생성
+User.__table__.create(bind=engine, checkfirst=True)
+UserSession.__table__.create(bind=engine, checkfirst=True)
+TokenBlacklist.__table__.create(bind=engine, checkfirst=True)
+AuditLog.__table__.create(bind=engine, checkfirst=True)
+
+app = FastAPI(
+    title="FireMarkets Admin API",
+    description="FireMarkets 관리자 권한 시스템 API",
+    version="1.0.0",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json"
+)
+
+# CORS 설정
+origins = [
+    "http://localhost", "http://localhost:3000", "http://localhost:8000", "http://localhost:8001",
+    "http://127.0.0.1:3000", "http://127.0.0.1:8000", "http://127.0.0.1:8001",
+    "ws://localhost:3000", "ws://localhost:8000", "ws://localhost:8001",
+    "ws://127.0.0.1:3000", "ws://127.0.0.1:8000", "ws://127.0.0.1:8001",
+    # 프로덕션 도메인 추가
+    "https://firemarkets.net", "http://firemarkets.net",
+    "wss://firemarkets.net", "ws://firemarkets.net",
+    "https://backend.firemarkets.net", "http://backend.firemarkets.net",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.on_event("startup")
+async def startup_event():
+    """애플리케이션 시작 시 실행되는 이벤트"""
+    # 캐시 초기화
+    await setup_cache()
+
+# 라우터 등록
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(api_v1_router, prefix="/api/v1")
+
+@app.get("/")
+async def root():
+    return {"message": "FireMarkets Admin API"}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
+
+# Socket.IO 애플리케이션 생성
+socket_app = socketio.ASGIApp(sio, app)
+
+# Socket.IO 애플리케이션을 메인 앱으로 설정
+app = socket_app 

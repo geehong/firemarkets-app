@@ -1,0 +1,141 @@
+"""
+Base collector class providing common functionality for all data collectors.
+This class relies on dependency injection for its core components.
+"""
+import logging
+import asyncio
+from abc import ABC, abstractmethod
+from datetime import datetime
+from typing import Dict, Any, Optional
+
+from sqlalchemy.orm import Session
+
+# --- 의존성 주입을 위한 타입 임포트 ---
+# 실제 런타임에서는 순환 참조를 피하기 위해 TYPE_CHECKING 블록을 사용할 수 있습니다.
+from app.core.config_manager import ConfigManager
+from app.services.api_strategy_manager import ApiStrategyManager
+from app.utils.redis_queue_manager import RedisQueueManager
+# ---
+
+from app.models.asset import SchedulerLog
+from app.utils.logging_helper import CollectorLoggingHelper
+
+
+logger = logging.getLogger(__name__)
+
+
+class BaseCollector(ABC):
+    """
+    Base class for all data collectors, designed for dependency injection.
+    It handles boilerplate logic like logging, timing, and error handling.
+    """
+    
+    def __init__(
+        self,
+        db: Session,
+        config_manager: ConfigManager,
+        api_manager: ApiStrategyManager,
+        redis_queue_manager: RedisQueueManager,
+    ):
+        """
+        Initializes the collector with all necessary dependencies.
+        No more fallbacks to global configs.
+        """
+        # --- 의존성 명확화 ---
+        self.db = db
+        self.config_manager = config_manager
+        self.api_manager = api_manager
+        self.redis_queue_manager = redis_queue_manager
+        
+        self.collector_name = self.__class__.__name__
+        self.logging_helper = CollectorLoggingHelper(self.collector_name, self)
+
+        # --- 설정 초기화 (오직 ConfigManager만 사용) ---
+        self.enable_semaphore = self.config_manager.is_semaphore_enabled()
+        self.semaphore_limit = self.config_manager.get_semaphore_limit() if self.enable_semaphore else None
+        self.semaphore = None  # 지연 초기화
+        if self.enable_semaphore:
+            logger.info(f"[{self.collector_name}] Semaphore enabled with limit {self.semaphore_limit}")
+        else:
+            logger.info(f"[{self.collector_name}] Semaphore disabled")
+
+    async def collect_with_settings(self) -> Dict[str, Any]:
+        """
+        Main collection method with error handling, logging, and timing.
+        This is the primary entry point called by the SchedulerService.
+        """
+        start_time = datetime.now()
+        logger.info(f"[{self.collector_name}] Collection job started")
+        
+        # Scheduler Log 생성
+        scheduler_log = SchedulerLog(
+            job_name=f"{self.collector_name.lower()}_collection",
+            start_time=start_time,
+            status="running"
+        )
+        self.db.add(scheduler_log)
+        self.db.commit()
+        
+        try:
+            # 핵심 비즈니스 로직은 _collect_data에 위임
+            result = await self._collect_data()
+            
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            
+            # 성공 로그 업데이트
+            scheduler_log.end_time = end_time
+            scheduler_log.duration_seconds = int(duration)
+            scheduler_log.status = "completed"
+            scheduler_log.assets_processed = result.get("processed_assets", 0)
+            scheduler_log.data_points_added = result.get("total_added_records", 0)
+            self.db.commit()
+            
+            self.logging_helper.log_job_end(duration, result)
+            return {
+                "success": True, "collector": self.collector_name, "duration": duration, "data": result
+            }
+            
+        except Exception as e:
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            
+            # 실패 로그 업데이트
+            error_message = str(e)
+            scheduler_log.end_time = end_time
+            scheduler_log.duration_seconds = int(duration)
+            scheduler_log.status = "failed"
+            scheduler_log.error_message = error_message
+            self.db.commit()
+            
+            self.logging_helper.log_job_failure(e, duration)
+            return {
+                "success": False, "collector": self.collector_name, "duration": duration, "error": error_message
+            }
+
+    @abstractmethod
+    async def _collect_data(self) -> Dict[str, Any]:
+        """
+        Abstract method where the actual data collection logic resides.
+        Must be implemented by subclasses.
+        Should return a dictionary with summary statistics.
+        e.g., {"processed_assets": 100, "total_added_records": 5000}
+        """
+        pass
+
+    async def process_with_semaphore(self, coro: Any) -> Any:
+        """Applies concurrency control using the semaphore if it's enabled."""
+        if self.enable_semaphore:
+            # 지연 초기화: 이벤트 루프가 실행 중일 때만 semaphore 생성
+            if self.semaphore is None:
+                try:
+                    self.semaphore = asyncio.Semaphore(self.semaphore_limit)
+                except RuntimeError:
+                    # 이벤트 루프가 없으면 semaphore 없이 실행
+                    logger.warning(f"[{self.collector_name}] No event loop available for semaphore, running without concurrency control")
+                    return await coro
+            
+            async with self.semaphore:
+                return await coro
+        else:
+            return await coro

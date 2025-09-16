@@ -1,0 +1,264 @@
+"""
+SchedulerService: A centralized service for managing and scheduling data collection jobs.
+This service uses dependency injection to orchestrate collectors and their dependencies.
+"""
+import asyncio
+import logging
+from datetime import datetime
+from typing import Dict, Any, Type
+
+from apscheduler.schedulers.background import BackgroundScheduler
+from sqlalchemy.orm import Session
+
+from app.core.database import SessionLocal
+from app.models.asset import AppConfiguration
+from app.utils.logger import logger
+from app.core.config_manager import ConfigManager
+from app.services.api_strategy_manager import ApiStrategyManager
+from app.utils.redis_queue_manager import RedisQueueManager
+
+# --- Import all available collectors ---
+from app.collectors.base_collector import BaseCollector
+from app.collectors.ohlcv_collector import OHLCVCollector
+from app.collectors.onchain_collector import OnchainCollector
+from app.collectors.stock_collector import StockCollector
+from app.collectors.etf_collector import ETFCollector
+from app.collectors.crypto_data_collector import CryptoDataCollector
+from app.collectors.world_assets_collector import WorldAssetsCollector
+# from app.collectors.index_collector import IndexCollector  # Temporarily disabled
+
+
+class SchedulerService:
+    """Manages the lifecycle and scheduling of all collector jobs."""
+
+    # Maps configuration keys to collector classes and their job metadata.
+    # This makes the service data-driven and easy to extend.
+    JOB_MAPPING = {
+        "OHLCV": {"class": OHLCVCollector, "config_key": "is_ohlcv_collection_enabled"},
+        "Onchain": {"class": OnchainCollector, "config_key": "is_onchain_collection_enabled"},
+        "StockProfile": {"class": StockCollector, "config_key": "is_stock_collection_enabled"},
+        "ETFInfo": {"class": ETFCollector, "config_key": "is_etf_collection_enabled"},
+        "CryptoInfo": {"class": CryptoDataCollector, "config_key": "is_crypto_collection_enabled"},
+        "WorldAssets": {"class": WorldAssetsCollector, "config_key": "is_world_assets_collection_enabled"},
+    }
+
+    def __init__(self):
+        self.scheduler = BackgroundScheduler(timezone="UTC")
+        self._setup_logger()
+        
+        # --- Dependency Injection Singletons ---
+        # These instances are created once and injected into collectors.
+        self.config_manager = ConfigManager()
+        self.api_manager = ApiStrategyManager()
+        self.redis_queue_manager = RedisQueueManager(config_manager=self.config_manager)
+
+    def _setup_logger(self):
+        """Sets up the logger for this service."""
+        self.logger = logging.getLogger(__name__)
+
+    def _create_collection_function(self, collector_class: Type[BaseCollector]):
+        """
+        Creates a wrapper function to run an async collector from the sync scheduler.
+        It handles dependency injection and session management.
+        """
+        def run_collection_sync():
+            # Create a new event loop for this thread.
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            db: Session = SessionLocal()
+            try:
+                # Instantiate the collector with all required dependencies.
+                collector_instance = collector_class(
+                    db=db,
+                    config_manager=self.config_manager,
+                    api_manager=self.api_manager,
+                    redis_queue_manager=self.redis_queue_manager,
+                )
+                # The `collect_with_settings` method in BaseCollector handles all logging.
+                loop.run_until_complete(collector_instance.collect_with_settings())
+            except Exception as e:
+                self.logger.critical(f"Unhandled exception in {collector_class.__name__} runner: {e}", exc_info=True)
+            finally:
+                db.close()
+                loop.close()
+
+        return run_collection_sync
+
+    def setup_jobs(self, test_mode: bool = False):
+        """
+        Sets up all data collection jobs based on DB configuration.
+        This method is now data-driven via JOB_MAPPING.
+        
+        Args:
+            test_mode: If True, uses shorter intervals for testing (1, 3, 5 minutes)
+                      If False, uses normal intervals (24 hours)
+        """
+        if not self.config_manager.is_scheduler_enabled():
+            self.logger.warning("Scheduler is globally disabled via configuration. No jobs will be added.")
+            return
+
+        mode_text = "TEST MODE" if test_mode else "NORMAL MODE"
+        self.logger.info(f"Setting up scheduler jobs in {mode_text}...")
+
+        # 테스트 모드: 모든 스케줄을 동일한 간격으로 설정 (3분)
+        test_interval_minutes = 3  # 하드코딩된 테스트 간격 (원하는 시간으로 변경 가능)
+        
+        for job_name, meta in self.JOB_MAPPING.items():
+            collector_class = meta["class"]
+            is_enabled_method = getattr(self.config_manager, meta["config_key"])
+
+            if is_enabled_method():
+                # This collector is enabled in the DB, so we schedule it.
+                job_func = self._create_collection_function(collector_class)
+                job_id = f"{job_name.lower()}_collection_job"
+                
+                if test_mode:
+                    # 테스트 모드: 모든 스케줄을 동일한 간격으로 설정 (수동 실행만)
+                    self.scheduler.add_job(
+                        job_func,
+                        'interval',
+                        minutes=test_interval_minutes,
+                        id=job_id,
+                        replace_existing=True,
+                        misfire_grace_time=3600, # 1 hour
+                        # next_run_time 제거 - 수동 실행만 가능
+                    )
+                    self.logger.info(f"✅ Scheduled job: '{job_id}' (TEST MODE: {test_interval_minutes}분 간격, 수동 실행만)")
+                else:
+                    # 일반 모드: 1일 간격으로 설정 (수동 실행만)
+                    self.scheduler.add_job(
+                        job_func,
+                        'interval',
+                        days=1,
+                        id=job_id,
+                        replace_existing=True,
+                        misfire_grace_time=3600, # 1 hour
+                        # next_run_time 제거 - 수동 실행만 가능
+                    )
+                    self.logger.info(f"✅ Scheduled job: '{job_id}' (NORMAL MODE: 24시간 간격, 수동 실행만)")
+            else:
+                self.logger.info(f"❌ Job for '{job_name}' is disabled via configuration.")
+
+        # --- System Jobs ---
+        self.scheduler.add_job(self._update_heartbeat, 'interval', minutes=1, id='scheduler_heartbeat')
+        self.logger.info("✅ Scheduled job: 'scheduler_heartbeat'")
+
+    def _update_heartbeat(self):
+        """Writes a heartbeat to the DB every minute to show the scheduler is alive."""
+        db = SessionLocal()
+        try:
+            config = db.query(AppConfiguration).filter(AppConfiguration.config_key == 'scheduler_heartbeat').first()
+            timestamp = datetime.utcnow().isoformat()
+            if config:
+                config.config_value = timestamp
+            else:
+                config = AppConfiguration(config_key='scheduler_heartbeat', config_value=timestamp)
+                db.add(config)
+            db.commit()
+            self.logger.debug(f"Scheduler heartbeat updated: {timestamp}")
+        except Exception as e:
+            self.logger.error(f"Failed to update heartbeat: {e}", exc_info=True)
+            db.rollback()
+        finally:
+            db.close()
+
+    def start_scheduler(self, test_mode: bool = False):
+        """Sets up jobs and starts the scheduler if not already running."""
+        if not self.scheduler.running:
+            self.setup_jobs(test_mode=test_mode)
+            self.scheduler.start()
+            mode_text = "TEST MODE" if test_mode else "NORMAL MODE"
+            self.logger.info(f"Scheduler started successfully in {mode_text}.")
+
+    def stop_scheduler(self):
+        """Stops the scheduler gracefully."""
+        if self.scheduler.running:
+            self.scheduler.shutdown()
+            self.logger.info("Scheduler shut down successfully.")
+
+    async def start_all_jobs(self) -> Dict:
+        """Starts all scheduled jobs."""
+        try:
+            if not self.scheduler.running:
+                self.scheduler.start()
+            return {"success": True, "message": "All jobs started successfully"}
+        except Exception as e:
+            return {"success": False, "message": f"Failed to start jobs: {str(e)}"}
+
+    async def stop_all_jobs(self) -> Dict:
+        """Stops all scheduled jobs."""
+        try:
+            if self.scheduler.running:
+                self.scheduler.shutdown()
+            return {"success": True, "message": "All jobs stopped successfully"}
+        except Exception as e:
+            return {"success": False, "message": f"Failed to stop jobs: {str(e)}"}
+
+    async def run_all_collections_once(self) -> Dict:
+        """관리자 수동 실행: 모든 데이터 수집 작업을 즉시 1번씩 실행"""
+        try:
+            results = []
+            db = SessionLocal()
+            
+            try:
+                for job_name, meta in self.JOB_MAPPING.items():
+                    collector_class = meta["class"]
+                    is_enabled_method = getattr(self.config_manager, meta["config_key"])
+                    
+                    if is_enabled_method():
+                        # Collector 인스턴스 생성 및 실행
+                        collector_instance = collector_class(
+                            db=db,
+                            config_manager=self.config_manager,
+                            api_manager=self.api_manager,
+                            redis_queue_manager=self.redis_queue_manager,
+                        )
+                        
+                        # 비동기 실행
+                        result = await collector_instance.collect_with_settings()
+                        results.append({
+                            "collector": job_name,
+                            "success": result.get("success", False),
+                            "message": result.get("message", "Completed"),
+                            "duration": result.get("duration", 0)
+                        })
+                        
+                        self.logger.info(f"✅ Manual execution completed: {job_name}")
+                    else:
+                        results.append({
+                            "collector": job_name,
+                            "success": False,
+                            "message": "Disabled via configuration",
+                            "duration": 0
+                        })
+                        
+            finally:
+                db.close()
+            
+            return {
+                "success": True,
+                "message": "All collections executed manually",
+                "results": results
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to run manual collections: {e}")
+            return {"success": False, "message": f"Failed to run manual collections: {str(e)}"}
+
+    def get_status(self) -> Dict:
+        """Returns the current status of the scheduler."""
+        jobs_info = []
+        for job in self.scheduler.get_jobs():
+            jobs_info.append({
+                "id": job.id,
+                "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None
+            })
+        return {
+            "is_running": self.scheduler.running,
+            "job_count": len(jobs_info),
+            "jobs": jobs_info
+        }
+
+# --- Global Singleton Instance ---
+scheduler_service = SchedulerService()

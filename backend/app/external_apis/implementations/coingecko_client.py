@@ -1,0 +1,240 @@
+"""
+CoinGecko API client for cryptocurrency data.
+"""
+import logging
+from typing import Optional, Dict, Any, List
+from datetime import datetime
+import httpx
+
+from app.external_apis.base.crypto_client import CryptoAPIClient
+from app.external_apis.base.schemas import OhlcvDataPoint, RealtimeQuoteData, CryptoData
+from app.external_apis.utils.helpers import safe_float, safe_date_parse
+
+logger = logging.getLogger(__name__)
+
+
+class CoinGeckoClient(CryptoAPIClient):
+    """CoinGecko API client"""
+    
+    def __init__(self):
+        super().__init__()
+        self.base_url = "https://api.coingecko.com/api/v3"
+    
+    async def test_connection(self) -> bool:
+        """Test CoinGecko API connection"""
+        try:
+            async with httpx.AsyncClient() as client:
+                url = f"{self.base_url}/ping"
+                response = await client.get(url, timeout=self.api_timeout)
+                return response.status_code == 200
+        except Exception as e:
+            logger.error(f"CoinGecko connection test failed: {e}")
+            return False
+    
+    def get_rate_limit_info(self) -> Dict[str, Any]:
+        """Get CoinGecko rate limit information"""
+        return {
+            "free_tier": {
+                "requests_per_minute": 50,
+                "requests_per_day": 10000
+            },
+            "pro_tier": {
+                "requests_per_minute": 1000,
+                "requests_per_day": 100000
+            }
+        }
+    
+    async def get_ohlcv_data(
+        self, 
+        symbol: str, 
+        interval: str = "1d",
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        limit: Optional[int] = None
+    ) -> List[OhlcvDataPoint]:
+        """Get OHLCV data from CoinGecko"""
+        try:
+            async with httpx.AsyncClient() as client:
+                # CoinGecko는 일간 데이터를 기본으로 제공
+                if interval != "1d":
+                    logger.warning(f"CoinGecko only supports daily data, requested interval: {interval}")
+                
+                # CoinGecko는 coin ID를 사용 (예: bitcoin, ethereum)
+                coin_id = self._normalize_symbol_for_coingecko(symbol)
+                
+                # 날짜 범위 설정
+                days = 30  # 기본값
+                if start_date and end_date:
+                    start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+                    end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+                    days = (end_dt - start_dt).days
+                
+                url = f"{self.base_url}/coins/{coin_id}/ohlc?vs_currency=usd&days={days}"
+                data = await self._fetch_async(client, url, "CoinGecko", symbol)
+                
+                if isinstance(data, list):
+                    result = []
+                    for candle in data:
+                        # CoinGecko OHLCV 데이터: [timestamp, open, high, low, close]
+                        timestamp = datetime.fromtimestamp(candle[0] / 1000)
+                        
+                        point = OhlcvDataPoint(
+                            timestamp_utc=timestamp,
+                            open_price=safe_float(candle[1]),
+                            high_price=safe_float(candle[2]),
+                            low_price=safe_float(candle[3]),
+                            close_price=safe_float(candle[4]),
+                            volume=None,  # CoinGecko OHLCV에는 volume이 없음
+                            change_percent=self._calculate_change_percent(
+                                safe_float(candle[4]),
+                                safe_float(candle[1])
+                            )
+                        )
+                        result.append(point)
+                        
+                        # Limit 적용
+                        if limit and len(result) >= limit:
+                            break
+                    
+                    return result
+        except Exception as e:
+            logger.error(f"CoinGecko OHLCV fetch failed for {symbol}: {e}")
+        
+        return []
+    
+    async def get_realtime_quote(self, symbol: str) -> Optional[RealtimeQuoteData]:
+        """Get real-time quote from CoinGecko"""
+        try:
+            async with httpx.AsyncClient() as client:
+                # CoinGecko는 coin ID를 사용
+                coin_id = self._normalize_symbol_for_coingecko(symbol)
+                url = f"{self.base_url}/simple/price?ids={coin_id}&vs_currencies=usd&include_24hr_change=true"
+                
+                data = await self._fetch_async(client, url, "CoinGecko", symbol)
+                
+                if isinstance(data, dict) and coin_id in data:
+                    coin_data = data[coin_id]
+                    quote = RealtimeQuoteData(
+                        symbol=symbol,
+                        price=safe_float(coin_data.get("usd")),
+                        change_percent=safe_float(coin_data.get("usd_24h_change")),
+                        timestamp_utc=datetime.now()
+                    )
+                    return quote
+        except Exception as e:
+            logger.error(f"CoinGecko Quote fetch failed for {symbol}: {e}")
+        
+        return None
+    
+    async def get_exchange_info(self) -> Optional[Dict[str, Any]]:
+        """Get exchange information from CoinGecko"""
+        try:
+            async with httpx.AsyncClient() as client:
+                url = f"{self.base_url}/exchanges"
+                data = await self._fetch_async(client, url, "CoinGecko Exchanges")
+                
+                if isinstance(data, list):
+                    return {
+                        "exchanges_count": len(data),
+                        "top_exchanges": [
+                            {
+                                "id": exchange.get("id"),
+                                "name": exchange.get("name"),
+                                "trust_score": exchange.get("trust_score"),
+                                "trust_score_rank": exchange.get("trust_score_rank"),
+                                "trade_volume_24h_btc": exchange.get("trade_volume_24h_btc")
+                            }
+                            for exchange in data[:10]  # 상위 10개 거래소
+                        ]
+                    }
+        except Exception as e:
+            logger.error(f"CoinGecko Exchange Info fetch failed: {e}")
+        
+        return None
+    
+    async def get_global_metrics(self) -> Optional[Dict[str, Any]]:
+        """Get global cryptocurrency market metrics from CoinGecko"""
+        try:
+            async with httpx.AsyncClient() as client:
+                url = f"{self.base_url}/global"
+                data = await self._fetch_async(client, url, "CoinGecko Global")
+                
+                if isinstance(data, dict) and "data" in data:
+                    global_data = data["data"]
+                    return {
+                        "total_market_cap": safe_float(global_data.get("total_market_cap", {}).get("usd")),
+                        "total_volume": safe_float(global_data.get("total_volume", {}).get("usd")),
+                        "market_cap_percentage": global_data.get("market_cap_percentage"),
+                        "active_cryptocurrencies": global_data.get("active_cryptocurrencies"),
+                        "active_exchanges": global_data.get("active_exchanges"),
+                        "btc_dominance": safe_float(global_data.get("market_cap_percentage", {}).get("btc")),
+                        "eth_dominance": safe_float(global_data.get("market_cap_percentage", {}).get("eth"))
+                    }
+        except Exception as e:
+            logger.error(f"CoinGecko Global Metrics fetch failed: {e}")
+        
+        return None
+    
+    def _normalize_symbol_for_coingecko(self, symbol: str) -> str:
+        """CoinGecko API용 심볼 정규화 (USDT 페어를 CoinGecko ID로 변환)"""
+        # USDT 페어를 CoinGecko ID로 매핑
+        symbol_mapping = {
+            "BTCUSDT": "bitcoin",
+            "ETHUSDT": "ethereum", 
+            "XRPUSDT": "ripple",
+            "ADAUSDT": "cardano",
+            "DOTUSDT": "polkadot",
+            "LTCUSDT": "litecoin",
+            "BCHUSDT": "bitcoin-cash",
+            "DOGEUSDT": "dogecoin",
+        }
+        
+        # 매핑이 있으면 사용, 없으면 USDT 제거 후 소문자로 변환
+        if symbol in symbol_mapping:
+            return symbol_mapping[symbol]
+        elif symbol.endswith('USDT'):
+            return symbol[:-4].lower()  # USDT 제거 후 소문자
+        else:
+            return symbol.lower()
+
+    async def get_crypto_data(self, symbol: str) -> Optional[CryptoData]:
+        """Get comprehensive cryptocurrency data from CoinGecko"""
+        try:
+            async with httpx.AsyncClient() as client:
+                # CoinGecko는 coin ID를 사용
+                coin_id = self._normalize_symbol_for_coingecko(symbol)
+                url = f"{self.base_url}/coins/{coin_id}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false"
+                
+                data = await self._fetch_async(client, url, "CoinGecko", symbol)
+                
+                if "market_data" in data:
+                    market_data = data["market_data"]
+                    crypto_data = CryptoData(
+                        symbol=symbol,
+                        price=safe_float(market_data.get("current_price", {}).get("usd")),
+                        market_cap=safe_float(market_data.get("market_cap", {}).get("usd")),
+                        volume_24h=safe_float(market_data.get("total_volume", {}).get("usd")),
+                        change_24h=safe_float(market_data.get("price_change_percentage_24h")),
+                        circulating_supply=safe_float(market_data.get("circulating_supply")),
+                        total_supply=safe_float(market_data.get("total_supply")),
+                        max_supply=safe_float(market_data.get("max_supply")),
+                        rank=market_data.get("market_cap_rank"),
+                        timestamp_utc=datetime.now()
+                    )
+                    return crypto_data
+                    
+        except Exception as e:
+            logger.error(f"CoinGecko crypto data fetch failed for {symbol}: {e}")
+        
+        return None
+    
+    def _calculate_change_percent(self, close: float, open_price: float) -> Optional[float]:
+        """Calculate percentage change"""
+        if close is None or open_price is None or open_price == 0:
+            return None
+        
+        return ((close - open_price) / open_price) * 100
+
+
+
+

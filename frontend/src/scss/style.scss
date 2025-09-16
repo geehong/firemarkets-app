@@ -1,0 +1,471 @@
+@use "@coreui/coreui/scss/coreui" as * with ( 
+  $enable-deprecation-messages: false,
+);
+@use "@coreui/chartjs/scss/coreui-chartjs";
+@use "vendors/simplebar";
+
+body {
+  background-color: var(--cui-tertiary-bg);
+}
+
+// 사이드바 메뉴 계층별 폰트 크기 설정
+.sidebar-nav {
+  // 네비게이션 제목
+  .nav-title {
+    font-size: 0.8rem; // 기존 80% 유지
+  }
+  
+
+  
+
+}
+
+// 최고 우선순위로 강제 적용 - 직접적인 값 사용
+html body .sidebar-nav {
+  // 1단계: 메인 메뉴 (OnChain, Assets, TreeMap 등)
+  > .nav-item > .nav-link,
+  > .nav-group > .nav-link,
+  > .nav-group > .nav-link.nav-group-toggle {
+    font-size: 1rem !important;
+  }
+  
+  // 2단계: 서브 메뉴 (Market Metrics, Price Metrics 등)
+  > .nav-group .nav-group > .nav-link,
+  > .nav-group .nav-group > .nav-link.nav-group-toggle {
+    font-size: 0.95rem !important;
+  }
+  
+  // 3단계: 서브 서브 메뉴 (MVRV Z-Score, SOPR, NUPL 등)
+  > .nav-group .nav-group .nav-item > .nav-link,
+  > .nav-group .nav-group .nav-item > .nav-link.active {
+    font-size: 0.9rem !important;
+  }
+}
+
+// 추가 보강 - 더 구체적인 선택자
+html body .sidebar-nav .nav-group .nav-group .nav-item .nav-link {
+  font-size: 0.9rem !important;
+}
+
+html body .sidebar-nav .nav-group .nav-group .nav-link {
+  font-size: 0.95rem !important;
+}
+
+html body .sidebar-nav .nav-group .nav-link {
+  font-size: 1rem !important;
+}
+
+// 탭 컨텐츠 높이 문제 해결
+.tab-content,
+.tab-pane,
+[class*="CTabContent"],
+[class*="CTabPane"] {
+  max-height: none !important;
+  overflow: visible !important;
+  height: auto !important;
+  min-height: auto !important;
+}
+
+// card-body 높이 계산 문제 해결
+.card {
+  height: auto !important;
+  min-height: auto !important;
+}
+
+.card-body {
+  height: auto !important;
+  min-height: auto !important;
+  box-sizing: border-box !important;
+}
+
+// p-0 클래스가 있는 card-body의 높이 계산 수정
+.card-body.p-0 {
+  padding: 0 !important;
+  height: auto !important;
+  min-height: auto !important;
+  box-sizing: content-box !important;
+}
+
+// p-3 클래스가 있는 내부 요소의 높이를 고려
+.card-body.p-0 > * {
+  box-sizing: border-box !important;
+  height: auto !important;
+  min-height: auto !important;
+}
+
+// 모든 탭 관련 컨테이너에 대한 강제 스타일
+div[class*="tab-content"],
+div[class*="CTabContent"],
+div[class*="tab-pane"],
+div[class*="CTabPane"] {
+
+// 헤더 드롭다운 메뉴 스타일
+.header-nav-dropdown {
+  position: relative;
+  
+  .nav-group {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: var(--cui-body-bg);
+    border: 1px solid var(--cui-border-color);
+    border-radius: 0.375rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    z-index: 1050;
+    min-width: 200px;
+    display: none;
+    
+    &.show {
+      display: block;
+    }
+    
+    .nav-item {
+      .nav-link {
+        padding: 0.5rem 1rem;
+        color: var(--cui-body-color);
+        text-decoration: none;
+        display: block;
+        
+        &:hover {
+          background-color: var(--cui-tertiary-bg);
+        }
+      }
+    }
+  }
+}
+
+// 모바일 메뉴 스타일
+.mobile-menu {
+  background: var(--cui-body-bg);
+  border-top: 1px solid var(--cui-border-color);
+  
+  .nav-link {
+    color: var(--cui-body-color);
+    text-decoration: none;
+    
+    &:hover {
+      background-color: var(--cui-tertiary-bg);
+    }
+  }
+}
+
+// 모바일 환경에서 카드 배경색 강제 설정
+@media (max-width: 768px) {
+  .card {
+    background-color: var(--cui-card-bg, #fff) !important;
+    color: var(--cui-card-color, #000) !important;
+  }
+  
+  .card-body {
+    background-color: var(--cui-card-bg, #fff) !important;
+    color: var(--cui-card-color, #000) !important;
+  }
+  
+  .card-header {
+    background-color: var(--cui-card-cap-bg, #f8f9fa) !important;
+    color: var(--cui-card-cap-color, #000) !important;
+  }
+  
+  // 다크 모드 대응
+  [data-coreui-theme="dark"] .card {
+    background-color: var(--cui-card-bg, #2b3035) !important;
+    color: var(--cui-card-color, #fff) !important;
+  }
+  
+  [data-coreui-theme="dark"] .card-body {
+    background-color: var(--cui-card-bg, #2b3035) !important;
+    color: var(--cui-card-color, #fff) !important;
+  }
+  
+  [data-coreui-theme="dark"] .card-header {
+    background-color: var(--cui-card-cap-bg, #343a40) !important;
+    color: var(--cui-card-cap-color, #fff) !important;
+  }
+}
+  max-height: none !important;
+  overflow: visible !important;
+  height: auto !important;
+  min-height: fit-content !important;
+}
+
+.ag-grid-bold-cell {
+  font-weight: bold !important;
+}
+.ag-grid-positive-change {
+  color: #28a745 !important; // 초록색 (양수)
+}
+.ag-grid-negative-change {
+  color: #dc3545 !important; // 빨간색 (음수)
+}
+.ag-theme-alpine {
+  .ag-header-cell {
+    font-weight: 600;
+  }
+  
+  .ag-cell {
+    padding: 8px 12px;
+  }
+  
+  .ag-row-hover {
+    background-color: rgba(0, 123, 255, 0.1) !important;
+  }
+}
+.wrapper {
+  width: 100%;
+  padding-inline: var(--cui-sidebar-occupy-start, 0) var(--cui-sidebar-occupy-end, 0);
+  will-change: auto;
+  @include transition(padding .15s);
+}
+
+// 브레드크럼 애니메이션 - test.html 구조에 맞게 수정
+.component-sub-nav-wrapper {
+  transition: all 0.3s ease-in-out !important;
+  overflow: visible !important; // 드롭다운이 잘리지 않도록 visible로 변경
+  height: auto !important; // 자동 높이로 변경
+  min-height: 40px;
+  transform: translateY(0) !important;
+  
+  &.breadcrumb-hidden {
+    height: 0 !important; // 높이만 0으로
+    min-height: 0 !important;
+    opacity: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    transform: translateY(-100%) !important;
+    pointer-events: none !important;
+    overflow: hidden !important; // 숨겨질 때만 hidden
+  }
+  
+  &.breadcrumb-animating {
+    transition: all 2s ease-in-out !important;
+    transform: translateY(-100%) !important;
+    height: 0 !important; // 높이만 0으로
+    min-height: 0 !important;
+    opacity: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    pointer-events: none !important;
+    overflow: hidden !important; // 애니메이션 중에도 hidden
+  }
+}
+
+// 브레드크럼이 숨겨진 상태일 때 헤더 높이 조정 (클래스 기반)
+
+// 헤더 높이 조정 - test.html 구조에 맞게 수정
+.header-sticky {
+  .container-fluid {
+    min-height: calc(4rem + 1px) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .header-sticky {
+    .container-fluid {
+      min-height: calc(2rem + 1px) !important;
+    }
+  }
+}
+
+// 브레드크럼 클릭 영역
+.breadcrumb-click-area {
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 20px;
+  z-index: 1050;
+  cursor: pointer;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.05), transparent);
+  transition: background 0.2s ease-in-out;
+  
+  &:hover {
+    background: linear-gradient(to bottom, rgba(0,0,0,0.1), transparent);
+  }
+  
+  // 모바일에서는 더 큰 영역
+  @media (max-width: 768px) {
+    height: 30px;
+  }
+}
+
+.breadcrumb-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+  font-size: 12px;
+  background-color: rgba(0,0,0,0.05);
+  border-radius: 4px;
+  margin: 4px 0;
+  padding: 4px 8px;
+  
+  &:hover {
+    background-color: rgba(0,0,0,0.1);
+  }
+}
+
+// Header auto-hide styles
+.header-hidden {
+  transform: translateY(calc(-100% + 8px)) !important;
+  transition: transform 0.3s ease-in-out !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+  opacity: 0.7 !important;
+}
+
+// 헤더 투명화 상태 - 배경만 투명하고 텍스트는 선명하게
+.header-transparent {
+  transform: translateY(0) !important; // 완전히 보이도록
+  background-color: rgba(var(--cui-body-bg-rgb), 0.1) !important;
+  backdrop-filter: blur(10px) !important;
+  transition: all 0.5s ease-in-out !important; // 애니메이션 시간 증가
+  opacity: 1 !important; // 완전히 보이도록
+  
+  // 텍스트와 아이콘은 선명하게 유지
+  .nav-link,
+  .dropdown-toggle,
+  .btn,
+  .navbar-brand,
+  .breadcrumb-item,
+  .breadcrumb-item a {
+    color: var(--cui-body-color) !important;
+    text-shadow: 0 0 2px rgba(255, 255, 255, 0.8) !important;
+  }
+  
+  // 드롭다운 메뉴는 완전 불투명하게
+  .dropdown-menu {
+    background-color: var(--cui-body-bg) !important;
+    backdrop-filter: none !important;
+    opacity: 1 !important;
+  }
+  
+  // 테두리와 그림자 효과
+  border-bottom: 1px solid rgba(var(--cui-border-color-rgb), 0.3) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+}
+
+// 모바일에서 헤더 숨김 시 브로드크럼도 함께 숨김
+.header-hidden .breadcrumb-container {
+  display: none !important;
+}
+
+// 모바일에서 헤더가 더 많이 보이도록 조정
+@media (max-width: 768px) {
+  .header-hidden {
+    transform: translateY(calc(-100% + 15px)) !important;
+    opacity: 0.7 !important;
+  }
+  
+  .header-transparent {
+    background-color: rgba(var(--cui-body-bg-rgb), 0.15) !important;
+    transform: translateY(0) !important;
+  }
+}
+
+.header-reveal-strip {
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  z-index: 1100;
+}
+
+.header > .container-fluid,
+.sidebar-header {
+  min-height: calc(4rem + 1px); // stylelint-disable-line function-disallowed-list
+}
+
+// 모바일에서 헤더 높이 조정
+@media (max-width: 768px) {
+  .header > .container-fluid,
+  .sidebar-header {
+    min-height: calc(2rem + 1px) !important; // 4rem에서 2rem으로 변경
+  }
+  
+  .sidebar-header .nav-link {
+    min-height: calc(2rem + 1px) !important;
+  }
+}
+
+.sidebar-brand-full {
+  margin-left: 3px;
+}
+
+.sidebar-header {
+  .nav-underline-border {
+    --cui-nav-underline-border-link-padding-x: 1rem;
+    --cui-nav-underline-border-gap: 0;
+  }
+
+  .nav-link {
+    display: flex;
+    align-items: center;
+    min-height: calc(4rem + 1px); // stylelint-disable-line function-disallowed-list
+  }
+}
+
+.sidebar-toggler {
+  margin-inline-start: auto;
+}
+
+.sidebar-narrow,
+.sidebar-narrow-unfoldable:not(:hover) {
+  .sidebar-toggler {
+    margin-inline-end: auto;
+  }
+}
+
+.header > .container-fluid + .container-fluid {
+  min-height: 3rem;
+}
+
+.footer {
+  min-height: calc(3rem + 1px); // stylelint-disable-line function-disallowed-list
+}
+
+@include color-mode(dark) {
+  body {
+    background-color: var(--cui-dark-bg-subtle);
+  }
+
+  .footer {
+    --cui-footer-bg: var(--cui-body-bg);
+  }
+}
+
+// 서브메뉴 아이템 폰트 크기만 적용
+.nav-submenu-item {
+  font-size: 0.75rem !important;
+}
+
+// CoreUI 네비게이션의 모든 서브메뉴 아이템에 대한 폰트 크기
+.nav-group-items .nav-item .nav-link[class*="nav-submenu-item"] {
+  font-size: 0.75rem !important;
+}
+
+// Advanced 서브메뉴 아이템도 포함
+.nav-group-items .nav-item .nav-link {
+  font-size: 0.75rem !important;
+}
+
+// 서브메뉴 아이템 호버 효과
+.nav-submenu-item:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: #fff !important;
+}
+
+// 서브메뉴 아이템 활성 상태 효과
+.nav-submenu-item.active {
+  background-color: rgba(255, 255, 255, 0.15) !important;
+  color: #fff !important;
+}
+
+// 서브메뉴 그룹이 열려있을 때의 효과
+.nav-group.show .nav-group-items .nav-item .nav-link.nav-submenu-item {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+// 서브메뉴 그룹이 열려있을 때 호버 효과
+.nav-group.show .nav-group-items .nav-item .nav-link.nav-submenu-item:hover {
+  background-color: rgba(255, 255, 255, 0.15) !important;
+}

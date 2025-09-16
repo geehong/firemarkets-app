@@ -1,0 +1,50 @@
+{
+  "data_collection": {
+    "interval_minutes": 60,
+    "interval_daily": 1,
+    "enable_immediate_execution": false
+  },
+      "onchain_collection": {
+        "interval_hours": 24
+    },
+    "api_limits": {
+        "onchain_delay_seconds": 480,
+        "hourly_limit": 8,
+        "retry_delay_base": 60,
+        "retry_delay_max": 300
+    },
+  "concurrency": {
+    "enable_semaphore": true,
+    "semaphore_limit": 1,
+    "batch_size": 1
+  },
+  "retry": {
+    "max_retry_attempts": 3,
+    "base_delay": 1.0,
+    "max_delay": 30.0,
+    "enable_jitter": true
+  },
+  "api_limits": {
+    "request_timeout_seconds": 30,
+    "rate_limit_delay": 1.0
+  },
+  "historical_data": {
+    "days_per_run": 1000,
+    "max_historical_days": 10950,
+    "enable_backfill": true
+  },
+  "priority_assets": [
+    "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA",
+    "BTC", "ETH", "BNB", "ADA", "DOT"
+  ],
+  "circuit_breaker": {
+    "enable": false,
+    "failure_threshold": 5,
+    "recovery_timeout": 60.0
+  },
+  "dlq": {
+    "enable": false,
+    "max_retries": 3,
+    "auto_retry_after_days": 7
+  }
+} 

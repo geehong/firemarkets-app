@@ -1,0 +1,600 @@
+// backend/app/collectors/base_collector.py (개선 후)
+import logging
+import asyncio
+from sqlalchemy.orm import Session
+from contextlib import contextmanager
+from sqlalchemy import or_, text
+
+from ..core.database import SessionLocal
+from ..core.websocket import scheduler
+from ..models.asset import Asset
+
+logger = logging.getLogger(__name__)
+
+class BaseCollector:
+    """
+    모든 데이터 컬렉터의 기반이 되는 추상 클래스입니다.
+    데이터베이스 세션 관리, 비동기 작업 제어, 기본 로깅 기능을 공통으로 제공합니다.
+    """
+    def __init__(self, db: Session = None):
+        self._db = db
+        self.semaphore = asyncio.Semaphore(1)
+
+    @contextmanager
+    def get_db_session(self):
+        """
+        (개선됨) 안전한 데이터베이스 세션 관리를 위한 컨텍스트 매니저입니다.
+        세션 사용 후 자동으로 세션을 닫아 커넥션 누수를 방지합니다.
+        """
+        db = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    async def process_with_semaphore(self, awaitable):
+        """
+        세마포를 사용하여 동시 실행 작업을 제어합니다.
+        API 호출 제한이 있는 경우 동시 요청 수를 조절하는 데 사용됩니다.
+        """
+        async with self.semaphore:
+            return await awaitable
+
+    def log_progress(self, message: str, level: str = "info"):
+        """간단한 진행 상황 로깅 메서드입니다."""
+        if level == "info":
+            logger.info(message)
+        elif level == "error":
+            logger.error(message)
+        elif level == "warning":
+            logger.warning(message)
+        else:
+            logger.debug(message)
+
+    async def safe_emit(self, event, data):
+        """웹소켓으로 안전하게 메시지를 전송합니다."""
+        try:
+            await scheduler.emit(event, data)
+        except Exception as e:
+            self.log_progress(f"WebSocket emit error: {e}", "error")
+
+    async def collect_with_settings(self, collection_key: str, asset_type_filter: list = None) -> dict:
+        """
+        (신규) 개별 자산의 collection_settings에 따라 데이터를 수집하는 공통 메서드입니다.
+        - collection_key: 확인할 설정 키 (예: "collect_price")
+        - asset_type_filter: 특정 자산 유형만 필터링할 경우 (예: ["Stock", "ETF"])
+        """
+        with self.get_db_session() as db:
+            try:
+                # self.logging_helper는 하위 클래스에서 초기화되어야 함
+                if hasattr(self, 'logging_helper'):
+                    self.logging_helper.start_collection(f"{collection_key} data", 0, {
+                        "collection_type": "settings_based",
+                        "filter_criteria": {collection_key: True}
+                    })
+
+                condition1 = Asset.collection_settings.contains({collection_key: True})
+                condition2 = text(f"JSON_EXTRACT(collection_settings, '$.{collection_key}') = true")
+
+                query = db.query(Asset).filter(
+                    Asset.is_active == True,
+                    or_(condition1, condition2)
+                )
+
+                if asset_type_filter:
+                    from ..models import AssetType
+                    query = query.join(AssetType).filter(AssetType.type_name.in_(asset_type_filter))
+
+                assets = query.all()
+
+                if not assets:
+                    if hasattr(self, 'logging_helper'):
+                        self.logging_helper.log_assets_filtered(0, {collection_key: True})
+                    await self.safe_emit('scheduler_log', {
+                        'message': f"{collection_key} 데이터 수집이 활성화된 자산이 없습니다.",
+                        'type': 'warning'
+                    })
+                    return {"message": f"No assets with {collection_key} collection enabled", "processed": 0}
+
+                if hasattr(self, 'logging_helper'):
+                    self.logging_helper.log_assets_filtered(len(assets), {collection_key: True})
+                await self.safe_emit('scheduler_log', {
+                    'message': f"{collection_key} 데이터 수집 시작: {len(assets)}개 자산 (설정 기반)",
+                    'type': 'info'
+                })
+
+                return await self._collect_data_for_assets(assets)
+
+            except Exception as e:
+                self.log_progress(f"{self.__class__.__name__} collection failed: {e}", "error")
+                if hasattr(self, 'logging_helper'):
+                    self.logging_helper.log_collection_failure(e)
+                raise
+
+    async def _collect_data_for_assets(self, assets: list[Asset]) -> dict:
+        """
+        필터링된 자산 목록에 대한 실제 데이터 수집을 수행하는 메서드입니다.
+        하위 클래스에서 반드시 구현해야 합니다.
+        """
+        raise NotImplementedError("Subclasses must implement _collect_data_for_assets")
+
+    async def collect(self) -> dict:
+        """모든 활성 자산에 대해 데이터를 수집합니다."""
+        with self.get_db_session() as db:
+            assets = db.query(Asset).filter(Asset.is_active == True).all()
+            if not assets:
+                return {"message": "No active assets found", "processed": 0}
+            return await self._collect_data_for_assets(assets)
+
+
+
+//backend/app/collectors/ohlcv_collector.py (개선 후)
+import logging
+import asyncio
+import json
+from datetime import datetime, timedelta, date
+from typing import List, Dict, Any, Optional
+
+import httpx
+from sqlalchemy.orm import Session, joinedload
+
+from .base_collector import BaseCollector
+from ..core.config import GLOBAL_APP_CONFIGS
+from ..models.asset import Asset
+from ..models.system import AppConfiguration
+from ..crud import asset as crud_asset
+from .logging_helper import CollectorLoggingHelper
+
+logger = logging.getLogger(__name__)
+
+
+class OHLCVCollector(BaseCollector):
+    """
+    (수정됨) OHLCV 데이터를 수집하는 리팩토링된 컬렉터입니다.
+    BaseCollector의 공통 기능을 상속받아 코드가 간결해졌습니다.
+    """
+
+    def __init__(self, db: Session = None):
+        super().__init__(db)
+        self.api_timeout = 30
+        self.enable_historical_backfill = True
+        self.max_historical_days = 1000
+        self.historical_days_per_run = 100
+        self.logging_helper = CollectorLoggingHelper("OHLCVCollector", self)
+
+    async def collect_with_settings(self) -> Dict[str, Any]:
+        """
+        (수정됨) BaseCollector의 공통 메서드를 호출하여 OHLCV 데이터 수집을 시작합니다.
+        """
+        return await super().collect_with_settings(collection_key="collect_price")
+
+    async def _collect_data_for_assets(self, assets: List[Asset]) -> Dict[str, Any]:
+        """
+        (수정됨) 필터링된 자산 목록에 대해 OHLCV 데이터 수집을 수행합니다.
+        """
+        asset_ids = [asset.asset_id for asset in assets]
+
+        with self.get_db_session() as db:
+            enable_multiple_intervals_config = db.query(AppConfiguration).filter(
+                AppConfiguration.config_key == "ENABLE_MULTIPLE_INTERVALS"
+            ).first()
+            enable_multiple_intervals = enable_multiple_intervals_config.config_value.lower() == 'true' if enable_multiple_intervals_config else False
+
+            ohlcv_intervals_config = db.query(AppConfiguration).filter(
+                AppConfiguration.config_key == "OHLCV_DATA_INTERVALS"
+            ).first()
+            ohlcv_intervals = json.loads(ohlcv_intervals_config.config_value) if ohlcv_intervals_config else ["1d"]
+
+        self.logging_helper.log_configuration_loaded({
+            "intervals": ohlcv_intervals,
+            "multiple_intervals_enabled": enable_multiple_intervals
+        })
+        await self.safe_emit('scheduler_log', {
+            'message': f"수집 간격: {ohlcv_intervals} (다중 간격: {enable_multiple_intervals})",
+            'type': 'info'
+        })
+
+        if self.enable_historical_backfill:
+            await self._perform_historical_backfill(asset_ids)
+
+        total_results = []
+        for interval in ohlcv_intervals:
+            result = await self._collect_data_with_interval(asset_ids, interval)
+            total_results.append(result)
+
+        total_processed = sum(r.get("processed_assets", 0) for r in total_results)
+        total_added = sum(r.get("total_added_records", 0) for r in total_results)
+
+        self.logging_helper.log_collection_completion(total_processed, total_added)
+        await self.safe_emit('scheduler_log', {
+            'message': f"OHLCV 다중 간격 수집 완료: {total_processed}개 자산 처리, {total_added}개 레코드 추가",
+            'type': 'success'
+        })
+
+        return {
+            "processed_assets": total_processed,
+            "total_added_records": total_added,
+            "intervals_processed": len(ohlcv_intervals),
+            "message": f"Successfully processed {total_processed} assets across {len(ohlcv_intervals)} intervals"
+        }
+
+    async def _collect_data_with_interval(self, asset_ids: List[int], interval: str) -> Dict[str, Any]:
+        """특정 간격에 대한 OHLCV 데이터를 수집합니다."""
+        batch_size = GLOBAL_APP_CONFIGS.get("BATCH_SIZE", 1)
+        total_processed = 0
+        total_added = 0
+
+        for i in range(0, len(asset_ids), batch_size):
+            batch = asset_ids[i:i + batch_size]
+            tasks = [self._fetch_and_store_ohlcv_for_asset_with_interval(asset_id, interval) for asset_id in batch]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            for result in results:
+                if isinstance(result, Exception):
+                    self.log_progress(f"Asset processing error for interval {interval}: {result}", "error")
+                elif result and result.get("success"):
+                    total_processed += 1
+                    total_added += result.get("added_count", 0)
+            
+            if i + batch_size < len(asset_ids):
+                await asyncio.sleep(2)
+
+        return {
+            "processed_assets": total_processed,
+            "total_added_records": total_added,
+            "interval": interval,
+        }
+
+    async def _fetch_and_store_ohlcv_for_asset_with_interval(self, asset_id: int, interval: str) -> Optional[Dict[str, Any]]:
+        """단일 자산, 특정 간격에 대한 OHLCV 데이터를 가져오고 저장합니다."""
+        with self.get_db_session() as db:
+            fresh_asset = db.query(Asset).options(joinedload(Asset.asset_type)).filter(Asset.asset_id == asset_id).first()
+            if not fresh_asset:
+                self.log_progress(f"Asset not found for asset_id: {asset_id}", "warning")
+                return None
+        
+        # ... (API 호출 로직은 기존과 동일하게 유지)
+        # 이 예시에서는 API 호출 부분을 생략하고 데이터 저장 로직에 집중합니다.
+        ohlcv_data = [] # 실제로는 API를 통해 데이터를 가져옵니다.
+        
+        added_count = await self._store_ohlcv_data_with_interval(asset_id, ohlcv_data, interval)
+        return {"success": True, "added_count": added_count, "ticker": fresh_asset.ticker}
+
+
+    async def _store_ohlcv_data_with_interval(self, asset_id: int, ohlcv_list: List[Dict], interval: str) -> int:
+        """특정 간격의 OHLCV 데이터를 저장합니다."""
+        if not ohlcv_list:
+            return 0
+        
+        with self.get_db_session() as db:
+            try:
+                # crud 함수를 사용하여 bulk upsert 수행
+                from ..crud.asset import crud_ohlcv
+                
+                # 데이터에 asset_id와 interval 추가
+                for data_point in ohlcv_list:
+                    data_point['asset_id'] = asset_id
+                    data_point['data_interval'] = interval
+
+                added_count = crud_ohlcv.bulk_upsert_ohlcv(db, ohlcv_list)
+                db.commit()
+                return added_count
+            except Exception as e:
+                db.rollback()
+                self.log_progress(f"Error storing {interval} OHLCV data: {e}", "error")
+                raise
+
+    # ... (_perform_historical_backfill, _fetch_... 등 다른 메서드들은 기존 로직 유지)
+    # ... (단, 모든 DB 접근 시 with self.get_db_session() as db: 구문 사용하도록 수정 필요)
+
+//backend/app/collectors/onchain_collector.py (개선 후)
+import logging
+import asyncio
+import json
+from datetime import datetime
+from typing import List, Dict, Any, Optional
+
+import httpx
+from sqlalchemy.orm import Session
+
+from .base_collector import BaseCollector
+from ..core.config import GLOBAL_APP_CONFIGS
+from ..models.asset import Asset
+from ..crud.asset import crypto_metric
+from ..utils.retry import retry_with_backoff, TransientAPIError, PermanentAPIError
+from .logging_helper import CollectorLoggingHelper
+
+logger = logging.getLogger(__name__)
+
+class OnchainCollector(BaseCollector):
+    """
+    (수정됨) 온체인 데이터를 수집하는 리팩토링된 컬렉터입니다.
+    전략 패턴을 적용하여 메트릭 처리 로직을 분리하고, 로깅을 표준화했습니다.
+    """
+
+    def __init__(self, db: Session = None):
+        super().__init__(db)
+        self.base_url = GLOBAL_APP_CONFIGS.get("BGEO_API_BASE_URL", "https://bitcoin-data.com")
+        self.api_timeout = GLOBAL_APP_CONFIGS.get("API_REQUEST_TIMEOUT_SECONDS", 30)
+        self.logging_helper = CollectorLoggingHelper("OnchainCollector", self)
+        
+        with self.get_db_session() as db:
+            self.bitcoin_asset_id = self._get_bitcoin_asset_id(db)
+
+        # (신규) 전략 패턴: 메트릭 이름과 처리 정보를 매핑
+        self.metric_strategies = {
+            'mvrv-zscore': {'endpoint': '/v1/mvrv-zscore', 'field': 'mvrv_z_score', 'api_field': 'mvrvZscore'},
+            'sopr': {'endpoint': '/v1/sopr', 'field': 'sopr', 'api_field': 'sopr'},
+            'nupl': {'endpoint': '/v1/nupl', 'field': 'nupl', 'api_field': 'nupl'},
+            'realized-price': {'endpoint': '/v1/realized-price', 'field': 'realized_price', 'api_field': 'realizedPrice', 'date_field': 'theDay'},
+            'hashrate': {'endpoint': '/v1/hashrate', 'field': 'hashrate', 'api_field': 'hashrate'},
+            'difficulty-BTC': {'endpoint': '/v1/difficulty-BTC', 'field': 'difficulty', 'api_field': 'difficultyBtc'},
+            'miner-reserves': {'endpoint': '/v1/miner-reserves', 'field': 'miner_reserves', 'api_field': 'reserves'},
+            'etf-btc-total': {'endpoint': '/v1/etf-btc-total', 'field': 'etf_btc_total', 'api_field': 'etfBtcTotal'},
+            'open-interest-futures': {'endpoint': '/v1/open-interest-futures', 'field': 'open_interest_futures', 'processor': self._process_open_interest},
+            'cap-real-usd': {'endpoint': '/v1/cap-real-usd', 'field': 'realized_cap', 'api_field': 'capRealUSD', 'date_field': 'theDay'},
+            'cdd-90dma': {'endpoint': '/v1/cdd-90dma', 'field': 'cdd_90dma', 'api_field': 'cdd90dma'},
+            'true-market-mean': {'endpoint': '/v1/true-market-mean', 'field': 'true_market_mean', 'api_field': 'trueMarketMean'},
+            'nrpl-btc': {'endpoint': '/v1/nrpl-btc', 'field': 'nrpl_btc', 'api_field': 'nrplBtc'},
+            'aviv': {'endpoint': '/v1/aviv', 'field': 'aviv', 'api_field': 'aviv'},
+            'thermo-cap': {'endpoint': '/v1/thermo-cap', 'field': 'thermo_cap', 'api_field': 'thermoCap'},
+            'hodl-waves-supply': {'endpoint': '/v1/hodl-waves-supply', 'field': 'hodl_waves_supply', 'api_field': 'hodlWavesSupply'},
+            'etf-btc-flow': {'endpoint': '/v1/etf-flow-btc', 'field': 'etf_btc_flow', 'api_field': 'etfFlow'}
+        }
+
+    def _get_bitcoin_asset_id(self, db: Session) -> int:
+        """비트코인 자산 ID를 동적으로 찾습니다."""
+        bitcoin_asset = db.query(Asset).filter(Asset.ticker.in_(["BTC", "BTCUSDT"])).first()
+        if bitcoin_asset:
+            return bitcoin_asset.asset_id
+        logger.warning("Bitcoin asset not found (BTC or BTCUSDT), using default asset_id: 1")
+        return 1
+
+    async def collect_with_settings(self) -> Dict[str, Any]:
+        """(수정됨) BaseCollector의 공통 메서드를 호출하여 온체인 데이터 수집을 시작합니다."""
+        return await super().collect_with_settings(collection_key="collect_onchain")
+
+    async def _collect_data_for_assets(self, assets: List[Asset]) -> Dict[str, Any]:
+        """(수정됨) 필터링된 자산(비트코인)에 대해 온체인 데이터 수집을 수행합니다."""
+        if not any(asset.asset_id == self.bitcoin_asset_id for asset in assets):
+             return {"message": "Bitcoin asset not configured for onchain collection", "processed": 0}
+
+        total_fetched = 0
+        successful_metrics = []
+        metrics_to_collect = list(self.metric_strategies.keys())
+
+        async with httpx.AsyncClient() as client:
+            for metric_name in metrics_to_collect:
+                result = await self.process_with_semaphore(
+                    self._process_single_metric(client, metric_name)
+                )
+                if isinstance(result, Exception):
+                    self.logging_helper.log_asset_processing_failure(
+                        type('Metric', (), {'ticker': metric_name})(), result
+                    )
+                elif result > 0:
+                    total_fetched += result
+                    successful_metrics.append(metric_name)
+
+                delay_seconds = GLOBAL_APP_CONFIGS.get("ONCHAIN_API_DELAY_SECONDS", 10) # API 제한에 따라 조절
+                await asyncio.sleep(delay_seconds)
+
+        await self._update_asset_collection_time()
+        self.logging_helper.log_collection_completion(len(successful_metrics), total_fetched, {"successful_metrics": successful_metrics})
+        return {
+            "total_records": total_fetched,
+            "total_added_records": total_fetched,
+            "successful_metrics": successful_metrics,
+            "message": f"Successfully collected {total_fetched} records from {len(successful_metrics)} metrics"
+        }
+
+    async def _process_single_metric(self, client: httpx.AsyncClient, metric_name: str) -> int:
+        """(수정됨) 전략 딕셔너리를 사용하여 단일 메트릭을 처리합니다."""
+        strategy = self.metric_strategies.get(metric_name)
+        if not strategy:
+            self.log_progress(f"No strategy found for metric: {metric_name}", "warning")
+            return 0
+
+        url = f"{self.base_url}{strategy['endpoint']}"
+        try:
+            data = await self._fetch_api_data(client, url)
+            if not data: return 0
+            return await self._process_and_store_data(metric_name, strategy, data)
+        except Exception as e:
+            self.log_progress(f"Failed to process metric {metric_name}: {e}", "error")
+            return 0
+
+    async def _fetch_api_data(self, client: httpx.AsyncClient, url: str) -> Optional[List[Dict]]:
+        """API 데이터를 가져오는 재시도 로직이 포함된 공통 함수"""
+        async def api_call():
+            response = await client.get(url, timeout=self.api_timeout)
+            if response.status_code == 429: raise TransientAPIError("Rate limit")
+            response.raise_for_status()
+            return response.json()
+        try:
+            data = await retry_with_backoff(api_call)
+            return data.get('data', data if isinstance(data, list) else [data])
+        except Exception as e:
+            self.log_progress(f"API call failed for {url}: {e}", "error")
+            return None
+
+    async def _process_and_store_data(self, metric_name: str, strategy: dict, records: List[Dict]) -> int:
+        """가져온 데이터를 처리하고 DB에 저장하는 공통 함수"""
+        with self.get_db_session() as db:
+            try:
+                batch_data = []
+                processor = strategy.get('processor', self._default_processor)
+                for record in records:
+                    processed_record = processor(strategy, record)
+                    if processed_record:
+                        batch_data.append(processed_record)
+                if not batch_data: return 0
+                
+                added_count = crypto_metric.bulk_upsert_crypto_metrics(db, batch_data)
+                db.commit()
+                return added_count
+            except Exception as e:
+                db.rollback()
+                self.log_progress(f"Error storing data for {metric_name}: {e}", "error")
+                return 0
+
+    def _default_processor(self, strategy: dict, record: dict) -> Optional[Dict]:
+        """기본 메트릭 처리기"""
+        date_field = strategy.get('date_field', 'd')
+        timestamp_value = record.get(date_field)
+        value = record.get(strategy['api_field'])
+        if timestamp_value is None or value is None: return None
+        return {
+            'asset_id': self.bitcoin_asset_id,
+            'timestamp_utc': timestamp_value,
+            strategy['field']: value,
+        }
+
+    def _process_open_interest(self, strategy: dict, record: dict) -> Optional[Dict]:
+        """Open Interest 메트릭을 위한 특별 처리기"""
+        timestamp_value = record.get('d')
+        if not timestamp_value: return None
+        exchanges = ['binance', 'bybit', 'okx', 'bitget', 'deribit', 'bitmex', 'huobi', 'bitfinex', 'gateIo', 'kucoin', 'kraken', 'cryptoCom', 'dydx', 'deltaExchange']
+        exchange_data = {ex: float(v) for ex, v in record.items() if ex in exchanges and v is not None}
+        value = {"total": sum(exchange_data.values()), "exchanges": exchange_data}
+        return {
+            'asset_id': self.bitcoin_asset_id,
+            'timestamp_utc': timestamp_value,
+            'open_interest_futures': value,
+        }
+
+    async def _update_asset_collection_time(self):
+        """자산의 마지막 온체인 수집 시간을 업데이트합니다."""
+        with self.get_db_session() as db:
+            try:
+                asset = db.query(Asset).filter(Asset.asset_id == self.bitcoin_asset_id).first()
+                if asset:
+                    asset.last_onchain_collection = datetime.now()
+                    db.commit()
+            except Exception as e:
+                self.log_progress(f"Error updating asset collection time: {e}", "error")
+
+//backend/app/collectors/stock_collector.py (개선 후)
+import logging
+import asyncio
+from datetime import datetime
+from typing import List, Dict, Any, Optional
+
+import httpx
+from sqlalchemy.orm import Session
+
+from .base_collector import BaseCollector
+from .logging_helper import CollectorLoggingHelper, BatchProcessor
+from ..core.config import GLOBAL_APP_CONFIGS
+from ..models.asset import Asset
+from ..utils.retry import retry_with_backoff, TransientAPIError, PermanentAPIError
+from ..crud.asset import crud_stock_financial, crud_stock_profile, crud_stock_estimate, crud_asset
+
+logger = logging.getLogger(__name__)
+
+class StockCollector(BaseCollector):
+    """(수정됨) 주식 데이터를 수집하는 리팩토링된 컬렉터입니다."""
+
+    def __init__(self, db: Session = None):
+        super().__init__(db)
+        self.api_timeout = GLOBAL_APP_CONFIGS.get("API_REQUEST_TIMEOUT_SECONDS", 30)
+        self.logging_helper = CollectorLoggingHelper("StockCollector", self)
+
+    async def collect_with_settings(self) -> Dict[str, Any]:
+        """(수정됨) BaseCollector의 공통 메서드를 호출하여 주식 데이터 수집을 시작합니다."""
+        return await super().collect_with_settings(
+            collection_key="collect_assets_info",
+            asset_type_filter=["Stock", "stock", "stocks"]
+        )
+
+    async def _collect_data_for_assets(self, assets: List[Asset]) -> Dict[str, Any]:
+        """(수정됨) 필터링된 자산 목록에 대해 주식 데이터 수집을 수행합니다."""
+        batch_processor = BatchProcessor(self.logging_helper, batch_size=3)
+
+        async def process_stock_asset(asset):
+            return await self.process_with_semaphore(
+                self._fetch_and_store_stock_data_for_asset(asset)
+            )
+
+        result = await batch_processor.process_assets(assets, process_stock_asset)
+        self.logging_helper.log_collection_completion(
+            result["processed_assets"],
+            result["total_added_records"],
+            {"collection_type": "stock_data"}
+        )
+        return {
+            "processed_stocks": result["processed_assets"],
+            "updated_stocks": result["total_added_records"],
+            "message": f"Successfully processed {result['processed_assets']} stocks, updated {result['total_added_records']}"
+        }
+
+    async def _fetch_and_store_stock_data_for_asset(self, asset: Asset) -> Dict[str, Any]:
+        """단일 자산에 대한 주식 데이터를 가져오고 저장합니다."""
+        fmp_api_key = GLOBAL_APP_CONFIGS.get("FMP_API_KEY")
+        av_api_key = GLOBAL_APP_CONFIGS.get("ALPHA_VANTAGE_API_KEY_1")
+        
+        async with httpx.AsyncClient() as client:
+            tasks = [
+                self._fetch_fmp_profile(client, asset.ticker, fmp_api_key),
+                self._fetch_fmp_estimates(client, asset.ticker, fmp_api_key),
+                self._fetch_alpha_vantage_overview(client, asset.ticker, av_api_key)
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            fmp_profile, fmp_estimates, av_overview = [res if not isinstance(res, Exception) else None for res in results]
+
+            success = await self._consolidate_and_store_stock_data(asset, fmp_profile, fmp_estimates, av_overview)
+            if success:
+                # 성공 시 업데이트된 레코드 수를 1로 간주 (단순화)
+                return {"success": True, "message": "Stock data collected", "added_count": 1}
+            else:
+                return {"success": False, "error": "Failed to store stock data", "added_count": 0}
+
+    async def _consolidate_and_store_stock_data(self, asset: Asset, fmp_profile: Optional[dict], fmp_estimates: Optional[list], av_overview: Optional[dict]) -> bool:
+        """여러 소스의 데이터를 통합하고 DB에 저장합니다."""
+        with self.get_db_session() as db:
+            try:
+                # 데이터 통합 로직 (기존과 유사하게 구현)
+                profile_data = self._prepare_profile_data(asset.asset_id, fmp_profile, av_overview)
+                financials_data = self._prepare_financials_data(asset.asset_id, fmp_profile, av_overview)
+                estimates_data_list = self._prepare_estimates_data(asset.asset_id, fmp_estimates)
+
+                if profile_data:
+                    crud_stock_profile.upsert_stock_profile(db, profile_data)
+                if financials_data:
+                    crud_stock_financial.upsert_stock_financials(db, financials_data)
+                if estimates_data_list:
+                    for est_data in estimates_data_list:
+                        crud_stock_estimate.upsert_stock_estimate(db, est_data)
+                
+                crud_asset.update_ticker_settings(db, asset.asset_id, {'last_company_info_collection': datetime.now()})
+                db.commit()
+                return True
+            except Exception as e:
+                db.rollback()
+                self.log_progress(f"Error consolidating stock data for {asset.ticker}: {e}", "error")
+                return False
+
+    # ... 데이터 준비 헬퍼 함수들 ...
+    def _prepare_profile_data(self, asset_id, fmp, av):
+        # ... 데이터 통합 로직 ...
+        return {"asset_id": asset_id, "company_name": "Example"} # 예시
+
+    def _prepare_financials_data(self, asset_id, fmp, av):
+        # ... 데이터 통합 로직 ...
+        return {"asset_id": asset_id, "market_cap": 1000} # 예시
+
+    def _prepare_estimates_data(self, asset_id, fmp):
+        # ... 데이터 통합 로직 ...
+        return [{"asset_id": asset_id, "revenue_avg": 100}] # 예시
+
+    # ... (_fetch_... 헬퍼 메서드들은 기존 로직 유지)
+    async def _fetch_fmp_profile(self, client: httpx.AsyncClient, ticker: str, api_key: str) -> Optional[dict]:
+        # ...
+        pass
+    async def _fetch_fmp_estimates(self, client: httpx.AsyncClient, ticker: str, api_key: str) -> Optional[list]:
+        # ...
+        pass
+    async def _fetch_alpha_vantage_overview(self, client: httpx.AsyncClient, ticker: str, api_key: str) -> Optional[dict]:
+        # ...
+        pass
