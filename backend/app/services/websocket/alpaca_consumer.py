@@ -31,6 +31,9 @@ class AlpacaWSConsumer(BaseWSConsumer):
         self._redis_url = self._build_redis_url()
         # 새로운 로깅 시스템
         self.ws_logger = WebSocketLogger("alpaca")
+        # 재연결을 위한 원래 티커 목록 저장
+        self.original_tickers = set()
+        self.subscribed_tickers = []  # 구독 순서 보장을 위해 List 사용
     
     @property
     def client_name(self) -> str:
@@ -84,10 +87,24 @@ class AlpacaWSConsumer(BaseWSConsumer):
         self.is_connected = False
         logger.info(f"🔌 {self.client_name} disconnected")
     
-    async def subscribe(self, tickers: List[str]) -> bool:
+    async def subscribe(self, tickers: List[str], skip_normalization: bool = False) -> bool:
         try:
+            # 원래 티커 목록 저장 (정규화 전)
+            if not skip_normalization:
+                self.original_tickers = set(tickers)
+                self.subscribed_tickers = []  # 재구독 시 초기화
+            
             for ticker in tickers:
-                self.subscribed_tickers.add(ticker.upper())
+                if skip_normalization:
+                    # 재연결 시에는 정규화 건너뛰기
+                    norm = ticker
+                else:
+                    # 처음 구독 시에는 정규화 수행
+                    norm = ticker.upper()
+                
+                self.subscribed_tickers.append(norm)  # List로 순서 보장
+                logger.info(f"📋 {self.client_name} subscribed to {norm}")
+            
             await self._send_subscribe()
             return True
         except Exception as e:
@@ -97,7 +114,9 @@ class AlpacaWSConsumer(BaseWSConsumer):
     async def unsubscribe(self, tickers: List[str]) -> bool:
         try:
             for ticker in tickers:
-                self.subscribed_tickers.discard(ticker.upper())
+                # List에서 제거
+                if ticker.upper() in self.subscribed_tickers:
+                    self.subscribed_tickers.remove(ticker.upper())
             await self._send_subscribe()
             return True
         except Exception as e:
@@ -156,8 +175,17 @@ class AlpacaWSConsumer(BaseWSConsumer):
                 
                 # 재연결 시도
                 if await self.connect():
-                    if await self.subscribe(list(self.subscribed_tickers)):
-                        logger.info(f"✅ {self.client_name} reconnected and resubscribed")
+                    # 재연결 성공 시 원래 티커 목록으로 구독 복원
+                    if self.original_tickers:
+                        if await self.subscribe(list(self.original_tickers), skip_normalization=True):
+                            logger.info(f"✅ {self.client_name} reconnected and resubscribed to {len(self.original_tickers)} tickers")
+                            # 재연결 성공 시 다시 실행
+                            await self.run()
+                            return
+                        else:
+                            logger.error(f"❌ {self.client_name} failed to resubscribe after reconnection")
+                    else:
+                        logger.warning(f"⚠️ {self.client_name} no original tickers to resubscribe")
                         # 재연결 성공 시 다시 실행
                         await self.run()
                         return

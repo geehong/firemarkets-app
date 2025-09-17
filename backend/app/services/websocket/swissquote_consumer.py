@@ -30,6 +30,9 @@ class SwissquoteWSConsumer(BaseWSConsumer):
         self._polling_interval = 900  # 15분마다 폴링 (REST API이므로 과도한 요청 방지)
         # 새로운 로깅 시스템
         self.ws_logger = WebSocketLogger("swissquote")
+        # 재연결을 위한 원래 티커 목록 저장
+        self.original_tickers = set()
+        self.subscribed_tickers = []  # 구독 순서 보장을 위해 List 사용
     
     @property
     def client_name(self) -> str:
@@ -93,16 +96,27 @@ class SwissquoteWSConsumer(BaseWSConsumer):
         
         return t
     
-    async def subscribe(self, tickers: List[str]) -> bool:
+    async def subscribe(self, tickers: List[str], skip_normalization: bool = False) -> bool:
         """티커 구독 (메모리에 저장)"""
         try:
             if not self.is_connected:
                 logger.error(f"❌ {self.client_name} not connected")
                 return False
             
+            # 원래 티커 목록 저장 (정규화 전)
+            if not skip_normalization:
+                self.original_tickers = set(tickers)
+                self.subscribed_tickers = []  # 재구독 시 초기화
+            
             for ticker in tickers:
-                normalized_ticker = self._normalize_symbol(ticker)
-                self.subscribed_tickers.add(normalized_ticker)
+                if skip_normalization:
+                    # 재연결 시에는 정규화 건너뛰기
+                    normalized_ticker = ticker
+                else:
+                    # 처음 구독 시에는 정규화 수행
+                    normalized_ticker = self._normalize_symbol(ticker)
+                
+                self.subscribed_tickers.append(normalized_ticker)  # List로 순서 보장
                 logger.info(f"📋 {self.client_name} subscribed to {normalized_ticker}")
             
             return True
@@ -119,7 +133,9 @@ class SwissquoteWSConsumer(BaseWSConsumer):
             
             for ticker in tickers:
                 normalized_ticker = self._normalize_symbol(ticker)
-                self.subscribed_tickers.discard(normalized_ticker)
+                # List에서 제거
+                if normalized_ticker in self.subscribed_tickers:
+                    self.subscribed_tickers.remove(normalized_ticker)
                 logger.info(f"📋 {self.client_name} unsubscribed from {normalized_ticker}")
             
             return True

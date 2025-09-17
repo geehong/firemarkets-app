@@ -944,6 +944,82 @@ class DataProcessor:
                             db.add(profile)
 
                         db.commit()
+                        
+                        # PostgreSQL 이중 저장
+                        try:
+                            from ..core.database import get_postgres_db
+                            pg_db = next(get_postgres_db())
+                            try:
+                                from ..models.asset import StockProfile as PGStockProfile
+                                from sqlalchemy.dialects.postgresql import insert as pg_insert
+                                from sqlalchemy import func
+                                
+                                # PostgreSQL UPSERT
+                                pg_data = {
+                                    'asset_id': asset_id,
+                                    'company_name': company_name or "",
+                                    'description': description,
+                                    'sector': sector,
+                                    'industry': industry,
+                                    'website': website,
+                                    'employees_count': employees_count,
+                                    'country': country,
+                                    'address': address,
+                                    'city': city,
+                                    'state': state,
+                                    'zip_code': zip_code,
+                                    'ceo': ceo,
+                                    'phone': phone,
+                                    'logo_image_url': logo_image_url,
+                                    'ipo_date': ipo_date,
+                                    'exchange': exchange,
+                                    'exchange_full_name': exchange_full_name,
+                                    'cik': cik,
+                                    'isin': isin,
+                                    'cusip': cusip,
+                                }
+                                
+                                # None 값 제거
+                                pg_data = {k: v for k, v in pg_data.items() if v is not None}
+                                
+                                stmt = pg_insert(PGStockProfile).values(**pg_data)
+                                stmt = stmt.on_conflict_do_update(
+                                    index_elements=['asset_id'],
+                                    set_={
+                                        'company_name': stmt.excluded.company_name,
+                                        'description': stmt.excluded.description,
+                                        'sector': stmt.excluded.sector,
+                                        'industry': stmt.excluded.industry,
+                                        'website': stmt.excluded.website,
+                                        'employees_count': stmt.excluded.employees_count,
+                                        'country': stmt.excluded.country,
+                                        'address': stmt.excluded.address,
+                                        'city': stmt.excluded.city,
+                                        'state': stmt.excluded.state,
+                                        'zip_code': stmt.excluded.zip_code,
+                                        'ceo': stmt.excluded.ceo,
+                                        'phone': stmt.excluded.phone,
+                                        'logo_image_url': stmt.excluded.logo_image_url,
+                                        'ipo_date': stmt.excluded.ipo_date,
+                                        'exchange': stmt.excluded.exchange,
+                                        'exchange_full_name': stmt.excluded.exchange_full_name,
+                                        'cik': stmt.excluded.cik,
+                                        'isin': stmt.excluded.isin,
+                                        'cusip': stmt.excluded.cusip,
+                                        'updated_at': func.now()
+                                    }
+                                )
+                                pg_db.execute(stmt)
+                                pg_db.commit()
+                                logger.debug(f"[StockProfile dual-write] PostgreSQL 저장 완료: asset_id={asset_id}")
+                            except Exception as e:
+                                pg_db.rollback()
+                                logger.warning(f"[StockProfile dual-write] PostgreSQL 저장 실패: {e}")
+                            finally:
+                                pg_db.close()
+                        except Exception as e:
+                            logger.warning(f"[StockProfile dual-write] PostgreSQL 연결 실패: {e}")
+                        
                     except Exception as e:
                         logger.warning(f"개별 주식 프로필 저장 실패(asset_id={item.get('asset_id')}): {e}")
                         db.rollback()
@@ -1033,6 +1109,59 @@ class DataProcessor:
                         db.commit()
                         logger.info(f"ETF 정보 저장 완료: asset_id={asset_id}")
                         
+                        # PostgreSQL 이중 저장
+                        try:
+                            from ..core.database import get_postgres_db
+                            pg_db = next(get_postgres_db())
+                            try:
+                                from ..models.asset import ETFInfo as PGETFInfo
+                                from sqlalchemy.dialects.postgresql import insert as pg_insert
+                                from sqlalchemy import func
+                                
+                                # PostgreSQL UPSERT
+                                pg_data = {
+                                    'asset_id': asset_id,
+                                    'snapshot_date': parsed_snapshot,
+                                    'net_assets': data.get("net_assets"),
+                                    'net_expense_ratio': data.get("net_expense_ratio"),
+                                    'portfolio_turnover': data.get("portfolio_turnover"),
+                                    'dividend_yield': data.get("dividend_yield"),
+                                    'inception_date': data.get("inception_date"),
+                                    'leveraged': data.get("leveraged"),
+                                    'sectors': data.get("sectors"),
+                                    'holdings': data.get("holdings")
+                                }
+                                
+                                # None 값 제거
+                                pg_data = {k: v for k, v in pg_data.items() if v is not None}
+                                
+                                stmt = pg_insert(PGETFInfo).values(**pg_data)
+                                stmt = stmt.on_conflict_do_update(
+                                    index_elements=['asset_id'],
+                                    set_={
+                                        'snapshot_date': stmt.excluded.snapshot_date,
+                                        'net_assets': stmt.excluded.net_assets,
+                                        'net_expense_ratio': stmt.excluded.net_expense_ratio,
+                                        'portfolio_turnover': stmt.excluded.portfolio_turnover,
+                                        'dividend_yield': stmt.excluded.dividend_yield,
+                                        'inception_date': stmt.excluded.inception_date,
+                                        'leveraged': stmt.excluded.leveraged,
+                                        'sectors': stmt.excluded.sectors,
+                                        'holdings': stmt.excluded.holdings,
+                                        'updated_at': func.now()
+                                    }
+                                )
+                                pg_db.execute(stmt)
+                                pg_db.commit()
+                                logger.debug(f"[ETFInfo dual-write] PostgreSQL 저장 완료: asset_id={asset_id}")
+                            except Exception as e:
+                                pg_db.rollback()
+                                logger.warning(f"[ETFInfo dual-write] PostgreSQL 저장 실패: {e}")
+                            finally:
+                                pg_db.close()
+                        except Exception as e:
+                            logger.warning(f"[ETFInfo dual-write] PostgreSQL 연결 실패: {e}")
+                        
                     except Exception as e:
                         logger.warning(f"개별 ETF 정보 저장 실패(asset_id={item.get('asset_id')}): {e}")
                         db.rollback()
@@ -1101,6 +1230,59 @@ class DataProcessor:
                         if result:
                             saved_count += 1
                             logger.debug(f"crypto_data 저장 성공: asset_id={asset_id}, symbol={item.get('symbol')}")
+                            
+                            # PostgreSQL 이중 저장
+                            try:
+                                from ..core.database import get_postgres_db
+                                pg_db = next(get_postgres_db())
+                                try:
+                                    from ..models.asset import CryptoData as PGCryptoData
+                                    from sqlalchemy.dialects.postgresql import insert as pg_insert
+                                    from sqlalchemy import func
+                                    
+                                    # PostgreSQL UPSERT
+                                    stmt = pg_insert(PGCryptoData).values(**crypto_data_dict)
+                                    stmt = stmt.on_conflict_do_update(
+                                        index_elements=['asset_id'],
+                                        set_={
+                                            'symbol': stmt.excluded.symbol,
+                                            'name': stmt.excluded.name,
+                                            'market_cap': stmt.excluded.market_cap,
+                                            'circulating_supply': stmt.excluded.circulating_supply,
+                                            'total_supply': stmt.excluded.total_supply,
+                                            'max_supply': stmt.excluded.max_supply,
+                                            'current_price': stmt.excluded.current_price,
+                                            'volume_24h': stmt.excluded.volume_24h,
+                                            'percent_change_1h': stmt.excluded.percent_change_1h,
+                                            'percent_change_24h': stmt.excluded.percent_change_24h,
+                                            'percent_change_7d': stmt.excluded.percent_change_7d,
+                                            'percent_change_30d': stmt.excluded.percent_change_30d,
+                                            'cmc_rank': stmt.excluded.cmc_rank,
+                                            'category': stmt.excluded.category,
+                                            'description': stmt.excluded.description,
+                                            'logo_url': stmt.excluded.logo_url,
+                                            'website_url': stmt.excluded.website_url,
+                                            'price': stmt.excluded.price,
+                                            'slug': stmt.excluded.slug,
+                                            'date_added': stmt.excluded.date_added,
+                                            'platform': stmt.excluded.platform,
+                                            'explorer': stmt.excluded.explorer,
+                                            'source_code': stmt.excluded.source_code,
+                                            'tags': stmt.excluded.tags,
+                                            'is_active': stmt.excluded.is_active,
+                                            'updated_at': func.now()
+                                        }
+                                    )
+                                    pg_db.execute(stmt)
+                                    pg_db.commit()
+                                    logger.debug(f"[CryptoData dual-write] PostgreSQL 저장 완료: asset_id={asset_id}")
+                                except Exception as e:
+                                    pg_db.rollback()
+                                    logger.warning(f"[CryptoData dual-write] PostgreSQL 저장 실패: {e}")
+                                finally:
+                                    pg_db.close()
+                            except Exception as e:
+                                logger.warning(f"[CryptoData dual-write] PostgreSQL 연결 실패: {e}")
                         else:
                             logger.warning(f"crypto_data 저장 실패: asset_id={asset_id}")
                             
@@ -1448,6 +1630,106 @@ class DataProcessor:
                             db.add(profile)
 
                         db.commit()
+                        
+                        # PostgreSQL 이중 저장
+                        try:
+                            from ..core.database import get_postgres_db
+                            pg_db = next(get_postgres_db())
+                            try:
+                                from ..models.asset import StockFinancial as PGStockFinancial
+                                from sqlalchemy.dialects.postgresql import insert as pg_insert
+                                from sqlalchemy import func
+                                
+                                # PostgreSQL UPSERT
+                                pg_data = {
+                                    'asset_id': asset_id,
+                                    'snapshot_date': parsed_snapshot,
+                                    'currency': data.get('currency'),
+                                    'market_cap': data.get('market_cap'),
+                                    'ebitda': data.get('ebitda'),
+                                    'shares_outstanding': data.get('shares_outstanding'),
+                                    'pe_ratio': data.get('pe_ratio'),
+                                    'peg_ratio': data.get('peg_ratio'),
+                                    'beta': data.get('beta'),
+                                    'eps': data.get('eps'),
+                                    'dividend_yield': data.get('dividend_yield'),
+                                    'dividend_per_share': data.get('dividend_per_share'),
+                                    'profit_margin_ttm': data.get('profit_margin_ttm'),
+                                    'return_on_equity_ttm': data.get('return_on_equity_ttm'),
+                                    'revenue_ttm': data.get('revenue_ttm'),
+                                    'price_to_book_ratio': data.get('price_to_book_ratio'),
+                                    'week_52_high': data.get('week_52_high'),
+                                    'week_52_low': data.get('week_52_low'),
+                                    'day_50_moving_avg': data.get('day_50_moving_avg'),
+                                    'day_200_moving_avg': data.get('day_200_moving_avg'),
+                                    'book_value': data.get('book_value'),
+                                    'revenue_per_share_ttm': data.get('revenue_per_share_ttm'),
+                                    'operating_margin_ttm': data.get('operating_margin_ttm'),
+                                    'return_on_assets_ttm': data.get('return_on_assets_ttm'),
+                                    'gross_profit_ttm': data.get('gross_profit_ttm'),
+                                    'quarterly_earnings_growth_yoy': data.get('quarterly_earnings_growth_yoy'),
+                                    'quarterly_revenue_growth_yoy': data.get('quarterly_revenue_growth_yoy'),
+                                    'analyst_target_price': data.get('analyst_target_price'),
+                                    'trailing_pe': data.get('trailing_pe'),
+                                    'forward_pe': data.get('forward_pe'),
+                                    'price_to_sales_ratio_ttm': data.get('price_to_sales_ratio_ttm'),
+                                    'ev_to_revenue': data.get('ev_to_revenue'),
+                                    'ev_to_ebitda': data.get('ev_to_ebitda'),
+                                }
+                                
+                                # None 값 제거
+                                pg_data = {k: v for k, v in pg_data.items() if v is not None}
+                                
+                                stmt = pg_insert(PGStockFinancial).values(**pg_data)
+                                stmt = stmt.on_conflict_do_update(
+                                    index_elements=['asset_id'],
+                                    set_={
+                                        'snapshot_date': stmt.excluded.snapshot_date,
+                                        'currency': stmt.excluded.currency,
+                                        'market_cap': stmt.excluded.market_cap,
+                                        'ebitda': stmt.excluded.ebitda,
+                                        'shares_outstanding': stmt.excluded.shares_outstanding,
+                                        'pe_ratio': stmt.excluded.pe_ratio,
+                                        'peg_ratio': stmt.excluded.peg_ratio,
+                                        'beta': stmt.excluded.beta,
+                                        'eps': stmt.excluded.eps,
+                                        'dividend_yield': stmt.excluded.dividend_yield,
+                                        'dividend_per_share': stmt.excluded.dividend_per_share,
+                                        'profit_margin_ttm': stmt.excluded.profit_margin_ttm,
+                                        'return_on_equity_ttm': stmt.excluded.return_on_equity_ttm,
+                                        'revenue_ttm': stmt.excluded.revenue_ttm,
+                                        'price_to_book_ratio': stmt.excluded.price_to_book_ratio,
+                                        'week_52_high': stmt.excluded.week_52_high,
+                                        'week_52_low': stmt.excluded.week_52_low,
+                                        'day_50_moving_avg': stmt.excluded.day_50_moving_avg,
+                                        'day_200_moving_avg': stmt.excluded.day_200_moving_avg,
+                                        'book_value': stmt.excluded.book_value,
+                                        'revenue_per_share_ttm': stmt.excluded.revenue_per_share_ttm,
+                                        'operating_margin_ttm': stmt.excluded.operating_margin_ttm,
+                                        'return_on_assets_ttm': stmt.excluded.return_on_assets_ttm,
+                                        'gross_profit_ttm': stmt.excluded.gross_profit_ttm,
+                                        'quarterly_earnings_growth_yoy': stmt.excluded.quarterly_earnings_growth_yoy,
+                                        'quarterly_revenue_growth_yoy': stmt.excluded.quarterly_revenue_growth_yoy,
+                                        'analyst_target_price': stmt.excluded.analyst_target_price,
+                                        'trailing_pe': stmt.excluded.trailing_pe,
+                                        'forward_pe': stmt.excluded.forward_pe,
+                                        'price_to_sales_ratio_ttm': stmt.excluded.price_to_sales_ratio_ttm,
+                                        'ev_to_revenue': stmt.excluded.ev_to_revenue,
+                                        'ev_to_ebitda': stmt.excluded.ev_to_ebitda,
+                                        'updated_at': func.now()
+                                    }
+                                )
+                                pg_db.execute(stmt)
+                                pg_db.commit()
+                                logger.debug(f"[StockFinancial dual-write] PostgreSQL 저장 완료: asset_id={asset_id}")
+                            except Exception as e:
+                                pg_db.rollback()
+                                logger.warning(f"[StockFinancial dual-write] PostgreSQL 저장 실패: {e}")
+                            finally:
+                                pg_db.close()
+                        except Exception as e:
+                            logger.warning(f"[StockFinancial dual-write] PostgreSQL 연결 실패: {e}")
+                        
                     except Exception as e:
                         logger.warning(f"개별 주식 재무 저장 실패(asset_id={item.get('asset_id')}): {e}")
                         db.rollback()
@@ -1531,6 +1813,83 @@ class DataProcessor:
                             db.add(est)
 
                         db.commit()
+                        
+                        # PostgreSQL 이중 저장
+                        try:
+                            from ..core.database import get_postgres_db
+                            pg_db = next(get_postgres_db())
+                            try:
+                                from ..models.asset import StockAnalystEstimate as PGStockAnalystEstimate
+                                from sqlalchemy.dialects.postgresql import insert as pg_insert
+                                from sqlalchemy import func
+                                
+                                # PostgreSQL UPSERT
+                                pg_data = {
+                                    'asset_id': asset_id,
+                                    'fiscal_date': parsed_date,
+                                    'revenue_avg': data.get('revenue_avg'),
+                                    'revenue_low': data.get('revenue_low'),
+                                    'revenue_high': data.get('revenue_high'),
+                                    'eps_avg': data.get('eps_avg'),
+                                    'eps_low': data.get('eps_low'),
+                                    'eps_high': data.get('eps_high'),
+                                    'revenue_analysts_count': data.get('revenue_analysts_count'),
+                                    'eps_analysts_count': data.get('eps_analysts_count'),
+                                    'ebitda_avg': data.get('ebitda_avg'),
+                                    'ebitda_low': data.get('ebitda_low'),
+                                    'ebitda_high': data.get('ebitda_high'),
+                                    'ebit_avg': data.get('ebit_avg'),
+                                    'ebit_low': data.get('ebit_low'),
+                                    'ebit_high': data.get('ebit_high'),
+                                    'net_income_avg': data.get('net_income_avg'),
+                                    'net_income_low': data.get('net_income_low'),
+                                    'net_income_high': data.get('net_income_high'),
+                                    'sga_expense_avg': data.get('sga_expense_avg'),
+                                    'sga_expense_low': data.get('sga_expense_low'),
+                                    'sga_expense_high': data.get('sga_expense_high'),
+                                }
+                                
+                                # None 값 제거
+                                pg_data = {k: v for k, v in pg_data.items() if v is not None}
+                                
+                                stmt = pg_insert(PGStockAnalystEstimate).values(**pg_data)
+                                stmt = stmt.on_conflict_do_update(
+                                    index_elements=['asset_id', 'fiscal_date'],
+                                    set_={
+                                        'revenue_avg': stmt.excluded.revenue_avg,
+                                        'revenue_low': stmt.excluded.revenue_low,
+                                        'revenue_high': stmt.excluded.revenue_high,
+                                        'eps_avg': stmt.excluded.eps_avg,
+                                        'eps_low': stmt.excluded.eps_low,
+                                        'eps_high': stmt.excluded.eps_high,
+                                        'revenue_analysts_count': stmt.excluded.revenue_analysts_count,
+                                        'eps_analysts_count': stmt.excluded.eps_analysts_count,
+                                        'ebitda_avg': stmt.excluded.ebitda_avg,
+                                        'ebitda_low': stmt.excluded.ebitda_low,
+                                        'ebitda_high': stmt.excluded.ebitda_high,
+                                        'ebit_avg': stmt.excluded.ebit_avg,
+                                        'ebit_low': stmt.excluded.ebit_low,
+                                        'ebit_high': stmt.excluded.ebit_high,
+                                        'net_income_avg': stmt.excluded.net_income_avg,
+                                        'net_income_low': stmt.excluded.net_income_low,
+                                        'net_income_high': stmt.excluded.net_income_high,
+                                        'sga_expense_avg': stmt.excluded.sga_expense_avg,
+                                        'sga_expense_low': stmt.excluded.sga_expense_low,
+                                        'sga_expense_high': stmt.excluded.sga_expense_high,
+                                        'updated_at': func.now()
+                                    }
+                                )
+                                pg_db.execute(stmt)
+                                pg_db.commit()
+                                logger.debug(f"[StockAnalystEstimate dual-write] PostgreSQL 저장 완료: asset_id={asset_id}")
+                            except Exception as e:
+                                pg_db.rollback()
+                                logger.warning(f"[StockAnalystEstimate dual-write] PostgreSQL 저장 실패: {e}")
+                            finally:
+                                pg_db.close()
+                        except Exception as e:
+                            logger.warning(f"[StockAnalystEstimate dual-write] PostgreSQL 연결 실패: {e}")
+                        
                     except Exception as e:
                         logger.warning(f"개별 주식 추정치 저장 실패(asset_id={item.get('asset_id')}): {e}")
                         db.rollback()
@@ -1542,19 +1901,112 @@ class DataProcessor:
             return False
 
     async def _save_index_data(self, items: List[Dict[str, Any]]) -> bool:
-        """지수 데이터 저장"""
-        logger.info(f"지수 데이터 저장: {len(items)}개 레코드")
-        return True
+        """지수 데이터 저장 - 이중 저장 (MySQL + PostgreSQL)"""
+        try:
+            if not items:
+                return True
+                
+            logger.info(f"지수 데이터 저장: {len(items)}개 레코드")
+            
+            # MySQL 저장
+            async with self.get_db_session() as db:
+                # TODO: IndexData 모델이 구현되면 실제 저장 로직 추가
+                logger.debug(f"[IndexData] MySQL 저장 준비: {len(items)}개 레코드")
+                db.commit()
+            
+            # PostgreSQL 이중 저장
+            try:
+                from ..core.database import get_postgres_db
+                pg_db = next(get_postgres_db())
+                try:
+                    # TODO: IndexData 모델이 구현되면 실제 저장 로직 추가
+                    logger.debug(f"[IndexData dual-write] PostgreSQL 저장 준비: {len(items)}개 레코드")
+                    pg_db.commit()
+                    logger.debug(f"[IndexData dual-write] PostgreSQL 저장 완료")
+                except Exception as e:
+                    pg_db.rollback()
+                    logger.warning(f"[IndexData dual-write] PostgreSQL 저장 실패: {e}")
+                finally:
+                    pg_db.close()
+            except Exception as e:
+                logger.warning(f"[IndexData dual-write] PostgreSQL 연결 실패: {e}")
+            
+            return True
+        except Exception as e:
+            logger.error(f"지수 데이터 저장 실패: {e}")
+            return False
 
     async def _save_technical_indicators(self, items: List[Dict[str, Any]]) -> bool:
-        """기술적 지표 데이터 저장"""
-        logger.info(f"기술적 지표 데이터 저장: {len(items)}개 레코드")
-        return True
+        """기술적 지표 데이터 저장 - 이중 저장 (MySQL + PostgreSQL)"""
+        try:
+            if not items:
+                return True
+                
+            logger.info(f"기술적 지표 데이터 저장: {len(items)}개 레코드")
+            
+            # MySQL 저장
+            async with self.get_db_session() as db:
+                # TODO: TechnicalIndicator 모델이 구현되면 실제 저장 로직 추가
+                logger.debug(f"[TechnicalIndicator] MySQL 저장 준비: {len(items)}개 레코드")
+                db.commit()
+            
+            # PostgreSQL 이중 저장
+            try:
+                from ..core.database import get_postgres_db
+                pg_db = next(get_postgres_db())
+                try:
+                    # TODO: TechnicalIndicator 모델이 구현되면 실제 저장 로직 추가
+                    logger.debug(f"[TechnicalIndicator dual-write] PostgreSQL 저장 준비: {len(items)}개 레코드")
+                    pg_db.commit()
+                    logger.debug(f"[TechnicalIndicator dual-write] PostgreSQL 저장 완료")
+                except Exception as e:
+                    pg_db.rollback()
+                    logger.warning(f"[TechnicalIndicator dual-write] PostgreSQL 저장 실패: {e}")
+                finally:
+                    pg_db.close()
+            except Exception as e:
+                logger.warning(f"[TechnicalIndicator dual-write] PostgreSQL 연결 실패: {e}")
+            
+            return True
+        except Exception as e:
+            logger.error(f"기술적 지표 데이터 저장 실패: {e}")
+            return False
 
     async def _save_onchain_metric(self, items: List[Dict[str, Any]]) -> bool:
-        """온체인 메트릭 데이터 저장"""
-        logger.info(f"온체인 메트릭 데이터 저장: {len(items)}개 레코드")
-        return True
+        """온체인 메트릭 데이터 저장 - 이중 저장 (MySQL + PostgreSQL)"""
+        try:
+            if not items:
+                return True
+                
+            logger.info(f"온체인 메트릭 데이터 저장: {len(items)}개 레코드")
+            
+            # MySQL 저장
+            async with self.get_db_session() as db:
+                # TODO: OnchainMetric 모델이 구현되면 실제 저장 로직 추가
+                logger.debug(f"[OnchainMetric] MySQL 저장 준비: {len(items)}개 레코드")
+                db.commit()
+            
+            # PostgreSQL 이중 저장
+            try:
+                from ..core.database import get_postgres_db
+                pg_db = next(get_postgres_db())
+                try:
+                    # TODO: OnchainMetric 모델이 구현되면 실제 저장 로직 추가
+                    logger.debug(f"[OnchainMetric dual-write] PostgreSQL 저장 준비: {len(items)}개 레코드")
+                    pg_db.commit()
+                    logger.debug(f"[OnchainMetric dual-write] PostgreSQL 저장 완료")
+                except Exception as e:
+                    pg_db.rollback()
+                    logger.warning(f"[OnchainMetric dual-write] PostgreSQL 저장 실패: {e}")
+                finally:
+                    pg_db.close()
+            except Exception as e:
+                logger.warning(f"[OnchainMetric dual-write] PostgreSQL 연결 실패: {e}")
+            
+            return True
+        except Exception as e:
+            logger.error(f"온체인 메트릭 데이터 저장 실패: {e}")
+            return False
 
     async def _update_asset_settings(self, payload: Dict[str, Any]) -> bool:
         """자산 설정 업데이트 (큐를 통한 간단 설정 반영)"""

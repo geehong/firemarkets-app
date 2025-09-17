@@ -448,14 +448,13 @@ class WorldAssetsCollector(BaseCollector):
             db = self.db
             today = datetime.now().date()
             
-            # 오늘 데이터가 이미 있는지 확인
-            existing_today_data = db.query(WorldAssetsRanking).filter(
-                WorldAssetsRanking.ranking_date == today
-            ).count()
-            
-            if existing_today_data > 0:
-                self.logging_helper.log_warning(f"Today's data already exists ({existing_today_data} records). Skipping insertion.")
-                return existing_today_data
+            # 오늘 데이터가 이미 있는지 확인 (요청에 따라 주석 처리하여 항상 수행)
+            # existing_today_data = db.query(WorldAssetsRanking).filter(
+            #     WorldAssetsRanking.ranking_date == today
+            # ).count()
+            # if existing_today_data > 0:
+            #     self.logging_helper.log_warning(f"Today's data already exists ({existing_today_data} records). Skipping insertion.")
+            #     return existing_today_data
             
             # 새 데이터 삽입 (히스토리 보존)
             inserted_count = 0
@@ -477,7 +476,64 @@ class WorldAssetsCollector(BaseCollector):
                 inserted_count += 1
             
             db.commit()
-            self.logging_helper.log_info(f"Successfully inserted {inserted_count} new assets for {today}")
+            self.logging_helper.log_info(f"[WorldAssetsRanking dual-write] MySQL 저장 완료: {inserted_count}개 레코드 for {today}")
+            
+            # PostgreSQL 이중 저장
+            try:
+                from app.core.database import get_postgres_db
+                pg_db = next(get_postgres_db())
+                try:
+                    from sqlalchemy.dialects.postgresql import insert as pg_insert
+                    from sqlalchemy import func
+                    from app.models.asset import WorldAssetsRanking as PGWorldAssetsRanking
+                    
+                    # PostgreSQL UPSERT
+                    for asset in assets_data:
+                        pg_data = {
+                            'rank': asset.rank,
+                            'name': asset.name,
+                            'ticker': asset.ticker,
+                            'market_cap_usd': asset.market_cap_usd,
+                            'price_usd': asset.price_usd,
+                            'daily_change_percent': asset.daily_change_percent,
+                            'country': asset.country,
+                            'asset_type_id': asset.asset_type_id,
+                            'asset_id': asset.asset_id,
+                            'ranking_date': today,
+                            'data_source': 'companiesmarketcap',
+                            'last_updated': datetime.now()
+                        }
+                        
+                        stmt = pg_insert(PGWorldAssetsRanking).values(**pg_data)
+                        stmt = stmt.on_conflict_do_update(
+                            index_elements=['ranking_date', 'asset_id'],  # 동일 날짜/자산 조합 기준으로 UPSERT
+                            set_={
+                                'rank': stmt.excluded.rank,
+                                'name': stmt.excluded.name,
+                                'ticker': stmt.excluded.ticker,
+                                'market_cap_usd': stmt.excluded.market_cap_usd,
+                                'price_usd': stmt.excluded.price_usd,
+                                'daily_change_percent': stmt.excluded.daily_change_percent,
+                                'country': stmt.excluded.country,
+                                'asset_type_id': stmt.excluded.asset_type_id,
+                                'asset_id': stmt.excluded.asset_id,
+                                'ranking_date': stmt.excluded.ranking_date,
+                                'data_source': stmt.excluded.data_source,
+                                'last_updated': stmt.excluded.last_updated
+                            }
+                        )
+                        pg_db.execute(stmt)
+                    
+                    pg_db.commit()
+                    self.logging_helper.log_info(f"[WorldAssetsRanking dual-write] PostgreSQL 저장 완료: {inserted_count}개 레코드 for {today}")
+                except Exception as e:
+                    pg_db.rollback()
+                    self.logging_helper.log_warning(f"[WorldAssetsRanking dual-write] PostgreSQL 저장 실패: {e}")
+                finally:
+                    pg_db.close()
+            except Exception as e:
+                self.logging_helper.log_warning(f"[WorldAssetsRanking dual-write] PostgreSQL 연결 실패: {e}")
+            
             return inserted_count
             
         except Exception as e:

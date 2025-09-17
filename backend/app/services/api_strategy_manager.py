@@ -31,8 +31,8 @@ class ApiStrategyManager:
         self.config_manager = config_manager or ConfigManager()
         # 1. 일봉 OHLCV 클라이언트 (주식, ETF, 지수, 커머디티, 통화)
         self.ohlcv_day_clients = [
-            TiingoClient(),       # 1순위 복구
-            FMPClient(),          # 2순위 (WebSocket 백업용)
+            #TiingoClient(),       # 1순위 복구
+            #FMPClient(),          # 2순위 (WebSocket 백업용)
             PolygonClient(),      # 3순위
             TwelveDataClient(),   # 4순위
         ]
@@ -54,7 +54,7 @@ class ApiStrategyManager:
         # 4. 주식 프로필용 클라이언트 (기업 프로필 데이터)
         self.stock_profiles_clients = [
             FMPClient(),          # 1순위 (완전한 프로필 데이터)
-            TiingoClient(),       # 2순위 복구
+            #TiingoClient(),       # 2순위 복구
             PolygonClient(),      # 3순위
             TwelveDataClient(),   # 4순위
         ]
@@ -63,26 +63,26 @@ class ApiStrategyManager:
         self.stock_financials_clients = [
             AlphaVantageClient(),
             FMPClient(),
-            TiingoClient(),      
-            PolygonClient(),
-            TwelveDataClient(),
+            #TiingoClient(),      
+            #PolygonClient(),
+            #TwelveDataClient(),
         ]
         
         # 6. 주식 추정치용 클라이언트 (애널리스트 추정치)
         self.stock_analyst_estimates_clients = [
             FMPClient(),
-            AlphaVantageClient(),
-            TiingoClient(),
-            PolygonClient(),
-            TwelveDataClient(),
+            #AlphaVantageClient(),
+            #TiingoClient(),
+           # PolygonClient(),
+            #TwelveDataClient(),
         ]
         
         # 7. 커머디티용 클라이언트 (커머디티 지원 확인된 API만)
         self.commodity_ohlcv_clients = [
             FMPClient(),
-            PolygonClient(),
-            TiingoClient(),
-            TwelveDataClient()
+            #PolygonClient(),
+            #TiingoClient(),
+           # TwelveDataClient()
         ]
         
         # 8. ETF용 클라이언트 (ETF 정보 수집)

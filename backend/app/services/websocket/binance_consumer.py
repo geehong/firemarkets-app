@@ -30,6 +30,9 @@ class BinanceWSConsumer(BaseWSConsumer):
         self._redis_url = self._build_redis_url()
         # 새로운 로깅 시스템
         self.ws_logger = WebSocketLogger("binance")
+        # 재연결을 위한 원래 티커 목록 저장
+        self.original_tickers = set()
+        self.subscribed_tickers = []  # 구독 순서 보장을 위해 List 사용
     
     @property
     def client_name(self) -> str:
@@ -113,7 +116,7 @@ class BinanceWSConsumer(BaseWSConsumer):
             return t.lower()
         return t.lower()
     
-    async def subscribe(self, tickers: List[str]) -> bool:
+    async def subscribe(self, tickers: List[str], skip_normalization: bool = False) -> bool:
         """티커 구독"""
         try:
             if not self.is_connected or not self._ws:
@@ -122,16 +125,27 @@ class BinanceWSConsumer(BaseWSConsumer):
             
             logger.info(f"📋 {self.client_name} starting subscription for {len(tickers)} tickers: {tickers}")
             
+            # 원래 티커 목록 저장 (정규화 전)
+            if not skip_normalization:
+                self.original_tickers = set(tickers)
+                self.subscribed_tickers = []  # 재구독 시 초기화
+            
             # 구독할 스트림 목록 생성
             streams = []
             for ticker in tickers:
-                normalized = self._normalize_symbol(ticker)
+                if skip_normalization:
+                    # 재연결 시에는 정규화 건너뛰기
+                    normalized = ticker
+                else:
+                    # 처음 구독 시에는 정규화 수행
+                    normalized = self._normalize_symbol(ticker)
+                
                 # 거래 데이터와 24시간 티커 데이터 구독
                 streams.extend([
                     f"{normalized}@trade",
                     f"{normalized}@ticker"
                 ])
-                self.subscribed_tickers.add(normalized)
+                self.subscribed_tickers.append(normalized)  # List로 순서 보장
                 logger.debug(f"📋 {self.client_name} added streams for {ticker} -> {normalized}")
             
             # 구독 요청 전송
@@ -164,7 +178,9 @@ class BinanceWSConsumer(BaseWSConsumer):
                     f"{normalized}@trade",
                     f"{normalized}@ticker"
                 ])
-                self.subscribed_tickers.discard(normalized)
+                # List에서 제거
+                if normalized in self.subscribed_tickers:
+                    self.subscribed_tickers.remove(normalized)
             
             # 구독 해제 요청 전송
             unsubscribe_msg = {

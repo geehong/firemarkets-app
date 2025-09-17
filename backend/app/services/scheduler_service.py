@@ -161,6 +161,7 @@ class SchedulerService:
                                         "stock_financials_clients": [],
                                         "stock_analyst_estimates_clients": [],
                                         "etf_clients": ["ETFInfo"],
+                                        "world_assets_clients": ["WorldAssets"],
                                     }
                                     job_names = mapping.get(group_name, [])
                                     for job_name in job_names:

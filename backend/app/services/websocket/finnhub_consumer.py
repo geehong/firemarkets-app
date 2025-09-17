@@ -33,6 +33,9 @@ class FinnhubWSConsumer(BaseWSConsumer):
         self._redis_url = self._build_redis_url()
         # 새로운 로깅 시스템
         self.ws_logger = WebSocketLogger("finnhub")
+        # 재연결을 위한 원래 티커 목록 저장
+        self.original_tickers = set()
+        self.subscribed_tickers = []  # 구독 순서 보장을 위해 List 사용
     
     @property
     def client_name(self) -> str:
@@ -111,18 +114,29 @@ class FinnhubWSConsumer(BaseWSConsumer):
         
         return t
 
-    async def subscribe(self, tickers: List[str]) -> bool:
+    async def subscribe(self, tickers: List[str], skip_normalization: bool = False) -> bool:
         """티커 구독"""
         try:
             if not self.is_connected or not self.websocket:
                 logger.error(f"❌ {self.client_name} not connected")
                 return False
             
+            # 원래 티커 목록 저장 (정규화 전)
+            if not skip_normalization:
+                self.original_tickers = set(tickers)
+                self.subscribed_tickers = []  # 재구독 시 초기화
+            
             for ticker in tickers:
-                norm = self._normalize_symbol(ticker)
+                if skip_normalization:
+                    # 재연결 시에는 정규화 건너뛰기
+                    norm = ticker
+                else:
+                    # 처음 구독 시에는 정규화 수행
+                    norm = self._normalize_symbol(ticker)
+                
                 subscribe_msg = {"type": "subscribe", "symbol": norm}
                 await self.websocket.send(json.dumps(subscribe_msg))
-                self.subscribed_tickers.add(norm)
+                self.subscribed_tickers.append(norm)  # List로 순서 보장
                 logger.info(f"📋 {self.client_name} subscribed to {norm}")
             
             return True
@@ -140,7 +154,9 @@ class FinnhubWSConsumer(BaseWSConsumer):
             for ticker in tickers:
                 unsubscribe_msg = {"type": "unsubscribe", "symbol": ticker}
                 await self.websocket.send(json.dumps(unsubscribe_msg))
-                self.subscribed_tickers.discard(ticker)
+                # List에서 제거
+                if ticker in self.subscribed_tickers:
+                    self.subscribed_tickers.remove(ticker)
                 logger.info(f"📋 {self.client_name} unsubscribed from {ticker}")
             
             return True
@@ -225,14 +241,19 @@ class FinnhubWSConsumer(BaseWSConsumer):
                 
                 # 재연결 시도
                 if await self.connect():
-                    # 재연결 성공 시 구독 복원
-                    if await self.subscribe(list(self.subscribed_tickers)):
-                        logger.info(f"✅ {self.client_name} reconnected and resubscribed to {len(self.subscribed_tickers)} tickers")
+                    # 재연결 성공 시 원래 티커 목록으로 구독 복원
+                    if self.original_tickers:
+                        if await self.subscribe(list(self.original_tickers), skip_normalization=True):
+                            logger.info(f"✅ {self.client_name} reconnected and resubscribed to {len(self.original_tickers)} tickers")
+                            reconnect_attempts = 0  # 성공 시 리셋
+                            reconnect_delay = 5  # 대기 시간 리셋
+                        else:
+                            logger.error(f"❌ {self.client_name} failed to resubscribe after reconnection")
+                            self.is_connected = False
+                    else:
+                        logger.warning(f"⚠️ {self.client_name} no original tickers to resubscribe")
                         reconnect_attempts = 0  # 성공 시 리셋
                         reconnect_delay = 5  # 대기 시간 리셋
-                    else:
-                        logger.error(f"❌ {self.client_name} failed to resubscribe after reconnection")
-                        self.is_connected = False
                 else:
                     logger.error(f"❌ {self.client_name} reconnection failed")
                     # 재연결 실패 시 대기 시간 증가

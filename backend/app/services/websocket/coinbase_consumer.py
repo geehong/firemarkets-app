@@ -30,6 +30,9 @@ class CoinbaseWSConsumer(BaseWSConsumer):
         self._redis_url = self._build_redis_url()
         # 새로운 로깅 시스템
         self.ws_logger = WebSocketLogger("coinbase")
+        # 재연결을 위한 원래 티커 목록 저장
+        self.original_tickers = set()
+        self.subscribed_tickers = []  # 구독 순서 보장을 위해 List 사용
     
     @property
     def client_name(self) -> str:
@@ -92,26 +95,37 @@ class CoinbaseWSConsumer(BaseWSConsumer):
             return t.replace('USDT', 'USD')
         return t
     
-    async def subscribe(self, tickers: List[str]) -> bool:
+    async def subscribe(self, tickers: List[str], skip_normalization: bool = False) -> bool:
         """티커 구독"""
         try:
             if not self.is_connected or not self._ws:
                 logger.error(f"❌ {self.client_name} not connected")
                 return False
             
+            # 원래 티커 목록 저장 (정규화 전)
+            if not skip_normalization:
+                self.original_tickers = set(tickers)
+                self.subscribed_tickers = []  # 재구독 시 초기화
+            
             # Coinbase Exchange WebSocket 구독 메시지
             # 티커를 Coinbase Exchange 형식으로 변환 (USDT -> USD)
             product_ids = []
             for ticker in tickers:
-                if ticker.endswith('USDT'):
-                    # DOTUSDT -> DOT-USD
-                    base_currency = ticker.replace('USDT', '')
-                    product_id = f"{base_currency}-USD"
+                if skip_normalization:
+                    # 재연결 시에는 정규화 건너뛰기
+                    product_id = ticker
                 else:
-                    # 다른 형식 처리
-                    product_id = ticker.replace('_', '-')
+                    # 처음 구독 시에는 정규화 수행
+                    if ticker.endswith('USDT'):
+                        # DOTUSDT -> DOT-USD
+                        base_currency = ticker.replace('USDT', '')
+                        product_id = f"{base_currency}-USD"
+                    else:
+                        # 다른 형식 처리
+                        product_id = ticker.replace('_', '-')
+                
                 product_ids.append(product_id)
-                self.subscribed_tickers.add(ticker)
+                self.subscribed_tickers.append(ticker)  # List로 순서 보장
             
             subscribe_msg = {
                 "type": "subscribe",
@@ -139,7 +153,9 @@ class CoinbaseWSConsumer(BaseWSConsumer):
             for ticker in tickers:
                 normalized = self._normalize_symbol(ticker)
                 unsubscribe_tickers.append(normalized.replace('_', '-'))
-                self.subscribed_tickers.discard(normalized)
+                # List에서 제거
+                if normalized in self.subscribed_tickers:
+                    self.subscribed_tickers.remove(normalized)
             
             # 구독 해제 요청 전송
             unsubscribe_msg = {
