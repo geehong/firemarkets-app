@@ -1,45 +1,37 @@
 {
     "timezone": "Asia/Seoul",
     "schedules": [
-      {
-        "collectors": [
-          "ohlcv_day_clients",
-          "ohlcv_intraday_clients",
-          "crypto_ohlcv_clients",
-          "onchain_clients",
-          "commodity_ohlcv_clients",
-          "world_assets_clients"
-        ],
-        "day_of_week": "tue,wed,thu,fri,sat",
-        "hour": 6,
-        "minute": 0
-      },
-      {
-        "collectors": [
-          "stock_profiles_clients",
-          "stock_financials_clients",
-          "stock_analyst_estimates_clients"
-        ],
-        "day_of_week": "wed",
-        "hour": 15,
-        "minute": 30
-      },
-      {
-        "collectors": [
-          "crypto_clients",
-          "etf_clients"
-        ],
-        "day_of_week": "mon",
-        "hour": 6,
-        "minute": 0
-      },
-      {
-        "collectors": [
-          "world_assets_clients"
-        ],
-        "day_of_week": "wed",
-        "hour": 15,
-        "minute": 30
-      }
+        {
+            "hour": 6,
+            "minute": 0,
+            "collectors": [
+                "ohlcv_day_clients",
+                "ohlcv_intraday_clients",
+                "crypto_ohlcv_clients",
+                "onchain_clients",
+                "commodity_ohlcv_clients",
+                "world_assets_clients"
+            ],
+            "day_of_week": "tue,wed,thu,fri,sat"
+        },
+        {
+            "hour": 15,
+            "minute": 45,
+            "collectors": [
+                "stock_profiles_clients",
+                "stock_financials_clients",
+                "stock_analyst_estimates_clients"
+            ],
+            "day_of_week": "sun"
+        },
+        {
+            "hour": 6,
+            "minute": 0,
+            "collectors": [
+                "crypto_clients",
+                "etf_clients"
+            ],
+            "day_of_week": "mon"
+        }
     ]
-  }
+}

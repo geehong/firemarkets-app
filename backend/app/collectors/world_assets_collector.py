@@ -54,6 +54,10 @@ class WorldAssetsCollector(BaseCollector):
     ):
         super().__init__(db, config_manager, api_manager, redis_queue_manager)
         self.companies_marketcap_url = "https://companiesmarketcap.com/assets-by-market-cap/"
+        self.eight_marketcap_url = "https://8marketcap.com/companies/"
+        self.eight_marketcap_etfs_url = "https://8marketcap.com/etfs/"
+        self.eight_marketcap_cryptos_url = "https://8marketcap.com/cryptos/"
+        self.eight_marketcap_metals_url = "https://8marketcap.com/metals/"
         self.bis_url = "https://www.bis.org/statistics/totcredit/q_data.csv"
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -91,14 +95,35 @@ class WorldAssetsCollector(BaseCollector):
             # 스크래핑 로그 시작
             scraping_log = self._create_scraping_log("world_assets_ranking", "running")
             
-            # 1. 자산 데이터 수집
-            assets_data = await self.scrape_companies_marketcap()
+            # 1. 자산 데이터 수집 (companiesmarketcap.com)
+            companies_data = await self.scrape_companies_marketcap()
             
-            # 2. 채권 시장 데이터 수집 (temporarily disabled due to 404 errors)
+            # 2. 8marketcap.com 데이터 수집 (Companies)
+            eight_marketcap_data = await self.scrape_eight_marketcap()
+            
+            # 3. 8marketcap.com ETFs 데이터 수집
+            eight_marketcap_etfs_data = await self.scrape_eight_marketcap_etfs()
+            
+            # 4. 8marketcap.com Cryptos 데이터 수집
+            eight_marketcap_cryptos_data = await self.scrape_eight_marketcap_cryptos()
+            
+            # 5. 8marketcap.com Metals 데이터 수집
+            eight_marketcap_metals_data = await self.scrape_eight_marketcap_metals()
+            
+            # 6. 각 데이터 소스별로 별도 저장
+            companies_updated = self._update_assets_database(companies_data, 'companiesmarketcap')
+            eight_marketcap_updated = self._update_assets_database(eight_marketcap_data, '8marketcap_companies')
+            eight_marketcap_etfs_updated = self._update_assets_database(eight_marketcap_etfs_data, '8marketcap_etfs')
+            eight_marketcap_cryptos_updated = self._update_assets_database(eight_marketcap_cryptos_data, '8marketcap_cryptos')
+            eight_marketcap_metals_updated = self._update_assets_database(eight_marketcap_metals_data, '8marketcap_metals')
+            
+            # 4. 채권 시장 데이터 수집 (temporarily disabled due to 404 errors)
             # bond_data = await self.get_bis_bond_data()
             
-            # 3. 데이터베이스 업데이트
-            assets_updated = self._update_assets_database(assets_data)
+            # 7. 총 업데이트 수 계산
+            assets_updated = (companies_updated + eight_marketcap_updated + 
+                            eight_marketcap_etfs_updated + eight_marketcap_cryptos_updated + 
+                            eight_marketcap_metals_updated)
             
             # if bond_data:
             #     bonds_updated = self._update_bond_market_database(bond_data)
@@ -168,6 +193,130 @@ class WorldAssetsCollector(BaseCollector):
         
         self.logging_helper.log_info(f"Successfully scraped {len(all_assets)} assets from main page")
         return all_assets
+    
+    async def scrape_eight_marketcap(self) -> List[AssetData]:
+        """8marketcap.com에서 자산 순위 데이터를 크롤링"""
+        all_assets = []
+        
+        try:
+            self.logging_helper.log_info("Scraping data from 8marketcap.com/companies/")
+            
+            # HTML 응답을 위한 별도 처리
+            import requests
+            response = requests.get(self.eight_marketcap_url, headers=self.headers, timeout=30)
+            response.raise_for_status()
+                
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # 8marketcap.com의 테이블 구조 찾기
+            table = soup.find('table')
+            if not table:
+                # 다른 가능한 테이블 선택자들 시도
+                table = soup.find('div', class_='table-responsive')
+                if table:
+                    table = table.find('table')
+                
+            if not table:
+                self.logging_helper.log_warning("No table found on 8marketcap.com page")
+                return all_assets
+            
+            rows = table.find_all('tr')[1:]  # 헤더 제외
+            
+            for row in rows:
+                try:
+                    asset_data = self._parse_eight_marketcap_row(row, len(all_assets) + 1)
+                    if asset_data:
+                        all_assets.append(asset_data)
+                except Exception as e:
+                    self.logging_helper.log_error(f"Error parsing 8marketcap row: {e}")
+                    continue
+                
+        except Exception as e:
+            self.logging_helper.log_error(f"Error scraping 8marketcap.com: {e}")
+            # 8marketcap 실패해도 전체 프로세스는 계속 진행
+            return []
+        
+        self.logging_helper.log_info(f"Successfully scraped {len(all_assets)} assets from 8marketcap.com")
+        return all_assets
+    
+    def _parse_eight_marketcap_row(self, row, rank: int) -> Optional[AssetData]:
+        """8marketcap.com의 개별 자산 행을 파싱"""
+        try:
+            cells = row.find_all('td')
+            if len(cells) < 6:
+                return None
+            
+            # 8marketcap.com 테이블 구조: fav, #, Name, Symbol, Market Cap, Price, 24h, 7d, Price (30 days)
+            # 0: fav, 1: #, 2: Name, 3: Symbol, 4: Market Cap, 5: Price, 6: 24h, 7: 7d, 8: Price (30 days)
+            rank_cell = cells[1] if len(cells) > 1 else None
+            name_cell = cells[2] if len(cells) > 2 else None
+            symbol_cell = cells[3] if len(cells) > 3 else None
+            market_cap_cell = cells[4] if len(cells) > 4 else None
+            price_cell = cells[5] if len(cells) > 5 else None
+            change_cell = cells[6] if len(cells) > 6 else None
+            
+            # 순위 추출 (실제 순위 사용)
+            actual_rank = rank
+            if rank_cell:
+                try:
+                    actual_rank = int(rank_cell.get_text(strip=True))
+                except:
+                    actual_rank = rank
+            
+            # 이름 추출
+            name = ""
+            if name_cell:
+                # company-name 클래스를 가진 div에서 이름 추출
+                company_name_div = name_cell.find('div', class_='company-name')
+                if company_name_div:
+                    name = company_name_div.get_text(strip=True)
+                else:
+                    # fallback: 전체 텍스트에서 추출
+                    name = name_cell.get_text(strip=True)
+            
+            # 심볼 추출
+            ticker = ""
+            if symbol_cell:
+                # badge 클래스를 가진 span에서 추출
+                badge_span = symbol_cell.find('span', class_='badge')
+                if badge_span:
+                    ticker = badge_span.get_text(strip=True)
+                else:
+                    ticker = symbol_cell.get_text(strip=True)
+            
+            # 시가총액 파싱
+            market_cap_str = market_cap_cell.get_text(strip=True) if market_cap_cell else ""
+            market_cap_usd = self._parse_market_cap(market_cap_str)
+            
+            # 가격 파싱
+            price_str = price_cell.get_text(strip=True) if price_cell else ""
+            price_usd = self._parse_price(price_str)
+            
+            # 변동률 파싱 (24h)
+            change_str = change_cell.get_text(strip=True) if change_cell else ""
+            daily_change_percent = self._parse_change_percent(change_str)
+            
+            # 카테고리 분류
+            category = self._classify_asset(name, ticker)
+            
+            # 기존 DB와 조인하여 풍부한 정보 획득
+            enriched_data = self._enrich_asset_data(name, ticker)
+            
+            return AssetData(
+                rank=actual_rank,
+                name=name,
+                ticker=ticker,
+                market_cap_usd=market_cap_usd,
+                price_usd=price_usd,
+                daily_change_percent=daily_change_percent,
+                country=enriched_data.get('country', 'Unknown'),
+                asset_type_id=enriched_data.get('asset_type_id'),
+                asset_id=enriched_data.get('asset_id')
+            )
+                        
+        except Exception as e:
+            self.logging_helper.log_error(f"Error parsing 8marketcap row: {e}")
+            return None
     
     def _parse_asset_row(self, row, rank: int) -> Optional[AssetData]:
         """개별 자산 행을 파싱"""
@@ -273,11 +422,23 @@ class WorldAssetsCollector(BaseCollector):
     def _parse_change_percent(self, change_str: str) -> Optional[float]:
         """변동률 문자열을 숫자로 파싱"""
         try:
-            if not change_str:
+            if not change_str or change_str.strip() == '':
+                return None
+            
+            # N/A 값 처리
+            if change_str.upper() in ['N/A', 'NA', '-', '--', 'N/A%']:
                 return None
             
             change_str = change_str.replace('%', '').replace(',', '')
-            return float(change_str)
+            value = float(change_str)
+            
+            # 합리적인 범위 체크 (일반적인 주식/암호화폐 변동률 범위)
+            # 극단적인 값은 사이트 오류로 간주하고 NULL 처리
+            if value > 1000 or value < -1000:  # ±1000% 이상은 NULL 처리
+                self.logging_helper.log_warning(f"Extreme change percent value {value}% treated as NULL (likely site error)")
+                return None
+            
+            return value
         except Exception as e:
             self.logging_helper.log_error(f"Error parsing change percent '{change_str}': {e}")
             return None
@@ -403,6 +564,7 @@ class WorldAssetsCollector(BaseCollector):
         }
         return sector_mapping.get(asset_type_id, 'Unknown')
     
+    
     # BIS bond data collection temporarily disabled due to 404 errors
     # async def get_bis_bond_data(self) -> Optional[Dict[str, Any]]:
     #     """BIS에서 글로벌 채권 시장 규모 데이터 수집"""
@@ -442,7 +604,7 @@ class WorldAssetsCollector(BaseCollector):
     #         self.logging_helper.log_error(f"Error fetching BIS bond data: {e}")
     #         return None
 
-    def _update_assets_database(self, assets_data: List[AssetData]) -> int:
+    def _update_assets_database(self, assets_data: List[AssetData], data_source: str) -> int:
         """자산 데이터 DB 업데이트 - 히스토리 데이터 보존"""
         try:
             db = self.db
@@ -456,27 +618,52 @@ class WorldAssetsCollector(BaseCollector):
             #     self.logging_helper.log_warning(f"Today's data already exists ({existing_today_data} records). Skipping insertion.")
             #     return existing_today_data
             
-            # 새 데이터 삽입 (히스토리 보존)
+            # MySQL UPSERT 로직 적용 (INSERT ... ON DUPLICATE KEY UPDATE)
             inserted_count = 0
             for asset in assets_data:
-                db_asset = WorldAssetsRanking(
-                    rank=asset.rank,
-                    name=asset.name,
-                    ticker=asset.ticker,
-                    market_cap_usd=asset.market_cap_usd,
-                    price_usd=asset.price_usd,
-                    daily_change_percent=asset.daily_change_percent,
-                    country=asset.country,
-                    asset_type_id=asset.asset_type_id,
-                    asset_id=asset.asset_id,
-                    ranking_date=today,
-                    data_source='companiesmarketcap'
-                )
-                db.add(db_asset)
-                inserted_count += 1
-            
-            db.commit()
-            self.logging_helper.log_info(f"[WorldAssetsRanking dual-write] MySQL 저장 완료: {inserted_count}개 레코드 for {today}")
+                try:
+                    # INSERT 시도
+                    db_asset = WorldAssetsRanking(
+                        rank=asset.rank,
+                        name=asset.name,
+                        ticker=asset.ticker,
+                        market_cap_usd=asset.market_cap_usd,
+                        price_usd=asset.price_usd,
+                        daily_change_percent=asset.daily_change_percent,
+                        country=asset.country,
+                        asset_type_id=asset.asset_type_id,
+                        asset_id=asset.asset_id,
+                        ranking_date=today,
+                        data_source=data_source
+                    )
+                    db.add(db_asset)
+                    db.commit()
+                    inserted_count += 1
+                except Exception as e:
+                    # 중복 키 에러인 경우 UPDATE
+                    if "Duplicate entry" in str(e) or "1062" in str(e):
+                        db.rollback()
+                        existing = db.query(WorldAssetsRanking).filter(
+                            WorldAssetsRanking.ranking_date == today,
+                            WorldAssetsRanking.ticker == asset.ticker,
+                            WorldAssetsRanking.data_source == data_source
+                        ).first()
+                        
+                        if existing:
+                            existing.rank = asset.rank
+                            existing.name = asset.name
+                            existing.market_cap_usd = asset.market_cap_usd
+                            existing.price_usd = asset.price_usd
+                            existing.daily_change_percent = asset.daily_change_percent
+                            existing.country = asset.country
+                            existing.asset_type_id = asset.asset_type_id
+                            existing.asset_id = asset.asset_id
+                            existing.last_updated = datetime.now()
+                            db.commit()
+                    else:
+                        db.rollback()
+                        raise e
+            self.logging_helper.log_info(f"[WorldAssetsRanking dual-write] MySQL 저장 완료: {inserted_count}개 레코드 for {today} (source: {data_source})")
             
             # PostgreSQL 이중 저장
             try:
@@ -500,13 +687,13 @@ class WorldAssetsCollector(BaseCollector):
                             'asset_type_id': asset.asset_type_id,
                             'asset_id': asset.asset_id,
                             'ranking_date': today,
-                            'data_source': 'companiesmarketcap',
+                            'data_source': data_source,
                             'last_updated': datetime.now()
                         }
                         
                         stmt = pg_insert(PGWorldAssetsRanking).values(**pg_data)
                         stmt = stmt.on_conflict_do_update(
-                            index_elements=['ranking_date', 'asset_id'],  # 동일 날짜/자산 조합 기준으로 UPSERT
+                            index_elements=['ranking_date', 'ticker', 'data_source'],  # 동일 날짜/티커/소스 조합 기준으로 UPSERT
                             set_={
                                 'rank': stmt.excluded.rank,
                                 'name': stmt.excluded.name,
@@ -525,7 +712,7 @@ class WorldAssetsCollector(BaseCollector):
                         pg_db.execute(stmt)
                     
                     pg_db.commit()
-                    self.logging_helper.log_info(f"[WorldAssetsRanking dual-write] PostgreSQL 저장 완료: {inserted_count}개 레코드 for {today}")
+                    self.logging_helper.log_info(f"[WorldAssetsRanking dual-write] PostgreSQL 저장 완료: {inserted_count}개 레코드 for {today} (source: {data_source})")
                 except Exception as e:
                     pg_db.rollback()
                     self.logging_helper.log_warning(f"[WorldAssetsRanking dual-write] PostgreSQL 저장 실패: {e}")
@@ -533,6 +720,16 @@ class WorldAssetsCollector(BaseCollector):
                     pg_db.close()
             except Exception as e:
                 self.logging_helper.log_warning(f"[WorldAssetsRanking dual-write] PostgreSQL 연결 실패: {e}")
+            
+            # 데이터 저장 후 매핑 적용
+            try:
+                from ..utils.asset_mapper import AssetMapper
+                mapper = AssetMapper()
+                mapping_result = mapper.update_missing_data(db, today.isoformat())
+                self.logging_helper.log_info(f"[Asset Mapping] 매핑 적용 완료: {mapping_result}")
+            except Exception as e:
+                self.logging_helper.log_error(f"[Asset Mapping] 매핑 적용 실패: {str(e)}")
+                # 매핑 실패는 전체 프로세스를 중단시키지 않음
             
             return inserted_count
             
@@ -607,4 +804,292 @@ class WorldAssetsCollector(BaseCollector):
             self.logging_helper.log_info(f"Scraping log updated: {status}, {records_successful} records processed")
             
         except Exception as e:
-            self.logging_helper.log_error(f"Error updating scraping log: {e}") 
+            self.logging_helper.log_error(f"Error updating scraping log: {e}")
+
+    async def scrape_eight_marketcap_etfs(self) -> List[AssetData]:
+        """8marketcap.com ETFs 섹션에서 데이터 스크래핑"""
+        try:
+            self.logging_helper.log_info("Starting 8marketcap ETFs data scraping")
+            
+            response = requests.get(self.eight_marketcap_etfs_url, headers=self.headers, timeout=30)
+            if not response:
+                return []
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            assets_data = []
+            
+            # ETFs 테이블에서 데이터 추출
+            table = soup.find('table')
+            if not table:
+                self.logging_helper.log_warning("ETFs table not found on 8marketcap.com")
+                return []
+            
+            rows = table.find_all('tr')[1:]  # 헤더 제외
+            
+            for row in rows:
+                try:
+                    asset = self._parse_eight_marketcap_etf_row(row)
+                    if asset:
+                        assets_data.append(asset)
+                except Exception as e:
+                    self.logging_helper.log_warning(f"Error parsing ETF row: {e}")
+                    continue
+            
+            self.logging_helper.log_info(f"Successfully scraped {len(assets_data)} ETFs from 8marketcap.com")
+            return assets_data
+            
+        except Exception as e:
+            self.logging_helper.log_error(f"Error scraping 8marketcap ETFs: {e}")
+            return []
+
+    def _parse_eight_marketcap_etf_row(self, row) -> Optional[AssetData]:
+        """8marketcap ETFs 테이블 행 파싱"""
+        try:
+            cells = row.find_all('td')
+            if len(cells) < 9:  # 9개 컬럼 필요
+                return None
+            
+            # 순위 (두 번째 컬럼, #)
+            rank_cell = cells[1]
+            rank_text = rank_cell.get_text(strip=True)
+            if not rank_text or rank_text == '':
+                return None
+            try:
+                rank = int(rank_text)
+            except ValueError:
+                return None
+            
+            # 이름 (세 번째 컬럼, Name)
+            name_cell = cells[2]
+            name_link = name_cell.find('a')
+            if name_link:
+                name = name_link.get_text(strip=True)
+            else:
+                name = name_cell.get_text(strip=True)
+            
+            # 티커 (네 번째 컬럼, Symbol)
+            ticker_cell = cells[3]
+            ticker = ticker_cell.get_text(strip=True)
+            
+            # 시가총액 (다섯 번째 컬럼, Market Cap)
+            market_cap_cell = cells[4]
+            market_cap_text = market_cap_cell.get_text(strip=True)
+            market_cap_usd = self._parse_market_cap(market_cap_text)
+            
+            # 가격 (여섯 번째 컬럼, Price)
+            price_cell = cells[5]
+            price_text = price_cell.get_text(strip=True)
+            price_usd = self._parse_price(price_text)
+            
+            # 24h 변화율 (일곱 번째 컬럼, 24h)
+            change_cell = cells[6]
+            change_text = change_cell.get_text(strip=True)
+            daily_change_percent = self._parse_change_percent(change_text)
+            
+            return AssetData(
+                rank=rank,
+                name=name,
+                ticker=ticker,
+                market_cap_usd=market_cap_usd,
+                price_usd=price_usd,
+                daily_change_percent=daily_change_percent,
+                country="Global",  # ETFs는 글로벌
+                asset_type_id=5,  # ETFs
+                asset_id=None
+            )
+            
+        except Exception as e:
+            self.logging_helper.log_warning(f"Error parsing ETF row: {e}")
+            return None
+
+    async def scrape_eight_marketcap_cryptos(self) -> List[AssetData]:
+        """8marketcap.com Cryptos 섹션에서 데이터 스크래핑"""
+        try:
+            self.logging_helper.log_info("Starting 8marketcap Cryptos data scraping")
+            
+            response = requests.get(self.eight_marketcap_cryptos_url, headers=self.headers, timeout=30)
+            if not response:
+                return []
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            assets_data = []
+            
+            # Cryptos 테이블에서 데이터 추출
+            table = soup.find('table')
+            if not table:
+                self.logging_helper.log_warning("Cryptos table not found on 8marketcap.com")
+                return []
+            
+            rows = table.find_all('tr')[1:]  # 헤더 제외
+            
+            for row in rows:
+                try:
+                    asset = self._parse_eight_marketcap_crypto_row(row)
+                    if asset:
+                        assets_data.append(asset)
+                except Exception as e:
+                    self.logging_helper.log_warning(f"Error parsing Crypto row: {e}")
+                    continue
+            
+            self.logging_helper.log_info(f"Successfully scraped {len(assets_data)} Cryptos from 8marketcap.com")
+            return assets_data
+            
+        except Exception as e:
+            self.logging_helper.log_error(f"Error scraping 8marketcap Cryptos: {e}")
+            return []
+
+    def _parse_eight_marketcap_crypto_row(self, row) -> Optional[AssetData]:
+        """8marketcap Cryptos 테이블 행 파싱"""
+        try:
+            cells = row.find_all('td')
+            if len(cells) < 9:  # 9개 컬럼 필요
+                return None
+            
+            # 순위 (두 번째 컬럼, #)
+            rank_cell = cells[1]
+            rank_text = rank_cell.get_text(strip=True)
+            if not rank_text or rank_text == '':
+                return None
+            try:
+                rank = int(rank_text)
+            except ValueError:
+                return None
+            
+            # 이름 (세 번째 컬럼, Name)
+            name_cell = cells[2]
+            name_link = name_cell.find('a')
+            if name_link:
+                name = name_link.get_text(strip=True)
+            else:
+                name = name_cell.get_text(strip=True)
+            
+            # 티커 (네 번째 컬럼, Symbol)
+            ticker_cell = cells[3]
+            ticker = ticker_cell.get_text(strip=True)
+            
+            # 시가총액 (다섯 번째 컬럼, Market Cap)
+            market_cap_cell = cells[4]
+            market_cap_text = market_cap_cell.get_text(strip=True)
+            market_cap_usd = self._parse_market_cap(market_cap_text)
+            
+            # 가격 (여섯 번째 컬럼, Price)
+            price_cell = cells[5]
+            price_text = price_cell.get_text(strip=True)
+            price_usd = self._parse_price(price_text)
+            
+            # 24h 변화율 (일곱 번째 컬럼, 24h)
+            change_cell = cells[6]
+            change_text = change_cell.get_text(strip=True)
+            daily_change_percent = self._parse_change_percent(change_text)
+            
+            return AssetData(
+                rank=rank,
+                name=name,
+                ticker=ticker,
+                market_cap_usd=market_cap_usd,
+                price_usd=price_usd,
+                daily_change_percent=daily_change_percent,
+                country="Global",  # Cryptos는 글로벌
+                asset_type_id=8,  # Crypto
+                asset_id=None
+            )
+            
+        except Exception as e:
+            self.logging_helper.log_warning(f"Error parsing Crypto row: {e}")
+            return None
+
+    async def scrape_eight_marketcap_metals(self) -> List[AssetData]:
+        """8marketcap.com Metals 섹션에서 데이터 스크래핑"""
+        try:
+            self.logging_helper.log_info("Starting 8marketcap Metals data scraping")
+            
+            response = requests.get(self.eight_marketcap_metals_url, headers=self.headers, timeout=30)
+            if not response:
+                return []
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            assets_data = []
+            
+            # Metals 테이블에서 데이터 추출
+            table = soup.find('table')
+            if not table:
+                self.logging_helper.log_warning("Metals table not found on 8marketcap.com")
+                return []
+            
+            rows = table.find_all('tr')[1:]  # 헤더 제외
+            
+            for row in rows:
+                try:
+                    asset = self._parse_eight_marketcap_metal_row(row)
+                    if asset:
+                        assets_data.append(asset)
+                except Exception as e:
+                    self.logging_helper.log_warning(f"Error parsing Metal row: {e}")
+                    continue
+            
+            self.logging_helper.log_info(f"Successfully scraped {len(assets_data)} Metals from 8marketcap.com")
+            return assets_data
+            
+        except Exception as e:
+            self.logging_helper.log_error(f"Error scraping 8marketcap Metals: {e}")
+            return []
+
+    def _parse_eight_marketcap_metal_row(self, row) -> Optional[AssetData]:
+        """8marketcap Metals 테이블 행 파싱"""
+        try:
+            cells = row.find_all('td')
+            if len(cells) < 9:  # 9개 컬럼 필요
+                return None
+            
+            # 순위 (두 번째 컬럼, #)
+            rank_cell = cells[1]
+            rank_text = rank_cell.get_text(strip=True)
+            if not rank_text or rank_text == '':
+                return None
+            try:
+                rank = int(rank_text)
+            except ValueError:
+                return None
+            
+            # 이름 (세 번째 컬럼, Name)
+            name_cell = cells[2]
+            name_link = name_cell.find('a')
+            if name_link:
+                name = name_link.get_text(strip=True)
+            else:
+                name = name_cell.get_text(strip=True)
+            
+            # 티커 (네 번째 컬럼, Symbol)
+            ticker_cell = cells[3]
+            ticker = ticker_cell.get_text(strip=True)
+            
+            # 시가총액 (다섯 번째 컬럼, Market Cap)
+            market_cap_cell = cells[4]
+            market_cap_text = market_cap_cell.get_text(strip=True)
+            market_cap_usd = self._parse_market_cap(market_cap_text)
+            
+            # 가격 (여섯 번째 컬럼, Price)
+            price_cell = cells[5]
+            price_text = price_cell.get_text(strip=True)
+            price_usd = self._parse_price(price_text)
+            
+            # 24h 변화율 (일곱 번째 컬럼, 24h)
+            change_cell = cells[6]
+            change_text = change_cell.get_text(strip=True)
+            daily_change_percent = self._parse_change_percent(change_text)
+            
+            return AssetData(
+                rank=rank,
+                name=name,
+                ticker=ticker,
+                market_cap_usd=market_cap_usd,
+                price_usd=price_usd,
+                daily_change_percent=daily_change_percent,
+                country="Global",  # Metals는 글로벌
+                asset_type_id=3,  # Commodities
+                asset_id=None
+            )
+            
+        except Exception as e:
+            self.logging_helper.log_warning(f"Error parsing Metal row: {e}")
+            return None 

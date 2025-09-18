@@ -37,7 +37,7 @@ services:
     ports:
       - "5433:5432"  # 포트 충돌 방지
     volumes:
-      - ./pg_data:/var/lib/postgresql/data
+      - pg_data:/var/lib/postgresql/data
       - ./docker/init_postgres.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - app_network
@@ -49,15 +49,19 @@ services:
       retries: 5
       start_period: 30s
 
-  # PostgreSQL 관리 도구 (Adminer)
-  adminer:
-    image: adminer:latest
-    container_name: fire_markets_adminer
+  # PostgreSQL 관리 도구 (pgweb)
+  pgweb:
+    image: sosedoff/pgweb:latest
+    container_name: fire_markets_pgweb
     restart: unless-stopped
     ports:
-      - "5050:8080"
+      - "5052:8081"
+    # environment:
+      # DATABASE_URL을 제거하여 로그인 화면 표시
+      # DATABASE_URL: postgres://geehong:${DB_PASSWORD_PG}@db_postgres:5432/markets?sslmode=disable
     depends_on:
-      - db_postgres
+      db_postgres:
+        condition: service_healthy
     networks:
       - app_network
       - shared-network
@@ -262,6 +266,7 @@ services:
     networks:
       - app_network
       - shared-network
+
 
   portainer:
     image: portainer/portainer-ce:latest

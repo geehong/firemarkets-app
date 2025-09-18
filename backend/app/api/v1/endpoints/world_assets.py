@@ -6,349 +6,18 @@ from typing import List, Dict, Any
 from datetime import datetime, date
 
 from ....core.database import get_db
-from ....models.asset import WorldAssetsRanking, BondMarketData, ScrapingLogs, AssetType
+from ....models.asset import WorldAssetsRanking, BondMarketData, AssetType
 from ....schemas.asset import (
-    TreemapResponse, AssetsRankingResponse, BondMarketResponse, ScrapingLogsResponse,
-    WorldAssetsStats, MarketCapByCategory, CollectionStatus, TopAssetsResponse,
-    MarketCapTrends, AssetHistory, CategoryTrends, TopAssetsByCategory, PerformanceTreemapResponse
+    CollectionStatus, PerformanceTreemapResponse
 )
 from ....schemas.common import ReloadResponse
 import logging
 from ....core.cache import cache_with_invalidation
+from ....utils.asset_mapper import update_asset_mappings, get_missing_asset_info
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-@router.get("/world-assets/treemap", response_model=TreemapResponse)
-async def get_treemap_data(
-    db: Session = Depends(get_db),
-    limit: int = 100
-):
-    """
-    TreeMap 시각화를 위한 자산 데이터 반환
-    """
-    try:
-        query = db.query(WorldAssetsRanking)
-        assets = query.order_by(WorldAssetsRanking.rank).limit(limit).all()
-        treemap_data = []
-        for asset in assets:
-            treemap_data.append({
-                "id": asset.ticker or asset.name,
-                "name": asset.name,
-                "value": float(asset.market_cap_usd or 0),
-                "rank": asset.rank,
-                "price": float(asset.price_usd or 0),
-                "change": float(asset.daily_change_percent or 0),
-                "country": asset.country
-            })
-        return {"success": True, "data": treemap_data}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"트리맵 데이터 조회 중 오류 발생: {str(e)}")
-
-
-@router.get("/world-assets/ranking", response_model=AssetsRankingResponse)
-async def get_assets_ranking(
-    db: Session = Depends(get_db),
-    limit: int = 50,
-    category: str = None,
-    country: str = None
-):
-    """
-    자산 순위 데이터 반환
-    """
-    try:
-        query = db.query(WorldAssetsRanking)
-        
-        if category:
-            # category는 asset_type의 type_name으로 필터링
-            query = query.join(WorldAssetsRanking.asset_type).filter(WorldAssetsRanking.asset_type.has(type_name=category))
-        if country:
-            query = query.filter(WorldAssetsRanking.country == country)
-        
-        assets = query.order_by(WorldAssetsRanking.rank).limit(limit).all()
-        
-        # 임시로 샘플 데이터 반환 (데이터베이스 데이터가 잘못된 경우)
-        if not assets or assets[0].name in ['1', '2', '3']:
-            sample_data = [
-                {
-                    "rank": 1,
-                    "name": "Apple Inc.",
-                    "ticker": "AAPL",
-                    "market_cap_usd": 3000000000000.0,
-                    "price_usd": 150.00,
-                    "daily_change_percent": 2.5,
-                    "category": "Stocks",
-                    "country": "United States",
-                    "sector": "Technology"
-                },
-                {
-                    "rank": 2,
-                    "name": "Microsoft Corporation",
-                    "ticker": "MSFT",
-                    "market_cap_usd": 2800000000000.0,
-                    "price_usd": 280.00,
-                    "daily_change_percent": 1.8,
-                    "category": "Stocks",
-                    "country": "United States",
-                    "sector": "Technology"
-                },
-                {
-                    "rank": 3,
-                    "name": "Bitcoin",
-                    "ticker": "BTC",
-                    "market_cap_usd": 1200000000000.0,
-                    "price_usd": 45000.00,
-                    "daily_change_percent": -1.2,
-                    "category": "Crypto",
-                    "country": "Global",
-                    "sector": "Digital Currency"
-                },
-                {
-                    "rank": 4,
-                    "name": "Ethereum",
-                    "ticker": "ETH",
-                    "market_cap_usd": 400000000000.0,
-                    "price_usd": 3000.00,
-                    "daily_change_percent": 3.5,
-                    "category": "Crypto",
-                    "country": "Global",
-                    "sector": "Digital Currency"
-                },
-                {
-                    "rank": 5,
-                    "name": "SPDR S&P 500 ETF Trust",
-                    "ticker": "SPY",
-                    "market_cap_usd": 500000000000.0,
-                    "price_usd": 450.00,
-                    "daily_change_percent": 0.8,
-                    "category": "ETF",
-                    "country": "United States",
-                    "sector": "Index Fund"
-                },
-                {
-                    "rank": 6,
-                    "name": "Amazon.com Inc.",
-                    "ticker": "AMZN",
-                    "market_cap_usd": 1800000000000.0,
-                    "price_usd": 180.00,
-                    "daily_change_percent": 1.2,
-                    "category": "Stocks",
-                    "country": "United States",
-                    "sector": "Consumer Cyclical"
-                },
-                {
-                    "rank": 7,
-                    "name": "Alphabet Inc.",
-                    "ticker": "GOOGL",
-                    "market_cap_usd": 1600000000000.0,
-                    "price_usd": 160.00,
-                    "daily_change_percent": 0.9,
-                    "category": "Stocks",
-                    "country": "United States",
-                    "sector": "Communication Services"
-                },
-                {
-                    "rank": 8,
-                    "name": "Tesla Inc.",
-                    "ticker": "TSLA",
-                    "market_cap_usd": 800000000000.0,
-                    "price_usd": 250.00,
-                    "daily_change_percent": -2.1,
-                    "category": "Stocks",
-                    "country": "United States",
-                    "sector": "Consumer Cyclical"
-                },
-                {
-                    "rank": 9,
-                    "name": "Berkshire Hathaway",
-                    "ticker": "BRK.A",
-                    "market_cap_usd": 700000000000.0,
-                    "price_usd": 550000.00,
-                    "daily_change_percent": 0.5,
-                    "category": "Stocks",
-                    "country": "United States",
-                    "sector": "Financial"
-                },
-                {
-                    "rank": 10,
-                    "name": "UnitedHealth Group",
-                    "ticker": "UNH",
-                    "market_cap_usd": 450000000000.0,
-                    "price_usd": 480.00,
-                    "daily_change_percent": 1.1,
-                    "category": "Stocks",
-                    "country": "United States",
-                    "sector": "Healthcare"
-                }
-            ]
-            
-            return {
-                "success": True,
-                "data": sample_data[:limit],
-                "total": len(sample_data[:limit])
-            }
-        
-        return {
-            "success": True,
-            "data": [
-                {
-                    "rank": asset.rank,
-                    "name": asset.name,
-                    "ticker": asset.ticker,
-                    "market_cap_usd": float(asset.market_cap_usd or 0),
-                    "price_usd": float(asset.price_usd or 0),
-                    "daily_change_percent": float(asset.daily_change_percent or 0),
-                    "category": asset.asset_type.type_name if asset.asset_type else None,
-                    "country": asset.country,
-                }
-                for asset in assets
-            ],
-            "total": len(assets)
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"순위 데이터 조회 중 오류 발생: {str(e)}")
-
-
-@router.get("/world-assets/bond-market", response_model=BondMarketResponse)
-async def get_bond_market_data(db: Session = Depends(get_db)):
-    """
-    글로벌 채권 시장 데이터 반환
-    """
-    try:
-        bond_data = db.query(BondMarketData).order_by(BondMarketData.collection_date.desc()).all()
-        
-        return {
-            "success": True,
-            "data": [
-                {
-                    "category": bond.category,
-                    "market_size_usd": float(bond.market_size_usd or 0),
-                    "quarter": bond.quarter,
-                    "data_source": bond.data_source,
-                    "collection_date": bond.collection_date.isoformat() if bond.collection_date else None
-                }
-                for bond in bond_data
-            ],
-            "total": len(bond_data)
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"채권 시장 데이터 조회 중 오류 발생: {str(e)}")
-
-
-@router.get("/world-assets/scraping-logs", response_model=ScrapingLogsResponse)
-async def get_scraping_logs(
-    db: Session = Depends(get_db),
-    limit: int = 20
-):
-    """
-    스크래핑 로그 조회
-    """
-    try:
-        logs = db.query(ScrapingLogs).order_by(ScrapingLogs.started_at.desc()).limit(limit).all()
-        
-        return {
-            "success": True,
-            "data": [
-                {
-                    "id": log.id,
-                    "source": log.source,
-                    "status": log.status,
-                    "records_processed": log.records_processed,
-                    "records_successful": log.records_successful,
-                    "error_message": log.error_message,
-                    "execution_time_seconds": float(log.execution_time_seconds) if log.execution_time_seconds else None,
-                    "started_at": log.started_at.isoformat() if log.started_at else None,
-                    "completed_at": log.completed_at.isoformat() if log.completed_at else None
-                }
-                for log in logs
-            ],
-            "total": len(logs)
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"스크래핑 로그 조회 중 오류 발생: {str(e)}")
-
-
-@router.get("/world-assets/stats", response_model=WorldAssetsStats)
-async def get_world_assets_stats(db: Session = Depends(get_db)):
-    """
-    글로벌 자산 통계 정보 반환
-    """
-    try:
-        from sqlalchemy import func
-        
-        # 총 자산 수
-        total_assets = db.query(func.count(WorldAssetsRanking.id)).scalar()
-        
-        # 카테고리별 자산 수
-        category_stats = db.query(
-            WorldAssetsRanking.category,
-            func.count(WorldAssetsRanking.id).label('count')
-        ).group_by(WorldAssetsRanking.category).all()
-        
-        # 국가별 자산 수
-        country_stats = db.query(
-            WorldAssetsRanking.country,
-            func.count(WorldAssetsRanking.id).label('count')
-        ).group_by(WorldAssetsRanking.country).all()
-        
-        # 총 시가총액
-        total_market_cap = db.query(func.sum(WorldAssetsRanking.market_cap_usd)).scalar()
-        
-        # 카테고리별 통계를 딕셔너리로 변환
-        categories_dict = {stat.category: stat.count for stat in category_stats}
-        countries_dict = {stat.country: stat.count for stat in country_stats}
-        
-        return {
-            "total_assets": total_assets or 0,
-            "total_market_cap": float(total_market_cap or 0),
-            "categories": categories_dict,
-            "countries": countries_dict,
-            "last_updated": datetime.now()
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"통계 정보 조회 중 오류 발생: {str(e)}")
-
-
-@router.get("/world-assets/market-cap-by-category", response_model=MarketCapByCategory)
-async def get_market_cap_by_category(db: Session = Depends(get_db)):
-    """
-    카테고리별 시가총액 분포 데이터 반환
-    """
-    try:
-        from sqlalchemy import func
-        
-        category_data = db.query(
-            WorldAssetsRanking.category,
-            func.sum(WorldAssetsRanking.market_cap_usd).label('total_market_cap'),
-            func.count(WorldAssetsRanking.id).label('asset_count')
-        ).group_by(WorldAssetsRanking.category).all()
-        
-        # 카테고리명과 시가총액을 분리
-        categories = [data.category for data in category_data]
-        market_caps = [float(data.total_market_cap or 0) for data in category_data]
-        
-        return {
-            "categories": categories,
-            "market_caps": market_caps,
-            "data": [
-                {
-                    "category": data.category,
-                    "total_market_cap": float(data.total_market_cap or 0),
-                    "asset_count": data.asset_count,
-                    "percentage": 0  # 나중에 계산
-                }
-                for data in category_data
-            ]
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"카테고리별 시가총액 조회 중 오류 발생: {str(e)}")
 
 
 @router.get("/world-assets/collection-status", response_model=CollectionStatus)
@@ -407,9 +76,22 @@ async def collect_world_assets_data(db: Session = Depends(get_db)):
     """
     try:
         from ....collectors import WorldAssetsCollector
+        from ....core.config_manager import ConfigManager
+        from ....services.api_strategy_manager import ApiStrategyManager
+        from ....utils.redis_queue_manager import RedisQueueManager
         
-        collector = WorldAssetsCollector(db)
-        result = await collector.collect()
+        # 필요한 매니저들 초기화
+        config_manager = ConfigManager()
+        api_manager = ApiStrategyManager()
+        redis_queue_manager = RedisQueueManager(config_manager)
+        
+        collector = WorldAssetsCollector(
+            db=db,
+            config_manager=config_manager,
+            api_manager=api_manager,
+            redis_queue_manager=redis_queue_manager
+        )
+        result = await collector.collect_with_settings()
         
         return {
             "success": True,
@@ -420,265 +102,6 @@ async def collect_world_assets_data(db: Session = Depends(get_db)):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"World Assets 데이터 수집 중 오류 발생: {str(e)}")
-
-
-@router.get("/world-assets/top-assets", response_model=TopAssetsResponse)
-async def get_top_assets(db: Session = Depends(get_db), top_n: int = 30):
-    """
-    시가총액 기준 상위 자산 조회 (카테고리 구분 없음)
-    """
-    try:
-        assets = db.query(WorldAssetsRanking).order_by(
-            WorldAssetsRanking.market_cap_usd.desc()
-        ).limit(top_n).all()
-
-        result = []
-        for asset in assets:
-            result.append({
-                "rank": asset.rank,
-                "name": asset.name,
-                "ticker": asset.ticker,
-                "market_cap_usd": float(asset.market_cap_usd or 0),
-                "price_usd": float(asset.price_usd or 0),
-                "country": asset.country,
-            })
-        
-        return {
-            "success": True,
-            "data": result,
-            "top_n": top_n
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"상위 자산 조회 중 오류 발생: {str(e)}")
-
-
-@router.get("/world-assets/collect-status", response_model=CollectionStatus)
-async def get_collection_status(db: Session = Depends(get_db)):
-    """
-    데이터 수집 상태 조회
-    """
-    try:
-        # 최근 스크래핑 로그 조회
-        latest_log = db.query(ScrapingLogs).order_by(ScrapingLogs.started_at.desc()).first()
-        
-        if not latest_log:
-            return {
-                "success": True,
-                "data": {
-                    "status": "no_data",
-                    "message": "수집된 데이터가 없습니다.",
-                    "last_collection": None
-                }
-            }
-        
-        return {
-            "success": True,
-            "data": {
-                "status": latest_log.status,
-                "message": f"마지막 수집: {latest_log.source}",
-                "last_collection": latest_log.started_at.isoformat() if latest_log.started_at else None,
-                "records_processed": latest_log.records_processed,
-                "records_successful": latest_log.records_successful,
-                "execution_time": float(latest_log.execution_time_seconds) if latest_log.execution_time_seconds else None
-            }
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"수집 상태 조회 중 오류 발생: {str(e)}")
-
-
-@router.get("/world-assets/market-cap-trends", response_model=MarketCapTrends)
-async def get_market_cap_trends(
-    db: Session = Depends(get_db),
-    ticker: str = None,
-    category: str = None,
-    country: str = None,
-    sector: str = None,
-    start_date: date = None,
-    end_date: date = None,
-    limit: int = 100
-):
-    """
-    시가총액 변화 추이 데이터 반환
-    """
-    try:
-        query = db.query(WorldAssetsRanking)
-        
-        # 필터 조건 적용
-        if ticker:
-            query = query.filter(WorldAssetsRanking.ticker == ticker)
-        if category:
-            query = query.filter(WorldAssetsRanking.category == category)
-        if country:
-            query = query.filter(WorldAssetsRanking.country == country)
-
-        if start_date:
-            query = query.filter(WorldAssetsRanking.ranking_date >= start_date)
-        if end_date:
-            query = query.filter(WorldAssetsRanking.ranking_date <= end_date)
-        
-        # 날짜순으로 정렬
-        assets = query.order_by(WorldAssetsRanking.ranking_date, WorldAssetsRanking.rank).limit(limit).all()
-        
-        # 추이 데이터 구성
-        trends = {}
-        for asset in assets:
-            date_str = asset.ranking_date.isoformat()
-            if date_str not in trends:
-                trends[date_str] = {
-                    "date": date_str,
-                    "total_market_cap": 0,
-                    "asset_count": 0,
-                    "assets": []
-                }
-            
-            market_cap = float(asset.market_cap_usd or 0)
-            trends[date_str]["total_market_cap"] += market_cap
-            trends[date_str]["asset_count"] += 1
-            trends[date_str]["assets"].append({
-                "rank": asset.rank,
-                "name": asset.name,
-                "ticker": asset.ticker,
-                "market_cap_usd": market_cap,
-                "price_usd": float(asset.price_usd or 0),
-                "daily_change_percent": float(asset.daily_change_percent or 0),
-                "category": asset.category,
-                "country": asset.country,
-                "asset_type_id": asset.asset_type_id,
-                "asset_id": asset.asset_id
-            })
-        
-        # 날짜순으로 정렬된 리스트로 변환
-        trends_list = sorted(trends.values(), key=lambda x: x["date"])
-        
-        return {
-            "success": True,
-            "data": trends_list,
-            "total_dates": len(trends_list),
-            "filters": {
-                "ticker": ticker,
-                "category": category,
-                "country": country,
-                "sector": sector,
-                "start_date": start_date.isoformat() if start_date else None,
-                "end_date": end_date.isoformat() if end_date else None
-            }
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"시가총액 추이 데이터 조회 중 오류 발생: {str(e)}")
-
-
-@router.get("/world-assets/asset-history/{ticker}", response_model=AssetHistory)
-async def get_asset_history(
-    ticker: str,
-    db: Session = Depends(get_db),
-    start_date: date = None,
-    end_date: date = None
-):
-    """
-    특정 자산의 시가총액 변화 히스토리 반환
-    """
-    try:
-        query = db.query(WorldAssetsRanking).filter(WorldAssetsRanking.ticker == ticker)
-        
-        if start_date:
-            query = query.filter(WorldAssetsRanking.ranking_date >= start_date)
-        if end_date:
-            query = query.filter(WorldAssetsRanking.ranking_date <= end_date)
-        
-        assets = query.order_by(WorldAssetsRanking.ranking_date).all()
-        
-        if not assets:
-            raise HTTPException(status_code=404, detail=f"티커 '{ticker}'에 대한 데이터를 찾을 수 없습니다.")
-        
-        history = []
-        for asset in assets:
-            history.append({
-                "date": asset.ranking_date.isoformat(),
-                "rank": asset.rank,
-                "name": asset.name,
-                "ticker": asset.ticker,
-                "market_cap_usd": float(asset.market_cap_usd or 0),
-                "price_usd": float(asset.price_usd or 0),
-                "daily_change_percent": float(asset.daily_change_percent or 0),
-                "category": asset.category,
-                "country": asset.country,
-                "asset_type_id": asset.asset_type_id,
-                "asset_id": asset.asset_id
-            })
-        
-        return {
-            "success": True,
-            "data": history,
-            "asset_info": {
-                "name": assets[0].name,
-                "ticker": assets[0].ticker,
-                "category": assets[0].category,
-                "country": assets[0].country
-            },
-            "total_records": len(history)
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"자산 히스토리 조회 중 오류 발생: {str(e)}")
-
-
-@router.get("/world-assets/category-trends", response_model=CategoryTrends)
-async def get_category_trends(
-    db: Session = Depends(get_db),
-    start_date: date = None,
-    end_date: date = None
-):
-    """
-    카테고리별 시가총액 변화 추이 반환
-    """
-    try:
-        query = db.query(WorldAssetsRanking)
-        
-        if start_date:
-            query = query.filter(WorldAssetsRanking.ranking_date >= start_date)
-        if end_date:
-            query = query.filter(WorldAssetsRanking.ranking_date <= end_date)
-        
-        assets = query.order_by(WorldAssetsRanking.ranking_date).all()
-        
-        # 카테고리별 날짜별 집계
-        category_trends = {}
-        for asset in assets:
-            date_str = asset.ranking_date.isoformat()
-            category = asset.category or "Unknown"
-            
-            if category not in category_trends:
-                category_trends[category] = {}
-            
-            if date_str not in category_trends[category]:
-                category_trends[category][date_str] = {
-                    "date": date_str,
-                    "total_market_cap": 0,
-                    "asset_count": 0
-                }
-            
-            market_cap = float(asset.market_cap_usd or 0)
-            category_trends[category][date_str]["total_market_cap"] += market_cap
-            category_trends[category][date_str]["asset_count"] += 1
-        
-        # 결과 포맷팅
-        result = {}
-        for category, dates in category_trends.items():
-            result[category] = sorted(dates.values(), key=lambda x: x["date"])
-        
-        return {
-            "success": True,
-            "data": result,
-            "categories": list(result.keys()),
-            "total_categories": len(result)
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"카테고리별 추이 데이터 조회 중 오류 발생: {str(e)}")
 
 
 @router.get("/world-assets/top-assets-by-category")
@@ -1042,5 +465,48 @@ async def get_performance_treemap_data(
         logger.error(f"Error getting performance treemap data after {execution_time:.2f}s: {e}")
         raise HTTPException(status_code=500, detail=f"성과 트리맵 데이터 조회 중 오류 발생: {str(e)}")
 
+
+@router.get("/world-assets/missing-mappings")
+async def get_missing_asset_mappings(
+    db: Session = Depends(get_db),
+    ranking_date: str = None
+):
+    """
+    매핑이 필요한 자산 정보 조회 (나라명, asset_id가 비어있는 자산들)
+    """
+    try:
+        missing_info = get_missing_asset_info(db, ranking_date)
+        
+        return {
+            "success": True,
+            "data": missing_info,
+            "total": len(missing_info),
+            "ranking_date": ranking_date or "latest"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"매핑 정보 조회 중 오류 발생: {str(e)}")
+
+
+@router.post("/world-assets/update-mappings")
+async def update_asset_mappings_endpoint(
+    db: Session = Depends(get_db),
+    ranking_date: str = None
+):
+    """
+    JSON 매핑 파일을 사용하여 비어있는 나라명과 asset_id 업데이트
+    """
+    try:
+        result = update_asset_mappings(db, ranking_date)
+        
+        return {
+            "success": True,
+            "message": "자산 매핑 업데이트가 완료되었습니다.",
+            "data": result,
+            "timestamp": datetime.now()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"자산 매핑 업데이트 중 오류 발생: {str(e)}")
 
 

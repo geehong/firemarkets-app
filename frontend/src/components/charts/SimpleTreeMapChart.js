@@ -73,3 +73,4 @@ const SimpleTreeMapChart = ({ data }) => {
 
 export default SimpleTreeMapChart
 
+

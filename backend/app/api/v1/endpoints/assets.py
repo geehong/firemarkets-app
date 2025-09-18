@@ -137,74 +137,195 @@ def get_all_assets(
 def get_assets_market_caps(
     type_name: Optional[str] = Query(None, description="필터링할 자산 유형 이름"),
     has_ohlcv_data: bool = Query(True, description="OHLCV 데이터가 있는 자산만 필터링합니다."),
+    has_asset_data: bool = Query(True, description="데이터베이스에 자산이 있는 것만 필터링합니다."),
     limit: int = Query(100, ge=1, description="페이지당 자산 개수"),  # 기본값을 100으로 줄임
     offset: int = Query(0, ge=0, description="데이터 시작 오프셋"),
     db: Session = Depends(get_db)
 ):
-    """모든 자산의 최신 market_cap 데이터 조회 (TreeMap용)"""
+    """모든 자산의 최신 market_cap 데이터 조회 (TreeMap용) - 자산 유형별 다른 데이터 소스 사용"""
     try:
-        from ....models import Asset, AssetType, OHLCVData, StockFinancial
+        from ....models import Asset, AssetType, OHLCVData, StockFinancial, WorldAssetsRanking
+        from sqlalchemy import func, or_
         
-        # 기본 자산 쿼리
-        base_query = db.query(Asset, AssetType.type_name) \
-                       .join(AssetType, Asset.asset_type_id == AssetType.asset_type_id)
+        # has_asset_data 옵션에 따라 쿼리 분기
+        if has_asset_data:
+            # assets 테이블에서 조회
+            base_query = db.query(Asset, AssetType.type_name) \
+                           .join(AssetType, Asset.asset_type_id == AssetType.asset_type_id)
 
-        if has_ohlcv_data:
-            base_query = base_query.filter(
-                db.query(OHLCVData).filter(OHLCVData.asset_id == Asset.asset_id).exists()
-            )
+            if has_ohlcv_data:
+                base_query = base_query.filter(
+                    db.query(OHLCVData).filter(OHLCVData.asset_id == Asset.asset_id).exists()
+                )
 
-        if type_name:
-            base_query = base_query.filter(AssetType.type_name == type_name)
+            if type_name:
+                base_query = base_query.filter(AssetType.type_name == type_name)
 
-        total_count = base_query.count()
-        assets_with_type = base_query.offset(offset).limit(limit).all()
-        
-        result_data = []
-        for asset, type_name in assets_with_type:
-            # 최신 재무 데이터에서 market_cap 가져오기
-            latest_financial = db.query(StockFinancial) \
-                                .filter(StockFinancial.asset_id == asset.asset_id) \
-                                .order_by(StockFinancial.snapshot_date.desc()) \
-                                .first()
+            total_count = base_query.count()
+            assets_with_type = base_query.offset(offset).limit(limit).all()
             
-            # 최신 OHLCV 데이터에서 현재 가격 가져오기
-            latest_ohlcv = get_latest_ohlcv(db, asset.asset_id)
+            result_data = []
+            for asset, type_name in assets_with_type:
+                market_cap = None
+                snapshot_date = None
+                
+                # 자산 유형별로 다른 데이터 소스에서 시가총액 조회
+                if type_name.lower() == 'stocks':
+                    # 주식: stock_financials + world_assets_ranking 중 최신 데이터
+                    latest_financial = db.query(StockFinancial) \
+                                        .filter(StockFinancial.asset_id == asset.asset_id) \
+                                        .order_by(StockFinancial.snapshot_date.desc()) \
+                                        .first()
+                    
+                    latest_world_asset = db.query(WorldAssetsRanking) \
+                                          .filter(
+                                              WorldAssetsRanking.asset_id == asset.asset_id,
+                                              WorldAssetsRanking.market_cap_usd.isnot(None)
+                                          ) \
+                                          .order_by(WorldAssetsRanking.ranking_date.desc()) \
+                                          .first()
+                    
+                    # 최신 데이터 선택 (날짜 기준)
+                    if latest_financial and latest_world_asset:
+                        if latest_financial.snapshot_date >= latest_world_asset.ranking_date:
+                            market_cap = float(latest_financial.market_cap) if latest_financial.market_cap else None
+                            snapshot_date = latest_financial.snapshot_date
+                        else:
+                            market_cap = float(latest_world_asset.market_cap_usd)
+                            snapshot_date = latest_world_asset.ranking_date
+                    elif latest_financial:
+                        market_cap = float(latest_financial.market_cap) if latest_financial.market_cap else None
+                        snapshot_date = latest_financial.snapshot_date
+                    elif latest_world_asset:
+                        market_cap = float(latest_world_asset.market_cap_usd)
+                        snapshot_date = latest_world_asset.ranking_date
+                        
+                elif type_name.lower() in ['crypto', 'cryptocurrency']:
+                    # 암호화폐: world_assets_ranking에서 조회 (crypto_data는 별도 구현 필요시 추가)
+                    latest_world_asset = db.query(WorldAssetsRanking) \
+                                          .filter(
+                                              WorldAssetsRanking.asset_id == asset.asset_id,
+                                              WorldAssetsRanking.market_cap_usd.isnot(None)
+                                          ) \
+                                          .order_by(WorldAssetsRanking.ranking_date.desc()) \
+                                          .first()
+                    
+                    if latest_world_asset:
+                        market_cap = float(latest_world_asset.market_cap_usd)
+                        snapshot_date = latest_world_asset.ranking_date
+                        
+                else:
+                    # 기타 자산 (ETF, 원자재 등): world_assets_ranking에서 조회
+                    latest_world_asset = db.query(WorldAssetsRanking) \
+                                          .filter(
+                                              WorldAssetsRanking.asset_id == asset.asset_id,
+                                              WorldAssetsRanking.market_cap_usd.isnot(None)
+                                          ) \
+                                          .order_by(WorldAssetsRanking.ranking_date.desc()) \
+                                          .first()
+                    
+                    if latest_world_asset:
+                        market_cap = float(latest_world_asset.market_cap_usd)
+                        snapshot_date = latest_world_asset.ranking_date
+                
+                # 최신 OHLCV 데이터에서 현재 가격 가져오기
+                latest_ohlcv = get_latest_ohlcv(db, asset.asset_id)
+                
+                # 30일 전 OHLCV 데이터 가져오기 (성능 계산용)
+                thirty_days_ago = datetime.now() - timedelta(days=30)
+                thirty_days_ago_ohlcv = db.query(OHLCVData) \
+                                         .filter(
+                                             OHLCVData.asset_id == asset.asset_id,
+                                             OHLCVData.data_interval.is_(None),
+                                             OHLCVData.timestamp_utc >= thirty_days_ago
+                                         ) \
+                                         .order_by(OHLCVData.timestamp_utc.asc()) \
+                                         .first()
+                
+                # 성능 계산
+                performance = 0
+                if latest_ohlcv and thirty_days_ago_ohlcv:
+                    current_price = float(latest_ohlcv.close_price)
+                    thirty_days_price = float(thirty_days_ago_ohlcv.close_price)
+                    if thirty_days_price > 0:
+                        performance = ((current_price - thirty_days_price) / thirty_days_price) * 100
+                
+                asset_dict = {
+                    'asset_id': asset.asset_id,
+                    'ticker': asset.ticker,
+                    'name': asset.name,
+                    'type_name': type_name,
+                    'exchange': asset.exchange,
+                    'currency': asset.currency,
+                    'current_price': float(latest_ohlcv.close_price) if latest_ohlcv else None,
+                    'market_cap': market_cap,
+                    'performance': performance,
+                    'volume': float(latest_ohlcv.volume) if latest_ohlcv else 0,
+                    'change_percent_24h': float(latest_ohlcv.change_percent) if latest_ohlcv and latest_ohlcv.change_percent else 0,
+                    'snapshot_date': snapshot_date,
+                }
+                result_data.append(asset_dict)
+        else:
+            # world_assets_ranking 테이블에서 직접 조회
+            base_query = db.query(WorldAssetsRanking, AssetType.type_name) \
+                           .join(AssetType, WorldAssetsRanking.asset_type_id == AssetType.asset_type_id) \
+                           .filter(WorldAssetsRanking.market_cap_usd.isnot(None))
+
+            if type_name:
+                base_query = base_query.filter(AssetType.type_name == type_name)
+
+            # 최신 날짜의 데이터만 조회
+            latest_date_subquery = db.query(func.max(WorldAssetsRanking.ranking_date)).scalar()
+            base_query = base_query.filter(WorldAssetsRanking.ranking_date == latest_date_subquery)
+
+            total_count = base_query.count()
+            world_assets = base_query.offset(offset).limit(limit).all()
             
-            # 30일 전 OHLCV 데이터 가져오기 (성능 계산용)
-            thirty_days_ago = datetime.now() - timedelta(days=30)
-            thirty_days_ago_ohlcv = db.query(OHLCVData) \
-                                     .filter(
-                                         OHLCVData.asset_id == asset.asset_id,
-                                         OHLCVData.data_interval.is_(None),
-                                         OHLCVData.timestamp_utc >= thirty_days_ago
-                                     ) \
-                                     .order_by(OHLCVData.timestamp_utc.asc()) \
-                                     .first()
-            
-            # 성능 계산
-            performance = 0
-            if latest_ohlcv and thirty_days_ago_ohlcv:
-                current_price = float(latest_ohlcv.close_price)
-                thirty_days_price = float(thirty_days_ago_ohlcv.close_price)
-                if thirty_days_price > 0:
-                    performance = ((current_price - thirty_days_price) / thirty_days_price) * 100
-            
-            asset_dict = {
-                'asset_id': asset.asset_id,
-                'ticker': asset.ticker,
-                'name': asset.name,
-                'type_name': type_name,
-                'exchange': asset.exchange,
-                'currency': asset.currency,
-                'current_price': float(latest_ohlcv.close_price) if latest_ohlcv else None,
-                'market_cap': float(latest_financial.market_cap) if latest_financial and latest_financial.market_cap else None,
-                'performance': performance,
-                'volume': float(latest_ohlcv.volume) if latest_ohlcv else 0,
-                'change_percent_24h': float(latest_ohlcv.change_percent) if latest_ohlcv and latest_ohlcv.change_percent else 0,
-                'snapshot_date': latest_financial.snapshot_date if latest_financial else None,
-            }
-            result_data.append(asset_dict)
+            result_data = []
+            for world_asset, type_name in world_assets:
+                # OHLCV 데이터 조회 (has_ohlcv_data 옵션 적용)
+                latest_ohlcv = None
+                if has_ohlcv_data:
+                    latest_ohlcv = get_latest_ohlcv(db, world_asset.asset_id)
+                    if not latest_ohlcv:
+                        continue  # OHLCV 데이터가 없으면 스킵
+                else:
+                    latest_ohlcv = get_latest_ohlcv(db, world_asset.asset_id)
+                
+                # 30일 전 OHLCV 데이터 가져오기 (성능 계산용)
+                thirty_days_ago = datetime.now() - timedelta(days=30)
+                thirty_days_ago_ohlcv = db.query(OHLCVData) \
+                                         .filter(
+                                             OHLCVData.asset_id == world_asset.asset_id,
+                                             OHLCVData.data_interval.is_(None),
+                                             OHLCVData.timestamp_utc >= thirty_days_ago
+                                         ) \
+                                         .order_by(OHLCVData.timestamp_utc.asc()) \
+                                         .first()
+                
+                # 성능 계산
+                performance = 0
+                if latest_ohlcv and thirty_days_ago_ohlcv:
+                    current_price = float(latest_ohlcv.close_price)
+                    thirty_days_price = float(thirty_days_ago_ohlcv.close_price)
+                    if thirty_days_price > 0:
+                        performance = ((current_price - thirty_days_price) / thirty_days_price) * 100
+                
+                asset_dict = {
+                    'asset_id': world_asset.asset_id,
+                    'ticker': world_asset.ticker,
+                    'name': world_asset.name,
+                    'type_name': type_name,
+                    'exchange': None,  # world_assets_ranking에는 exchange 정보 없음
+                    'currency': 'USD',  # world_assets_ranking은 USD 기준
+                    'current_price': float(latest_ohlcv.close_price) if latest_ohlcv else None,
+                    'market_cap': float(world_asset.market_cap_usd),
+                    'performance': performance,
+                    'volume': float(latest_ohlcv.volume) if latest_ohlcv else 0,
+                    'change_percent_24h': float(latest_ohlcv.change_percent) if latest_ohlcv and latest_ohlcv.change_percent else 0,
+                    'snapshot_date': world_asset.ranking_date,
+                }
+                result_data.append(asset_dict)
         
         return {
             "data": result_data, 
