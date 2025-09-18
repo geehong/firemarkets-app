@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import axios from 'axios'
 
 const useTreeMapData = () => {
@@ -197,4 +197,81 @@ const usePerformanceTreeMapData = (performancePeriod = '1d', limit = 100) => {
   }
 }
 
-export { useTreeMapData, usePerformanceTreeMapData }
+// 성과 기반 TreeMap용 훅 (api/v1/assets/market-caps 사용, 본드 제외)
+const usePerformanceTreeMapDataFromTreeMap = () => {
+  const [data, setData] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  const fetchData = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      console.log('[PerformanceTreeMap] fetching /api/v1/assets/market-caps')
+      // /assets/market-caps/today API 사용 (오늘 날짜의 모든 자산 로드, asset_id null 포함)
+      const response = await axios.get(
+        '/api/v1/assets/market-caps/today?has_asset_id=false&limit=1000'
+      )
+      
+      console.log('[PerformanceTreeMap] status:', response.status)
+      console.log('[PerformanceTreeMap] data length:', response.data?.data?.length)
+      
+      if (response.data && response.data.data) {
+        const marketCapData = response.data.data
+        
+        // 본드 데이터 제외하고 성과 데이터 매핑
+        const performanceData = marketCapData
+          .filter(asset => !asset.is_bond && !asset.bond_type) // 본드 데이터 제외
+          .map(asset => ({
+            ...asset,
+            // 성과 데이터 매핑
+            performance: asset.daily_change_percent || 0,
+            // PerformanceTreeMap이 기대하는 필드명으로 매핑
+            type_name: asset.type_name || asset.category,
+            market_cap: asset.market_cap,
+            market_cap_usd: asset.market_cap, // 호환성을 위해 추가
+            current_price: asset.current_price || asset.price,
+            price_usd: asset.current_price || asset.price, // 호환성을 위해 추가
+            volume: asset.volume || 0,
+            change_percent_24h: asset.daily_change_percent || 0,
+            daily_change_percent: asset.daily_change_percent || 0,
+            category: asset.type_name || asset.category,
+            country: asset.country || 'Unknown',
+            ticker: asset.ticker,
+            name: asset.name,
+            rank: asset.rank,
+          }))
+        
+        console.log('[PerformanceTreeMap] processed data length:', performanceData.length)
+        console.log('[PerformanceTreeMap] sample data:', performanceData.slice(0, 3))
+        setData(performanceData)
+      } else {
+        setData([])
+      }
+    } catch (err) {
+      setError(err.message)
+      console.error('[PerformanceTreeMap] fetch error:', err)
+      setData([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const refreshData = useCallback(() => {
+    fetchData()
+  }, [fetchData])
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
+  
+  return {
+    data,
+    loading,
+    error,
+    refreshData,
+  }
+}
+
+export { useTreeMapData, usePerformanceTreeMapData, usePerformanceTreeMapDataFromTreeMap }

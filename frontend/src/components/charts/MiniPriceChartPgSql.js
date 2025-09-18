@@ -295,6 +295,10 @@ const options = {
         style: { fontFamily: 'Inter, sans-serif' },
         animation: false, // 애니메이션 비활성화로 SVG 에러 방지
         height: 300, // 모든 화면에서 300px
+        spacingTop: 10, // 상단 여백 최소화
+        spacingBottom: 10, // 하단 여백 최소화
+        spacingLeft: 10, // 좌측 여백 최소화
+        spacingRight: 10, // 우측 여백 최소화
         events: {
             load() {
                 const chart = this;
@@ -372,6 +376,7 @@ const options = {
 
     rangeSelector: {
         enabled: false, // 모든 화면에서 비활성화
+        height: 0, // 높이를 0으로 설정하여 공간 완전 제거
         buttons: [{
             type: 'minute',
             count: 15,
@@ -431,6 +436,7 @@ const options = {
 
     navigator: {
         enabled: false, // 모든 화면에서 비활성화
+        height: 0, // 높이를 0으로 설정하여 공간 완전 제거
         series: {
             color: '#000000'
         },
@@ -456,8 +462,7 @@ const options = {
             endOnTick: false
         },
         // 네비게이터 초기 선택 범위 설정 (전체 데이터의 80%)
-        height: 40,
-        margin: 2
+        margin: 0 // 마진도 0으로 설정
     },
 
     tooltip: {
@@ -466,6 +471,13 @@ const options = {
 
     exporting: {
         enabled: false // 모든 화면에서 비활성화
+    },
+
+    plotOptions: {
+        series: {
+            animation: false,
+            enableMouseTracking: false // 마우스 추적 비활성화로 성능 향상
+        }
     },
 
     series: [
@@ -502,7 +514,7 @@ const options = {
                 borderRadius: 0,
                 padding: 5,
                 y: -30,
-                style: { color: (lastPointDirection === 'down' ? '#ff4d4f' : '#00d4ff'), fontWeight: 'bold' }
+                style: { color: (lastPointDirection === 'down' ? '#ff4d4f' : '#00d4ff'), fontWeight: 'bold', fontSize: '14px' }
             }
         }
     ]
@@ -559,6 +571,24 @@ const options = {
             height: 300px !important;
             max-height: 300px !important;
           }
+          .highcharts-range-selector {
+            height: 0 !important;
+            min-height: 0 !important;
+            max-height: 0 !important;
+            overflow: hidden !important;
+          }
+          .highcharts-navigator {
+            height: 0 !important;
+            min-height: 0 !important;
+            max-height: 0 !important;
+            overflow: hidden !important;
+          }
+          .highcharts-scrollbar {
+            height: 0 !important;
+            min-height: 0 !important;
+            max-height: 0 !important;
+            overflow: hidden !important;
+          }
         `}
       </style>
       <HighchartsReact
@@ -580,9 +610,15 @@ const options = {
             const chartContainer = chart.container;
             if (chartContainer) {
               // Range selector 숨기기
-              const rangeSelectors = chartContainer.querySelectorAll('.highcharts-range-selector-group, .highcharts-range-selector-buttons');
+              const rangeSelectors = chartContainer.querySelectorAll('.highcharts-range-selector-group, .highcharts-range-selector-buttons, .highcharts-range-selector');
               rangeSelectors.forEach(el => {
-                if (el) el.style.display = 'none';
+                if (el) {
+                  el.style.display = 'none';
+                  el.style.height = '0px';
+                  el.style.minHeight = '0px';
+                  el.style.maxHeight = '0px';
+                  el.style.overflow = 'hidden';
+                }
               });
               
               // Exporting 버튼 숨기기
@@ -600,13 +636,25 @@ const options = {
               // Navigator 숨기기
               const navigators = chartContainer.querySelectorAll('.highcharts-navigator, .highcharts-navigator-container');
               navigators.forEach(el => {
-                if (el) el.style.display = 'none';
+                if (el) {
+                  el.style.display = 'none';
+                  el.style.height = '0px';
+                  el.style.minHeight = '0px';
+                  el.style.maxHeight = '0px';
+                  el.style.overflow = 'hidden';
+                }
               });
               
               // Scrollbar 숨기기
               const scrollbars = chartContainer.querySelectorAll('.highcharts-scrollbar, .highcharts-scrollbar-container');
               scrollbars.forEach(el => {
-                if (el) el.style.display = 'none';
+                if (el) {
+                  el.style.display = 'none';
+                  el.style.height = '0px';
+                  el.style.minHeight = '0px';
+                  el.style.maxHeight = '0px';
+                  el.style.overflow = 'hidden';
+                }
               });
             }
           }, 100);

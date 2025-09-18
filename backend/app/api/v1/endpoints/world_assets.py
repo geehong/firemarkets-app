@@ -510,3 +510,187 @@ async def update_asset_mappings_endpoint(
         raise HTTPException(status_code=500, detail=f"자산 매핑 업데이트 중 오류 발생: {str(e)}")
 
 
+@router.get("/assets/market-caps/today")
+@cache_with_invalidation(expire=10)  # 10초 TTL (시가총액은 자주 변경됨)
+async def get_today_market_caps(
+    type_name: str = Query(None, description="필터링할 자산 유형 이름"),
+    has_asset_id: bool = Query(False, description="asset_id가 있는 자산만 필터링합니다."),
+    limit: int = Query(1000, ge=1, description="페이지당 자산 개수"),
+    offset: int = Query(0, ge=0, description="데이터 시작 오프셋"),
+    db: Session = Depends(get_db)
+):
+    """오늘 날짜의 world_assets_ranking 데이터만 조회 (TreeMap용) - 중복 제거 및 크기 조정"""
+    try:
+        from sqlalchemy import func, and_
+        from ....models.asset import WorldAssetsRanking, AssetType, OHLCVData
+        from datetime import datetime, timedelta
+        
+        # 오늘 날짜의 특정 데이터 소스들만 조회 (메인 데이터 소스)
+        today = datetime.now().date()
+        main_data_sources = ['8marketcap_companies', '8marketcap_cryptos', '8marketcap_etfs', '8marketcap_metals']
+        fallback_data_sources = ['8marketcap', 'companiesmarketcap']  # daily_change_percent null 처리용
+        
+        base_query = db.query(WorldAssetsRanking, AssetType.type_name) \
+                       .outerjoin(AssetType, WorldAssetsRanking.asset_type_id == AssetType.asset_type_id) \
+                       .filter(
+                           WorldAssetsRanking.market_cap_usd.isnot(None),
+                           WorldAssetsRanking.ranking_date == today,  # 오늘 날짜만
+                           WorldAssetsRanking.data_source.in_(main_data_sources)  # 메인 데이터 소스만
+                       )
+
+        if type_name:
+            base_query = base_query.filter(AssetType.type_name == type_name)
+            
+        if has_asset_id:
+            base_query = base_query.filter(WorldAssetsRanking.asset_id.isnot(None))
+
+        total_count = base_query.count()
+        
+        # limit이 1000 이상이면 모든 데이터를 가져옴 (중복 제거를 위해)
+        if limit >= 1000:
+            world_assets = base_query.all()
+        else:
+            world_assets = base_query.offset(offset).limit(limit).all()
+        
+        # 중복 제거: 동일한 ticker에 대해 하나만 선택 (우선순위: companies > cryptos > etfs > metals)
+        seen_tickers = set()
+        unique_assets = []
+        data_source_priority = {
+            '8marketcap_companies': 1, 
+            '8marketcap_cryptos': 2, 
+            '8marketcap_etfs': 3, 
+            '8marketcap_metals': 4
+        }
+        
+        for world_asset, type_name in world_assets:
+            if world_asset.ticker not in seen_tickers:
+                seen_tickers.add(world_asset.ticker)
+                unique_assets.append((world_asset, type_name))
+            else:
+                # 이미 있는 ticker인 경우, 우선순위가 높은 데이터 소스로 교체
+                for i, (existing_asset, existing_type) in enumerate(unique_assets):
+                    if existing_asset.ticker == world_asset.ticker:
+                        current_priority = data_source_priority.get(world_asset.data_source, 5)
+                        existing_priority = data_source_priority.get(existing_asset.data_source, 5)
+                        if current_priority < existing_priority:
+                            unique_assets[i] = (world_asset, type_name)
+                        break
+        
+        result_data = []
+        for world_asset, type_name in unique_assets:
+            # OHLCV 데이터 조회 (asset_id가 있는 경우만)
+            latest_ohlcv = None
+            if world_asset.asset_id is not None:
+                latest_ohlcv = db.query(OHLCVData) \
+                                .filter(
+                                    OHLCVData.asset_id == world_asset.asset_id,
+                                    OHLCVData.data_interval.is_(None)
+                                ) \
+                                .order_by(OHLCVData.timestamp_utc.desc()) \
+                                .first()
+            
+            # 30일 전 OHLCV 데이터 가져오기 (성능 계산용, asset_id가 있는 경우만)
+            thirty_days_ago_ohlcv = None
+            if world_asset.asset_id is not None:
+                thirty_days_ago = datetime.now() - timedelta(days=30)
+                thirty_days_ago_ohlcv = db.query(OHLCVData) \
+                                         .filter(
+                                             OHLCVData.asset_id == world_asset.asset_id,
+                                             OHLCVData.data_interval.is_(None),
+                                             OHLCVData.timestamp_utc >= thirty_days_ago
+                                         ) \
+                                         .order_by(OHLCVData.timestamp_utc.asc()) \
+                                         .first()
+            
+            # 성능 계산
+            performance = 0
+            if latest_ohlcv and thirty_days_ago_ohlcv:
+                current_price = float(latest_ohlcv.close_price)
+                thirty_days_price = float(thirty_days_ago_ohlcv.close_price)
+                if thirty_days_price > 0:
+                    performance = ((current_price - thirty_days_price) / thirty_days_price) * 100
+            
+            # daily_change_percent 처리 (다중 소스 검증)
+            daily_change_percent = world_asset.daily_change_percent
+            
+            # 1단계: 현재 데이터의 daily_change_percent가 null이면 다른 소스 확인
+            if daily_change_percent is None:
+                # 동일 날짜의 다른 데이터 소스 확인 (fallback 데이터 소스들 포함)
+                all_data_sources = main_data_sources + fallback_data_sources
+                other_sources = db.query(WorldAssetsRanking) \
+                                .filter(
+                                    WorldAssetsRanking.ticker == world_asset.ticker,
+                                    WorldAssetsRanking.ranking_date == world_asset.ranking_date,
+                                    WorldAssetsRanking.daily_change_percent.isnot(None),
+                                    WorldAssetsRanking.data_source.in_(all_data_sources)
+                                ) \
+                                .all()
+                
+                for other_source in other_sources:
+                    if other_source.daily_change_percent is not None:
+                        daily_change_percent = float(other_source.daily_change_percent)
+                        break
+            
+            # 2단계: 그래도 null이면 이전일 데이터와 비교
+            if daily_change_percent is None and world_asset.price_usd is not None:
+                today_price = float(world_asset.price_usd)
+                
+                # 이전일 데이터 조회 (최근 7일 내, fallback 데이터 소스들 포함)
+                all_data_sources = main_data_sources + fallback_data_sources
+                yesterday_asset = db.query(WorldAssetsRanking) \
+                                   .filter(
+                                       WorldAssetsRanking.ticker == world_asset.ticker,
+                                       WorldAssetsRanking.ranking_date < world_asset.ranking_date,
+                                       WorldAssetsRanking.price_usd.isnot(None),
+                                       WorldAssetsRanking.data_source.in_(all_data_sources)
+                                   ) \
+                                   .order_by(WorldAssetsRanking.ranking_date.desc()) \
+                                   .first()
+                
+                if yesterday_asset and yesterday_asset.price_usd is not None:
+                    yesterday_price = float(yesterday_asset.price_usd)
+                    if yesterday_price > 0:
+                        # 일일 변화율 계산
+                        daily_change_percent = ((today_price - yesterday_price) / yesterday_price) * 100
+                        logger.info(f"Calculated daily_change_percent for {world_asset.ticker}: {daily_change_percent:.2f}% (today: {today_price}, yesterday: {yesterday_price})")
+            
+            # 3단계: 그래도 null이면 None 유지 (해당 자산은 패스)
+            
+            # 주식을 제외한 상품들은 나라명을 "Global"로 설정
+            country = world_asset.country
+            if type_name and type_name.lower() not in ['stocks', 'stock']:
+                country = 'Global'
+            
+            asset_dict = {
+                'asset_id': world_asset.asset_id,
+                'ticker': world_asset.ticker,
+                'name': world_asset.name,
+                'type_name': type_name or 'Unknown',  # type_name이 None인 경우 'Unknown'으로 설정
+                'country': country,  # 주식이 아닌 경우 "Global"로 설정
+                'exchange': None,  # world_assets_ranking에는 exchange 정보 없음
+                'currency': 'USD',  # world_assets_ranking은 USD 기준
+                'current_price': float(latest_ohlcv.close_price) if latest_ohlcv else (float(world_asset.price_usd) if world_asset.price_usd is not None else None),  # OHLCV가 없으면 world_assets_ranking의 price_usd 사용
+                'price': float(world_asset.price_usd) if world_asset.price_usd is not None else None,  # world_assets_ranking에서 직접 가져온 가격
+                'market_cap': float(world_asset.market_cap_usd),
+                'performance': performance,
+                'volume': float(latest_ohlcv.volume) if latest_ohlcv else 0,
+                'change_percent_24h': float(latest_ohlcv.change_percent) if latest_ohlcv and latest_ohlcv.change_percent else 0,
+                'daily_change_percent': float(daily_change_percent) if daily_change_percent is not None else None,  # 계산된 일일 변화율
+                'snapshot_date': world_asset.ranking_date,
+            }
+            result_data.append(asset_dict)
+        
+        return {
+            "data": result_data, 
+            "total_count": total_count,
+            "summary": {
+                "total_market_cap": sum(item['market_cap'] or 0 for item in result_data),
+                "avg_performance": sum(item['performance'] for item in result_data) / len(result_data) if result_data else 0,
+                "assets_with_market_cap": len([item for item in result_data if item['market_cap'] is not None])
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error fetching today's market caps: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get today's market caps: {str(e)}")
+
+

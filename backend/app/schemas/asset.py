@@ -147,6 +147,11 @@ class MarketCapItem(BaseModel):
     price: Optional[float] = Field(None, description="Current price")
     volume: Optional[float] = Field(None, description="Trading volume")
     change_percent: Optional[float] = Field(None, description="Price change percentage")
+    daily_change_percent: Optional[float] = Field(None, description="Daily change percentage from world_assets_ranking")
+    current_price: Optional[float] = Field(None, description="Current price from OHLCV or world_assets_ranking")
+    performance: Optional[float] = Field(None, description="30-day performance")
+    change_percent_24h: Optional[float] = Field(None, description="24-hour change percentage")
+    snapshot_date: Optional[date] = Field(None, description="Snapshot date")
 
 
 class MarketCapsResponse(BaseModel):

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { CRow, CCol, CCard, CCardHeader, CCardBody, CCardTitle } from '@coreui/react'
 import DashboardChart from 'src/components/charts/DashboardChart'
 import DashboardTable from 'src/components/tables/DashboardTable'
-import PerformanceTreeMap from 'src/components/charts/PerformanceTreeMap'
+import { PerformanceTreeMapToday } from 'src/components/charts/threemap'
 import RealTimeWidgetsTypeA from 'src/components/widgets/RealTimeWidgetsTypeA'
 import MiniPriceChartPgSql from 'src/components/charts/MiniPriceChartPgSql'
  
@@ -104,7 +104,7 @@ const MainDashboard = () => {
 
       <div className="card mb-4">
         <div className="card-body">
-          <PerformanceTreeMap />
+            <PerformanceTreeMapToday />
         </div>
       </div>
       
