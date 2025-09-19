@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from ..core.database import SessionLocal
 from ..core.config import GLOBAL_APP_CONFIGS, config_manager
 from ..models.asset import RealtimeQuote, RealtimeQuoteTimeDelay
-from ..models.asset import Asset, OHLCVData
+from ..models.asset import Asset, OHLCVData, WorldAssetsRanking
 from ..crud.asset import crud_ohlcv, crud_asset
 from ..utils.logger import logger
 from ..utils.redis_queue_manager import RedisQueueManager
@@ -625,6 +625,10 @@ class DataProcessor:
                 return await self._save_technical_indicators(items)
             elif task_type == "onchain_metric":
                 return await self._save_onchain_metric(items)
+            elif task_type == "world_assets_ranking":
+                # metadata 정보 추출
+                metadata = payload.get("metadata", {}) if isinstance(payload, dict) else {}
+                return await self._save_world_assets_ranking(items, metadata)
             elif task_type == "asset_settings_update":
                 return await self._update_asset_settings(payload)
             else:
@@ -1936,6 +1940,152 @@ class DataProcessor:
             logger.error(f"지수 데이터 저장 실패: {e}")
             return False
 
+    async def _save_world_assets_ranking(self, items: List[Dict[str, Any]], metadata: Dict[str, Any]) -> bool:
+        """세계 자산 랭킹 데이터 저장 - 이중 저장 (MySQL + PostgreSQL)"""
+        try:
+            if not items:
+                return True
+                
+            logger.info(f"세계 자산 랭킹 데이터 저장: {len(items)}개 레코드")
+            
+            # MySQL 저장 (UPSERT 로직)
+            async with self.get_db_session() as db:
+                saved_count = 0
+                failed_count = 0
+                for item in items:
+                    try:
+                        ranking_date = metadata.get('collection_date', datetime.now().date())
+                        if isinstance(ranking_date, str):
+                            ranking_date = datetime.fromisoformat(ranking_date).date()
+                        
+                        data_source = metadata.get('data_source', 'unknown')
+                        ticker = item.get('ticker')
+                        
+                        # 기존 레코드 확인
+                        existing = db.query(WorldAssetsRanking).filter(
+                            WorldAssetsRanking.ranking_date == ranking_date,
+                            WorldAssetsRanking.ticker == ticker,
+                            WorldAssetsRanking.data_source == data_source
+                        ).first()
+                        
+                        if existing:
+                            # UPDATE
+                            existing.rank = item.get('rank')
+                            existing.name = item.get('name')
+                            existing.market_cap_usd = item.get('market_cap_usd')
+                            existing.price_usd = item.get('price_usd')
+                            existing.daily_change_percent = item.get('daily_change_percent')
+                            existing.country = item.get('country')
+                            existing.asset_type_id = item.get('asset_type_id')
+                            existing.asset_id = item.get('asset_id')
+                            existing.last_updated = datetime.now()
+                            logger.debug(f"[WorldAssetsRanking] 업데이트: {ticker} ({data_source})")
+                        else:
+                            # INSERT
+                            world_asset = WorldAssetsRanking(
+                                rank=item.get('rank'),
+                                name=item.get('name'),
+                                ticker=item.get('ticker'),
+                                market_cap_usd=item.get('market_cap_usd'),
+                                price_usd=item.get('price_usd'),
+                                daily_change_percent=item.get('daily_change_percent'),
+                                country=item.get('country'),
+                                asset_type_id=item.get('asset_type_id'),
+                                asset_id=item.get('asset_id'),
+                                ranking_date=ranking_date,
+                                data_source=data_source
+                            )
+                            db.add(world_asset)
+                            logger.debug(f"[WorldAssetsRanking] 삽입: {ticker} ({data_source})")
+                        
+                        saved_count += 1
+                        
+                    except Exception as e:
+                        failed_count += 1
+                        logger.error(f"WorldAssetsRanking 저장 중 오류: {e}, item: {item}")
+                        continue
+                
+                db.commit()
+                logger.info(f"[WorldAssetsRanking] MySQL 저장 완료: {saved_count}개 성공, {failed_count}개 실패")
+            
+            # PostgreSQL 이중 저장 (UPSERT 로직)
+            try:
+                from ..core.database import get_postgres_db
+                pg_db = next(get_postgres_db())
+                try:
+                    pg_saved_count = 0
+                    pg_failed_count = 0
+                    for item in items:
+                        try:
+                            ranking_date = metadata.get('collection_date', datetime.now().date())
+                            if isinstance(ranking_date, str):
+                                ranking_date = datetime.fromisoformat(ranking_date).date()
+                            
+                            data_source = metadata.get('data_source', 'unknown')
+                            ticker = item.get('ticker')
+                            
+                            # 기존 레코드 확인
+                            existing_pg = pg_db.query(WorldAssetsRanking).filter(
+                                WorldAssetsRanking.ranking_date == ranking_date,
+                                WorldAssetsRanking.ticker == ticker,
+                                WorldAssetsRanking.data_source == data_source
+                            ).first()
+                            
+                            if existing_pg:
+                                # UPDATE
+                                existing_pg.rank = item.get('rank')
+                                existing_pg.name = item.get('name')
+                                existing_pg.market_cap_usd = item.get('market_cap_usd')
+                                existing_pg.price_usd = item.get('price_usd')
+                                existing_pg.daily_change_percent = item.get('daily_change_percent')
+                                existing_pg.country = item.get('country')
+                                existing_pg.asset_type_id = item.get('asset_type_id')
+                                existing_pg.asset_id = item.get('asset_id')
+                                existing_pg.last_updated = datetime.now()
+                                logger.debug(f"[WorldAssetsRanking PG] 업데이트: {ticker} ({data_source})")
+                            else:
+                                # INSERT
+                                world_asset_pg = WorldAssetsRanking(
+                                    rank=item.get('rank'),
+                                    name=item.get('name'),
+                                    ticker=item.get('ticker'),
+                                    market_cap_usd=item.get('market_cap_usd'),
+                                    price_usd=item.get('price_usd'),
+                                    daily_change_percent=item.get('daily_change_percent'),
+                                    country=item.get('country'),
+                                    asset_type_id=item.get('asset_type_id'),
+                                    asset_id=item.get('asset_id'),
+                                    ranking_date=ranking_date,
+                                    data_source=data_source
+                                )
+                                pg_db.add(world_asset_pg)
+                                logger.debug(f"[WorldAssetsRanking PG] 삽입: {ticker} ({data_source})")
+                            
+                            pg_saved_count += 1
+                            
+                        except Exception as e:
+                            pg_failed_count += 1
+                            logger.error(f"PostgreSQL WorldAssetsRanking 저장 중 오류: {e}, item: {item}")
+                            continue
+                    
+                    pg_db.commit()
+                    logger.info(f"[WorldAssetsRanking dual-write] PostgreSQL 저장 완료: {pg_saved_count}개 성공, {pg_failed_count}개 실패")
+                    
+                except Exception as e:
+                    logger.error(f"PostgreSQL WorldAssetsRanking 저장 실패: {e}")
+                    pg_db.rollback()
+                finally:
+                    pg_db.close()
+                    
+            except Exception as e:
+                logger.error(f"PostgreSQL 연결 실패: {e}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"WorldAssetsRanking 저장 중 오류: {e}")
+            return False
+
     async def _save_technical_indicators(self, items: List[Dict[str, Any]]) -> bool:
         """기술적 지표 데이터 저장 - 이중 저장 (MySQL + PostgreSQL)"""
         try:
@@ -1976,36 +2126,252 @@ class DataProcessor:
         """온체인 메트릭 데이터 저장 - 이중 저장 (MySQL + PostgreSQL)"""
         try:
             if not items:
+                logger.info("[OnchainMetric] 저장할 데이터가 없습니다.")
                 return True
                 
-            logger.info(f"온체인 메트릭 데이터 저장: {len(items)}개 레코드")
+            logger.info(f"[OnchainMetric] 데이터 저장 시작: {len(items)}개 레코드")
+            
+            # 데이터 검증 및 통계 수집
+            valid_items = 0
+            invalid_items = 0
+            missing_asset_id = 0
+            missing_timestamp = 0
+            metric_stats = {}
+            
+            for item in items:
+                # 필수 필드 검증
+                if not item.get('asset_id'):
+                    missing_asset_id += 1
+                    logger.warning(f"[OnchainMetric] asset_id 누락: {item}")
+                    continue
+                    
+                if not item.get('timestamp_utc'):
+                    missing_timestamp += 1
+                    logger.warning(f"[OnchainMetric] timestamp_utc 누락: {item}")
+                    continue
+                
+                # 메트릭별 통계 수집
+                for key in ['mvrv_z_score', 'nupl', 'sopr', 'hashrate', 'difficulty']:
+                    if key in item and item[key] is not None:
+                        if key not in metric_stats:
+                            metric_stats[key] = {'count': 0, 'min': float('inf'), 'max': float('-inf')}
+                        metric_stats[key]['count'] += 1
+                        metric_stats[key]['min'] = min(metric_stats[key]['min'], float(item[key]))
+                        metric_stats[key]['max'] = max(metric_stats[key]['max'], float(item[key]))
+                
+                valid_items += 1
+            
+            invalid_items = len(items) - valid_items
+            
+            # 검증 결과 로그
+            logger.info(f"[OnchainMetric] 데이터 검증 완료:")
+            logger.info(f"  - 총 레코드: {len(items)}개")
+            logger.info(f"  - 유효한 레코드: {valid_items}개")
+            logger.info(f"  - 무효한 레코드: {invalid_items}개")
+            logger.info(f"  - asset_id 누락: {missing_asset_id}개")
+            logger.info(f"  - timestamp 누락: {missing_timestamp}개")
+            
+            # 메트릭별 통계 로그
+            for metric, stats in metric_stats.items():
+                logger.info(f"  - {metric}: {stats['count']}개 (범위: {stats['min']:.4f} ~ {stats['max']:.4f})")
+            
+            if valid_items == 0:
+                logger.error("[OnchainMetric] 유효한 데이터가 없어 저장을 중단합니다.")
+                return False
             
             # MySQL 저장
+            logger.info(f"[OnchainMetric] MySQL 저장 시작...")
             async with self.get_db_session() as db:
-                # TODO: OnchainMetric 모델이 구현되면 실제 저장 로직 추가
-                logger.debug(f"[OnchainMetric] MySQL 저장 준비: {len(items)}개 레코드")
+                from ..models.asset import CryptoMetric
+                
+                saved_count = 0
+                failed_count = 0
+                
+                for i, item in enumerate(items):
+                    try:
+                        # 필수 필드 재검증
+                        if not item.get('asset_id') or not item.get('timestamp_utc'):
+                            failed_count += 1
+                            continue
+                        
+                        # HODL Age 분포를 JSON으로 변환
+                        hodl_age_distribution = {}
+                        hodl_age_keys = [
+                            'hodl_age_0d_1d', 'hodl_age_1d_1w', 'hodl_age_1w_1m', 'hodl_age_1m_3m',
+                            'hodl_age_3m_6m', 'hodl_age_6m_1y', 'hodl_age_1y_2y', 'hodl_age_2y_3y',
+                            'hodl_age_3y_4y', 'hodl_age_4y_5y', 'hodl_age_5y_7y', 'hodl_age_7y_10y',
+                            'hodl_age_10y'
+                        ]
+                        
+                        hodl_age_count = 0
+                        for key in hodl_age_keys:
+                            if key in item and item[key] is not None:
+                                # "hodl_age_0d_1d" -> "0d_1d"로 변환
+                                json_key = key.replace('hodl_age_', '')
+                                hodl_age_distribution[json_key] = float(item[key])
+                                hodl_age_count += 1
+                        
+                        logger.debug(f"[OnchainMetric] 레코드 {i+1}/{len(items)}: asset_id={item.get('asset_id')}, "
+                                   f"timestamp={item.get('timestamp_utc')}, hodl_age_points={hodl_age_count}")
+                        
+                        # CryptoMetric 객체 생성
+                        crypto_metric = CryptoMetric(
+                            asset_id=item.get('asset_id'),
+                            timestamp_utc=item.get('timestamp_utc'),
+                            hodl_age_distribution=hodl_age_distribution if hodl_age_distribution else None,
+                            hashrate=item.get('hashrate'),
+                            difficulty=item.get('difficulty'),
+                            miner_reserves=item.get('miner_reserves'),
+                            realized_cap=item.get('realized_cap'),
+                            mvrv_z_score=item.get('mvrv_z_score'),
+                            realized_price=item.get('realized_price'),
+                            sopr=item.get('sopr'),
+                            nupl=item.get('nupl'),
+                            cdd_90dma=item.get('cdd_90dma'),
+                            true_market_mean=item.get('true_market_mean'),
+                            nrpl_btc=item.get('nrpl_btc'),
+                            aviv=item.get('aviv'),
+                            thermo_cap=item.get('thermo_cap'),
+                            hodl_waves_supply=item.get('hodl_waves_supply'),
+                            etf_btc_total=item.get('etf_btc_total'),
+                            etf_btc_flow=item.get('etf_btc_flow'),
+                            
+                            # Futures 데이터 (JSON 형태: {"total": ..., "exchanges": {...}})
+                            open_interest_futures=item.get('open_interest_futures')
+                        )
+                        
+                        db.add(crypto_metric)
+                        saved_count += 1
+                        
+                    except Exception as e:
+                        failed_count += 1
+                        logger.error(f"[OnchainMetric] 레코드 {i+1} 저장 실패: {e}, 데이터: {item}")
+                        continue
+                
                 db.commit()
+                logger.info(f"[OnchainMetric] MySQL 저장 완료: {saved_count}개 성공, {failed_count}개 실패")
             
             # PostgreSQL 이중 저장
+            logger.info(f"[OnchainMetric] PostgreSQL 이중 저장 시작...")
             try:
                 from ..core.database import get_postgres_db
                 pg_db = next(get_postgres_db())
                 try:
-                    # TODO: OnchainMetric 모델이 구현되면 실제 저장 로직 추가
-                    logger.debug(f"[OnchainMetric dual-write] PostgreSQL 저장 준비: {len(items)}개 레코드")
+                    from ..models.asset import CryptoMetric as PGCryptoMetric
+                    from sqlalchemy.dialects.postgresql import insert as pg_insert
+                    from sqlalchemy import func
+                    
+                    pg_saved_count = 0
+                    pg_failed_count = 0
+                    
+                    for i, item in enumerate(items):
+                        try:
+                            # 필수 필드 재검증
+                            if not item.get('asset_id') or not item.get('timestamp_utc'):
+                                pg_failed_count += 1
+                                continue
+                            
+                            # HODL Age 분포를 JSON으로 변환 (MySQL과 동일한 로직)
+                            hodl_age_distribution = {}
+                            hodl_age_keys = [
+                                'hodl_age_0d_1d', 'hodl_age_1d_1w', 'hodl_age_1w_1m', 'hodl_age_1m_3m',
+                                'hodl_age_3m_6m', 'hodl_age_6m_1y', 'hodl_age_1y_2y', 'hodl_age_2y_3y',
+                                'hodl_age_3y_4y', 'hodl_age_4y_5y', 'hodl_age_5y_7y', 'hodl_age_7y_10y',
+                                'hodl_age_10y'
+                            ]
+                            
+                            hodl_age_count = 0
+                            for key in hodl_age_keys:
+                                if key in item and item[key] is not None:
+                                    json_key = key.replace('hodl_age_', '')
+                                    hodl_age_distribution[json_key] = float(item[key])
+                                    hodl_age_count += 1
+                            
+                            logger.debug(f"[OnchainMetric PG] 레코드 {i+1}/{len(items)}: asset_id={item.get('asset_id')}, "
+                                       f"timestamp={item.get('timestamp_utc')}, hodl_age_points={hodl_age_count}")
+                            
+                            # PostgreSQL UPSERT
+                            pg_data = {
+                                'asset_id': item.get('asset_id'),
+                                'timestamp_utc': item.get('timestamp_utc'),
+                                'hodl_age_distribution': hodl_age_distribution if hodl_age_distribution else None,
+                                'hashrate': item.get('hashrate'),
+                                'difficulty': item.get('difficulty'),
+                                'miner_reserves': item.get('miner_reserves'),
+                                'realized_cap': item.get('realized_cap'),
+                                'mvrv_z_score': item.get('mvrv_z_score'),
+                                'realized_price': item.get('realized_price'),
+                                'sopr': item.get('sopr'),
+                                'nupl': item.get('nupl'),
+                                'cdd_90dma': item.get('cdd_90dma'),
+                                'true_market_mean': item.get('true_market_mean'),
+                                'nrpl_btc': item.get('nrpl_btc'),
+                                'aviv': item.get('aviv'),
+                                'thermo_cap': item.get('thermo_cap'),
+                                'hodl_waves_supply': item.get('hodl_waves_supply'),
+                                'etf_btc_total': item.get('etf_btc_total'),
+                                'etf_btc_flow': item.get('etf_btc_flow'),
+                                
+                                # Futures 데이터 (JSON 형태: {"total": ..., "exchanges": {...}})
+                                'open_interest_futures': item.get('open_interest_futures')
+                            }
+                            
+                            # None 값 제거
+                            pg_data = {k: v for k, v in pg_data.items() if v is not None}
+                            
+                            stmt = pg_insert(PGCryptoMetric).values(**pg_data)
+                            stmt = stmt.on_conflict_do_update(
+                                index_elements=['asset_id', 'timestamp_utc'],
+                                set_={
+                                    'hodl_age_distribution': stmt.excluded.hodl_age_distribution,
+                                    'hashrate': stmt.excluded.hashrate,
+                                    'difficulty': stmt.excluded.difficulty,
+                                    'miner_reserves': stmt.excluded.miner_reserves,
+                                    'realized_cap': stmt.excluded.realized_cap,
+                                    'mvrv_z_score': stmt.excluded.mvrv_z_score,
+                                    'realized_price': stmt.excluded.realized_price,
+                                    'sopr': stmt.excluded.sopr,
+                                    'nupl': stmt.excluded.nupl,
+                                    'cdd_90dma': stmt.excluded.cdd_90dma,
+                                    'true_market_mean': stmt.excluded.true_market_mean,
+                                    'nrpl_btc': stmt.excluded.nrpl_btc,
+                                    'aviv': stmt.excluded.aviv,
+                                    'thermo_cap': stmt.excluded.thermo_cap,
+                                    'hodl_waves_supply': stmt.excluded.hodl_waves_supply,
+                                    'etf_btc_total': stmt.excluded.etf_btc_total,
+                                    'etf_btc_flow': stmt.excluded.etf_btc_flow,
+                                    'open_interest_futures': stmt.excluded.open_interest_futures,
+                                    'updated_at': func.now()
+                                }
+                            )
+                            pg_db.execute(stmt)
+                            pg_saved_count += 1
+                            
+                        except Exception as e:
+                            pg_failed_count += 1
+                            logger.error(f"[OnchainMetric PG] 레코드 {i+1} 저장 실패: {e}, 데이터: {item}")
+                            continue
+                    
                     pg_db.commit()
-                    logger.debug(f"[OnchainMetric dual-write] PostgreSQL 저장 완료")
+                    logger.info(f"[OnchainMetric dual-write] PostgreSQL 저장 완료: {pg_saved_count}개 성공, {pg_failed_count}개 실패")
+                    
                 except Exception as e:
+                    logger.error(f"[OnchainMetric PG] 저장 실패: {e}")
                     pg_db.rollback()
-                    logger.warning(f"[OnchainMetric dual-write] PostgreSQL 저장 실패: {e}")
                 finally:
                     pg_db.close()
             except Exception as e:
-                logger.warning(f"[OnchainMetric dual-write] PostgreSQL 연결 실패: {e}")
+                logger.error(f"[OnchainMetric PG] 연결 실패: {e}")
+            
+            # 최종 결과 요약
+            logger.info(f"[OnchainMetric] 저장 완료 요약:")
+            logger.info(f"  - MySQL: {saved_count}개 성공, {failed_count}개 실패")
+            logger.info(f"  - PostgreSQL: {pg_saved_count}개 성공, {pg_failed_count}개 실패")
+            logger.info(f"  - 전체 성공률: {((saved_count + pg_saved_count) / (len(items) * 2) * 100):.1f}%")
             
             return True
         except Exception as e:
-            logger.error(f"온체인 메트릭 데이터 저장 실패: {e}")
+            logger.error(f"[OnchainMetric] 저장 중 치명적 오류: {e}")
             return False
 
     async def _update_asset_settings(self, payload: Dict[str, Any]) -> bool:

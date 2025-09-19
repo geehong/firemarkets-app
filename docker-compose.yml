@@ -11,6 +11,8 @@ services:
       MYSQL_USER: ${DB_USERNAME}
       MYSQL_PASSWORD: ${DB_PASSWORD}
       TZ: Asia/Seoul
+    ports:
+      - "3306:3306"  # 외부 접근을 위한 포트 바인딩 추가
     volumes:
       - db_data:/var/lib/mysql
       - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql

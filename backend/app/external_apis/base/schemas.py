@@ -281,20 +281,8 @@ class CryptoMetricsData(BaseModel):
     hashrate: Optional[float] = None
     difficulty: Optional[float] = None
     
-    # HODL Age 분포 (Supply by Age)
-    hodl_age_0d_1d: Optional[float] = None
-    hodl_age_1d_1w: Optional[float] = None
-    hodl_age_1w_1m: Optional[float] = None
-    hodl_age_1m_3m: Optional[float] = None
-    hodl_age_3m_6m: Optional[float] = None
-    hodl_age_6m_1y: Optional[float] = None
-    hodl_age_1y_2y: Optional[float] = None
-    hodl_age_2y_3y: Optional[float] = None
-    hodl_age_3y_4y: Optional[float] = None
-    hodl_age_4y_5y: Optional[float] = None
-    hodl_age_5y_7y: Optional[float] = None
-    hodl_age_7y_10y: Optional[float] = None
-    hodl_age_10y: Optional[float] = None
+    # HODL Age 분포 (JSON으로 통합)
+    hodl_age_distribution: Optional[Dict[str, float]] = None  # {"0d_1d": 0.1, "1d_1w": 0.2, ...}
     hodl_waves_supply: Optional[float] = None
     
     # 기타 지표

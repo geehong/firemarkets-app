@@ -1,5 +1,5 @@
 # backend_temp/app/models/asset.py
-from sqlalchemy import (BIGINT, DECIMAL, TIMESTAMP, Boolean, Column, Date,
+from sqlalchemy import (BIGINT, BigInteger, DECIMAL, TIMESTAMP, Boolean, Column, Date,
                         DateTime, ForeignKey, Integer, String, Text, func, JSON, Float)
 from sqlalchemy.orm import relationship
 
@@ -8,6 +8,7 @@ from ..core.database import Base
 
 class AssetType(Base):
     __tablename__ = "asset_types"
+    __table_args__ = {'extend_existing': True}
     asset_type_id = Column(Integer, primary_key=True, index=True)
     type_name = Column(String(100), unique=True, nullable=False)
     description = Column(Text)
@@ -18,6 +19,7 @@ class AssetType(Base):
 
 class Asset(Base):
     __tablename__ = "assets"
+    __table_args__ = {'extend_existing': True}
     asset_id = Column(Integer, primary_key=True, index=True)
     ticker = Column(String(50), unique=True, nullable=False, index=True)
     asset_type_id = Column(
@@ -371,6 +373,7 @@ class OnchainMetricsInfo(Base):
 
 class WorldAssetsRanking(Base):
     __tablename__ = 'world_assets_ranking'
+    __table_args__ = {'extend_existing': True}
     
     id = Column(Integer, primary_key=True)
     rank = Column(Integer, nullable=False)
@@ -425,37 +428,22 @@ class ScrapingLogs(Base):
 
 class CryptoMetric(Base):
     __tablename__ = 'crypto_metrics'
+    __table_args__ = {'extend_existing': True}
     
-    id = Column(Integer, primary_key=True)
+    metric_id = Column(BigInteger, primary_key=True)  # DB 스키마와 일치
     asset_id = Column(Integer, ForeignKey('assets.asset_id'), nullable=False, index=True)
-    timestamp_utc = Column(DateTime, nullable=False, index=True)
+    timestamp_utc = Column(Date, nullable=False, index=True)  # DB 스키마와 일치 (Date 타입)
     
-    # HODL Waves (Bitcoin age distribution)
-    hodl_age_0d_1d = Column(DECIMAL(20, 10), nullable=True)
-    hodl_age_1d_1w = Column(DECIMAL(20, 10), nullable=True)
-    hodl_age_1w_1m = Column(DECIMAL(20, 10), nullable=True)
-    hodl_age_1m_3m = Column(DECIMAL(20, 10), nullable=True)
-    hodl_age_3m_6m = Column(DECIMAL(20, 10), nullable=True)
-    hodl_age_6m_1y = Column(DECIMAL(20, 10), nullable=True)
-    hodl_age_1y_2y = Column(DECIMAL(20, 10), nullable=True)
-    hodl_age_2y_3y = Column(DECIMAL(20, 10), nullable=True)
-    hodl_age_3y_5y = Column(DECIMAL(20, 10), nullable=True)
-    hodl_age_5y_7y = Column(DECIMAL(20, 10), nullable=True)
-    hodl_age_7y_10y = Column(DECIMAL(20, 10), nullable=True)
-    hodl_age_10y_plus = Column(DECIMAL(20, 10), nullable=True)
+    # HODL Waves (Bitcoin age distribution) - JSON으로 통합
+    hodl_age_distribution = Column(JSON, nullable=True)  # {"0d_1d": 0.1, "1d_1w": 0.2, ...}
     
     # Network metrics
-    active_addresses = Column(Integer, nullable=True)
-    transaction_count = Column(Integer, nullable=True)
-    hash_rate = Column(DECIMAL(30, 10), nullable=True)
-    hashrate = Column(DECIMAL(30, 10), nullable=True)  # 데이터베이스 필드명과 일치
+    hashrate = Column(DECIMAL(30, 10), nullable=True)  # 중복 제거, hashrate만 사용
     difficulty = Column(DECIMAL(30, 10), nullable=True)
     miner_reserves = Column(DECIMAL(24, 10), nullable=True)
     
     # Market metrics
-    market_cap = Column(DECIMAL(30, 2), nullable=True)
     realized_cap = Column(DECIMAL(30, 2), nullable=True)
-    mvrv_ratio = Column(DECIMAL(10, 4), nullable=True)
     mvrv_z_score = Column(DECIMAL(18, 10), nullable=True)
     realized_price = Column(DECIMAL(24, 10), nullable=True)
     sopr = Column(DECIMAL(18, 10), nullable=True)
@@ -471,12 +459,11 @@ class CryptoMetric(Base):
     open_interest_futures = Column(JSON, nullable=True)
     
     # Metadata
-    data_source = Column(String(100), nullable=True)
-    created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
     def __repr__(self):
-        return f"<CryptoMetric(id={self.id}, asset_id={self.asset_id}, timestamp={self.timestamp_utc})>"
+        return f"<CryptoMetric(metric_id={self.metric_id}, asset_id={self.asset_id}, timestamp={self.timestamp_utc})>"
 
 
 class SparklineData(Base):

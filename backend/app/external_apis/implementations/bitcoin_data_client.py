@@ -56,9 +56,9 @@ class BitcoinDataClient(OnChainAPIClient):
         """Get Bitcoin Data API rate limit information"""
         return {
             "free_tier": {
-                "requests_per_minute": 4,  # 실제 API 문서 기준
-                "requests_per_hour": 4,    # 실제 제한으로 되돌림
-                "requests_per_day": 50
+                "requests_per_minute": 3,  # 2024년 12월 정책: 시간당 3개
+                "requests_per_hour": 3,    # 2024년 12월 정책: 시간당 3개  
+                "requests_per_day": 40     # 2024년 12월 정책: 일일 40개
             },
             "pro_tier": {
                 "requests_per_minute": 300,
@@ -136,17 +136,21 @@ class BitcoinDataClient(OnChainAPIClient):
         logger.error(f"All endpoints failed for {metric_name}")
         return None
     
-    async def get_metric(self, metric_name: str, days: int = 30) -> Optional[List]:
+    async def get_metric(self, metric_name: str, days: int = None) -> Optional[List]:
         """
         Get a specific onchain metric by name.
+        동적 Limit 시스템 사용 (다른 클라이언트들과 동일)
         
         Args:
             metric_name: Name of the metric (e.g., "mvrv_z_score", "nupl", "sopr")
-            days: Number of days to fetch
+            days: Number of days to fetch (None이면 기본값 30 사용)
             
         Returns:
             List of metric data points or None
         """
+        # days가 None이면 기본값 30 사용 (하위 호환성)
+        if days is None:
+            days = 30
         try:
             # 메트릭 이름 매핑
             metric_mapping = {
@@ -174,18 +178,22 @@ class BitcoinDataClient(OnChainAPIClient):
     async def get_onchain_metrics(
         self, 
         metric_type: str = "all",
-        days: int = 30
+        days: int = None
     ) -> Optional[List[OnChainMetricData]]:
         """
         Get specific onchain metrics (e.g., MVRV, SOPR).
+        동적 Limit 시스템 사용 (다른 클라이언트들과 동일)
         
         Args:
             metric_type: Type of metric ("all", "mvrv", "nupl", "sopr", etc.)
-            days: Number of days to fetch
+            days: Number of days to fetch (None이면 기본값 30 사용)
             
         Returns:
             Onchain metrics data or None
         """
+        # days가 None이면 기본값 30 사용 (하위 호환성)
+        if days is None:
+            days = 30
         try:
             metrics = {}
             
@@ -213,18 +221,22 @@ class BitcoinDataClient(OnChainAPIClient):
     async def get_network_stats(
         self, 
         stat_type: str = "all",
-        days: int = 30
+        days: int = None
     ) -> Optional[List[OnChainMetricData]]:
         """
         Get network statistics (e.g., hashrate, difficulty).
+        동적 Limit 시스템 사용 (다른 클라이언트들과 동일)
         
         Args:
             stat_type: Type of statistic ("all", "hashrate", "difficulty", etc.)
-            days: Number of days to fetch
+            days: Number of days to fetch (None이면 기본값 30 사용)
             
         Returns:
             Network statistics data or None
         """
+        # days가 None이면 기본값 30 사용 (하위 호환성)
+        if days is None:
+            days = 30
         try:
             stats = {}
             
@@ -416,15 +428,17 @@ class BitcoinDataClient(OnChainAPIClient):
         
         return None
 
-    async def get_crypto_metrics(self, asset_id: int, days: int = 30) -> Optional[List[CryptoMetricsData]]:
+    async def get_crypto_metrics(self, asset_id: int, days: int = None) -> Optional[List[CryptoMetricsData]]:
         """Get comprehensive crypto metrics data matching the database schema (하이브리드 방식)"""
         try:
-            # 수집할 메트릭 목록
+            # days가 None이면 기본값 30 사용 (하위 호환성)
+            if days is None:
+                days = 30
+                
+            # API 제한 고려: 시간당 3개, 일일 40개
+            # 우선순위별 메트릭 수집 (설정에 따라 조정 가능)
             metrics_to_fetch = [
-                'mvrv-zscore', 'sopr', 'nupl', 'realized-price', 'hashrate',
-                'difficulty', 'miner-reserves', 'etf-btc-total', 'open-interest-futures',
-                'cap-real-usd', 'cdd-90dma', 'true-market-mean', 'nrpl-btc',
-                'aviv', 'thermo-cap', 'hodl-waves-supply', 'etf-btc-flow'
+                'mvrv-zscore', 'nupl', 'sopr'  # 핵심 메트릭만 (시간당 3개 제한 고려)
             ]
             
             metrics_list = []
@@ -448,6 +462,29 @@ class BitcoinDataClient(OnChainAPIClient):
                                         except (json.JSONDecodeError, TypeError):
                                             open_interest_futures = None
                                     
+                                    # HODL Age 분포를 JSON으로 변환
+                                    hodl_age_distribution = {}
+                                    hodl_age_mapping = {
+                                        'age0d1d': '0d_1d',
+                                        'age1d1w': '1d_1w', 
+                                        'age1w1m': '1w_1m',
+                                        'age1m3m': '1m_3m',
+                                        'age3m6m': '3m_6m',
+                                        'age6m1y': '6m_1y',
+                                        'age1y2y': '1y_2y',
+                                        'age2y3y': '2y_3y',
+                                        'age3y4y': '3y_4y',
+                                        'age4y5y': '4y_5y',
+                                        'age5y7y': '5y_7y',
+                                        'age7y10y': '7y_10y',
+                                        'age10y': '10y'
+                                    }
+                                    
+                                    for api_key, json_key in hodl_age_mapping.items():
+                                        value = safe_float(item.get(api_key))
+                                        if value is not None:
+                                            hodl_age_distribution[json_key] = value
+                                    
                                     # CryptoMetricsData 객체 생성
                                     metric = CryptoMetricsData(
                                         asset_id=asset_id,
@@ -462,24 +499,12 @@ class BitcoinDataClient(OnChainAPIClient):
                                         thermo_cap=safe_float(item.get("thermoCap") or item.get("thermo_cap")),
                                         true_market_mean=safe_float(item.get("trueMarketMean") or item.get("true_market_mean")),
                                         
+                                        # HODL Age 분포 (JSON)
+                                        hodl_age_distribution=hodl_age_distribution if hodl_age_distribution else None,
+                                        
                                         # 네트워크 지표
                                         hashrate=safe_float(item.get("hashrate")),
                                         difficulty=safe_float(item.get("difficultyBtc") or item.get("difficulty")),
-                                        
-                                        # HODL Age 분포 (별도 엔드포인트에서 가져와야 함)
-                                        hodl_age_0d_1d=None,  # 별도 처리 필요
-                                        hodl_age_1d_1w=None,
-                                        hodl_age_1w_1m=None,
-                                        hodl_age_1m_3m=None,
-                                        hodl_age_3m_6m=None,
-                                        hodl_age_6m_1y=None,
-                                        hodl_age_1y_2y=None,
-                                        hodl_age_2y_3y=None,
-                                        hodl_age_3y_4y=None,
-                                        hodl_age_4y_5y=None,
-                                        hodl_age_5y_7y=None,
-                                        hodl_age_7y_10y=None,
-                                        hodl_age_10y=None,
                                         hodl_waves_supply=safe_float(item.get("hodlWavesSupply") or item.get("hodl_waves_supply")),
                                         
                                         # 기타 지표
@@ -501,8 +526,8 @@ class BitcoinDataClient(OnChainAPIClient):
                                     logger.error(f"Error parsing metric item for {metric_name}: {e}")
                                     continue
                         
-                        # Rate limiting 고려 (Free plan: 시간당 4개)
-                        await asyncio.sleep(60)  # 60초 대기 (시간당 4개 = 900초/4 = 225초 간격, 여유분 고려)
+                        # Rate limiting 고려 (2024년 12월 정책: 시간당 3개, 일일 40개)
+                        await asyncio.sleep(1200)  # 20분 대기 (시간당 3개 = 3600초/3 = 1200초 간격)
                         
                     except Exception as e:
                         logger.error(f"Error fetching {metric_name}: {e}")

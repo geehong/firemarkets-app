@@ -110,12 +110,12 @@ class WorldAssetsCollector(BaseCollector):
             # 5. 8marketcap.com Metals 데이터 수집
             eight_marketcap_metals_data = await self.scrape_eight_marketcap_metals()
             
-            # 6. 각 데이터 소스별로 별도 저장
-            companies_updated = self._update_assets_database(companies_data, 'companiesmarketcap')
-            eight_marketcap_updated = self._update_assets_database(eight_marketcap_data, '8marketcap_companies')
-            eight_marketcap_etfs_updated = self._update_assets_database(eight_marketcap_etfs_data, '8marketcap_etfs')
-            eight_marketcap_cryptos_updated = self._update_assets_database(eight_marketcap_cryptos_data, '8marketcap_cryptos')
-            eight_marketcap_metals_updated = self._update_assets_database(eight_marketcap_metals_data, '8marketcap_metals')
+            # 6. 각 데이터 소스별로 큐에 전송 (표준 패턴 적용)
+            companies_updated = await self._send_to_queue(companies_data, 'companiesmarketcap')
+            eight_marketcap_updated = await self._send_to_queue(eight_marketcap_data, '8marketcap_companies')
+            eight_marketcap_etfs_updated = await self._send_to_queue(eight_marketcap_etfs_data, '8marketcap_etfs')
+            eight_marketcap_cryptos_updated = await self._send_to_queue(eight_marketcap_cryptos_data, '8marketcap_cryptos')
+            eight_marketcap_metals_updated = await self._send_to_queue(eight_marketcap_metals_data, '8marketcap_metals')
             
             # 4. 채권 시장 데이터 수집 (temporarily disabled due to 404 errors)
             # bond_data = await self.get_bis_bond_data()
@@ -603,6 +603,46 @@ class WorldAssetsCollector(BaseCollector):
     #     except Exception as e:
     #         self.logging_helper.log_error(f"Error fetching BIS bond data: {e}")
     #         return None
+
+    async def _send_to_queue(self, assets_data: List[AssetData], data_source: str) -> int:
+        """자산 데이터를 큐에 전송 (표준 패턴 적용)"""
+        try:
+            if not assets_data:
+                return 0
+                
+            # AssetData 객체를 딕셔너리로 변환
+            items = []
+            for asset in assets_data:
+                item = {
+                    'rank': asset.rank,
+                    'name': asset.name,
+                    'ticker': asset.ticker,
+                    'market_cap_usd': asset.market_cap_usd,
+                    'price_usd': asset.price_usd,
+                    'daily_change_percent': asset.daily_change_percent,
+                    'country': asset.country,
+                    'asset_type_id': asset.asset_type_id,
+                    'asset_id': asset.asset_id
+                }
+                items.append(item)
+            
+            # 큐에 전송
+            payload = {
+                "items": items,
+                "metadata": {
+                    "data_source": data_source,
+                    "collection_date": datetime.now().isoformat()
+                }
+            }
+            
+            await self.redis_queue_manager.push_batch_task("world_assets_ranking", payload)
+            self.logging_helper.log_info(f"World assets data sent to queue: {len(items)} items from {data_source}")
+            
+            return len(items)
+            
+        except Exception as e:
+            self.logging_helper.log_error(f"Error sending world assets data to queue: {e}")
+            return 0
 
     def _update_assets_database(self, assets_data: List[AssetData], data_source: str) -> int:
         """자산 데이터 DB 업데이트 - 히스토리 데이터 보존"""

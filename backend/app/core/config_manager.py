@@ -193,8 +193,16 @@ class ConfigManager:
     
     def get_enabled_onchain_metrics(self) -> List[str]:
         """Returns a list of enabled on-chain metrics for collection."""
-        # 기본적으로 MVRV-Z-Score를 활성화
-        default_metrics = ["mvrv_z_score"]
+        # API 제한 고려: 시간당 3개, 일일 40개
+        # 우선순위별 메트릭 그룹 (하루 2-3회 수집 가능)
+        priority_metrics = {
+            "high": ["mvrv_z_score", "nupl", "sopr"],  # 핵심 메트릭 (3개)
+            "medium": ["realized_price", "hashrate", "difficulty"],  # 네트워크 메트릭 (3개)
+            "low": ["etf_btc_total", "etf_btc_flow", "open_interest_futures"]  # 시장 메트릭 (3개)
+        }
+        
+        # 기본적으로 high 우선순위만 활성화 (시간당 3개 제한 고려)
+        default_metrics = priority_metrics["high"]
         
         # 설정에서 활성화된 메트릭들을 확인
         enabled_metrics = []
@@ -204,7 +212,7 @@ class ConfigManager:
         
         # 활성화된 메트릭이 없으면 기본값 반환
         if not enabled_metrics:
-            logger.warning("No onchain metrics enabled, using default: mvrv_z_score")
+            logger.warning("No onchain metrics enabled, using default high priority metrics")
             return default_metrics
         
         return enabled_metrics

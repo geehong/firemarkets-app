@@ -231,7 +231,7 @@ class SchedulerService:
                     )
                     self.logger.info(f"✅ Scheduled job: '{job_id}' (TEST MODE: {test_interval_minutes}분 간격, 수동 실행만)")
                 else:
-                    # 일반 모드: 1일 간격으로 설정 (수동 실행만)
+                    # 일반 모드: 모든 컬렉터 1일 간격으로 통일
                     self.scheduler.add_job(
                         job_func,
                         'interval',
@@ -239,9 +239,8 @@ class SchedulerService:
                         id=job_id,
                         replace_existing=True,
                         misfire_grace_time=3600, # 1 hour
-                        # next_run_time 제거 - 수동 실행만 가능
                     )
-                    self.logger.info(f"✅ Scheduled job: '{job_id}' (NORMAL MODE: 24시간 간격, 수동 실행만)")
+                    self.logger.info(f"✅ Scheduled job: '{job_id}' (NORMAL MODE: 24시간 간격)")
             else:
                 self.logger.info(f"❌ Job for '{job_name}' is disabled via configuration.")
 

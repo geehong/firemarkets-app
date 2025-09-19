@@ -992,17 +992,34 @@ class ApiStrategyManager:
         self.logger.error(f"All API clients failed to fetch crypto info for {ticker}")
         return None
 
-    async def get_onchain_metric(self, metric_name: str, asset_id: int = None) -> Optional[Dict[str, Any]]:
+    async def get_onchain_metric(self, metric_name: str, asset_id: int = None, days: int = None) -> Optional[Dict[str, Any]]:
         """
         온체인 메트릭 데이터를 가져오는 메서드 (수집기용)
+        동적 Limit 시스템 사용 (다른 클라이언트들과 동일)
         """
+        # days가 None이면 동적으로 계산
+        if days is None:
+            # DB 설정에서 historical_days 가져오기
+            from app.models import AppConfiguration
+            from app.core.database import get_db
+            
+            db = next(get_db())
+            try:
+                historical_days_config = db.query(AppConfiguration).filter(
+                    AppConfiguration.config_key == "HISTORICAL_DATA_DAYS_PER_RUN"
+                ).first()
+                days = int(historical_days_config.config_value) if historical_days_config else 165
+                self.logger.info(f"Using dynamic limit for onchain metric {metric_name}: {days} days")
+            finally:
+                db.close()
+        
         for i, client in enumerate(self.onchain_clients):
             try:
-                self.logger.info(f"Attempting to fetch onchain metric {metric_name} using {client.__class__.__name__} (attempt {i+1}/{len(self.onchain_clients)})")
+                self.logger.info(f"Attempting to fetch onchain metric {metric_name} using {client.__class__.__name__} (attempt {i+1}/{len(self.onchain_clients)}) with {days} days")
                 if hasattr(client, 'get_metric'):
-                    data = await client.get_metric(metric_name)
+                    data = await client.get_metric(metric_name, days=days)
                 elif hasattr(client, 'get_onchain_metric'):
-                    data = await client.get_onchain_metric(metric_name)
+                    data = await client.get_onchain_metric(metric_name, days=days)
                 else:
                     self.logger.warning(f"{client.__class__.__name__} has no onchain metric method")
                     continue

@@ -89,15 +89,21 @@ class OnchainCollector(BaseCollector):
         Fetches data for a single onchain metric and enqueues it.
         """
         try:
+            self.logging_helper.log_info(f"[OnchainCollector] 메트릭 '{metric_name}' 수집 시작 (asset_id: {self.bitcoin_asset_id})")
+            
             # 3. 데이터 가져오라고 시키기 (ApiStrategyManager 사용)
+            # 동적 Limit 시스템 사용 (다른 클라이언트들과 동일)
             metric_data: List[OnchainMetricDataPoint] = await self.api_manager.get_onchain_metric(
                 metric_name=metric_name,
-                asset_id=self.bitcoin_asset_id
+                asset_id=self.bitcoin_asset_id,
+                days=None  # ApiStrategyManager에서 동적으로 계산
             )
 
             if not metric_data:
-                self.logging_helper.log_debug(f"No new data returned for onchain metric '{metric_name}'.")
+                self.logging_helper.log_warning(f"[OnchainCollector] 메트릭 '{metric_name}'에 대한 데이터가 없습니다.")
                 return {"success": True, "enqueued_count": 0}
+            
+            self.logging_helper.log_info(f"[OnchainCollector] 메트릭 '{metric_name}' 데이터 수집 완료: {len(metric_data)}개 포인트")
 
             # 4. 작업 큐에 넘겨주기 (RedisQueueManager 사용)
             payload = {
@@ -106,29 +112,62 @@ class OnchainCollector(BaseCollector):
                 "data": []
             }
             
+            # 데이터 변환 및 검증
+            valid_items = 0
+            invalid_items = 0
+            
             # metric_data가 리스트인지 확인하고 각 항목을 처리
             if isinstance(metric_data, list):
-                for item in metric_data:
-                    if hasattr(item, 'model_dump'):
-                        # Pydantic 모델인 경우
-                        payload["data"].append(item.model_dump(mode='json'))
-                    elif isinstance(item, dict):
-                        # 딕셔너리인 경우
-                        payload["data"].append(item)
-                    else:
-                        # 문자열이나 다른 타입인 경우 건너뛰기
-                        self.logging_helper.log_warning(f"Skipping non-dict item for metric '{metric_name}': {type(item)}")
+                for i, item in enumerate(metric_data):
+                    try:
+                        if hasattr(item, 'model_dump'):
+                            # Pydantic 모델인 경우
+                            converted_item = item.model_dump(mode='json')
+                            payload["data"].append(converted_item)
+                            valid_items += 1
+                            
+                            # 첫 번째와 마지막 아이템 로그
+                            if i == 0 or i == len(metric_data) - 1:
+                                self.logging_helper.log_debug(f"[OnchainCollector] 메트릭 '{metric_name}' 아이템 {i+1}: "
+                                                           f"timestamp={converted_item.get('timestamp_utc')}, "
+                                                           f"mvrv_z_score={converted_item.get('mvrv_z_score')}")
+                            
+                        elif isinstance(item, dict):
+                            # 딕셔너리인 경우
+                            payload["data"].append(item)
+                            valid_items += 1
+                            
+                            # 첫 번째와 마지막 아이템 로그
+                            if i == 0 or i == len(metric_data) - 1:
+                                self.logging_helper.log_debug(f"[OnchainCollector] 메트릭 '{metric_name}' 아이템 {i+1}: "
+                                                           f"timestamp={item.get('timestamp_utc')}, "
+                                                           f"mvrv_z_score={item.get('mvrv_z_score')}")
+                        else:
+                            # 문자열이나 다른 타입인 경우 건너뛰기
+                            invalid_items += 1
+                            self.logging_helper.log_warning(f"[OnchainCollector] 메트릭 '{metric_name}' 아이템 {i+1} 건너뛰기: "
+                                                          f"지원하지 않는 타입 {type(item)}")
+                            continue
+                    except Exception as e:
+                        invalid_items += 1
+                        self.logging_helper.log_error(f"[OnchainCollector] 메트릭 '{metric_name}' 아이템 {i+1} 변환 실패: {e}")
                         continue
             else:
-                self.logging_helper.log_warning(f"Unexpected metric_data type for '{metric_name}': {type(metric_data)}")
+                self.logging_helper.log_error(f"[OnchainCollector] 메트릭 '{metric_name}' 예상치 못한 데이터 타입: {type(metric_data)}")
                 return {"success": False, "error": f"Unexpected data type: {type(metric_data)}", "enqueued_count": 0}
+            
+            # 변환 결과 로그
+            self.logging_helper.log_info(f"[OnchainCollector] 메트릭 '{metric_name}' 데이터 변환 완료:")
+            self.logging_helper.log_info(f"  - 총 아이템: {len(metric_data)}개")
+            self.logging_helper.log_info(f"  - 유효한 아이템: {valid_items}개")
+            self.logging_helper.log_info(f"  - 무효한 아이템: {invalid_items}개")
             
             if payload["data"]:
                 await self.redis_queue_manager.push_batch_task("onchain_metric", payload)
-                self.logging_helper.log_debug(f"Successfully enqueued {len(payload['data'])} records for onchain metric '{metric_name}'.")
+                self.logging_helper.log_info(f"[OnchainCollector] 메트릭 '{metric_name}' 큐 전송 완료: {len(payload['data'])}개 레코드")
                 return {"success": True, "enqueued_count": len(payload["data"])}
             else:
-                self.logging_helper.log_debug(f"No valid items to enqueue for onchain metric '{metric_name}'.")
+                self.logging_helper.log_warning(f"[OnchainCollector] 메트릭 '{metric_name}' 큐에 전송할 유효한 데이터가 없습니다.")
                 return {"success": True, "enqueued_count": 0}
 
         except Exception as e:
