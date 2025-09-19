@@ -1961,6 +1961,22 @@ class DataProcessor:
                         data_source = metadata.get('data_source', 'unknown')
                         ticker = item.get('ticker')
                         
+                        # asset_id가 없으면 assets 테이블에서 찾기
+                        asset_id = item.get('asset_id')
+                        asset_type_id = item.get('asset_type_id')
+                        if not asset_id and ticker and asset_type_id:
+                            try:
+                                from ..models.asset import Asset
+                                existing_asset = db.query(Asset).filter(
+                                    Asset.ticker == ticker,
+                                    Asset.asset_type_id == asset_type_id
+                                ).first()
+                                if existing_asset:
+                                    asset_id = existing_asset.asset_id
+                                    logger.debug(f"Found asset_id {asset_id} for ticker {ticker}")
+                            except Exception as e:
+                                logger.error(f"Error looking up asset_id for {ticker}: {e}")
+                        
                         # 기존 레코드 확인
                         existing = db.query(WorldAssetsRanking).filter(
                             WorldAssetsRanking.ranking_date == ranking_date,
@@ -1976,8 +1992,8 @@ class DataProcessor:
                             existing.price_usd = item.get('price_usd')
                             existing.daily_change_percent = item.get('daily_change_percent')
                             existing.country = item.get('country')
-                            existing.asset_type_id = item.get('asset_type_id')
-                            existing.asset_id = item.get('asset_id')
+                            existing.asset_type_id = asset_type_id
+                            existing.asset_id = asset_id
                             existing.last_updated = datetime.now()
                             logger.debug(f"[WorldAssetsRanking] 업데이트: {ticker} ({data_source})")
                         else:
@@ -1990,8 +2006,8 @@ class DataProcessor:
                                 price_usd=item.get('price_usd'),
                                 daily_change_percent=item.get('daily_change_percent'),
                                 country=item.get('country'),
-                                asset_type_id=item.get('asset_type_id'),
-                                asset_id=item.get('asset_id'),
+                                asset_type_id=asset_type_id,
+                                asset_id=asset_id,
                                 ranking_date=ranking_date,
                                 data_source=data_source
                             )

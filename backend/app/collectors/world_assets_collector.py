@@ -610,9 +610,23 @@ class WorldAssetsCollector(BaseCollector):
             if not assets_data:
                 return 0
                 
-            # AssetData 객체를 딕셔너리로 변환
+            # AssetData 객체를 딕셔너리로 변환하면서 asset_id 자동 매핑
             items = []
             for asset in assets_data:
+                # asset_id가 없으면 assets 테이블에서 찾기
+                asset_id = asset.asset_id
+                if not asset_id and asset.ticker and asset.asset_type_id:
+                    try:
+                        existing_asset = self.db.query(Asset).filter(
+                            Asset.ticker == asset.ticker,
+                            Asset.asset_type_id == asset.asset_type_id
+                        ).first()
+                        if existing_asset:
+                            asset_id = existing_asset.asset_id
+                            self.logging_helper.log_debug(f"Found asset_id {asset_id} for ticker {asset.ticker}")
+                    except Exception as e:
+                        self.logging_helper.log_error(f"Error looking up asset_id for {asset.ticker}: {e}")
+                
                 item = {
                     'rank': asset.rank,
                     'name': asset.name,
@@ -622,7 +636,7 @@ class WorldAssetsCollector(BaseCollector):
                     'daily_change_percent': asset.daily_change_percent,
                     'country': asset.country,
                     'asset_type_id': asset.asset_type_id,
-                    'asset_id': asset.asset_id
+                    'asset_id': asset_id
                 }
                 items.append(item)
             

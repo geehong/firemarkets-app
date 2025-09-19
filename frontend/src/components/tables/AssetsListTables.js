@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { AgGridReact } from 'ag-grid-react'
 import { realtimeAPI } from '../../services/api'
 import { 
@@ -152,7 +153,7 @@ const SparklineRenderer = ({ value }) => {
  * @param {Object} props.style - 추가 스타일
  */
 const AssetsListTables = ({
-  typeName = 'Stocks',
+  typeName = null,
   page = 1,
   pageSize = 50,
   sortBy = 'market_cap',
@@ -165,6 +166,7 @@ const AssetsListTables = ({
   ...props
 }) => {
   const gridRef = useRef()
+  const navigate = useNavigate()
   const [gridApi, setGridApi] = useState(null)
   const [rowData, setRowData] = useState([])
   const [totalRows, setTotalRows] = useState(0)
@@ -208,6 +210,24 @@ const AssetsListTables = ({
         maxWidth: 120,
         sortable: true,
         filter: true,
+        cellRenderer: (params) => {
+          const { data, value } = params
+          if (!data) return value
+          const assetId = data.asset_id || data.assetId || data.id
+          const handleClick = (e) => {
+            e.preventDefault()
+            if (assetId) {
+              console.log('[AssetsListTables] Click ticker:', { ticker: value, assetId, url: `/assets/${assetId}` })
+              navigate(`/assets/${assetId}`)
+            }
+          }
+          const href = assetId ? `/assets/${assetId}` : '#'
+          return (
+            <a href={href} onClick={handleClick} style={{ textDecoration: 'none' }}>
+              {value}
+            </a>
+          )
+        },
         cellStyle: {
           fontSize: '.875rem',
           fontWeight: '700',
@@ -220,6 +240,24 @@ const AssetsListTables = ({
         minWidth: 200,
         sortable: true,
         filter: true,
+        cellRenderer: (params) => {
+          const { data, value } = params
+          if (!data) return value
+          const assetId = data.asset_id || data.assetId || data.id
+          const handleClick = (e) => {
+            e.preventDefault()
+            if (assetId) {
+              console.log('[AssetsListTables] Click name:', { name: value, assetId, url: `/assets/${assetId}` })
+              navigate(`/assets/${assetId}`)
+            }
+          }
+          const href = assetId ? `/assets/${assetId}` : '#'
+          return (
+            <a href={href} onClick={handleClick} style={{ textDecoration: 'none', color: 'inherit' }}>
+              {value}
+            </a>
+          )
+        },
         cellStyle: {
           fontSize: '.875rem',
           fontWeight: '500'
@@ -370,12 +408,14 @@ const AssetsListTables = ({
   const loadData = useCallback(async () => {
     try {
       const params = {
-        type_name: typeName,
         page: currentPage,
         page_size: currentPageSize,
         sort_by: sortBy,
         order: order
       };
+      if (typeName) {
+        params.type_name = typeName;
+      }
 
       const sanitizedSearch = sanitizeSearchTerm(search);
       if (sanitizedSearch) {
@@ -401,7 +441,9 @@ const AssetsListTables = ({
         throw apiError;
       }
       
-      setRowData(result.data || []);
+      const list = result.data || []
+      console.log('[AssetsListTables] Loaded rows:', { count: list.length, sample: list.slice(0,3) })
+      setRowData(list);
       setTotalRows(result.total || 0);
       
       console.log('🔍 AssetsListTables: Data loaded successfully:', {
@@ -469,12 +511,19 @@ const AssetsListTables = ({
 
   console.log('🔍 AssetsListTables: Rendering grid with data length:', rowData?.length);
 
+  const externalUrl = `https://firemarkets.net/assets?type_name=${encodeURIComponent(typeName)}`
+
   return (
     <div style={{ 
       width: '100%', 
       height: `${height}px`,
       ...style
     }}>
+      <div style={{ marginBottom: 8, fontSize: '.875rem' }}>
+        <a href={externalUrl} target="_blank" rel="noreferrer">
+          {externalUrl}
+        </a>
+      </div>
       <AgGridReact
         ref={gridRef}
         getRowId={getRowId}

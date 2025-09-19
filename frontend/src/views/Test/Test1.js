@@ -1,6 +1,18 @@
 import React, { useState } from 'react'
 import { CCard, CCardBody, CCardHeader, CFormSelect, CFormInput, CButton, CRow, CCol } from '@coreui/react'
-import AssetsListTables from '../../components/tables/AssetsListTables'
+import { AgGridReact } from 'ag-grid-react'
+import useAssetList from '../../hooks/useAssetList'
+import { 
+  ModuleRegistry, 
+  AllCommunityModule, 
+  ClientSideRowModelModule,
+  themeQuartz 
+} from 'ag-grid-community'
+
+ModuleRegistry.registerModules([
+  AllCommunityModule,
+  ClientSideRowModelModule,
+])
 
 const Test1 = () => {
   const [typeName, setTypeName] = useState('Stocks')
@@ -29,6 +41,18 @@ const Test1 = () => {
   const orderOptions = [
     { value: 'desc', label: 'Descending' },
     { value: 'asc', label: 'Ascending' }
+  ]
+
+  const pageSize = 50
+  const { data, total, loading, error } = useAssetList({ typeName, page: 1, pageSize, hasOhlcvData: true })
+
+  const columns = [
+    { field: 'ticker', headerName: 'Ticker', minWidth: 100, maxWidth: 120, sortable: true, filter: true, cellStyle: { fontWeight: '700', color: '#2563eb' } },
+    { field: 'name', headerName: 'Name', minWidth: 200, sortable: true, filter: true },
+    { field: 'type_name', headerName: 'Type', minWidth: 100, sortable: true, filter: true },
+    { field: 'exchange', headerName: 'Exchange', minWidth: 100, sortable: true, filter: true },
+    { field: 'currency', headerName: 'Currency', minWidth: 100, sortable: true, filter: true },
+    { field: 'data_source', headerName: 'Source', minWidth: 100, sortable: true, filter: true },
   ]
 
   return (
@@ -114,20 +138,22 @@ const Test1 = () => {
               Search: {search || 'None'}<br/>
               Sort By: {sortBy}<br/>
               Order: {order}<br/>
-              API Endpoint: /api/v1/assets-table/
+              API Endpoint: /api/v1/assets-lists
             </div>
           </CCardBody>
         </CCard>
 
         <CCard>
           <CCardBody>
-            <AssetsListTables
-              typeName={typeName}
-              search={search}
-              sortBy={sortBy}
-              order={order}
-              height={700}
-            />
+            <div style={{ height: 700, width: '100%' }}>
+              <AgGridReact
+                rowData={data}
+                columnDefs={columns}
+                theme={themeQuartz}
+                pagination={true}
+                paginationPageSize={pageSize}
+              />
+            </div>
           </CCardBody>
         </CCard>
       </CCol>

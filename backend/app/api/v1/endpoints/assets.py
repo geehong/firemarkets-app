@@ -6,7 +6,7 @@ from typing import List, Optional, Dict, Any
 from datetime import date, datetime, timedelta
 import logging
 
-from ....core.database import get_db
+from ....core.database import get_db, get_postgres_db
 from ....core.cache import cache_with_invalidation, invalidate_asset_types_cache, invalidate_assets_cache
 from ....core.database_optimization import get_asset_types_optimized, get_assets_optimized, get_ohlcv_data_optimized
 from ....models import OHLCVData, Asset
@@ -131,6 +131,62 @@ def get_all_assets(
         return {"data": result_data, "total_count": total_count}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get assets: {str(e)}")
+
+@router.get("/assets-lists", response_model=AssetsListResponse)
+@cache_with_invalidation(expire=600)
+def get_all_assets_pg(
+    type_name: Optional[str] = Query(None, description="필터링할 자산 유형 이름"),
+    has_ohlcv_data: bool = Query(True, description="OHLCV 데이터가 있는 자산만 필터링합니다."),
+    limit: int = Query(1000, ge=1, description="페이지당 자산 개수"),
+    offset: int = Query(0, ge=0, description="데이터 시작 오프셋"),
+    db: Session = Depends(get_postgres_db)
+):
+    """모든 자산 목록 조회 (PostgreSQL 전용)"""
+    try:
+        from ....models import Asset, AssetType, OHLCVData
+        base_query = db.query(Asset, AssetType.type_name) \
+                       .join(AssetType, Asset.asset_type_id == AssetType.asset_type_id)
+
+        if has_ohlcv_data:
+            base_query = base_query.filter(
+                db.query(OHLCVData).filter(OHLCVData.asset_id == Asset.asset_id).exists()
+            )
+
+        if type_name:
+            base_query = base_query.filter(AssetType.type_name == type_name)
+
+        total_count = base_query.count()
+        assets_with_type = base_query.offset(offset).limit(limit).all()
+        
+        result_data = []
+        for asset, type_name in assets_with_type:
+            collection_settings = asset.collection_settings or {}
+            asset_dict = {
+                'asset_id': asset.asset_id,
+                'ticker': asset.ticker,
+                'asset_type_id': asset.asset_type_id,
+                'name': asset.name,
+                'exchange': asset.exchange,
+                'currency': asset.currency,
+                'is_active': asset.is_active,
+                'description': asset.description,
+                'data_source': asset.data_source,
+                'created_at': asset.created_at,
+                'updated_at': asset.updated_at,
+                'type_name': type_name,
+                'collect_price': collection_settings.get('collect_price', True),
+                'collect_assets_info': collection_settings.get('collect_assets_info', True),
+                'collect_financials': collection_settings.get('collect_financials', True),
+                'collect_estimates': collection_settings.get('collect_estimates', True),
+                'collect_onchain': collection_settings.get('collect_onchain', False),
+                'collect_technical_indicators': collection_settings.get('collect_technical_indicators', False),
+                'collection_settings': collection_settings,
+            }
+            result_data.append(asset_dict)
+        
+        return {"data": result_data, "total_count": total_count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get assets (pg): {str(e)}")
 
 @router.get("/assets/market-caps", response_model=MarketCapsResponse)
 @cache_with_invalidation(expire=10)  # 10초 TTL (시가총액은 자주 변경됨)
