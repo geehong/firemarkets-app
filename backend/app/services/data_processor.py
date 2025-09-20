@@ -52,6 +52,9 @@ class DataProcessor:
         self.processing_interval = float(GLOBAL_APP_CONFIGS.get("REALTIME_PROCESSING_INTERVAL_SECONDS", 1.0))
         self.time_window_minutes = int(GLOBAL_APP_CONFIGS.get("WEBSOCKET_TIME_WINDOW_MINUTES", 15))
         self.stream_block_ms = int(GLOBAL_APP_CONFIGS.get("REALTIME_STREAM_BLOCK_MS", 100))
+        
+        # 가격 범위 검증 설정
+        self.price_ranges = self._initialize_price_ranges()
         # 우선 순위: DB(ConfigManager) > GLOBAL_APP_CONFIGS
         self.max_retries = (config_manager.get_retry_attempts() if config_manager else GLOBAL_APP_CONFIGS.get("MAX_API_RETRY_ATTEMPTS", 3))
         try:
@@ -143,6 +146,119 @@ class DataProcessor:
             
         except Exception as e:
             logger.error(f"Redis 연결 실패: {e}")
+            return False
+
+    def _initialize_price_ranges(self) -> Dict[str, tuple]:
+        """자산별 가격 범위 초기화 (최소값, 최대값)"""
+        return {
+            # ETF
+            'QQQ': (400, 800),      # QQQ: 400-800달러
+            'SPY': (300, 700),      # SPY: 300-700달러
+            'IWM': (150, 300),      # IWM: 150-300달러
+            'VTI': (200, 300),      # VTI: 200-300달러
+            
+            # Tech Stocks
+            'AAPL': (100, 300),     # AAPL: 100-300달러
+            'MSFT': (200, 500),     # MSFT: 200-500달러
+            'GOOGL': (100, 200),    # GOOGL: 100-200달러
+            'AMZN': (100, 200),     # AMZN: 100-200달러
+            'META': (200, 500),     # META: 200-500달러
+            'NVDA': (100, 1000),    # NVDA: 100-1000달러
+            'TSLA': (100, 500),     # TSLA: 100-500달러
+            'NFLX': (300, 800),     # NFLX: 300-800달러
+            
+            # Financial
+            'JPM': (100, 200),      # JPM: 100-200달러
+            'BAC': (20, 50),        # BAC: 20-50달러
+            'WFC': (30, 80),        # WFC: 30-80달러
+            
+            # Healthcare
+            'JNJ': (140, 200),      # JNJ: 140-200달러
+            'PFE': (20, 60),        # PFE: 20-60달러
+            'UNH': (400, 600),      # UNH: 400-600달러
+            
+            # Energy
+            'XOM': (80, 150),       # XOM: 80-150달러
+            'CVX': (100, 200),      # CVX: 100-200달러
+            
+            # Consumer
+            'WMT': (120, 200),      # WMT: 120-200달러
+            'PG': (130, 180),       # PG: 130-180달러
+            'KO': (50, 80),         # KO: 50-80달러
+            
+            # Crypto (USD 기준)
+            'BTC': (20000, 100000), # BTC: 20K-100K달러
+            'ETH': (1000, 10000),   # ETH: 1K-10K달러
+            
+            # Commodities
+            'GOLD': (1800, 2500),   # GOLD: 1800-2500달러
+            'SILVER': (20, 50),     # SILVER: 20-50달러
+        }
+    
+    def _get_asset_ticker(self, asset_id: int) -> Optional[str]:
+        """자산 ID로 티커 조회"""
+        try:
+            from ..core.database import get_mysql_db
+            mysql_db = next(get_mysql_db())
+            asset = mysql_db.query(Asset).filter(Asset.asset_id == asset_id).first()
+            return asset.ticker if asset else None
+        except Exception as e:
+            logger.warning(f"자산 티커 조회 실패 asset_id={asset_id}: {e}")
+            return None
+    
+    def _validate_price_range(self, asset_id: int, price: float, ticker: str = None) -> bool:
+        """자산별 가격 범위 검증"""
+        try:
+            # 티커가 없으면 조회
+            if not ticker:
+                ticker = self._get_asset_ticker(asset_id)
+                if not ticker:
+                    logger.warning(f"🚨 자산 정보 없음: asset_id={asset_id}")
+                    return False
+            
+            # 가격 범위 확인
+            if ticker in self.price_ranges:
+                min_price, max_price = self.price_ranges[ticker]
+                if price < min_price or price > max_price:
+                    logger.warning(f"🚨 가격 범위 초과: {ticker}={price:.2f}, "
+                                  f"정상범위={min_price}-{max_price}")
+                    return False
+                else:
+                    logger.debug(f"✅ 가격 범위 검증 통과: {ticker}={price:.2f}")
+            else:
+                # 정의되지 않은 자산은 기본 검증 (양수)
+                if price <= 0:
+                    logger.warning(f"🚨 가격이 0 이하: {ticker}={price}")
+                    return False
+                logger.debug(f"✅ 기본 가격 검증 통과: {ticker}={price:.2f}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"가격 범위 검증 실패 asset_id={asset_id}, price={price}: {e}")
+            return False
+    
+    def _validate_realtime_quote(self, record_data: Dict[str, Any]) -> bool:
+        """실시간 인용 데이터 종합 검증"""
+        try:
+            asset_id = record_data.get('asset_id')
+            price = record_data.get('price')
+            data_source = record_data.get('data_source', 'unknown')
+            
+            # 기본 데이터 검증
+            if not asset_id or price is None:
+                logger.warning(f"🚨 필수 데이터 누락: asset_id={asset_id}, price={price}")
+                return False
+            
+            # 가격 범위 검증
+            if not self._validate_price_range(asset_id, price):
+                return False
+            
+            logger.debug(f"✅ 실시간 인용 검증 통과: asset_id={asset_id}, price={price:.2f}, source={data_source}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"실시간 인용 검증 실패: {e}")
             return False
 
     def _get_time_window(self, timestamp: datetime, interval_minutes: int = None) -> datetime:
@@ -553,6 +669,10 @@ class DataProcessor:
 
                 if not task_wrapper:
                     break
+                
+                # 태스크 정보 로깅
+                task_type = task_wrapper.get("task_type", "unknown")
+                logger.info(f"배치 큐에서 태스크 수신: {task_type}")
                     
                 # Retry loop per task
                 attempts = 0
@@ -628,6 +748,8 @@ class DataProcessor:
             elif task_type == "world_assets_ranking":
                 # metadata 정보 추출
                 metadata = payload.get("metadata", {}) if isinstance(payload, dict) else {}
+                data_source = metadata.get('data_source', 'unknown')
+                logger.info(f"배치 태스크 처리 시작: world_assets_ranking, data_source: {data_source}, items: {len(items)}개")
                 return await self._save_world_assets_ranking(items, metadata)
             elif task_type == "asset_settings_update":
                 return await self._update_asset_settings(payload)
@@ -680,10 +802,29 @@ class DataProcessor:
             logger.debug("✅ 데이터베이스 세션 생성 완료")
             
             try:
-                success_count = 0
+                # 데이터 검증 및 필터링
+                validated_records = []
+                validation_failed_count = 0
+                
                 for i, record_data in enumerate(records):
+                    if self._validate_realtime_quote(record_data):
+                        validated_records.append(record_data)
+                    else:
+                        validation_failed_count += 1
+                        logger.warning(f"🚨 검증 실패로 제외: asset_id={record_data.get('asset_id')}, "
+                                      f"price={record_data.get('price')}, source={record_data.get('data_source')}")
+                
+                logger.info(f"✅ 검증 완료: {len(validated_records)}/{len(records)}개 레코드 통과 "
+                           f"(실패: {validation_failed_count}개)")
+                
+                if not validated_records:
+                    logger.warning("🚨 검증을 통과한 레코드가 없습니다.")
+                    return False
+                
+                success_count = 0
+                for i, record_data in enumerate(validated_records):
                     try:
-                        logger.debug(f"🔍 레코드 {i+1}/{len(records)} 처리 시작")
+                        logger.debug(f"🔍 레코드 {i+1}/{len(validated_records)} 처리 시작")
                         logger.debug(f"📋 레코드 데이터: asset_id={record_data.get('asset_id')}, data_source={record_data.get('data_source')}, price={record_data.get('price')}")
                         
                         # 1. MySQL 실시간 테이블 저장 (UPSERT) - asset_id만으로 유니크
@@ -1944,9 +2085,12 @@ class DataProcessor:
         """세계 자산 랭킹 데이터 저장 - 이중 저장 (MySQL + PostgreSQL)"""
         try:
             if not items:
+                logger.warning("세계 자산 랭킹 데이터가 비어있습니다.")
                 return True
                 
-            logger.info(f"세계 자산 랭킹 데이터 저장: {len(items)}개 레코드")
+            data_source = metadata.get('data_source', 'unknown')
+            collection_date = metadata.get('collection_date', 'unknown')
+            logger.info(f"세계 자산 랭킹 데이터 저장 시작: {len(items)}개 레코드, data_source: {data_source}, collection_date: {collection_date}")
             
             # MySQL 저장 (UPSERT 로직)
             async with self.get_db_session() as db:
@@ -1977,27 +2121,9 @@ class DataProcessor:
                             except Exception as e:
                                 logger.error(f"Error looking up asset_id for {ticker}: {e}")
                         
-                        # 기존 레코드 확인
-                        existing = db.query(WorldAssetsRanking).filter(
-                            WorldAssetsRanking.ranking_date == ranking_date,
-                            WorldAssetsRanking.ticker == ticker,
-                            WorldAssetsRanking.data_source == data_source
-                        ).first()
-                        
-                        if existing:
-                            # UPDATE
-                            existing.rank = item.get('rank')
-                            existing.name = item.get('name')
-                            existing.market_cap_usd = item.get('market_cap_usd')
-                            existing.price_usd = item.get('price_usd')
-                            existing.daily_change_percent = item.get('daily_change_percent')
-                            existing.country = item.get('country')
-                            existing.asset_type_id = asset_type_id
-                            existing.asset_id = asset_id
-                            existing.last_updated = datetime.now()
-                            logger.debug(f"[WorldAssetsRanking] 업데이트: {ticker} ({data_source})")
-                        else:
-                            # INSERT
+                        # MySQL UPSERT using INSERT ... ON DUPLICATE KEY UPDATE
+                        try:
+                            # INSERT 시도
                             world_asset = WorldAssetsRanking(
                                 rank=item.get('rank'),
                                 name=item.get('name'),
@@ -2012,7 +2138,33 @@ class DataProcessor:
                                 data_source=data_source
                             )
                             db.add(world_asset)
+                            db.commit()
                             logger.debug(f"[WorldAssetsRanking] 삽입: {ticker} ({data_source})")
+                        except Exception as e:
+                            # 중복 키 에러인 경우 UPDATE
+                            if "Duplicate entry" in str(e) or "1062" in str(e):
+                                db.rollback()
+                                existing = db.query(WorldAssetsRanking).filter(
+                                    WorldAssetsRanking.ranking_date == ranking_date,
+                                    WorldAssetsRanking.ticker == ticker,
+                                    WorldAssetsRanking.data_source == data_source
+                                ).first()
+                                
+                                if existing:
+                                    existing.rank = item.get('rank')
+                                    existing.name = item.get('name')
+                                    existing.market_cap_usd = item.get('market_cap_usd')
+                                    existing.price_usd = item.get('price_usd')
+                                    existing.daily_change_percent = item.get('daily_change_percent')
+                                    existing.country = item.get('country')
+                                    existing.asset_type_id = asset_type_id
+                                    existing.asset_id = asset_id
+                                    existing.last_updated = datetime.now()
+                                    db.commit()
+                                    logger.debug(f"[WorldAssetsRanking] 업데이트: {ticker} ({data_source})")
+                            else:
+                                db.rollback()
+                                raise e
                         
                         saved_count += 1
                         
@@ -2040,42 +2192,41 @@ class DataProcessor:
                             data_source = metadata.get('data_source', 'unknown')
                             ticker = item.get('ticker')
                             
-                            # 기존 레코드 확인
-                            existing_pg = pg_db.query(WorldAssetsRanking).filter(
-                                WorldAssetsRanking.ranking_date == ranking_date,
-                                WorldAssetsRanking.ticker == ticker,
-                                WorldAssetsRanking.data_source == data_source
-                            ).first()
+                            # PostgreSQL UPSERT using ON CONFLICT
+                            from sqlalchemy.dialects.postgresql import insert as pg_insert
                             
-                            if existing_pg:
-                                # UPDATE
-                                existing_pg.rank = item.get('rank')
-                                existing_pg.name = item.get('name')
-                                existing_pg.market_cap_usd = item.get('market_cap_usd')
-                                existing_pg.price_usd = item.get('price_usd')
-                                existing_pg.daily_change_percent = item.get('daily_change_percent')
-                                existing_pg.country = item.get('country')
-                                existing_pg.asset_type_id = item.get('asset_type_id')
-                                existing_pg.asset_id = item.get('asset_id')
-                                existing_pg.last_updated = datetime.now()
-                                logger.debug(f"[WorldAssetsRanking PG] 업데이트: {ticker} ({data_source})")
-                            else:
-                                # INSERT
-                                world_asset_pg = WorldAssetsRanking(
-                                    rank=item.get('rank'),
-                                    name=item.get('name'),
-                                    ticker=item.get('ticker'),
-                                    market_cap_usd=item.get('market_cap_usd'),
-                                    price_usd=item.get('price_usd'),
-                                    daily_change_percent=item.get('daily_change_percent'),
-                                    country=item.get('country'),
-                                    asset_type_id=item.get('asset_type_id'),
-                                    asset_id=item.get('asset_id'),
-                                    ranking_date=ranking_date,
-                                    data_source=data_source
-                                )
-                                pg_db.add(world_asset_pg)
-                                logger.debug(f"[WorldAssetsRanking PG] 삽입: {ticker} ({data_source})")
+                            pg_data = {
+                                'rank': item.get('rank'),
+                                'name': item.get('name'),
+                                'ticker': item.get('ticker'),
+                                'market_cap_usd': item.get('market_cap_usd'),
+                                'price_usd': item.get('price_usd'),
+                                'daily_change_percent': item.get('daily_change_percent'),
+                                'country': item.get('country'),
+                                'asset_type_id': item.get('asset_type_id'),
+                                'asset_id': item.get('asset_id'),
+                                'ranking_date': ranking_date,
+                                'data_source': data_source,
+                                'last_updated': datetime.now()
+                            }
+                            
+                            stmt = pg_insert(WorldAssetsRanking).values(**pg_data)
+                            stmt = stmt.on_conflict_do_update(
+                                index_elements=['ranking_date', 'ticker', 'data_source'],
+                                set_={
+                                    'rank': stmt.excluded.rank,
+                                    'name': stmt.excluded.name,
+                                    'market_cap_usd': stmt.excluded.market_cap_usd,
+                                    'price_usd': stmt.excluded.price_usd,
+                                    'daily_change_percent': stmt.excluded.daily_change_percent,
+                                    'country': stmt.excluded.country,
+                                    'asset_type_id': stmt.excluded.asset_type_id,
+                                    'asset_id': stmt.excluded.asset_id,
+                                    'last_updated': stmt.excluded.last_updated
+                                }
+                            )
+                            pg_db.execute(stmt)
+                            logger.debug(f"[WorldAssetsRanking PG] UPSERT: {ticker} ({data_source})")
                             
                             pg_saved_count += 1
                             
@@ -2195,80 +2346,80 @@ class DataProcessor:
                 logger.error("[OnchainMetric] 유효한 데이터가 없어 저장을 중단합니다.")
                 return False
             
-            # MySQL 저장
-            logger.info(f"[OnchainMetric] MySQL 저장 시작...")
-            async with self.get_db_session() as db:
-                from ..models.asset import CryptoMetric
-                
-                saved_count = 0
-                failed_count = 0
-                
-                for i, item in enumerate(items):
-                    try:
-                        # 필수 필드 재검증
-                        if not item.get('asset_id') or not item.get('timestamp_utc'):
-                            failed_count += 1
-                            continue
-                        
-                        # HODL Age 분포를 JSON으로 변환
-                        hodl_age_distribution = {}
-                        hodl_age_keys = [
-                            'hodl_age_0d_1d', 'hodl_age_1d_1w', 'hodl_age_1w_1m', 'hodl_age_1m_3m',
-                            'hodl_age_3m_6m', 'hodl_age_6m_1y', 'hodl_age_1y_2y', 'hodl_age_2y_3y',
-                            'hodl_age_3y_4y', 'hodl_age_4y_5y', 'hodl_age_5y_7y', 'hodl_age_7y_10y',
-                            'hodl_age_10y'
-                        ]
-                        
-                        hodl_age_count = 0
-                        for key in hodl_age_keys:
-                            if key in item and item[key] is not None:
-                                # "hodl_age_0d_1d" -> "0d_1d"로 변환
-                                json_key = key.replace('hodl_age_', '')
-                                hodl_age_distribution[json_key] = float(item[key])
-                                hodl_age_count += 1
-                        
-                        logger.debug(f"[OnchainMetric] 레코드 {i+1}/{len(items)}: asset_id={item.get('asset_id')}, "
-                                   f"timestamp={item.get('timestamp_utc')}, hodl_age_points={hodl_age_count}")
-                        
-                        # CryptoMetric 객체 생성
-                        crypto_metric = CryptoMetric(
-                            asset_id=item.get('asset_id'),
-                            timestamp_utc=item.get('timestamp_utc'),
-                            hodl_age_distribution=hodl_age_distribution if hodl_age_distribution else None,
-                            hashrate=item.get('hashrate'),
-                            difficulty=item.get('difficulty'),
-                            miner_reserves=item.get('miner_reserves'),
-                            realized_cap=item.get('realized_cap'),
-                            mvrv_z_score=item.get('mvrv_z_score'),
-                            realized_price=item.get('realized_price'),
-                            sopr=item.get('sopr'),
-                            nupl=item.get('nupl'),
-                            cdd_90dma=item.get('cdd_90dma'),
-                            true_market_mean=item.get('true_market_mean'),
-                            nrpl_btc=item.get('nrpl_btc'),
-                            aviv=item.get('aviv'),
-                            thermo_cap=item.get('thermo_cap'),
-                            hodl_waves_supply=item.get('hodl_waves_supply'),
-                            etf_btc_total=item.get('etf_btc_total'),
-                            etf_btc_flow=item.get('etf_btc_flow'),
-                            
-                            # Futures 데이터 (JSON 형태: {"total": ..., "exchanges": {...}})
-                            open_interest_futures=item.get('open_interest_futures')
-                        )
-                        
-                        db.add(crypto_metric)
-                        saved_count += 1
-                        
-                    except Exception as e:
-                        failed_count += 1
-                        logger.error(f"[OnchainMetric] 레코드 {i+1} 저장 실패: {e}, 데이터: {item}")
-                        continue
-                
-                db.commit()
-                logger.info(f"[OnchainMetric] MySQL 저장 완료: {saved_count}개 성공, {failed_count}개 실패")
+            # MySQL 저장 (주석처리)
+            # logger.info(f"[OnchainMetric] MySQL 저장 시작...")
+            # async with self.get_db_session() as db:
+            #     from ..models.asset import CryptoMetric
+            #     
+            #     saved_count = 0
+            #     failed_count = 0
+            #     
+            #     for i, item in enumerate(items):
+            #         try:
+            #             # 필수 필드 재검증
+            #             if not item.get('asset_id') or not item.get('timestamp_utc'):
+            #                 failed_count += 1
+            #                 continue
+            #             
+            #             # HODL Age 분포를 JSON으로 변환
+            #             hodl_age_distribution = {}
+            #             hodl_age_keys = [
+            #                 'hodl_age_0d_1d', 'hodl_age_1d_1w', 'hodl_age_1w_1m', 'hodl_age_1m_3m',
+            #                 'hodl_age_3m_6m', 'hodl_age_6m_1y', 'hodl_age_1y_2y', 'hodl_age_2y_3y',
+            #                 'hodl_age_3y_4y', 'hodl_age_4y_5y', 'hodl_age_5y_7y', 'hodl_age_7y_10y',
+            #                 'hodl_age_10y'
+            #             ]
+            #             
+            #             hodl_age_count = 0
+            #             for key in hodl_age_keys:
+            #                 if key in item and item[key] is not None:
+            #                     # "hodl_age_0d_1d" -> "0d_1d"로 변환
+            #                     json_key = key.replace('hodl_age_', '')
+            #                     hodl_age_distribution[json_key] = float(item[key])
+            #                     hodl_age_count += 1
+            #             
+            #             logger.debug(f"[OnchainMetric] 레코드 {i+1}/{len(items)}: asset_id={item.get('asset_id')}, "
+            #                        f"timestamp={item.get('timestamp_utc')}, hodl_age_points={hodl_age_count}")
+            #             
+            #             # CryptoMetric 객체 생성
+            #             crypto_metric = CryptoMetric(
+            #                 asset_id=item.get('asset_id'),
+            #                 timestamp_utc=item.get('timestamp_utc'),
+            #                 hodl_age_distribution=hodl_age_distribution if hodl_age_distribution else None,
+            #                 hashrate=item.get('hashrate'),
+            #                 difficulty=item.get('difficulty'),
+            #                 miner_reserves=item.get('miner_reserves'),
+            #                 realized_cap=item.get('realized_cap'),
+            #                 mvrv_z_score=item.get('mvrv_z_score'),
+            #                 realized_price=item.get('realized_price'),
+            #                 sopr=item.get('sopr'),
+            #                 nupl=item.get('nupl'),
+            #                 cdd_90dma=item.get('cdd_90dma'),
+            #                 true_market_mean=item.get('true_market_mean'),
+            #                 nrpl_btc=item.get('nrpl_btc'),
+            #                 aviv=item.get('aviv'),
+            #                 thermo_cap=item.get('thermo_cap'),
+            #                 hodl_waves_supply=item.get('hodl_waves_supply'),
+            #                 etf_btc_total=item.get('etf_btc_total'),
+            #                 etf_btc_flow=item.get('etf_btc_flow'),
+            #                 
+            #                 # Futures 데이터 (JSON 형태: {"total": ..., "exchanges": {...}})
+            #                 open_interest_futures=item.get('open_interest_futures')
+            #             )
+            #             
+            #             db.add(crypto_metric)
+            #             saved_count += 1
+            #             
+            #         except Exception as e:
+            #             failed_count += 1
+            #             logger.error(f"[OnchainMetric] 레코드 {i+1} 저장 실패: {e}, 데이터: {item}")
+            #             continue
+            #     
+            #     db.commit()
+            #     logger.info(f"[OnchainMetric] MySQL 저장 완료: {saved_count}개 성공, {failed_count}개 실패")
             
-            # PostgreSQL 이중 저장
-            logger.info(f"[OnchainMetric] PostgreSQL 이중 저장 시작...")
+            # PostgreSQL 저장 (MySQL 주석처리로 인해 단일 저장)
+            logger.info(f"[OnchainMetric] PostgreSQL 저장 시작...")
             try:
                 from ..core.database import get_postgres_db
                 pg_db = next(get_postgres_db())
@@ -2369,7 +2520,7 @@ class DataProcessor:
                             continue
                     
                     pg_db.commit()
-                    logger.info(f"[OnchainMetric dual-write] PostgreSQL 저장 완료: {pg_saved_count}개 성공, {pg_failed_count}개 실패")
+                    logger.info(f"[OnchainMetric] PostgreSQL 저장 완료: {pg_saved_count}개 성공, {pg_failed_count}개 실패")
                     
                 except Exception as e:
                     logger.error(f"[OnchainMetric PG] 저장 실패: {e}")

@@ -116,49 +116,85 @@ class OnchainCollector(BaseCollector):
             valid_items = 0
             invalid_items = 0
             
-            # metric_data가 리스트인지 확인하고 각 항목을 처리
+            # metric_data 타입에 따라 처리
+            items_to_process = []
+            
             if isinstance(metric_data, list):
-                for i, item in enumerate(metric_data):
-                    try:
-                        if hasattr(item, 'model_dump'):
-                            # Pydantic 모델인 경우
-                            converted_item = item.model_dump(mode='json')
+                # 리스트인 경우 직접 처리
+                items_to_process = metric_data
+                self.logging_helper.log_debug(f"[OnchainCollector] 메트릭 '{metric_name}' 리스트 데이터: {len(metric_data)}개 항목")
+                
+            elif isinstance(metric_data, dict):
+                # 딕셔너리인 경우 - 여러 가능한 구조 처리
+                if "data" in metric_data:
+                    # {"data": [...]} 구조
+                    items_to_process = metric_data["data"]
+                    self.logging_helper.log_debug(f"[OnchainCollector] 메트릭 '{metric_name}' 딕셔너리 데이터: {len(items_to_process)}개 항목")
+                elif "_embedded" in metric_data:
+                    # {"_embedded": {"mvrvs": [...]}} 구조 (legacy)
+                    embedded_data = metric_data["_embedded"]
+                    for key, value in embedded_data.items():
+                        if isinstance(value, list):
+                            items_to_process = value
+                            self.logging_helper.log_debug(f"[OnchainCollector] 메트릭 '{metric_name}' embedded 데이터: {len(items_to_process)}개 항목")
+                            break
+                else:
+                    # 단일 딕셔너리 항목인 경우
+                    items_to_process = [metric_data]
+                    self.logging_helper.log_debug(f"[OnchainCollector] 메트릭 '{metric_name}' 단일 딕셔너리 데이터")
+                    
+            elif hasattr(metric_data, 'model_dump'):
+                # Pydantic 모델인 경우
+                items_to_process = [metric_data]
+                self.logging_helper.log_debug(f"[OnchainCollector] 메트릭 '{metric_name}' Pydantic 모델 데이터")
+                
+            else:
+                self.logging_helper.log_error(f"[OnchainCollector] 메트릭 '{metric_name}' 지원하지 않는 데이터 타입: {type(metric_data)}")
+                return {"success": False, "error": f"Unsupported data type: {type(metric_data)}", "enqueued_count": 0}
+            
+            # 각 항목 처리
+            for i, item in enumerate(items_to_process):
+                try:
+                    if hasattr(item, 'model_dump'):
+                        # Pydantic 모델인 경우
+                        converted_item = item.model_dump(mode='json')
+                        payload["data"].append(converted_item)
+                        valid_items += 1
+                        
+                        # 첫 번째와 마지막 아이템 로그
+                        if i == 0 or i == len(items_to_process) - 1:
+                            self.logging_helper.log_debug(f"[OnchainCollector] 메트릭 '{metric_name}' 아이템 {i+1}: "
+                                                       f"timestamp={converted_item.get('timestamp_utc')}, "
+                                                       f"mvrv_z_score={converted_item.get('mvrv_z_score')}")
+                        
+                    elif isinstance(item, dict):
+                        # 딕셔너리인 경우 - 데이터베이스 스키마에 맞게 변환
+                        converted_item = self._convert_onchain_data(item, metric_name)
+                        if converted_item:
                             payload["data"].append(converted_item)
                             valid_items += 1
                             
                             # 첫 번째와 마지막 아이템 로그
-                            if i == 0 or i == len(metric_data) - 1:
+                            if i == 0 or i == len(items_to_process) - 1:
                                 self.logging_helper.log_debug(f"[OnchainCollector] 메트릭 '{metric_name}' 아이템 {i+1}: "
                                                            f"timestamp={converted_item.get('timestamp_utc')}, "
-                                                           f"mvrv_z_score={converted_item.get('mvrv_z_score')}")
-                            
-                        elif isinstance(item, dict):
-                            # 딕셔너리인 경우
-                            payload["data"].append(item)
-                            valid_items += 1
-                            
-                            # 첫 번째와 마지막 아이템 로그
-                            if i == 0 or i == len(metric_data) - 1:
-                                self.logging_helper.log_debug(f"[OnchainCollector] 메트릭 '{metric_name}' 아이템 {i+1}: "
-                                                           f"timestamp={item.get('timestamp_utc')}, "
-                                                           f"mvrv_z_score={item.get('mvrv_z_score')}")
+                                                           f"metric_value={converted_item.get(metric_name.lower())}")
                         else:
-                            # 문자열이나 다른 타입인 경우 건너뛰기
                             invalid_items += 1
-                            self.logging_helper.log_warning(f"[OnchainCollector] 메트릭 '{metric_name}' 아이템 {i+1} 건너뛰기: "
-                                                          f"지원하지 않는 타입 {type(item)}")
-                            continue
-                    except Exception as e:
+                    else:
+                        # 문자열이나 다른 타입인 경우 건너뛰기
                         invalid_items += 1
-                        self.logging_helper.log_error(f"[OnchainCollector] 메트릭 '{metric_name}' 아이템 {i+1} 변환 실패: {e}")
+                        self.logging_helper.log_warning(f"[OnchainCollector] 메트릭 '{metric_name}' 아이템 {i+1} 건너뛰기: "
+                                                      f"지원하지 않는 타입 {type(item)}")
                         continue
-            else:
-                self.logging_helper.log_error(f"[OnchainCollector] 메트릭 '{metric_name}' 예상치 못한 데이터 타입: {type(metric_data)}")
-                return {"success": False, "error": f"Unexpected data type: {type(metric_data)}", "enqueued_count": 0}
+                except Exception as e:
+                    invalid_items += 1
+                    self.logging_helper.log_error(f"[OnchainCollector] 메트릭 '{metric_name}' 아이템 {i+1} 변환 실패: {e}")
+                    continue
             
             # 변환 결과 로그
             self.logging_helper.log_info(f"[OnchainCollector] 메트릭 '{metric_name}' 데이터 변환 완료:")
-            self.logging_helper.log_info(f"  - 총 아이템: {len(metric_data)}개")
+            self.logging_helper.log_info(f"  - 총 아이템: {len(items_to_process)}개")
             self.logging_helper.log_info(f"  - 유효한 아이템: {valid_items}개")
             self.logging_helper.log_info(f"  - 무효한 아이템: {invalid_items}개")
             
@@ -173,3 +209,161 @@ class OnchainCollector(BaseCollector):
         except Exception as e:
             self.logging_helper.log_error(f"Failed to process onchain metric '{metric_name}' for asset_id {self.bitcoin_asset_id}: {e}")
             return {"success": False, "error": str(e), "enqueued_count": 0}
+    
+    def _convert_onchain_data(self, item: dict, metric_name: str) -> dict:
+        """API 데이터를 데이터베이스 스키마에 맞게 변환"""
+        try:
+            # 기본 필드 변환
+            converted = {
+                "asset_id": self.bitcoin_asset_id,
+                "timestamp_utc": self._parse_timestamp(item.get("d") or item.get("timestamp")),
+            }
+            
+            # 메트릭별 필드 매핑
+            metric_mappings = {
+                "mvrv_z_score": {
+                    "mvrvZscore": "mvrv_z_score",
+                    "mvrv_z_score": "mvrv_z_score"
+                },
+                "nupl": {
+                    "nupl": "nupl"
+                },
+                "sopr": {
+                    "sopr": "sopr"
+                },
+                "aviv": {
+                    "aviv": "aviv"
+                },
+                "hashrate": {
+                    "hashrate": "hashrate"
+                },
+                "difficulty": {
+                    "difficulty": "difficulty",
+                    "difficultyBtc": "difficulty"
+                },
+                "realized_price": {
+                    "realizedPrice": "realized_price",
+                    "realized_price": "realized_price"
+                },
+                "thermo_cap": {
+                    "thermoCap": "thermo_cap",
+                    "thermo_cap": "thermo_cap"
+                },
+                "true_market_mean": {
+                    "trueMarketMean": "true_market_mean",
+                    "true_market_mean": "true_market_mean"
+                },
+                "nrpl_btc": {
+                    "nrplBtc": "nrpl_btc",
+                    "nrpl_btc": "nrpl_btc"
+                },
+                "cdd_90dma": {
+                    "cdd90dma": "cdd_90dma",
+                    "cdd_90dma": "cdd_90dma"
+                },
+                "etf_btc_flow": {
+                    "etfFlow": "etf_btc_flow",
+                    "etf_btc_flow": "etf_btc_flow"
+                },
+                "etf_btc_total": {
+                    "etfBtcTotal": "etf_btc_total",
+                    "etf_btc_total": "etf_btc_total"
+                },
+                "hodl_waves_supply": {
+                    "hodlWavesSupply": "hodl_waves_supply",
+                    "hodl_waves_supply": "hodl_waves_supply"
+                },
+                "cap_real_usd": {
+                    "capRealUSD": "cap_real_usd",
+                    "cap_real_usd": "cap_real_usd"
+                }
+            }
+            
+            # 현재 메트릭의 매핑 적용
+            if metric_name in metric_mappings:
+                for api_field, db_field in metric_mappings[metric_name].items():
+                    if api_field in item and item[api_field] is not None:
+                        converted[db_field] = float(item[api_field])
+            
+            # HODL Age 분포 처리 (개별 필드들을 JSON으로 변환)
+            hodl_age_distribution = {}
+            hodl_age_mapping = {
+                'age_0d_1d': '0d_1d',
+                'age_1d_1w': '1d_1w', 
+                'age_1w_1m': '1w_1m',
+                'age_1m_3m': '1m_3m',
+                'age_3m_6m': '3m_6m',
+                'age_6m_1y': '6m_1y',
+                'age_1y_2y': '1y_2y',
+                'age_2y_3y': '2y_3y',
+                'age_3y_4y': '3y_4y',
+                'age_4y_5y': '4y_5y',
+                'age_5y_7y': '5y_7y',
+                'age_7y_10y': '7y_10y',
+                'age_10y': '10y'
+            }
+            
+            for api_key, json_key in hodl_age_mapping.items():
+                if api_key in item and item[api_key] is not None:
+                    hodl_age_distribution[json_key] = float(item[api_key])
+            
+            if hodl_age_distribution:
+                converted["hodl_age_distribution"] = hodl_age_distribution
+            
+            # Open Interest Futures 처리 (개별 거래소 필드들을 JSON으로 변환)
+            open_interest_futures = {}
+            exchange_mapping = {
+                'binance': 'binance',
+                'bybit': 'bybit',
+                'okx': 'okx',
+                'bitget': 'bitget',
+                'deribit': 'deribit',
+                'bitmex': 'bitmex',
+                'huobi': 'huobi',
+                'bitfinex': 'bitfinex',
+                'gateIo': 'gate_io',
+                'kucoin': 'kucoin',
+                'kraken': 'kraken',
+                'cryptoCom': 'crypto_com',
+                'dydx': 'dydx',
+                'deltaExchange': 'delta_exchange',
+                'openInterestFutures': 'total'
+            }
+            
+            for api_key, json_key in exchange_mapping.items():
+                if api_key in item and item[api_key] is not None:
+                    open_interest_futures[json_key] = float(item[api_key])
+            
+            if open_interest_futures:
+                converted["open_interest_futures"] = open_interest_futures
+            
+            return converted
+            
+        except Exception as e:
+            self.logging_helper.log_error(f"데이터 변환 실패: {e}")
+            return None
+    
+    def _parse_timestamp(self, timestamp_str) -> str:
+        """타임스탬프 문자열을 ISO 형식으로 변환"""
+        try:
+            if not timestamp_str:
+                return None
+                
+            # 이미 ISO 형식인 경우
+            if isinstance(timestamp_str, str) and 'T' in timestamp_str:
+                return timestamp_str
+                
+            # 날짜 형식인 경우 (YYYY-MM-DD)
+            if isinstance(timestamp_str, str) and len(timestamp_str) == 10:
+                return f"{timestamp_str}T00:00:00Z"
+                
+            # Unix timestamp인 경우
+            if isinstance(timestamp_str, (int, float)):
+                from datetime import datetime
+                return datetime.fromtimestamp(timestamp_str).isoformat() + 'Z'
+                
+            return str(timestamp_str)
+            
+        except Exception as e:
+            self.logging_helper.log_error(f"타임스탬프 파싱 실패: {e}")
+            return None

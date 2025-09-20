@@ -297,6 +297,21 @@ services:
     networks:
       - shared-network
 
+  dbeaver:
+    image: dbeaver/cloudbeaver:latest
+    container_name: fire_markets_dbeaver
+    restart: unless-stopped
+    # nginx-proxy-manager를 통해 접근하므로 외부 포트 제거
+    # ports:
+    #   - "8080:8978"
+    environment:
+      TZ: Asia/Seoul
+    volumes:
+      - dbeaver_data:/opt/cloudbeaver/workspace
+    networks:
+      - app_network
+      - shared-network
+
  
 
 volumes:
@@ -305,6 +320,7 @@ volumes:
   portainer_data:
   npm_data:
   npm_letsencrypt:
+  dbeaver_data:
 
 networks:
   app_network:

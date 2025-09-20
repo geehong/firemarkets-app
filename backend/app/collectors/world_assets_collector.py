@@ -111,11 +111,25 @@ class WorldAssetsCollector(BaseCollector):
             eight_marketcap_metals_data = await self.scrape_eight_marketcap_metals()
             
             # 6. 각 데이터 소스별로 큐에 전송 (표준 패턴 적용)
+            self.logging_helper.log_info(f"Data collection summary:")
+            self.logging_helper.log_info(f"  - CompaniesMarketCap: {len(companies_data)} assets")
+            self.logging_helper.log_info(f"  - 8MarketCap Companies: {len(eight_marketcap_data)} assets")
+            self.logging_helper.log_info(f"  - 8MarketCap ETFs: {len(eight_marketcap_etfs_data)} assets")
+            self.logging_helper.log_info(f"  - 8MarketCap Cryptos: {len(eight_marketcap_cryptos_data)} assets")
+            self.logging_helper.log_info(f"  - 8MarketCap Metals: {len(eight_marketcap_metals_data)} assets")
+            
             companies_updated = await self._send_to_queue(companies_data, 'companiesmarketcap')
             eight_marketcap_updated = await self._send_to_queue(eight_marketcap_data, '8marketcap_companies')
             eight_marketcap_etfs_updated = await self._send_to_queue(eight_marketcap_etfs_data, '8marketcap_etfs')
             eight_marketcap_cryptos_updated = await self._send_to_queue(eight_marketcap_cryptos_data, '8marketcap_cryptos')
             eight_marketcap_metals_updated = await self._send_to_queue(eight_marketcap_metals_data, '8marketcap_metals')
+            
+            self.logging_helper.log_info(f"Queue processing summary:")
+            self.logging_helper.log_info(f"  - CompaniesMarketCap: {companies_updated} items sent to queue")
+            self.logging_helper.log_info(f"  - 8MarketCap Companies: {eight_marketcap_updated} items sent to queue")
+            self.logging_helper.log_info(f"  - 8MarketCap ETFs: {eight_marketcap_etfs_updated} items sent to queue")
+            self.logging_helper.log_info(f"  - 8MarketCap Cryptos: {eight_marketcap_cryptos_updated} items sent to queue")
+            self.logging_helper.log_info(f"  - 8MarketCap Metals: {eight_marketcap_metals_updated} items sent to queue")
             
             # 4. 채권 시장 데이터 수집 (temporarily disabled due to 404 errors)
             # bond_data = await self.get_bis_bond_data()
@@ -204,6 +218,9 @@ class WorldAssetsCollector(BaseCollector):
             # HTML 응답을 위한 별도 처리
             import requests
             response = requests.get(self.eight_marketcap_url, headers=self.headers, timeout=30)
+            if not response or response.status_code != 200:
+                self.logging_helper.log_warning(f"No valid response from 8marketcap Companies URL (status: {response.status_code if response else 'None'})")
+                return []
             response.raise_for_status()
                 
             soup = BeautifulSoup(response.content, 'html.parser')
@@ -485,7 +502,17 @@ class WorldAssetsCollector(BaseCollector):
                 'ADA': 'ADAUSDT',
                 'BCH': 'BCHUSDT',
                 'LTC': 'LTCUSDT',
-                'DOT': 'DOTUSDT'
+                'DOT': 'DOTUSDT',
+                'SOL': 'SOLUSDT',
+                'MATIC': 'MATICUSDT',
+                'AVAX': 'AVAXUSDT',
+                'LINK': 'LINKUSDT',
+                'UNI': 'UNIUSDT',
+                'ATOM': 'ATOMUSDT',
+                'FTM': 'FTMUSDT',
+                'NEAR': 'NEARUSDT',
+                'ALGO': 'ALGOUSDT',
+                'VET': 'VETUSDT'
             }
             
             # 매핑된 티커로 검색
@@ -535,18 +562,23 @@ class WorldAssetsCollector(BaseCollector):
                     'asset_id': db_asset.asset_id
                 }
             
-            self.logging_helper.log_warning(f"No match found for {name} ({ticker})")
+            # 매핑 실패 시 이름과 티커 기반으로 기본 asset_type_id 추정
+            default_asset_type_id = self._estimate_asset_type_from_name_ticker(name, ticker)
+            
+            self.logging_helper.log_warning(f"No match found for {name} ({ticker}), using default asset_type_id: {default_asset_type_id}")
             return {
                 'country': 'Unknown',
-                'asset_type_id': None,
+                'asset_type_id': default_asset_type_id,
                 'asset_id': None
             }
             
         except Exception as e:
             self.logging_helper.log_error(f"Error enriching asset data: {e}")
+            # 예외 발생 시에도 기본 asset_type_id 추정
+            default_asset_type_id = self._estimate_asset_type_from_name_ticker(name, ticker)
             return {
                 'country': 'Unknown',
-                'asset_type_id': None,
+                'asset_type_id': default_asset_type_id,
                 'asset_id': None
             }
     
@@ -563,6 +595,34 @@ class WorldAssetsCollector(BaseCollector):
             8: 'Crypto'
         }
         return sector_mapping.get(asset_type_id, 'Unknown')
+    
+    def _estimate_asset_type_from_name_ticker(self, name: str, ticker: str) -> int:
+        """이름과 티커를 기반으로 asset_type_id 추정"""
+        name_lower = name.lower()
+        ticker_lower = ticker.lower()
+        
+        # 암호화폐 키워드
+        crypto_keywords = ['bitcoin', 'ethereum', 'crypto', 'token', 'coin', 'btc', 'eth', 'xrp', 'doge', 'ada', 'bch', 'ltc', 'dot', 'sol', 'matic', 'avax', 'link', 'uni', 'atom', 'ftm', 'near', 'algo', 'vet']
+        if any(keyword in name_lower or keyword in ticker_lower for keyword in crypto_keywords):
+            return 8  # Crypto
+        
+        # ETF 키워드
+        etf_keywords = ['etf', 'fund', 'trust', 'spdr', 'ishares', 'vanguard', 'invesco']
+        if any(keyword in name_lower for keyword in etf_keywords):
+            return 5  # ETFs
+        
+        # 상품 키워드
+        commodity_keywords = ['gold', 'silver', 'oil', 'gas', 'copper', 'platinum', 'palladium', 'wheat', 'corn', 'soybean']
+        if any(keyword in name_lower or keyword in ticker_lower for keyword in commodity_keywords):
+            return 3  # Commodities
+        
+        # 채권 키워드
+        bond_keywords = ['bond', 'treasury', 'government', 'corporate', 'municipal']
+        if any(keyword in name_lower for keyword in bond_keywords):
+            return 6  # Bonds
+        
+        # 기본적으로 주식으로 분류
+        return 2  # Stocks
     
     
     # BIS bond data collection temporarily disabled due to 404 errors
@@ -866,7 +926,8 @@ class WorldAssetsCollector(BaseCollector):
             self.logging_helper.log_info("Starting 8marketcap ETFs data scraping")
             
             response = requests.get(self.eight_marketcap_etfs_url, headers=self.headers, timeout=30)
-            if not response:
+            if not response or response.status_code != 200:
+                self.logging_helper.log_warning(f"No valid response from 8marketcap ETFs URL (status: {response.status_code if response else 'None'})")
                 return []
             
             soup = BeautifulSoup(response.content, 'html.parser')
@@ -940,6 +1001,9 @@ class WorldAssetsCollector(BaseCollector):
             change_text = change_cell.get_text(strip=True)
             daily_change_percent = self._parse_change_percent(change_text)
             
+            # 기존 DB와 조인하여 풍부한 정보 획득
+            enriched_data = self._enrich_asset_data(name, ticker)
+            
             return AssetData(
                 rank=rank,
                 name=name,
@@ -947,9 +1011,9 @@ class WorldAssetsCollector(BaseCollector):
                 market_cap_usd=market_cap_usd,
                 price_usd=price_usd,
                 daily_change_percent=daily_change_percent,
-                country="Global",  # ETFs는 글로벌
-                asset_type_id=5,  # ETFs
-                asset_id=None
+                country=enriched_data.get('country', 'Global'),  # ETFs는 글로벌
+                asset_type_id=enriched_data.get('asset_type_id', 5),  # ETFs fallback
+                asset_id=enriched_data.get('asset_id')
             )
             
         except Exception as e:
@@ -962,7 +1026,8 @@ class WorldAssetsCollector(BaseCollector):
             self.logging_helper.log_info("Starting 8marketcap Cryptos data scraping")
             
             response = requests.get(self.eight_marketcap_cryptos_url, headers=self.headers, timeout=30)
-            if not response:
+            if not response or response.status_code != 200:
+                self.logging_helper.log_warning(f"No valid response from 8marketcap Cryptos URL (status: {response.status_code if response else 'None'})")
                 return []
             
             soup = BeautifulSoup(response.content, 'html.parser')
@@ -1036,6 +1101,9 @@ class WorldAssetsCollector(BaseCollector):
             change_text = change_cell.get_text(strip=True)
             daily_change_percent = self._parse_change_percent(change_text)
             
+            # 기존 DB와 조인하여 풍부한 정보 획득
+            enriched_data = self._enrich_asset_data(name, ticker)
+            
             return AssetData(
                 rank=rank,
                 name=name,
@@ -1043,9 +1111,9 @@ class WorldAssetsCollector(BaseCollector):
                 market_cap_usd=market_cap_usd,
                 price_usd=price_usd,
                 daily_change_percent=daily_change_percent,
-                country="Global",  # Cryptos는 글로벌
-                asset_type_id=8,  # Crypto
-                asset_id=None
+                country=enriched_data.get('country', 'Global'),  # Cryptos는 글로벌
+                asset_type_id=enriched_data.get('asset_type_id', 8),  # Crypto fallback
+                asset_id=enriched_data.get('asset_id')
             )
             
         except Exception as e:
@@ -1058,7 +1126,8 @@ class WorldAssetsCollector(BaseCollector):
             self.logging_helper.log_info("Starting 8marketcap Metals data scraping")
             
             response = requests.get(self.eight_marketcap_metals_url, headers=self.headers, timeout=30)
-            if not response:
+            if not response or response.status_code != 200:
+                self.logging_helper.log_warning(f"No valid response from 8marketcap Metals URL (status: {response.status_code if response else 'None'})")
                 return []
             
             soup = BeautifulSoup(response.content, 'html.parser')
@@ -1132,6 +1201,9 @@ class WorldAssetsCollector(BaseCollector):
             change_text = change_cell.get_text(strip=True)
             daily_change_percent = self._parse_change_percent(change_text)
             
+            # 기존 DB와 조인하여 풍부한 정보 획득
+            enriched_data = self._enrich_asset_data(name, ticker)
+            
             return AssetData(
                 rank=rank,
                 name=name,
@@ -1139,9 +1211,9 @@ class WorldAssetsCollector(BaseCollector):
                 market_cap_usd=market_cap_usd,
                 price_usd=price_usd,
                 daily_change_percent=daily_change_percent,
-                country="Global",  # Metals는 글로벌
-                asset_type_id=3,  # Commodities
-                asset_id=None
+                country=enriched_data.get('country', 'Global'),  # Metals는 글로벌
+                asset_type_id=enriched_data.get('asset_type_id', 3),  # Commodities fallback
+                asset_id=enriched_data.get('asset_id')
             )
             
         except Exception as e:

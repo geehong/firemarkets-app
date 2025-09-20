@@ -318,7 +318,11 @@ class BitcoinDataClient(OnChainAPIClient):
                     items = data["_embedded"].get("nupls", [])
                     if items:
                         df = pd.DataFrame(items)
-                        df['timestamp'] = pd.to_datetime(df['timestamp'])
+                        # timestamp 필드명 처리 (다양한 필드명 지원)
+                        if 'timestamp' in df.columns:
+                            df['timestamp'] = pd.to_datetime(df['timestamp'])
+                        elif 'd' in df.columns:
+                            df['timestamp'] = pd.to_datetime(df['d'])
                         return df
                 
                 return None
@@ -338,7 +342,11 @@ class BitcoinDataClient(OnChainAPIClient):
                     items = data["_embedded"].get("soprs", [])
                     if items:
                         df = pd.DataFrame(items)
-                        df['timestamp'] = pd.to_datetime(df['timestamp'])
+                        # timestamp 필드명 처리 (다양한 필드명 지원)
+                        if 'timestamp' in df.columns:
+                            df['timestamp'] = pd.to_datetime(df['timestamp'])
+                        elif 'd' in df.columns:
+                            df['timestamp'] = pd.to_datetime(df['d'])
                         return df
                 
                 return None
@@ -358,7 +366,11 @@ class BitcoinDataClient(OnChainAPIClient):
                     items = data["_embedded"].get("hashrates", [])
                     if items:
                         df = pd.DataFrame(items)
-                        df['timestamp'] = pd.to_datetime(df['timestamp'])
+                        # timestamp 필드명 처리 (다양한 필드명 지원)
+                        if 'timestamp' in df.columns:
+                            df['timestamp'] = pd.to_datetime(df['timestamp'])
+                        elif 'd' in df.columns:
+                            df['timestamp'] = pd.to_datetime(df['d'])
                         return df
                 
                 return None
@@ -378,7 +390,11 @@ class BitcoinDataClient(OnChainAPIClient):
                     items = data["_embedded"].get("difficultyBtcs", [])
                     if items:
                         df = pd.DataFrame(items)
-                        df['timestamp'] = pd.to_datetime(df['timestamp'])
+                        # timestamp 필드명 처리 (다양한 필드명 지원)
+                        if 'timestamp' in df.columns:
+                            df['timestamp'] = pd.to_datetime(df['timestamp'])
+                        elif 'd' in df.columns:
+                            df['timestamp'] = pd.to_datetime(df['d'])
                         return df
                 
                 return None
