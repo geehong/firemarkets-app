@@ -107,7 +107,7 @@ class ConfigManager:
         return self._get_config("API_REQUEST_TIMEOUT_SECONDS", 30, int)
 
     def get_retry_attempts(self) -> int:
-        return self._get_config("MAX_API_RETRY_ATTEMPTS", 3, int)
+        return self._get_config("BATCH_PROCESSING_RETRY_ATTEMPTS", 5, int)
         
     def get_semaphore_limit(self) -> int:
         return self._get_config("SEMAPHORE_LIMIT", 8, int)

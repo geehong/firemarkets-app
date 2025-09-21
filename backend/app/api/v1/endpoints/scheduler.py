@@ -300,8 +300,10 @@ def get_scheduler_status_by_period(period: str, db: Session = Depends(get_db)):
 # 대신 /scheduler/collect-all-now를 사용하세요.
 
 @router.post("/scheduler/collect-all-now", response_model=Dict[str, Any])
-def collect_all_now_manually(db: Session = Depends(get_db)):
+def collect_all_now_manually():
     """관리자 수동 실행: 스케줄과 상관없이 모든 데이터 수집을 즉시 실행 (실시간 웹소켓 제외)"""
+    start_time = datetime.now()
+    
     try:
         import asyncio
         # scheduler_service is already imported at the top
@@ -313,23 +315,29 @@ def collect_all_now_manually(db: Session = Depends(get_db)):
         asyncio.set_event_loop(loop)
         
         try:
-            start_time = datetime.now()
             result = loop.run_until_complete(scheduler_service.run_all_collections_once())
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
             
-            # 로그 기록
-            log = SchedulerLog(
-                job_name="manual_all_collections",
-                status="completed" if result.get("success") else "failed",
-                start_time=start_time,
-                end_time=end_time,
-                duration_seconds=int(duration),
-                data_points_added=sum(r.get("data", {}).get("total_added_records", 0) for r in result.get("results", [])),
-                error_message=None if result.get("success") else result.get("message")
-            )
-            db.add(log)
-            db.commit()
+            # 로그 기록을 위한 별도 세션 사용
+            log_db = SessionLocal()
+            try:
+                log = SchedulerLog(
+                    job_name="manual_all_collections",
+                    status="completed" if result.get("success") else "failed",
+                    start_time=start_time,
+                    end_time=end_time,
+                    duration_seconds=int(duration),
+                    data_points_added=sum(r.get("data", {}).get("total_added_records", 0) for r in result.get("results", [])),
+                    error_message=None if result.get("success") else result.get("message")
+                )
+                log_db.add(log)
+                log_db.commit()
+            except Exception as log_error:
+                logger.error(f"Failed to log scheduler result: {log_error}")
+                log_db.rollback()
+            finally:
+                log_db.close()
             
             return result
             
@@ -339,19 +347,26 @@ def collect_all_now_manually(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Failed to run manual collections: {e}")
         
-        # 실패 로그 기록
+        # 실패 로그 기록을 위한 별도 세션 사용
         end_time = datetime.now()
-        log = SchedulerLog(
-            job_name="manual_all_collections",
-            status="failed",
-            start_time=start_time if 'start_time' in locals() else end_time,
-            end_time=end_time,
-            duration_seconds=int((end_time - (start_time if 'start_time' in locals() else end_time)).total_seconds()),
-            data_points_added=0,
-            error_message=str(e)
-        )
-        db.add(log)
-        db.commit()
+        log_db = SessionLocal()
+        try:
+            log = SchedulerLog(
+                job_name="manual_all_collections",
+                status="failed",
+                start_time=start_time,
+                end_time=end_time,
+                duration_seconds=int((end_time - start_time).total_seconds()),
+                data_points_added=0,
+                error_message=str(e)
+            )
+            log_db.add(log)
+            log_db.commit()
+        except Exception as log_error:
+            logger.error(f"Failed to log scheduler error: {log_error}")
+            log_db.rollback()
+        finally:
+            log_db.close()
         
         raise HTTPException(status_code=500, detail=f"Failed to run manual collections: {str(e)}")
 

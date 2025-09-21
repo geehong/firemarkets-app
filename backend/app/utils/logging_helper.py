@@ -47,30 +47,9 @@ def create_structured_log(
     :param data_points_added: 추가된 데이터 포인트 수
     :param error_message: 오류 메시지
     """
-    try:
-        log_entry = SchedulerLog(
-            job_name=job_name or f"{collector_name.lower()}_collection",
-            status=status,
-            current_task=current_task or f"{collector_name} collection",
-            strategy_used=strategy_used,
-            retry_count=retry_count,
-            start_time=start_time or datetime.now(),
-            end_time=end_time,
-            duration_seconds=duration_seconds,
-            assets_processed=assets_processed or 0,
-            data_points_added=data_points_added or 0,
-            error_message=error_message,
-            details=details
-        )
-        db.add(log_entry)
-        db.commit()
-        db.refresh(log_entry)
-        logger.info(f"Structured log saved: {collector_name} - {status}")
-        return log_entry
-    except Exception as e:
-        logger.error(f"Failed to save structured log: {e}")
-        db.rollback()
-        return None
+    # 스케줄러 로그 생성 비활성화 (트랜잭션 오류 방지)
+    logger.info(f"Skipping scheduler log creation for {collector_name} - {status}")
+    return None
 
 
 def create_collection_summary_log(
@@ -168,7 +147,7 @@ def create_api_call_log(
     additional_data: dict = None
 ):
     """
-    API 호출 로그를 생성합니다 - 이중 저장 (MySQL + PostgreSQL)
+    API 호출 로그를 생성합니다 - PostgreSQL에만 저장
 
     :param api_name: API 이름
     :param endpoint: 호출한 엔드포인트
@@ -179,9 +158,9 @@ def create_api_call_log(
     :param error_message: 오류 메시지
     :param additional_data: 추가 데이터
     """
-    from ..models.system import ApiCallLog
+    from ..models.asset import ApiCallLog
     
-    # MySQL 저장
+    # PostgreSQL에만 저장 (SessionLocal이 이미 PostgreSQL을 사용)
     db = SessionLocal()
     try:
         log_entry = ApiCallLog(
@@ -191,7 +170,8 @@ def create_api_call_log(
             status_code=status_code or 0,
             response_time_ms=response_time_ms or 0,
             success=success,
-            error_message=error_message
+            error_message=error_message,
+            timestamp=datetime.now()
         )
         db.add(log_entry)
         db.commit()
@@ -203,66 +183,18 @@ def create_api_call_log(
                 db=db,
                 collector_name=f"API_{api_name}",
                 status="success" if success else "failure",
-                message=f"API call to {endpoint}",
                 details=additional_data
             )
         
-        logger.info(f"[ApiCallLog dual-write] MySQL 저장 완료: {api_name} for {ticker}")
+        logger.info(f"[ApiCallLog] PostgreSQL 저장 완료: {api_name} for {ticker}")
+        return log_entry
         
     except Exception as e:
-        logger.error(f"[ApiCallLog dual-write] MySQL 저장 실패: {e}")
+        logger.error(f"[ApiCallLog] PostgreSQL 저장 실패: {e}")
         db.rollback()
         return None
     finally:
         db.close()
-    
-    # PostgreSQL 이중 저장
-    try:
-        from ..core.database import get_postgres_db
-        pg_db = next(get_postgres_db())
-        try:
-            from sqlalchemy.dialects.postgresql import insert as pg_insert
-            from sqlalchemy import func
-            from ..models.asset import ApiCallLog as PGApiCallLog
-            
-            # PostgreSQL UPSERT
-            pg_data = {
-                'api_name': api_name,
-                'endpoint': endpoint,
-                'asset_ticker': ticker,
-                'status_code': status_code or 0,
-                'response_time_ms': response_time_ms or 0,
-                'success': success,
-                'error_message': error_message,
-                'timestamp': datetime.now()
-            }
-            
-            stmt = pg_insert(PGApiCallLog).values(**pg_data)
-            stmt = stmt.on_conflict_do_update(
-                index_elements=['id'],  # PostgreSQL에서는 id로 충돌 처리
-                set_={
-                    'api_name': stmt.excluded.api_name,
-                    'endpoint': stmt.excluded.endpoint,
-                    'asset_ticker': stmt.excluded.asset_ticker,
-                    'status_code': stmt.excluded.status_code,
-                    'response_time_ms': stmt.excluded.response_time_ms,
-                    'success': stmt.excluded.success,
-                    'error_message': stmt.excluded.error_message,
-                    'timestamp': stmt.excluded.timestamp
-                }
-            )
-            pg_db.execute(stmt)
-            pg_db.commit()
-            logger.info(f"[ApiCallLog dual-write] PostgreSQL 저장 완료: {api_name} for {ticker}")
-        except Exception as e:
-            pg_db.rollback()
-            logger.warning(f"[ApiCallLog dual-write] PostgreSQL 저장 실패: {e}")
-        finally:
-            pg_db.close()
-    except Exception as e:
-        logger.warning(f"[ApiCallLog dual-write] PostgreSQL 연결 실패: {e}")
-    
-    return log_entry
 
 
 class CollectorLoggingHelper:
@@ -593,163 +525,63 @@ class ApiLoggingHelper:
         self.logger.info(f"API call started: {api_name} for {ticker}")
     
     def log_api_call_success(self, api_name: str, ticker: str, data_points: int = 0):
-        """API 호출 성공 로그 - api_call_logs 테이블에 이중 저장 (MySQL + PostgreSQL)"""
+        """API 호출 성공 로그 - PostgreSQL에만 저장"""
         try:
             from app.core.database import SessionLocal
-            from sqlalchemy import text
+            from app.models.asset import ApiCallLog
             
-            # MySQL 저장
+            # PostgreSQL에만 저장 (SessionLocal이 이미 PostgreSQL을 사용)
             db = SessionLocal()
             try:
-                # api_call_logs 테이블에 성공 로그 저장
-                db.execute(text("""
-                    INSERT INTO api_call_logs 
-                    (api_name, endpoint, asset_ticker, status_code, response_time_ms, success, error_message, created_at)
-                    VALUES (:api_name, :endpoint, :asset_ticker, :status_code, :response_time_ms, :success, :error_message, :created_at)
-                """), {
-                    'api_name': api_name,
-                    'endpoint': f'OHLCV data collection for {ticker}',
-                    'asset_ticker': ticker,
-                    'status_code': 200,
-                    'response_time_ms': 0,  # 실제 응답 시간 측정 필요시 추가
-                    'success': 1,
-                    'error_message': None,
-                    'created_at': datetime.now()
-                })
+                log_entry = ApiCallLog(
+                    api_name=api_name,
+                    endpoint=f'OHLCV data collection for {ticker}',
+                    asset_ticker=ticker,
+                    status_code=200,
+                    response_time_ms=0,  # 실제 응답 시간 측정 필요시 추가
+                    success=True,
+                    error_message=None,
+                    timestamp=datetime.now()
+                )
+                db.add(log_entry)
                 db.commit()
-                self.logger.info(f"[ApiCallLog dual-write] MySQL 저장 완료: {api_name} for {ticker}")
+                self.logger.info(f"[ApiCallLog] PostgreSQL 저장 완료: {api_name} for {ticker}")
             except Exception as e:
-                self.logger.error(f"[ApiCallLog dual-write] MySQL 저장 실패: {e}")
+                self.logger.error(f"[ApiCallLog] PostgreSQL 저장 실패: {e}")
                 db.rollback()
             finally:
                 db.close()
-            
-            # PostgreSQL 이중 저장
-            try:
-                from app.core.database import get_postgres_db
-                pg_db = next(get_postgres_db())
-                try:
-                    from sqlalchemy.dialects.postgresql import insert as pg_insert
-                    from sqlalchemy import func
-                    from app.models.asset import ApiCallLog as PGApiCallLog
-                    
-                    # PostgreSQL UPSERT
-                    pg_data = {
-                        'api_name': api_name,
-                        'endpoint': f'OHLCV data collection for {ticker}',
-                        'asset_ticker': ticker,
-                        'status_code': 200,
-                        'response_time_ms': 0,
-                        'success': True,
-                        'error_message': None,
-                        'timestamp': datetime.now()
-                    }
-                    
-                    stmt = pg_insert(PGApiCallLog).values(**pg_data)
-                    stmt = stmt.on_conflict_do_update(
-                        index_elements=['id'],  # PostgreSQL에서는 id로 충돌 처리
-                        set_={
-                            'api_name': stmt.excluded.api_name,
-                            'endpoint': stmt.excluded.endpoint,
-                            'asset_ticker': stmt.excluded.asset_ticker,
-                            'status_code': stmt.excluded.status_code,
-                            'response_time_ms': stmt.excluded.response_time_ms,
-                            'success': stmt.excluded.success,
-                            'error_message': stmt.excluded.error_message,
-                            'timestamp': stmt.excluded.timestamp
-                        }
-                    )
-                    pg_db.execute(stmt)
-                    pg_db.commit()
-                    self.logger.info(f"[ApiCallLog dual-write] PostgreSQL 저장 완료: {api_name} for {ticker}")
-                except Exception as e:
-                    pg_db.rollback()
-                    self.logger.warning(f"[ApiCallLog dual-write] PostgreSQL 저장 실패: {e}")
-                finally:
-                    pg_db.close()
-            except Exception as e:
-                self.logger.warning(f"[ApiCallLog dual-write] PostgreSQL 연결 실패: {e}")
                 
         except Exception as e:
             self.logger.error(f"Failed to log API call success: {e}")
     
     def log_api_call_failure(self, api_name: str, ticker: str, error: Exception):
-        """API 호출 실패 로그 - api_call_logs 테이블에 이중 저장 (MySQL + PostgreSQL)"""
+        """API 호출 실패 로그 - PostgreSQL에만 저장"""
         try:
             from app.core.database import SessionLocal
-            from sqlalchemy import text
+            from app.models.asset import ApiCallLog
             
-            # MySQL 저장
+            # PostgreSQL에만 저장 (SessionLocal이 이미 PostgreSQL을 사용)
             db = SessionLocal()
             try:
-                # api_call_logs 테이블에 실패 로그 저장
-                db.execute(text("""
-                    INSERT INTO api_call_logs 
-                    (api_name, endpoint, asset_ticker, status_code, response_time_ms, success, error_message, created_at)
-                    VALUES (:api_name, :endpoint, :asset_ticker, :status_code, :response_time_ms, :success, :error_message, :created_at)
-                """), {
-                    'api_name': api_name,
-                    'endpoint': f'OHLCV data collection for {ticker}',
-                    'asset_ticker': ticker,
-                    'status_code': 500,  # 일반적인 에러 코드
-                    'response_time_ms': 0,
-                    'success': 0,
-                    'error_message': str(error)[:500],  # 에러 메시지 길이 제한
-                    'created_at': datetime.now()
-                })
+                log_entry = ApiCallLog(
+                    api_name=api_name,
+                    endpoint=f'OHLCV data collection for {ticker}',
+                    asset_ticker=ticker,
+                    status_code=500,  # 일반적인 에러 코드
+                    response_time_ms=0,
+                    success=False,
+                    error_message=str(error)[:500],  # 에러 메시지 길이 제한
+                    timestamp=datetime.now()
+                )
+                db.add(log_entry)
                 db.commit()
-                self.logger.error(f"[ApiCallLog dual-write] MySQL 저장 완료: {api_name} for {ticker}, error: {error}")
+                self.logger.error(f"[ApiCallLog] PostgreSQL 저장 완료: {api_name} for {ticker}, error: {error}")
             except Exception as e:
-                self.logger.error(f"[ApiCallLog dual-write] MySQL 저장 실패: {e}")
+                self.logger.error(f"[ApiCallLog] PostgreSQL 저장 실패: {e}")
                 db.rollback()
             finally:
                 db.close()
-            
-            # PostgreSQL 이중 저장
-            try:
-                from app.core.database import get_postgres_db
-                pg_db = next(get_postgres_db())
-                try:
-                    from sqlalchemy.dialects.postgresql import insert as pg_insert
-                    from sqlalchemy import func
-                    from app.models.asset import ApiCallLog as PGApiCallLog
-                    
-                    # PostgreSQL UPSERT
-                    pg_data = {
-                        'api_name': api_name,
-                        'endpoint': f'OHLCV data collection for {ticker}',
-                        'asset_ticker': ticker,
-                        'status_code': 500,
-                        'response_time_ms': 0,
-                        'success': False,
-                        'error_message': str(error)[:500],
-                        'timestamp': datetime.now()
-                    }
-                    
-                    stmt = pg_insert(PGApiCallLog).values(**pg_data)
-                    stmt = stmt.on_conflict_do_update(
-                        index_elements=['id'],  # PostgreSQL에서는 id로 충돌 처리
-                        set_={
-                            'api_name': stmt.excluded.api_name,
-                            'endpoint': stmt.excluded.endpoint,
-                            'asset_ticker': stmt.excluded.asset_ticker,
-                            'status_code': stmt.excluded.status_code,
-                            'response_time_ms': stmt.excluded.response_time_ms,
-                            'success': stmt.excluded.success,
-                            'error_message': stmt.excluded.error_message,
-                            'timestamp': stmt.excluded.timestamp
-                        }
-                    )
-                    pg_db.execute(stmt)
-                    pg_db.commit()
-                    self.logger.error(f"[ApiCallLog dual-write] PostgreSQL 저장 완료: {api_name} for {ticker}, error: {error}")
-                except Exception as e:
-                    pg_db.rollback()
-                    self.logger.warning(f"[ApiCallLog dual-write] PostgreSQL 저장 실패: {e}")
-                finally:
-                    pg_db.close()
-            except Exception as e:
-                self.logger.warning(f"[ApiCallLog dual-write] PostgreSQL 연결 실패: {e}")
                 
         except Exception as e:
             self.logger.error(f"Failed to log API call failure: {e}")

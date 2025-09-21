@@ -201,7 +201,7 @@ services:
 
   # --- WebSocket 오케스트레이터 (Processing 프로필) ---
   websocket_orchestrator:
-    profiles: ["8001"]
+    profiles: ["processing"]
     build:
       context: ./backend
       dockerfile: Dockerfile

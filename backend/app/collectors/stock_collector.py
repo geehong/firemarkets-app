@@ -76,12 +76,9 @@ class StockCollector(BaseCollector):
                     Asset.is_active == True,
                     AssetType.type_name.ilike('%Stock%'),
                     or_(
-                        Asset.collection_settings.contains({"collect_financials": True}),
-                        Asset.collection_settings.contains({"collect_estimates": True}),
-                        Asset.collection_settings.contains({"collect_assets_info": True}),
-                        text("JSON_EXTRACT(collection_settings, '$.collect_financials') = true"),
-                        text("JSON_EXTRACT(collection_settings, '$.collect_estimates') = true"),
-                        text("JSON_EXTRACT(collection_settings, '$.collect_assets_info') = true")
+                        text("collection_settings->>'collect_financials' = 'true'"),
+                        text("collection_settings->>'collect_estimates' = 'true'"),
+                        text("collection_settings->>'collect_assets_info' = 'true'")
                     )
                 )
                 .all()

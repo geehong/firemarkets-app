@@ -303,19 +303,23 @@ class SchedulerService:
         """관리자 수동 실행: 모든 데이터 수집 작업을 즉시 1번씩 실행"""
         try:
             results = []
-            db = SessionLocal()
             
-            try:
-                for job_name, meta in self.JOB_MAPPING.items():
-                    collector_class = meta["class"]
-                    is_enabled_method = getattr(self.config_manager, meta["config_key"])
-                    
-                    if is_enabled_method():
+            for job_name, meta in self.JOB_MAPPING.items():
+                collector_class = meta["class"]
+                is_enabled_method = getattr(self.config_manager, meta["config_key"])
+                
+                if is_enabled_method():
+                    # 각 컬렉터마다 별도의 세션 사용
+                    db = SessionLocal()
+                    try:
+                        # ApiStrategyManager는 이벤트 루프 내에서 생성되어야 함
+                        api_manager = ApiStrategyManager(config_manager=self.config_manager)
+                        
                         # Collector 인스턴스 생성 및 실행
                         collector_instance = collector_class(
                             db=db,
                             config_manager=self.config_manager,
-                            api_manager=self.api_manager,
+                            api_manager=api_manager,
                             redis_queue_manager=self.redis_queue_manager,
                         )
                         
@@ -329,16 +333,24 @@ class SchedulerService:
                         })
                         
                         self.logger.info(f"✅ Manual execution completed: {job_name}")
-                    else:
+                        
+                    except Exception as e:
+                        self.logger.error(f"❌ Manual execution failed for {job_name}: {e}")
                         results.append({
                             "collector": job_name,
                             "success": False,
-                            "message": "Disabled via configuration",
+                            "message": f"Error: {str(e)}",
                             "duration": 0
                         })
-                        
-            finally:
-                db.close()
+                    finally:
+                        db.close()
+                else:
+                    results.append({
+                        "collector": job_name,
+                        "success": False,
+                        "message": "Disabled via configuration",
+                        "duration": 0
+                    })
             
             return {
                 "success": True,

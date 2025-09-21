@@ -18,12 +18,32 @@ from app.services.websocket.binance_consumer import BinanceWSConsumer
 from app.services.websocket.coinbase_consumer import CoinbaseWSConsumer
 from app.services.websocket.swissquote_consumer import SwissquoteWSConsumer
 from app.core.websocket_logging import orchestrator_logger
-from app.services.websocket_log_service import websocket_log_service
+from app.core.database import SessionLocal
+from sqlalchemy import text
 # DISABLED: TwelveData WebSocket Consumer
 # from app.services.websocket.twelvedata_consumer import TwelveDataWSConsumer
 from app.core.config import GLOBAL_APP_CONFIGS
 
 logger = logging.getLogger(__name__)
+
+def log_to_websocket_orchestrator_logs(log_level: str, message: str):
+    """WebSocket 오케스트레이터 로그를 websocket_orchestrator_logs 테이블에 저장"""
+    db = SessionLocal()
+    try:
+        db.execute(text("""
+            INSERT INTO websocket_orchestrator_logs (log_level, message, created_at)
+            VALUES (:log_level, :message, NOW())
+        """), {
+            'log_level': log_level,
+            'message': message
+        })
+        db.commit()
+        logger.debug(f"WebSocket orchestrator log saved: {log_level} - {message}")
+    except Exception as e:
+        logger.error(f"Failed to save WebSocket orchestrator log: {e}")
+        db.rollback()
+    finally:
+        db.close()
 
 @dataclass
 class ConsumerAssignment:
@@ -71,16 +91,9 @@ class WebSocketOrchestrator:
         logger.info("🚀 WebSocket Orchestrator starting...")
         self.is_running = True
         
-        # 로그 서비스 시작
-        logger.info("Starting WebSocket log batch processor task")
-        asyncio.create_task(websocket_log_service.start_batch_processor())
-        logger.info("WebSocket log batch processor task created")
-        
+        # 오케스트레이터 시작 로그
         logger.info("Logging orchestrator start event")
-        await websocket_log_service.log_event(
-            "INFO", "orchestrator_start", "WebSocket Orchestrator starting",
-            log_metadata={"timestamp": datetime.utcnow().isoformat()}
-        )
+        log_to_websocket_orchestrator_logs("INFO", "WebSocket Orchestrator starting")
         logger.info("Orchestrator start event logged successfully")
         
         try:
@@ -90,10 +103,7 @@ class WebSocketOrchestrator:
             logger.info(f"📊 Loaded {len(assets)} active assets")
             
             logger.info("Logging assets loaded event")
-            await websocket_log_service.log_event(
-                "INFO", "assets_loaded", f"Loaded {len(assets)} active assets",
-                ticker_count=len(assets)
-            )
+            log_to_websocket_orchestrator_logs("INFO", f"Loaded {len(assets)} active assets")
             logger.info("Assets loaded event logged successfully")
             
             # 2. Consumer 초기화
@@ -107,6 +117,9 @@ class WebSocketOrchestrator:
             logger.info("Starting asset rebalancing")
             await self._rebalance_assignments(assets)
             logger.info("Asset rebalancing completed successfully")
+            
+            # 리밸런싱 완료 로그
+            log_to_websocket_orchestrator_logs("INFO", f"Asset rebalancing completed - {len(assets)} assets, {len(self.consumers)} consumers")
             
             # 4. Consumer 실행
             logger.info("Starting WebSocket consumers")
@@ -122,12 +135,18 @@ class WebSocketOrchestrator:
             logger.error(f"Exception type: {type(e).__name__}")
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
+            
+            # 오케스트레이터 실패 로그
+            log_to_websocket_orchestrator_logs("ERROR", f"Orchestrator failed: {e}")
             await self.stop()
     
     async def stop(self):
         """오케스트레이터 중지"""
         logger.info("🛑 WebSocket Orchestrator stopping...")
         self.is_running = False
+        
+        # 오케스트레이터 중지 로그
+        log_to_websocket_orchestrator_logs("INFO", f"WebSocket Orchestrator stopping - {len(self.consumers)} consumers")
         
         # 모든 Consumer 중지
         for consumer in self.consumers.values():
@@ -181,13 +200,20 @@ class WebSocketOrchestrator:
         
         logger.info(f"Consumer initialization completed. Total initialized consumers: {len(self.consumers)}")
         logger.info(f"Initialized consumers: {list(self.consumers.keys())}")
+        
+        # Consumer 초기화 완료 로그
+        log_to_websocket_orchestrator_logs("INFO", f"Consumer initialization completed - {len(self.consumers)} consumers: {', '.join(self.consumers.keys())}")
     
     async def _rebalance_assignments(self, assets: List[Asset]):
         """자산을 Consumer에 최적 할당"""
         logger.info("🔄 Rebalancing asset assignments...")
         
         # 기존 할당 초기화
+        old_assignments = dict(self.assignments)
         self.assignments.clear()
+        
+        # 자산 할당 변경 로그
+        log_to_websocket_orchestrator_logs("INFO", f"Asset assignment rebalancing started - clearing {len(old_assignments)} existing assignments")
         
         # 자산을 세분화된 타입으로 분류
         assets_by_type = self._classify_assets_by_detailed_type(assets)
@@ -377,6 +403,7 @@ class WebSocketOrchestrator:
     async def _handle_consumer_failure(self, failed_consumer_name: str, failed_tickers: List[str]):
         """Consumer 실패 시 다른 Consumer로 재할당"""
         logger.warning(f"🔄 {failed_consumer_name} 실패, {len(failed_tickers)}개 티커 재할당 시도: {failed_tickers}")
+        log_to_websocket_orchestrator_logs("WARNING", f"Consumer {failed_consumer_name} failed, attempting to reallocate {len(failed_tickers)} tickers")
         
         # 실패한 Consumer의 할당 제거
         if failed_consumer_name in self.assignments:
@@ -419,6 +446,7 @@ class WebSocketOrchestrator:
             await self._start_consumers()
         else:
             logger.error(f"❌ {failed_consumer_name} 실패 후 재할당할 Consumer가 없음")
+            log_to_websocket_orchestrator_logs("ERROR", f"No available consumers for reallocation after {failed_consumer_name} failure")
     
     async def _start_consumers(self):
         """Consumer 시작"""
@@ -444,11 +472,17 @@ class WebSocketOrchestrator:
                     tasks.append(task)
                     logger.info(f"🚀 Starting {provider_name} with {len(assignment.assigned_tickers)} tickers")
                     logger.debug(f"Task created successfully for {provider_name}")
+                    
+                    # Consumer 시작 로그
+                    log_to_websocket_orchestrator_logs("INFO", f"Consumer {provider_name} starting with {len(assignment.assigned_tickers)} tickers")
                 except Exception as e:
                     logger.error(f"❌ Failed to create task for {provider_name}: {e}")
                     logger.error(f"Exception type: {type(e).__name__}")
                     import traceback
                     logger.error(f"Traceback: {traceback.format_exc()}")
+                    
+                    # Consumer 시작 실패 로그
+                    log_to_websocket_orchestrator_logs("ERROR", f"Consumer {provider_name} failed to start: {e}")
             else:
                 logger.warning(f"No tickers assigned to {provider_name}, skipping")
         
@@ -496,10 +530,12 @@ class WebSocketOrchestrator:
             
             if not connect_result:
                 logger.error(f"❌ Failed to connect {consumer.client_name}")
+                log_to_websocket_orchestrator_logs("ERROR", f"Consumer {consumer.client_name} connection failed")
                 await self._handle_consumer_failure(consumer.client_name, tickers)
                 return
             
             logger.info(f"✅ {consumer.client_name} connected successfully")
+            log_to_websocket_orchestrator_logs("INFO", f"Consumer {consumer.client_name} connected successfully")
             
             # 구독
             logger.info(f"📋 Attempting to subscribe {consumer.client_name} to {len(tickers)} tickers")
@@ -510,10 +546,12 @@ class WebSocketOrchestrator:
             
             if not subscribe_result:
                 logger.error(f"❌ Failed to subscribe {consumer.client_name}")
+                log_to_websocket_orchestrator_logs("ERROR", f"Consumer {consumer.client_name} subscription failed")
                 await self._handle_consumer_failure(consumer.client_name, tickers)
                 return
             
             logger.info(f"✅ {consumer.client_name} connected and subscribed to {len(tickers)} tickers")
+            log_to_websocket_orchestrator_logs("INFO", f"Consumer {consumer.client_name} subscribed to {len(tickers)} tickers")
             
             # 실행
             logger.info(f"🚀 Starting run() method for {consumer.client_name}")
@@ -542,6 +580,8 @@ class WebSocketOrchestrator:
     
     async def _monitoring_loop(self):
         """모니터링 루프"""
+        log_to_websocket_orchestrator_logs("INFO", "Monitoring loop started")
+        
         while self.is_running:
             try:
                 # 헬스체크
@@ -560,7 +600,10 @@ class WebSocketOrchestrator:
                 
             except Exception as e:
                 logger.error(f"❌ Error in monitoring loop: {e}")
+                log_to_websocket_orchestrator_logs("ERROR", f"Monitoring loop error: {e}")
                 await asyncio.sleep(30)
+        
+        log_to_websocket_orchestrator_logs("INFO", "Monitoring loop stopped")
     
     async def _health_check_consumers(self):
         """Consumer 헬스체크"""
@@ -569,8 +612,10 @@ class WebSocketOrchestrator:
                 is_healthy = await consumer.health_check()
                 if not is_healthy:
                     logger.warning(f"⚠️ {provider_name} health check failed")
+                    log_to_websocket_orchestrator_logs("WARNING", f"Consumer {provider_name} health check failed")
             except Exception as e:
                 logger.error(f"❌ Health check failed for {provider_name}: {e}")
+                log_to_websocket_orchestrator_logs("ERROR", f"Consumer {provider_name} health check error: {e}")
     
     def _should_rebalance(self) -> bool:
         """재조정 필요 여부 확인"""
@@ -581,6 +626,7 @@ class WebSocketOrchestrator:
         for provider_name, consumer in self.consumers.items():
             if not consumer.is_connected and provider_name in self.assignments:
                 logger.warning(f"⚠️ {provider_name} disconnected, triggering immediate rebalance")
+                log_to_websocket_orchestrator_logs("WARNING", f"Consumer {provider_name} disconnected, triggering immediate rebalance")
                 return True
         
         return (datetime.now() - self.last_rebalance).seconds >= self.rebalance_interval

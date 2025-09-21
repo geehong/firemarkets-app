@@ -782,6 +782,12 @@ const TickerTableAgGrid = ({
     }
     // getRenderedNodes()를 사용하여 현재 렌더링된 노드들만 가져옴
     const renderedNodes = gridApi.getRenderedNodes()
+    
+    // renderedNodes가 배열이 아닌 경우 빈 배열 반환
+    if (!Array.isArray(renderedNodes)) {
+      return []
+    }
+    
     const rows = []
     for (const node of renderedNodes) {
       if (node && node.data) {

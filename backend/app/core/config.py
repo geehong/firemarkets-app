@@ -66,7 +66,7 @@ REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
 
 # API Request Settings
 API_REQUEST_TIMEOUT_SECONDS = int(os.getenv("API_REQUEST_TIMEOUT_SECONDS", "30"))
-MAX_API_RETRY_ATTEMPTS = int(os.getenv("MAX_API_RETRY_ATTEMPTS", "3"))
+BATCH_PROCESSING_RETRY_ATTEMPTS = int(os.getenv("BATCH_PROCESSING_RETRY_ATTEMPTS", "5"))
 
 # 데이터베이스 설정
 from .database import SessionLocal
@@ -105,7 +105,7 @@ def load_and_set_global_configs():
         "ALPACA_SECRET_KEY": ALPACA_SECRET_KEY,
         "ALPACA_PAPER": ALPACA_PAPER,
         "API_REQUEST_TIMEOUT_SECONDS": API_REQUEST_TIMEOUT_SECONDS,
-        "MAX_API_RETRY_ATTEMPTS": MAX_API_RETRY_ATTEMPTS,
+        "BATCH_PROCESSING_RETRY_ATTEMPTS": BATCH_PROCESSING_RETRY_ATTEMPTS,
         "BITCOIN_ASSET_ID": BITCOIN_ASSET_ID,
         "REDIS_HOST": REDIS_HOST,
         "REDIS_PORT": REDIS_PORT,
@@ -118,7 +118,7 @@ def load_and_set_global_configs():
         "ENABLE_SEMAPHORE": config_loader.get("concurrency.enable_semaphore", True),
         "SEMAPHORE_LIMIT": config_loader.get("concurrency.semaphore_limit", 3),
         "BATCH_SIZE": config_loader.get("concurrency.batch_size", 5),
-        "MAX_API_RETRY_ATTEMPTS": config_loader.get("retry.max_retry_attempts", 3),
+        "BATCH_PROCESSING_RETRY_ATTEMPTS": config_loader.get("retry.batch_processing_retry_attempts", 5),
         "RETRY_BASE_DELAY": config_loader.get("retry.base_delay", 1.0),
         "RETRY_MAX_DELAY": config_loader.get("retry.max_delay", 30.0),
         "ENABLE_JITTER": config_loader.get("retry.enable_jitter", True),

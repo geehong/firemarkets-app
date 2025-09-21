@@ -3,7 +3,7 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
 from ..core.database import get_db
-from ..models.system import ApiCallLog
+from ..models.asset import ApiCallLog
 from ..utils.logger import get_logger
 
 logger = get_logger()

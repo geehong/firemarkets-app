@@ -12,7 +12,7 @@ import redis.asyncio as redis
 from app.services.websocket.base_consumer import BaseWSConsumer, ConsumerConfig
 from app.core.config import GLOBAL_APP_CONFIGS
 from app.core.websocket_logging import WebSocketLogger
-from app.services.websocket_log_service import websocket_log_service
+# websocket_log_service removed - using file logging only
 
 logger = logging.getLogger(__name__)
 

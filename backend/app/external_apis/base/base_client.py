@@ -10,7 +10,7 @@ import httpx
 import backoff
 from datetime import datetime
 
-from app.core.config import API_REQUEST_TIMEOUT_SECONDS, MAX_API_RETRY_ATTEMPTS
+from app.core.config import API_REQUEST_TIMEOUT_SECONDS
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,9 @@ class BaseAPIClient(ABC):
     def __init__(self):
         """Initialize base API client with common settings"""
         self.api_timeout = API_REQUEST_TIMEOUT_SECONDS
-        self.max_retries = MAX_API_RETRY_ATTEMPTS
+        # Note: API retry is handled by @backoff decorator (hardcoded to 3 attempts)
+        # self.max_retries is kept for compatibility but not used in actual retry logic
+        self.max_retries = 3
         self.max_time = self.api_timeout * 2
     
     @backoff.on_exception(

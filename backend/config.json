@@ -19,7 +19,7 @@
     "batch_size": 1
   },
   "retry": {
-    "max_retry_attempts": 3,
+    "batch_processing_retry_attempts": 5,
     "base_delay": 1.0,
     "max_delay": 30.0,
     "enable_jitter": true

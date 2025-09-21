@@ -49,11 +49,10 @@ import { schedulerAPI } from '../../services/api'
 // Components
 import SchedulerControls from '../../components/admin/config/SchedulerControls'
 import ConfigSection from '../../components/admin/config/ConfigSection'
-import OHLCVIntervalSettings from '../../components/admin/config/OHLCVIntervalSettings'
-import OnChainMetrics from '../../components/admin/onchain/OnChainMetrics'
-import OnChainActions from '../../components/admin/onchain/OnChainActions'
-import OnChainStatus from '../../components/admin/onchain/OnChainStatus'
+import SchedulerSettings from '../../components/admin/config/SchedulerSettings'
+import OnChainSettings from '../../components/admin/onchain/OnChainSettings'
 import WorldAssetsCollectionSettings from '../../components/admin/config/WorldAssetsCollectionSettings'
+import RealtimeWebSocketSettings from '../../components/admin/config/RealtimeWebSocketSettings'
 import RealTimeLogs from '../../components/admin/logs/RealTimeLogs'
 import LogsTable from '../../components/admin/logs/LogsTable'
 import CardTools from '../../components/common/CardTools'
@@ -61,10 +60,7 @@ import ConfigReadMe from '../../components/common/ConfigReadMe'
 import '../../components/common/CardTools.css'
 
 // Ticker Management Components
-import TickerTabs from '../../components/admin/ticker/temp/TickerTabs'
-//import TickerTable from '../../components/admin/ticker/TickerTable'
 import TickerTableAgGrid from '../../components/admin/ticker/TickerTableAgGrid'
-//import TickerTableReactTable from '../../components/admin/ticker/temp/TickerTableReactTable'
 import useAssetTypes from '../../hooks/useAssetTypes'
 
 const AdminManage = () => {
@@ -79,14 +75,12 @@ const AdminManage = () => {
   const { logs, addLog, clearLogs } = useLogManager()
   const { logs: wsLogs, isConnected: wsConnected, clearLogs: clearWsLogs } = useWebSocketLogs()
   const {
-    configurations,
     groupedConfigurations,
     loading: configLoading,
     saving: configSaving,
     error: configError,
-    loadConfigurations,
-    updateConfiguration,
-    applyCategoryChanges,
+    loadGroupedConfigurations,
+    updateGroupedConfiguration,
   } = useConfigurations()
   const {
     data: schedulerStatus,
@@ -96,15 +90,8 @@ const AdminManage = () => {
   const {
     metrics,
     loading: onchainLoading,
-    collecting,
-    stopping: onchainStopping,
     error: onchainError,
     loadMetrics,
-    updateMetric,
-    collectData,
-    stopCollection,
-    refreshData,
-    runMetric,
   } = useOnChain()
 
   // 스케줄러 로그 데이터
@@ -169,90 +156,11 @@ const AdminManage = () => {
     }
   }
 
-  // 설정 변경 핸들러
-  const handleConfigChange = async (field, value) => {
-    const result = await updateConfiguration(field, value)
-    if (result.success) {
-      showAlert('success', result.message)
-      addLog({ level: 'success', message: result.message })
-    } else {
-      showAlert('error', result.message)
-      addLog({ level: 'error', message: result.message })
-    }
-  }
 
-  const handleConfigSave = async () => {
-    const result = await applyCategoryChanges('general')
-    if (result.success) {
-      showAlert('success', result.message)
-      addLog({ level: 'success', message: result.message })
-    } else {
-      showAlert('error', result.message)
-      addLog({ level: 'error', message: result.message })
-    }
-  }
-
-  // 온체인 메트릭 변경 핸들러
-  const handleMetricsChange = async (metricId, config) => {
-    if (config.action === 'run') {
-      const result = await runMetric(metricId)
-      if (result.success) {
-        showAlert('success', result.message)
-        addLog({ level: 'success', message: result.message })
-      } else {
-        showAlert('error', result.message)
-        addLog({ level: 'error', message: result.message })
-      }
-    } else {
-      const result = await updateMetric(metricId, config)
-      if (result.success) {
-        showAlert('success', result.message)
-        addLog({ level: 'info', message: result.message })
-      } else {
-        showAlert('error', result.message)
-        addLog({ level: 'error', message: result.message })
-      }
-    }
-  }
-
-  const handleCollect = async () => {
-    const result = await collectData()
-    if (result.success) {
-      showAlert('success', result.message)
-      addLog({ level: 'success', message: result.message })
-    } else {
-      showAlert('error', result.message)
-      addLog({ level: 'error', message: result.message })
-    }
-  }
-
-  const handleStop = async () => {
-    const result = await stopCollection()
-    if (result.success) {
-      showAlert('warning', result.message)
-      addLog({ level: 'warning', message: result.message })
-    } else {
-      showAlert('error', result.message)
-      addLog({ level: 'error', message: result.message })
-    }
-  }
-
-  const handleRefresh = async () => {
-    const result = await refreshData()
-    if (result.success) {
-      showAlert('success', result.message)
-      addLog({ level: 'info', message: result.message })
-    } else {
-      showAlert('error', result.message)
-      addLog({ level: 'error', message: result.message })
-    }
-  }
 
   // 로그 새로고침
   const handleLogRefresh = () => {
-    loadSchedulerStatus()
-    loadJobDetails()
-    loadConfigurations()
+    loadGroupedConfigurations()
     loadMetrics()
   }
 
@@ -269,11 +177,6 @@ const AdminManage = () => {
     }))
   }
 
-  // 스케줄러 설정만 필터링
-  const schedulerConfigs = configurations.filter((config) => config.category === 'scheduler')
-
-  // 온체인 메트릭 설정만 필터링
-  const onchainConfigs = configurations.filter((config) => config.category === 'onchain_metrics')
 
 
 
@@ -379,16 +282,6 @@ const AdminManage = () => {
             </CNavItem>
             <CNavItem>
               <CNavLink
-                active={activeTab === 'configuration'}
-                onClick={() => handleTabChange('configuration')}
-                style={{ cursor: 'pointer' }}
-              >
-                <CIcon icon={cilSettings} className="me-2" />
-                Configuration
-              </CNavLink>
-            </CNavItem>
-            <CNavItem>
-              <CNavLink
                 active={activeTab === 'onchain'}
                 onClick={() => handleTabChange('onchain')}
                 style={{ cursor: 'pointer' }}
@@ -399,12 +292,12 @@ const AdminManage = () => {
             </CNavItem>
             <CNavItem>
               <CNavLink
-                active={activeTab === 'world-assets'}
-                onClick={() => handleTabChange('world-assets')}
+                active={activeTab === 'realtime-websocket'}
+                onClick={() => handleTabChange('realtime-websocket')}
                 style={{ cursor: 'pointer' }}
               >
-                <CIcon icon={cilGlobeAlt} className="me-2" />
-                World Assets
+                <CIcon icon={cilDataTransferDown} className="me-2" />
+                RealTime
               </CNavLink>
             </CNavItem>
             <CNavItem>
@@ -462,77 +355,21 @@ const AdminManage = () => {
               visible={activeTab === 'scheduler'}
               style={{ maxHeight: 'none', overflow: 'visible' }}
             >
-              {/* OHLCV 간격 설정 */}
-              <CCard className={`mb-4 ${collapsedCards['ohlcv-settings'] ? 'collapsed' : ''}`}>
-                <CCardHeader>
-                  <CCardTitle>OHLCV Interval Settings</CCardTitle>
-                  <CardTools
-                    onCollapse={(collapsed) => handleCardCollapse('ohlcv-settings', collapsed)}
-                  />
-                </CCardHeader>
-                <CCardBody>
-                  <OHLCVIntervalSettings
-                    configurations={configurations}
-                    updateConfiguration={handleConfigChange}
-                    saving={configSaving}
-                  />
-                </CCardBody>
-              </CCard>
-
               {/* 스케줄러 설정 */}
-              <CCard className={`mb-4 ${collapsedCards['scheduler-config'] ? 'collapsed' : ''}`}>
+              <CCard className={`mb-4 ${collapsedCards['scheduler-settings'] ? 'collapsed' : ''}`}>
                 <CCardHeader>
-                  <CCardTitle>Scheduler Configuration</CCardTitle>
+                  <CCardTitle>Scheduler Settings</CCardTitle>
                   <CardTools
-                    onCollapse={(collapsed) => handleCardCollapse('scheduler-config', collapsed)}
+                    onCollapse={(collapsed) => handleCardCollapse('scheduler-settings', collapsed)}
                   />
                 </CCardHeader>
                 <CCardBody>
-                  <div className="alert alert-info">
-                    <h6>Scheduler Configuration</h6>
-                    <p className="mb-0">
-                      Scheduler settings are now managed through the grouped JSON configuration system.
-                      Please refer to the Config ReadMe tab for detailed information about available settings.
-                    </p>
-                  </div>
+                  <SchedulerSettings />
                 </CCardBody>
               </CCard>
+
             </CTabPane>
 
-            {/* 설정 탭 */}
-            <CTabPane
-              visible={activeTab === 'configuration'}
-              style={{ maxHeight: 'none', overflow: 'visible' }}
-            >
-              <ConfigSection title="Configuration Management">
-                <div className="alert alert-info">
-                  <h6>Configuration Status</h6>
-                  <p className="mb-0">
-                    {configError ? (
-                      <span className="text-danger">Error: {configError}</span>
-                    ) : (
-                      <span className="text-success">Configuration loaded successfully</span>
-                    )}
-                  </p>
-                </div>
-                
-                <div className="d-flex gap-2">
-                  <button 
-                    className="btn btn-primary" 
-                    onClick={handleConfigSave}
-                    disabled={configSaving}
-                  >
-                    {configSaving ? 'Saving...' : 'Save Configuration'}
-                  </button>
-                  <button 
-                    className="btn btn-secondary" 
-                    onClick={() => loadConfigurations()}
-                  >
-                    Reload Configuration
-                  </button>
-                </div>
-              </ConfigSection>
-            </CTabPane>
 
             {/* 온체인 탭 */}
             <CTabPane
@@ -550,59 +387,37 @@ const AdminManage = () => {
                 </p>
               </div>
 
-              <CCard className={`mb-4 ${collapsedCards['onchain-metrics'] ? 'collapsed' : ''}`}>
-                <CCardHeader>
-                  <CCardTitle>On-Chain Metrics Configuration</CCardTitle>
-                  <CardTools
-                    onCollapse={(collapsed) => handleCardCollapse('onchain-metrics', collapsed)}
-                  />
-                </CCardHeader>
-                <CCardBody>
-                  <OnChainMetrics
-                    metrics={metrics}
-                    onMetricsChange={handleMetricsChange}
-                    runningMetrics={new Set()}
-                  />
-                </CCardBody>
-              </CCard>
-
               <CCard className={`mb-4 ${collapsedCards['onchain-settings'] ? 'collapsed' : ''}`}>
                 <CCardHeader>
-                  <CCardTitle>On-Chain Collection Settings</CCardTitle>
+                  <CCardTitle>On-Chain Settings</CCardTitle>
                   <CardTools
                     onCollapse={(collapsed) => handleCardCollapse('onchain-settings', collapsed)}
                   />
                 </CCardHeader>
                 <CCardBody>
-                  <div className="alert alert-info">
-                    <h6>On-chain Configuration</h6>
-                    <p className="mb-0">
-                      On-chain settings are now managed through the grouped JSON configuration system.
-                      Please refer to the Config ReadMe tab for detailed information about available settings.
-                    </p>
-                  </div>
+                  <OnChainSettings />
                 </CCardBody>
               </CCard>
 
-              <ConfigSection title="Actions">
-                <OnChainActions
-                  onCollect={handleCollect}
-                  onStop={handleStop}
-                  onRefresh={handleRefresh}
-                  onExport={() => addLog({ level: 'info', message: 'On-chain data exported' })}
-                  onImport={() => addLog({ level: 'info', message: 'On-chain data imported' })}
-                  isCollecting={collecting}
-                  isStopping={onchainStopping}
-                />
-              </ConfigSection>
             </CTabPane>
 
-            {/* World Assets 탭 */}
+
+            {/* Realtime & WebSocket 탭 */}
             <CTabPane
-              visible={activeTab === 'world-assets'}
+              visible={activeTab === 'realtime-websocket'}
               style={{ maxHeight: 'none', overflow: 'visible' }}
             >
-              <WorldAssetsCollectionSettings />
+              <CCard className={`mb-4 ${collapsedCards['realtime-websocket-settings'] ? 'collapsed' : ''}`}>
+                <CCardHeader>
+                  <CCardTitle>Realtime & WebSocket Settings</CCardTitle>
+                  <CardTools
+                    onCollapse={(collapsed) => handleCardCollapse('realtime-websocket-settings', collapsed)}
+                  />
+                </CCardHeader>
+                <CCardBody>
+                  <RealtimeWebSocketSettings />
+                </CCardBody>
+              </CCard>
             </CTabPane>
 
             {/* 티커 탭 */}

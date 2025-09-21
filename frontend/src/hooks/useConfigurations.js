@@ -2,11 +2,37 @@ import { useState, useEffect, useCallback } from 'react'
 
 export const useConfigurations = () => {
   const [configurations, setConfigurations] = useState([])
+  const [groupedConfigurations, setGroupedConfigurations] = useState({})
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
-  // 설정 로드
+  // 그룹화된 설정 로드
+  const loadGroupedConfigurations = useCallback(async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const response = await fetch('/api/v1/configurations/grouped')
+      if (!response.ok) {
+        throw new Error('Failed to load grouped configurations')
+      }
+      const data = await response.json()
+      
+      // 그룹화된 설정들을 config_key로 매핑
+      const groupedMap = {}
+      data.forEach(config => {
+        groupedMap[config.config_key] = config
+      })
+      setGroupedConfigurations(groupedMap)
+    } catch (error) {
+      setError(error.message)
+      console.error('Error loading grouped configurations:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // 개별 설정 로드 (레거시)
   const loadConfigurations = useCallback(async () => {
     try {
       setLoading(true)
@@ -25,7 +51,43 @@ export const useConfigurations = () => {
     }
   }, [])
 
-  // 설정 업데이트
+  // 그룹화된 설정 업데이트
+  const updateGroupedConfiguration = useCallback(async (configKey, configValue) => {
+    try {
+      setSaving(true)
+      setError(null)
+      const response = await fetch(`/api/v1/configurations/grouped/${configKey}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          config_value: configValue,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to update grouped configuration')
+      }
+
+      const updatedConfig = await response.json()
+      setGroupedConfigurations((prev) => ({
+        ...prev,
+        [configKey]: updatedConfig,
+      }))
+
+      return { success: true, message: `Configuration "${configKey}" updated successfully` }
+    } catch (error) {
+      setError(error.message)
+      console.error('Error updating grouped configuration:', error)
+      return { success: false, message: error.message }
+    } finally {
+      setSaving(false)
+    }
+  }, [])
+
+  // 개별 설정 업데이트 (레거시)
   const updateConfiguration = useCallback(async (configKey, newValue) => {
     try {
       setSaving(true)
@@ -55,56 +117,10 @@ export const useConfigurations = () => {
     }
   }, [])
 
-  // 카테고리별 설정 적용
-  const applyCategoryChanges = useCallback(async (category) => {
-    try {
-      setSaving(true)
-      setError(null)
-
-      const response = await fetch(`/api/v1/configurations?category=${category}`)
-      if (!response.ok) {
-        throw new Error('Failed to reload configurations')
-      }
-
-      const categoryConfigs = await response.json()
-      setConfigurations((prev) => {
-        const updated = [...prev]
-        categoryConfigs.forEach((catConfig) => {
-          const index = updated.findIndex((c) => c.config_key === catConfig.config_key)
-          if (index !== -1) {
-            updated[index] = catConfig
-          }
-        })
-        return updated
-      })
-
-      return { success: true, message: `${category} category settings applied successfully` }
-    } catch (error) {
-      setError(error.message)
-      console.error('Error applying category changes:', error)
-      return { success: false, message: error.message }
-    } finally {
-      setSaving(false)
-    }
-  }, [])
-
-  // 설정값들을 카테고리별로 그룹화
-  const groupedConfigurations = configurations.reduce((acc, config) => {
-    const category = config.category || 'general'
-    if (category === 'onchain_metrics') {
-      return acc // 온체인 메트릭은 별도 탭에서 관리
-    }
-    if (!acc[category]) {
-      acc[category] = []
-    }
-    acc[category].push(config)
-    return acc
-  }, {})
-
   // 초기 로드
   useEffect(() => {
-    loadConfigurations()
-  }, [loadConfigurations])
+    loadGroupedConfigurations()
+  }, [loadGroupedConfigurations])
 
   return {
     configurations,
@@ -113,7 +129,8 @@ export const useConfigurations = () => {
     saving,
     error,
     loadConfigurations,
+    loadGroupedConfigurations,
     updateConfiguration,
-    applyCategoryChanges,
+    updateGroupedConfiguration,
   }
 }

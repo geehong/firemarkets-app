@@ -13,7 +13,7 @@ from datetime import datetime
 from app.services.websocket.base_consumer import BaseWSConsumer, ConsumerConfig, AssetType
 from app.core.config import GLOBAL_APP_CONFIGS
 from app.core.websocket_logging import WebSocketLogger
-from app.services.websocket_log_service import websocket_log_service
+# websocket_log_service removed - using file logging only
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +47,7 @@ class BinanceWSConsumer(BaseWSConsumer):
         """WebSocket 연결"""
         try:
             self.ws_logger.connection_attempt(self.ws_url)
-            await websocket_log_service.log_event(
-                "INFO", "connection_attempt", f"Attempting connection to {self.ws_url}",
-                consumer_name=self.client_name, log_metadata={"url": self.ws_url}
-            )
+            # websocket_log_service removed - using file logging only
             
             self._ws = await asyncio.wait_for(
                 websockets.connect(
@@ -65,19 +62,13 @@ class BinanceWSConsumer(BaseWSConsumer):
             self.connection_errors = 0
             
             self.ws_logger.connection_success()
-            await websocket_log_service.log_event(
-                "INFO", "connection_success", "Connected successfully",
-                consumer_name=self.client_name
-            )
+            # websocket_log_service removed - using file logging only
             return True
             
         except asyncio.TimeoutError:
             error_msg = "Connection timeout after 30 seconds"
             self.ws_logger.connection_failed(error_msg)
-            await websocket_log_service.log_event(
-                "ERROR", "connection_failed", error_msg,
-                consumer_name=self.client_name, error_type="TimeoutError"
-            )
+            # websocket_log_service removed - using file logging only
             self.connection_errors += 1
             self.is_connected = False
             self._ws = None
@@ -86,10 +77,7 @@ class BinanceWSConsumer(BaseWSConsumer):
         except Exception as e:
             error_msg = f"Connection failed: {e}"
             self.ws_logger.connection_failed(error_msg)
-            await websocket_log_service.log_event(
-                "ERROR", "connection_failed", error_msg,
-                consumer_name=self.client_name, error_type=type(e).__name__
-            )
+            # websocket_log_service removed - using file logging only
             self.connection_errors += 1
             self.is_connected = False
             self._ws = None

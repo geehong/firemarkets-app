@@ -80,10 +80,8 @@ class ETFCollector(BaseCollector):
                     Asset.is_active == True,
                     AssetType.type_name.ilike('%ETF%'),
                     or_(
-                        Asset.collection_settings.contains({"collect_price": True}),
-                        Asset.collection_settings.contains({"collect_assets_info": True}),
-                        text("JSON_EXTRACT(collection_settings, '$.collect_price') = true"),
-                        text("JSON_EXTRACT(collection_settings, '$.collect_assets_info') = true")
+                        text("collection_settings->>'collect_price' = 'true'"),
+                        text("collection_settings->>'collect_assets_info' = 'true'")
                     )
                 )
                 .all()

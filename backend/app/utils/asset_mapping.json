@@ -91,8 +91,13 @@
     "BABA": 132,
     "HSBC": 141,
     "TM": 131,
-    "PALLAD": 27,
-    "PLAT": 28
+    "PALLAD": 407,
+    "PLAT": 401,
+    "GOLD": 3,
+    "SILVER": 26,
+    "PAXG": 538,
+    "XAUT": 568,
+    "USDC": 577
   },
   "asset_type_id_mapping": {
     "BTC": 8,
@@ -102,6 +107,9 @@
     "SILVER": 3,
     "PALLAD": 3,
     "PLAT": 3,
+    "PAXG": 3,
+    "XAUT": 3,
+    "USDC": 3,
     "SPY": 5,
     "QQQ": 5,
     "VTI": 5,

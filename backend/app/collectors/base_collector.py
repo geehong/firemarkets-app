@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.config_manager import ConfigManager
 from app.services.api_strategy_manager import ApiStrategyManager
 from app.utils.redis_queue_manager import RedisQueueManager
+from app.core.database import SessionLocal
 # ---
 
 from app.models.asset import SchedulerLog
@@ -67,15 +68,6 @@ class BaseCollector(ABC):
         start_time = datetime.now()
         logger.info(f"[{self.collector_name}] Collection job started")
         
-        # Scheduler Log 생성
-        scheduler_log = SchedulerLog(
-            job_name=f"{self.collector_name.lower()}_collection",
-            start_time=start_time,
-            status="running"
-        )
-        self.db.add(scheduler_log)
-        self.db.commit()
-        
         try:
             # 핵심 비즈니스 로직은 _collect_data에 위임
             result = await self._collect_data()
@@ -83,15 +75,7 @@ class BaseCollector(ABC):
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
             
-            # 성공 로그 업데이트
-            scheduler_log.end_time = end_time
-            scheduler_log.duration_seconds = int(duration)
-            scheduler_log.status = "completed"
-            scheduler_log.assets_processed = result.get("processed_assets", 0)
-            scheduler_log.data_points_added = result.get("total_added_records", 0)
-            self.db.commit()
-            
-            self.logging_helper.log_job_end(duration, result)
+            logger.info(f"[{self.collector_name}] Collection job completed successfully in {duration:.2f} seconds")
             return {
                 "success": True, "collector": self.collector_name, "duration": duration, "data": result
             }
@@ -99,16 +83,9 @@ class BaseCollector(ABC):
         except Exception as e:
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
-            
-            # 실패 로그 업데이트
             error_message = str(e)
-            scheduler_log.end_time = end_time
-            scheduler_log.duration_seconds = int(duration)
-            scheduler_log.status = "failed"
-            scheduler_log.error_message = error_message
-            self.db.commit()
             
-            self.logging_helper.log_job_failure(e, duration)
+            logger.error(f"[{self.collector_name}] Collection job failed after {duration:.2f} seconds: {error_message}")
             return {
                 "success": False, "collector": self.collector_name, "duration": duration, "error": error_message
             }

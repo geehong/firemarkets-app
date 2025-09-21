@@ -79,10 +79,7 @@ class CryptoDataCollector(BaseCollector):
                 .filter(
                     Asset.is_active == True,
                     AssetType.type_name.ilike('%Crypto%'), # 'Crypto' 또는 'Cryptocurrency' 포함
-                    or_(
-                        Asset.collection_settings.contains({"collect_crypto_data": True}),
-                        text("JSON_EXTRACT(collection_settings, '$.collect_crypto_data') = true")
-                    )
+                    text("collection_settings->>'collect_crypto_data' = 'true'")
                 )
             )
             asset_id_tuples = query.all()

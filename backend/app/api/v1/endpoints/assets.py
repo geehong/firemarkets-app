@@ -76,7 +76,7 @@ def get_asset_types(
 @cache_with_invalidation(expire=600)  # 10분 TTL로 증가 (자산 목록은 자주 변경되지 않음)
 def get_all_assets(
     type_name: Optional[str] = Query(None, description="필터링할 자산 유형 이름"),
-    has_ohlcv_data: bool = Query(True, description="OHLCV 데이터가 있는 자산만 필터링합니다."),
+    has_ohlcv_data: bool = Query(False, description="OHLCV 데이터가 있는 자산만 필터링합니다."),
     limit: int = Query(1000, ge=1, description="페이지당 자산 개수"),
     offset: int = Query(0, ge=0, description="데이터 시작 오프셋"),
     db: Session = Depends(get_db)

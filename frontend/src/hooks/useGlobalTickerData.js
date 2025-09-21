@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 const globalTickerAPI = {
   // 모든 티커 목록 조회
   getAllTickers: async () => {
-    const response = await fetch('/api/v1/assets?limit=1000', {
+    const response = await fetch('/api/v1/assets?limit=1000&has_ohlcv_data=false', {
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',

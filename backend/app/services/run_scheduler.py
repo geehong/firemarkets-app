@@ -14,10 +14,17 @@ from app.models.asset import AppConfiguration
 
 def get_db_config(db, key, default_value):
     """DB에서 설정값을 가져옵니다."""
-    config = db.query(AppConfiguration).filter(AppConfiguration.config_key == key).first()
-    if not config:
+    logger.debug(f"Looking for config key: '{key}'")
+    try:
+        config = db.query(AppConfiguration).filter(AppConfiguration.config_key == key).first()
+        if not config:
+            logger.warning(f"Config key '{key}' not found in database, using default: '{default_value}'")
+            return default_value
+        logger.debug(f"Found config '{key}': '{config.config_value}' (type: {type(config.config_value)})")
+        return config.config_value
+    except Exception as e:
+        logger.error(f"Error retrieving config '{key}': {e}")
         return default_value
-    return config.config_value
 
 def check_health():
     """하트비트를 확인하여 스케줄러가 멈췄는지 검사합니다."""
@@ -58,11 +65,28 @@ def main_loop():
     
     logger.info("Scheduler worker process started.")
     
+    # 데이터베이스 연결 정보 로그
+    try:
+        from app.core.database import engine
+        logger.info(f"Database engine URL: {str(engine.url)}")
+    except Exception as e:
+        logger.error(f"Failed to get database engine info: {e}")
+    
     while True:
         try:
             db = SessionLocal()
-            should_run = get_db_config(db, 'scheduler_enabled', 'false').lower() == 'true'
-            test_mode = get_db_config(db, 'test_mode', 'false').lower() == 'true'
+            logger.debug("Checking scheduler control flags...")
+            
+            should_run_raw = get_db_config(db, 'scheduler_enabled', 'false')
+            logger.info(f"Raw scheduler_enabled value: '{should_run_raw}' (type: {type(should_run_raw)})")
+            should_run = should_run_raw.lower() == 'true'
+            logger.info(f"Parsed should_run: {should_run}")
+            
+            test_mode_raw = get_db_config(db, 'test_mode', 'false')
+            logger.debug(f"Raw test_mode value: '{test_mode_raw}' (type: {type(test_mode_raw)})")
+            test_mode = test_mode_raw.lower() == 'true'
+            logger.debug(f"Parsed test_mode: {test_mode}")
+            
             db.close()
 
             if should_run:

@@ -144,9 +144,9 @@ const ConfigReadMe = () => {
           sensitive: false,
         },
         {
-          key: 'MAX_API_RETRY_ATTEMPTS',
+          key: 'BATCH_PROCESSING_RETRY_ATTEMPTS',
           type: 'int',
-          description: 'Maximum API call retry attempts',
+          description: 'Maximum retry attempts for batch data processing failures',
           sensitive: false,
         },
         {

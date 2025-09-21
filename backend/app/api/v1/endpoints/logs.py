@@ -7,7 +7,8 @@ from datetime import datetime, timedelta
 import logging
 
 from ....core.database import get_db
-from ....models import SchedulerLog, ApiCallLog
+from ....models.asset import ApiCallLog
+from ....models.asset import SchedulerLog
 from ....schemas.common import LogDeleteResponse
 
 logger = logging.getLogger(__name__)

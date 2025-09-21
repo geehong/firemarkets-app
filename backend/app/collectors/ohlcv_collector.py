@@ -88,10 +88,7 @@ class OHLCVCollector(BaseCollector):
                 .join(AssetType)
                 .filter(
                     Asset.is_active == True,
-                    or_(
-                        Asset.collection_settings.contains({"collect_price": True}),
-                        text("JSON_EXTRACT(collection_settings, '$.collect_price') = true")
-                    )
+                    text("collection_settings->>'collect_price' = 'true'")
                 )
             )
             asset_id_tuples = query.all()

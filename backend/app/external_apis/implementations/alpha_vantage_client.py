@@ -18,8 +18,7 @@ from app.core.config import (
     ALPHA_VANTAGE_API_KEY_1,
     ALPHA_VANTAGE_API_KEY_2,
     ALPHA_VANTAGE_API_KEY_3,
-    API_REQUEST_TIMEOUT_SECONDS,
-    MAX_API_RETRY_ATTEMPTS
+    API_REQUEST_TIMEOUT_SECONDS
 )
 from app.external_apis.utils.helpers import safe_float, safe_date_parse
 
