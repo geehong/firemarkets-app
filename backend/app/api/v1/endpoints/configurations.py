@@ -26,6 +26,28 @@ class AppConfigurationPydantic(BaseModel):
     class Config:
         from_attributes = True
 
+class GroupedConfigurationItem(BaseModel):
+    value: Any
+    type: str
+    description: Optional[str] = None
+    is_sensitive: bool = False
+    is_active: bool = True
+
+class GroupedConfigurationResponse(BaseModel):
+    config_id: int
+    config_key: str
+    config_value: Dict[str, GroupedConfigurationItem]
+    data_type: str
+    description: Optional[str] = None
+    is_sensitive: bool
+    is_active: bool
+    category: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
 class ConfigurationResponse(BaseModel):
     config_id: int
     config_key: str

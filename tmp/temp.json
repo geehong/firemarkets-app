@@ -15,8 +15,8 @@
             "day_of_week": "tue,wed,thu,fri,sat"
         },
         {
-            "hour": 15,
-            "minute": 45,
+            "hour": 10,
+            "minute": 1,
             "collectors": [
                 "stock_profiles_clients",
                 "stock_financials_clients",

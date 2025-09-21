@@ -1,0 +1,288 @@
+cd /home/geehong/firemarkets-app && cat .env
+
+- docker-compose ps
+    NAME                                  IMAGE                                                                     COMMAND                   SERVICE                  CREATED        STATUS                    PORTS
+    fire_markets_backend                  firemarkets-app-backend                                                   "uvicorn app.admin_m…"   backend                  2 days ago     Up 2 days (healthy)       0.0.0.0:8001->8000/tcp, [::]:8001->8000/tcp
+    fire_markets_data_processor           firemarkets-app-data_processor                                            "python -m app.servi…"   data_processor           22 hours ago   Up 22 hours (unhealthy)   8000/tcp
+    fire_markets_db                       mysql:8.0                                                                 "docker-entrypoint.s…"   db                       3 days ago     Up 13 hours (healthy)     3306/tcp, 33060/tcp
+    fire_markets_frontend                 firemarkets-app-frontend                                                  "docker-entrypoint.s…"   frontend                 3 days ago     Up 3 days                 0.0.0.0:3000->80/tcp, [::]:3000->80/tcp
+    fire_markets_phpmyadmin               phpmyadmin/phpmyadmin                                                     "/docker-entrypoint.…"   phpmyadmin               3 days ago     Up 3 days                 80/tcp
+    fire_markets_redis                    redis:7-alpine                                                            "docker-entrypoint.s…"   redis                    3 days ago     Up 3 days (healthy)       6379/tcp
+    fire_markets_scheduler                sha256:9027ebfcb740e138dde938f6b09db77d037280c8f7f8a8e4dbb9588ce66d6d67   "python -m app.servi…"   scheduler                3 days ago     Up 2 days (unhealthy)     8000/tcp
+    fire_markets_websocket_orchestrator   firemarkets-app-websocket_orchestrator                                    "python run_websocke…"   websocket_orchestrator   22 hours ago   Up 22 hours (unhealthy)   8000/tcp
+    nginx-proxy-manager                   jc21/nginx-proxy-manager:latest                                           "/init"                   nginx-proxy-manager      3 days ago     Up 3 days                 0.0.0.0:80-81->80-81/tcp, [::]:80-81->80-81/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp
+    portainer                             portainer/portainer-ce:latest                                             "/portainer"              portainer                3 days ago     Up 3 days                 0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp, 0.0.0.0:9443->9443/tcp, [::]:9443->9443/tcp, 9000/tcp
+
+#mysql settiing
+DB_HOSTNAME=db # Docker 네트워크 내에서 MySQL 서비스의 이름 (localhost가 아님)
+DB_DATABASE=markets
+DB_USERNAME=geehong
+DB_PASSWORD=Power6100
+DB_ROOT_PASSWORD=Power6740 # MySQL root 계정 비밀번호
+
+# PostgreSQL Settings
+DB_HOSTNAME_PG=db_postgres
+DB_PORT_PG=5432
+DB_DATABASE_PG=markets
+DB_USERNAME_PG=geehong
+DB_PASSWORD_PG=Power6100
+    
+geehong@home-pc:~/firemarkets-app$ docker-compose exec db mysql -u geehong -pPower6100 markets -e "SHOW TABLES;"
+mysql: [Warning] Using a password on the command line interface can be insecure.
++-----------------------------+
+| Tables_in_markets           |
++-----------------------------+
+| active_assets               |
+| api_call_logs               |
+| app_configurations          |
+| apscheduler_jobs            |
+| asset_type_stats            |
+| asset_types                 |
+| assets                      |
+| audit_logs                  |
+| bond_market_data            |
+| crypto_data                 |
+| crypto_metrics              |
+| economic_indicators         |
+| etf_info                    |
+| index_infos                 |
+| m2_data                     |
+| ohlcv_data_backup           |
+| ohlcv_day_data              |
+| ohlcv_intraday_data         |
+| onchain_metrics_info        |
+| realtime_quotes             |
+| realtime_quotes_time_delay  |
+| scheduler_logs              |
+| scraping_logs               |
+| sparkline_data              |
+| stock_analyst_estimates     |
+| stock_financials            |
+| stock_profiles              |
+| technical_indicators        |
+| token_blacklist             |
+| user_sessions               |
+| users                       |
+| websocket_orchestrator_logs |
+| world_assets_ranking        |
++-----------------------------+
+
+
+DB COMMAND
+제약 조건을 확인
+docker-compose exec db mysql -u geehong -pPower6100 markets -e "SHOW INDEX FROM ohlcv_day_data;"
+중복자료 확인
+docker-compose exec db mysql -u geehong -pPower6100 markets -e "SELECT asset_id, timestamp_utc, COUNT(*) as count FROM ohlcv_day_data GROUP BY asset_id, timestamp_utc HAVING COUNT(*) > 1 LIMIT 10;"
+
+
+Docker command 
+초기화 및 빌드
+wsl : 
+sudo service docker start && docker compose down --volumes && docker compose up --build -d
+docker compose down && docker compose up --build -d
+
+windows terminal:
+docker-compose down pgadmin && docker compose up --build -d pgadmin
+docker-compose up -d --build backend //백엔드만 빌드
+docker-compose up -d --build frontend
+docker-compose up -d --build scheduler
+docker-compose restart scheduler
+docker-compose restart backend_temp
+docker-compose restart nginx-proxy-manager
+docker-compose build backend && docker-compose up -d backend
+docker-compose build backend | cat && docker-compose up -d backend | cat
+docker-compose build backend scheduler data_processor | cat && docker-compose up -d --no-deps --force-recreate backend scheduler data_processor | cat && sleep 3 && docker-compose ps | cat
+docker-compose build backend data_processor | cat && docker-compose up -d --no-deps --force-recreate backend data_processor | cat && sleep 3 && docker-compose ps | cat
+
+docker-compose build websocket_orchestrator data_processor | cat && docker-compose up -d --no-deps --force-recreate websocket_orchestrator data_processor | cat && sleep 3 && docker-compose ps | cat
+docker-compose build data_processor  && docker-compose restart data_processor
+docker-compose build scheduler && docker-compose restart scheduler
+docker-compose build frontend && docker-compose restart frontend 
+docker-compose build backend && docker-compose restart frontend 
+
+docker-compose build websocket_orchestrator data_processor && docker-compose restart websocket_orchestrator  data_processor 
+docker-compose build websocket_orchestrator  && docker-compose restart websocket_orchestrator
+docker-compose down websocket_orchestrator && docker-compose build websocket_orchestrator  && docker-compose restart websocket_orchestrator
+docker-compose build websocket_orchestrator | cat && docker-compose up -d --no-deps --force-recreate websocket_orchestrator | cat
+docker-compose down websocket_orchestrator && docker-compose build websocket_orchestrator && docker-compose up -d websocket_orchestrator
+docker-compose build websocket_orchestrator scheduler data_processor | cat && docker-compose up -d --no-deps --force-recreate websocket_orchestrator scheduler data_processor | cat && sleep 3 && docker-compose ps | cat
+
+docker-compose build backend data_processor | cat && docker-compose up -d backend data_processor | cat
+docker-compose --profile processing up -d data_processor scheduler
+docker-compose --profile 8001 up -d websocket_orchestrator
+docker-compose down data_processor && docker-compose build data_processor && docker-compose up -d data_processor
+docker-compose build websocket_orchestrator | cat && docker-compose up -d --no-deps --force-recreate websocket_orchestrator | cat && sleep 3 && docker ps --format '{{.Names}}\t{{.Status}}' | grep websocket_orchestrator | cat
+docker-compose down pgadmin && docker-compose up -d pgadmin
+docker-compose build data_processor scheduler backend && docker-compose up -d --no-deps --force-recreate data_processor scheduler backend && sleep 3 && docker-compose ps && echo '--- Data Processor Logs ---' && docker-compose logs data_processor --tail 120 | cat && echo '--- Scheduler Logs ---' && docker-compose logs scheduler --tail 120 | cat && echo '--- Backend Logs ---' && docker-compose logs backend --tail 80 | cat
+
+docker-compose logs scheduler backend 
+docker-compose logs data_processor --tail 50 -f | grep -Ei "OHLCV 데이터 저장 (시작|완료)"
+docker-compose logs data_processor --tail 50 -f | grep -Ei "저장"docker-compose logs data_processor --tail 100 -f | grep -E "(자산 매칭 성공|DB 저장 성공|✅.*성공)"
+docker-compose logs data_processor --tail 50 -f | grep -Ei "OHLCV 데이터 저장 완료: .*table=ohlcv_(day|intraday)_data"
+docker-compose logs websocket_orchestrator --tail 50 -f | grep -Ei "binance"
+docker logs fire_markets_websocket_orchestrator --tail 20 | grep -A 5 -B 5 "binance connection failed"
+docker-compose logs data_processor --tail 50 -f | grep -Ei "저장 (시작|완료)"
+docker-compose logs data_processor --tail 50 -f | grep -Ei "저장 (시작|완료|성공|실패|오류|error|success)"
+docker-compose logs --tail=30 -f data_processor | grep -E "(저장|save|insert|성공|완료|ACK|처리)"
+ocker-compose logs --since=30m data_processor | grep -E "활성 암호화폐 소스|소스 헬스|binance|coinbase" | tail -n 200 | cat
+docker-compose logs websocket_orchestrator --tail 200000 | grep -i -E "(binance|finhub|error|failed|connection|disconnect)"
+docker-compose logs websocket_orchestrator --tail 2000000000 | grep -i -E "(binance|error|failed|connection|disconnect)" | head -20
+docker-compose logs scheduler --tail 200000 | grep -i -E "(error|ERROR)"
+docker-compose logs data_processor --tail 200000 | grep -i -E "(PostgreSQL 저장장|저장|실패패)"
+docker-compose logs data_processor --tail 50 -f | grep -E "(stock_profile|stock_financials|stock_estimate|이중|dual|StockProfile|StockFinancial|StockAnalystEstimate)"
+
+docker-compose exec redis redis-cli 
+    KEYS *binance*        
+            geehong@home-pc:~/firemarkets-app$ docker-compose exec redis redis-cli
+            127.0.0.1:6379> KEYS *binance*
+            1) "binance:realtime"
+            127.0.0.1:6379> XLEN "binance:realtime"
+            (integer) 1042
+            127.0.0.1:6379>
+
+
+docker-compose logs data_processor --tail 100 | grep -E "(활성|active|binance|coinbase|페일오버)"
+docker-compose logs data_processor --tail 200 | grep -E "(소스|source|헬스|health|binance|coinbase)" | head -20
+docker-compose logs data_processor --tail 500 | grep -E "(활성|active|binance|coinbase|페일오버|소스.*선택|source.*selected)" | head -10
+docker-compose logs data_processor --tail 1000 | grep -E "(binance.*헬스|binance.*health|binance.*소스|binance.*source)" | head -10
+docker-compose logs data_processor --tail 1000 | grep -E "(binance.*스트림|binance.*stream|binance.*읽기|binance.*read)" | head -10
+docker-compose logs data_processor --tail 1000 | grep -E "(스트림.*읽기|stream.*read|스트림.*처리|stream.*process)" | head -10
+docker-compose logs data_processor --tail 1000 | grep -E "(시작|start|main|loop)" | head -10
+docker-compose logs data_processor --tail 1000 | grep -E "(스트림.*에서|stream.*from|스트림.*처리|stream.*process)" | head -1
+docker-compose logs websocket_orchestrator --tail 1000000 | grep -E "(error|Error|ERROR|failed|Failed|FAILED|exception|Exception|EXCEPTION)"
+docker-compose logs websocket_orchestrator --tail 1000000 | head -20
+docker-compose logs websocket_orchestrator --since 24h | grep -E "(시작|start|orchestrator|main|init)" | head -10
+docker-compose logs websocket_orchestrator --since 20m | grep -E "(시작|start|orchestrator|main|init|batch|log)" | head -10
+docker-compose logs websocket_orchestrator --since 5m | grep -E "(Starting|시작|orchestrator|main|init|WebSocket|Orchestrator)" | head -20
+docker-compose logs websocket_orchestrator --since 5m | grep -E "(Loading|assets|consumer|initialization|Starting|시작)" | head -20
+docker-compose logs websocket_orchestrator --since 5m | grep -E "(Initializing|Initialized|consumer|enabled|disabled)" | head -20
+docker-compose logs websocket_orchestrator --since 5m | grep -E "(completed|rebalance|assignment|task|Starting|Started)" | head -20
+docker-compose logs websocket_orchestrator --since 5m | grep -E "(connected|subscribed|started|task|Creating|Starting)" | head -20
+docker-compose logs websocket_orchestrator --since 1m | grep -E "(batch|save|database|Processing|Successfully)" | head -10
+docker-compose logs websocket_orchestrator --since 5m | grep -E "(batch|processor|log|start|started)" | head -20
+docker-compose logs websocket_orchestrator --since 24h | grep -E "(finnhub.*received|finnhub.*message|finnhub.*📨)" | head -20
+docker-compose logs websocket_orchestrator --since 48h | grep -E "(finnhub.*📈|finnhub.*price|finnhub.*data)" | head -20
+
+docker-compose logs websocket_orchestrator | grep -E "(finnhub.*received|finnhub.*message|finnhub.*📨)" | tail -10
+$ docker-compose logs websocket_orchestrator | grep -E "(finnhub.*📈|finnhub.*price|finnhub.*data)" | tail -10
+echo '--- Scheduler ---' && docker-compose logs scheduler --tail 2000 | grep -iE "error|오류|failed|exception" | grep -v "429" | cat && echo '--- Data Processor ---' && docker-compose logs data_processor --tail 2000 | grep -iE "error|오류|failed|exception" | grep -v "429" | cat && echo '--- Backend ---' && docker-compose logs backend --tail 2000 | grep -iE "error|오류|failed|exception|traceback" | grep -v "429" | cat
+$ docker logs fire_markets_scheduler --since="2025-09-20T06:00:00" --until="2025-09-20T06:05:00" | grep -E "(onchain|Onchain|collection|job|ERROR|WARNING|Exception|Traceback)"
+
+
+
+curl -s "https://finnhub.io/api/v1/quote?symbol=AAPL&token=$(docker exec fire_markets_backend printenv FINNHUB_API_KEY)" | head -5
+curl -X GET "http://localhost:8001/api/v1/realtime/pg/quotes-price?asset_identifier=1" | jq
+
+
+
+
+
+wsl phpmyadmin : http://localhost:8080/index.php
+방법 1: 컨테이너 ID로 정지
+bash
+docker stop 5ea468975150 fc28d4a3c8f0
+방법 2: 컨테이너 이름으로 정지
+bash
+docker stop financial_frontend financial_backend
+방법 3: 한 번에 여러 컨테이너 정지
+bash
+docker stop financial_frontend financial_backend
+도커의 핵심 명령어들을 기능별로 정리해드리겠습니다.
+
+## 이미지 관련 명령어
+
+**이미지 검색 및 다운로드**
+- `docker search [이미지명]` - Docker Hub에서 이미지 검색
+- `docker pull [이미지명]` - 이미지 다운로드
+- `docker images` 또는 `docker image ls` - 로컬 이미지 목록 조회
+
+**이미지 빌드 및 관리**
+- `docker build -t [태그명] [경로]` - Dockerfile로 이미지 빌드
+- `docker rmi [이미지ID/이미지명]` - 이미지 삭제
+- `docker image prune` - 사용하지 않는 이미지 정리
+
+## 컨테이너 관련 명령어
+
+**컨테이너 실행**
+- `docker run [옵션] [이미지명]` - 새 컨테이너 생성 및 실행
+- `docker start [컨테이너ID/이름]` - 중지된 컨테이너 시작
+- `docker stop [컨테이너ID/이름]` - 컨테이너 중지
+-  docker stop $(docker ps -q) 모든 컨테이너 중지
+- `docker restart [컨테이너ID/이름]` - 컨테이너 재시작
+
+**컨테이너 조회 및 관리**
+- `docker ps` - 실행 중인 컨테이너 조회
+- `docker ps -a` - 모든 컨테이너 조회 (중지된 것 포함)
+- `docker rm [컨테이너ID/이름]` - 컨테이너 삭제
+- `docker container prune` - 중지된 컨테이너 일괄 삭제
+
+## 컨테이너 상호작용
+
+**컨테이너 접근**
+- `docker exec -it [컨테이너ID/이름] /bin/bash` - 실행 중인 컨테이너에 접속
+- `docker attach [컨테이너ID/이름]` - 컨테이너의 메인 프로세스에 연결
+
+**로그 및 정보 확인**
+- `docker logs [컨테이너ID/이름]` - 컨테이너 로그 조회
+- `docker inspect [컨테이너ID/이름]` - 컨테이너 상세 정보 조회
+- `docker stats` - 컨테이너 리소스 사용량 실시간 모니터링
+docker compose logs backend
+
+## 유용한 run 옵션들
+
+- `-d` : 백그라운드 실행 (detached)
+- `-it` : 인터랙티브 터미널 모드
+- `-p [호스트포트]:[컨테이너포트]` : 포트 포워딩
+- `-v [호스트경로]:[컨테이너경로]` : 볼륨 마운트
+- `--name [이름]` : 컨테이너 이름 지정
+- `--rm` : 컨테이너 종료 시 자동 삭제
+
+## 시스템 관리
+
+- `docker system df` - 디스크 사용량 확인
+- `docker system prune` - 사용하지 않는 모든 리소스 정리
+- `docker version` - Docker 버전 정보
+- `docker info` - Docker 시스템 정보
+bash command
+
+한달에 1번정도 서버 공간확보
+df -h 여유공간 검사
+docker system prune -a -f 
+docker system prune -a -f --volumes
+
+
+압축
+tar  --exclude='node_modules' --exclude='venv' --exclude='.git -czvf firemarkets-app_2025_08_04_08_47.tar.gz firemarkets-app
+tar --exclude='node_modules' --exclude='venv' --exclude='.git' -czf firemarkets_app__2025_08_18_15_050.tar.gz .
+
+
+
+# .env
+DB_HOSTNAME=db # Docker 네트워크 내에서 MySQL 서비스의 이름 (localhost가 아님)
+DB_DATABASE=markets
+DB_USERNAME=geehong
+DB_PASSWORD=Power6100
+DB_ROOT_PASSWORD=Power6740 # MySQL root 계정 비밀번호
+
+EODHD_API_KEY=6851fda9861c01.75472022 # https://eodhd.com/api/fundamentals/AAPL.US?api_token=demo&fmt=json
+ALPHA_VANTAGE_API_KEY_1=MJ965EHM5S48YVCV
+ALPHA_VANTAGE_API_KEY_2=ZYIWDUTRJ5VDSMMF
+ALPHA_VANTAGE_API_KEY_3=4D6E0FWKL4IZ0UFV
+
+FMP_API_KEY=uwuvgPqE1bzAKJB1LAdkerZdp273Bvk1
+COIN_MARKET_API_KEY=e0d46b45-86dd-4756-81c6-a26391122391
+TOKEN_METRICS_API_KEY=tm-ca31b6c6-3eae-4929-837a-bec0fb1e664e 
+COIN_GECKO_API_KEY=CG-aiuQjnSAoeVfuhbY1Q9uZysu	
+#app.tokenmetrics.com
+# Crypto API Keys
+COINMARKETCAP_API_KEY=e0d46b45-86dd-4756-81c6-a26391122391
+BINANCE_API_KEY=your_binance_api_key_here
+BINANCE_SECRET_KEY=your_binance_secret_key_here
+COINBASE_API_KEY=your_coinbase_api_key_here
+COINBASE_SECRET_KEY=your_coinbase_secret_key_here
+#git
+
+git commit -m "Update admin features and UI components - Add scheduler controls - Update AppHeader with admin menu - Add user avatar - Update crypto endpoints and collectors - Improve admin management interface"
+
+git push origin main
+

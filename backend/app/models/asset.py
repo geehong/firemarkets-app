@@ -495,8 +495,10 @@ class AppConfiguration(Base):
     config_key = Column(String(100), unique=True, nullable=False, index=True)
     config_value = Column(Text, nullable=True)
     data_type = Column(String(20), default='string')  # string, int, float, boolean, json
-    is_active = Column(Boolean, default=True)
     description = Column(Text, nullable=True)
+    is_sensitive = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True)
+    category = Column(String(50), default='general')
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     

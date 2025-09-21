@@ -1,14 +1,15 @@
 # app/core/config.py
 import os
+import json
 import logging
 from datetime import datetime, date
-from typing import Optional, Any
+from typing import Optional, Any, Dict
 
 from dotenv import load_dotenv
  
 
 # Global dictionary to store application configurations
-GLOBAL_APP_CONFIGS = {}
+GLOBAL_APP_CONFIGS: Dict[str, Any] = {} 
 
 # ConfigLoader import (나중에 초기화)
 config_loader = None
@@ -138,15 +139,48 @@ def load_and_set_global_configs():
     try:
         app_configs = db.query(AppConfiguration).filter(AppConfiguration.is_active == True).all()
         for config in app_configs:
-            # Convert value based on data_type
-            if config.data_type == 'int':
-                GLOBAL_APP_CONFIGS[config.config_key] = int(config.config_value) if config.config_value else 0
-            elif config.data_type == 'float':
-                GLOBAL_APP_CONFIGS[config.config_key] = float(config.config_value) if config.config_value else 0.0
-            elif config.data_type == 'boolean':
-                GLOBAL_APP_CONFIGS[config.config_key] = config.config_value.lower() == 'true' if config.config_value else False
-            else: # string or other types
-                GLOBAL_APP_CONFIGS[config.config_key] = config.config_value
+            # Handle JSON type configurations (grouped configs)
+            if config.data_type == 'json' and config.config_value:
+                try:
+                    # Parse JSON and extract individual settings
+                    json_config = json.loads(config.config_value)
+                    if isinstance(json_config, dict):
+                        # Store the entire JSON config
+                        GLOBAL_APP_CONFIGS[config.config_key] = json_config
+                        
+                        # Also extract individual settings for backward compatibility
+                        for key, value_info in json_config.items():
+                            if isinstance(value_info, dict) and 'value' in value_info:
+                                # Extract the actual value and convert based on type
+                                actual_value = value_info['value']
+                                value_type = value_info.get('type', 'string')
+                                
+                                if value_type == 'int':
+                                    GLOBAL_APP_CONFIGS[key] = int(actual_value) if actual_value is not None else 0
+                                elif value_type == 'float':
+                                    GLOBAL_APP_CONFIGS[key] = float(actual_value) if actual_value is not None else 0.0
+                                elif value_type == 'boolean':
+                                    GLOBAL_APP_CONFIGS[key] = bool(actual_value) if actual_value is not None else False
+                                elif value_type == 'json':
+                                    GLOBAL_APP_CONFIGS[key] = actual_value  # Already parsed JSON
+                                else:  # string or other types
+                                    GLOBAL_APP_CONFIGS[key] = str(actual_value) if actual_value is not None else ""
+                    else:
+                        # If it's not a dict, store as is
+                        GLOBAL_APP_CONFIGS[config.config_key] = json_config
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse JSON config for {config.config_key}: {e}")
+                    GLOBAL_APP_CONFIGS[config.config_key] = config.config_value
+            else:
+                # Handle non-JSON configurations (legacy individual configs)
+                if config.data_type == 'int':
+                    GLOBAL_APP_CONFIGS[config.config_key] = int(config.config_value) if config.config_value else 0
+                elif config.data_type == 'float':
+                    GLOBAL_APP_CONFIGS[config.config_key] = float(config.config_value) if config.config_value else 0.0
+                elif config.data_type == 'boolean':
+                    GLOBAL_APP_CONFIGS[config.config_key] = config.config_value.lower() == 'true' if config.config_value else False
+                else: # string or other types
+                    GLOBAL_APP_CONFIGS[config.config_key] = config.config_value
         logger.info(f"Loaded {len(GLOBAL_APP_CONFIGS)} configurations from database, environment, and config.json.")
     except Exception as e:
         logger.critical(f"Failed to load global configurations from DB: {e}", exc_info=True)

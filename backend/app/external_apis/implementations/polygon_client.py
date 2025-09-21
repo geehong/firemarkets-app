@@ -74,7 +74,7 @@ class PolygonClient(TradFiAPIClient):
         return {
             "free_tier": {
                 "calls_per_minute": 4,
-                "calls_per_day": 100,
+                "calls_per_day": 500,
                 "real_time_quotes": False
             }
         }

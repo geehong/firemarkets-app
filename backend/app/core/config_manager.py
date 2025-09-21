@@ -43,29 +43,58 @@ class ConfigManager:
         logger.debug(f"Cached configuration for '{key}': {value}")
 
     def _get_config(self, key: str, default: Any, cast: Callable[[Any], Any]) -> Any:
+        print(f"DEBUG: _get_config called for key: '{key}'")
+        logger.debug(f"_get_config called for key: '{key}'")
         cached = self._get_cached(key)
         if cached is not None:
+            print(f"DEBUG: Returning cached value for '{key}': {cached}")
+            logger.debug(f"Returning cached value for '{key}': {cached}")
             return cached
 
+        # First, try to get from GLOBAL_APP_CONFIGS (which already has parsed JSON configs)
+        try:
+            import app.core.config as config_module
+            global_configs = config_module.GLOBAL_APP_CONFIGS
+            print(f"DEBUG: Checking GLOBAL_APP_CONFIGS for key: '{key}'")
+            print(f"DEBUG: GLOBAL_APP_CONFIGS keys: {list(global_configs.keys())[:5]}")
+            if key in global_configs:
+                value = global_configs[key]
+                print(f"DEBUG: Found '{key}' in GLOBAL_APP_CONFIGS: {value}")
+                try:
+                    casted_value = cast(value)
+                    self._set_cache(key, casted_value)
+                    logger.debug(f"Found '{key}' in GLOBAL_APP_CONFIGS: {casted_value}")
+                    return casted_value
+                except (ValueError, TypeError, json.JSONDecodeError) as e:
+                    logger.warning(f"Failed to cast GLOBAL_APP_CONFIGS value for '{key}'. Using default. Error: {e}")
+            else:
+                print(f"DEBUG: Key '{key}' not found in GLOBAL_APP_CONFIGS")
+        except ImportError:
+            logger.warning("Could not import GLOBAL_APP_CONFIGS, falling back to database query")
+
+        # Fallback to database query if not found in GLOBAL_APP_CONFIGS
         db = SessionLocal()
         try:
+            # First, try to find the key directly (legacy individual configs)
             row = db.query(AppConfiguration).filter(
                 AppConfiguration.config_key == key,
                 AppConfiguration.is_active == True
             ).first()
             
-            if row is None or row.config_value is None:
-                self._set_cache(key, default)
-                return default
+            if row is not None and row.config_value is not None:
+                try:
+                    value = cast(row.config_value)
+                    self._set_cache(key, value)
+                    logger.debug(f"Found '{key}' as direct config: {value}")
+                    return value
+                except (ValueError, TypeError, json.JSONDecodeError) as e:
+                    logger.warning(f"Failed to cast config value for '{key}'. Using default. Error: {e}")
+                    self._set_cache(key, default)
+                    return default
             
-            try:
-                value = cast(row.config_value)
-            except (ValueError, TypeError, json.JSONDecodeError) as e:
-                logger.warning(f"Failed to cast config value for '{key}'. Using default. Error: {e}")
-                value = default
-                
-            self._set_cache(key, value)
-            return value
+            # If not found anywhere, use default
+            self._set_cache(key, default)
+            return default
         finally:
             db.close()
 
@@ -93,8 +122,49 @@ class ConfigManager:
         if cached is not None:
             return cached
 
+        # First, try to get from GLOBAL_APP_CONFIGS
+        try:
+            import app.core.config as config_module
+            global_configs = config_module.GLOBAL_APP_CONFIGS
+            if 'api_keys' in global_configs:
+                api_keys_data = global_configs['api_keys']
+                if isinstance(api_keys_data, dict):
+                    keys = {}
+                    for key_name, value_info in api_keys_data.items():
+                        if isinstance(value_info, dict) and 'value' in value_info:
+                            keys[key_name] = str(value_info['value'])
+                    if keys:  # Only cache if we found keys
+                        self._set_cache("ALL_API_KEYS", keys)
+                        logger.debug(f"Found {len(keys)} API keys in GLOBAL_APP_CONFIGS")
+                        return keys
+        except ImportError:
+            logger.warning("Could not import GLOBAL_APP_CONFIGS, falling back to database query")
+
+        # Fallback to database query
         db = SessionLocal()
         try:
+            # First, try to get from grouped JSON config
+            api_keys_config = db.query(AppConfiguration).filter(
+                AppConfiguration.config_key == 'api_keys',
+                AppConfiguration.data_type == 'json',
+                AppConfiguration.is_active == True
+            ).first()
+            
+            if api_keys_config and api_keys_config.config_value:
+                try:
+                    json_data = json.loads(api_keys_config.config_value)
+                    if isinstance(json_data, dict):
+                        keys = {}
+                        for key_name, value_info in json_data.items():
+                            if isinstance(value_info, dict) and 'value' in value_info:
+                                keys[key_name] = str(value_info['value'])
+                        if keys:  # Only cache if we found keys
+                            self._set_cache("ALL_API_KEYS", keys)
+                            return keys
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse API keys JSON: {e}")
+            
+            # Fallback to legacy individual API key configs
             rows = db.query(AppConfiguration).filter(
                 AppConfiguration.category == 'api_keys',
                 AppConfiguration.is_active == True

@@ -213,15 +213,16 @@ class OnchainCollector(BaseCollector):
     def _convert_onchain_data(self, item: dict, metric_name: str) -> dict:
         """API 데이터를 데이터베이스 스키마에 맞게 변환"""
         try:
-            # 기본 필드 변환
+            # 기본 필드 변환 - API 응답 구조에 맞게 수정
             converted = {
                 "asset_id": self.bitcoin_asset_id,
-                "timestamp_utc": self._parse_timestamp(item.get("d") or item.get("timestamp")),
+                "timestamp_utc": self._parse_timestamp(item.get("unixTs") or item.get("d") or item.get("timestamp")),
             }
             
-            # 메트릭별 필드 매핑
+            # 메트릭별 필드 매핑 - API 응답 필드명에 맞게 수정
             metric_mappings = {
                 "mvrv_z_score": {
+                    "mvrv": "mvrv_z_score",  # API에서 'mvrv' 필드 사용
                     "mvrvZscore": "mvrv_z_score",
                     "mvrv_z_score": "mvrv_z_score"
                 },

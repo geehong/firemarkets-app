@@ -89,9 +89,9 @@ MySQLSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=mysql_e
 postgres_engine = _create_engine_with_retry(POSTGRES_DATABASE_URL)
 PostgreSQLSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=postgres_engine)
 
-# 기본 엔진 (MySQL - 호환성을 위해)
-engine = mysql_engine
-SessionLocal = MySQLSessionLocal
+# 기본 엔진 (PostgreSQL - app_configurations 마이그레이션 완료)
+engine = postgres_engine
+SessionLocal = PostgreSQLSessionLocal
 
 # SQLAlchemy Base 클래스 생성
 Base = declarative_base()

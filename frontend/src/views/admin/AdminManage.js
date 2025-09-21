@@ -30,6 +30,7 @@ import {
   cilReload,
   cilMediaPause,
   cilGlobeAlt,
+  cilInfo,
 } from '@coreui/icons'
 
 // Hooks
@@ -47,10 +48,7 @@ import { schedulerAPI } from '../../services/api'
 
 // Components
 import SchedulerControls from '../../components/admin/config/SchedulerControls'
-import ConfigForm from '../../components/admin/config/ConfigForm'
 import ConfigSection from '../../components/admin/config/ConfigSection'
-import ConfigActions from '../../components/admin/config/ConfigActions'
-import ConfigStatus from '../../components/admin/config/ConfigStatus'
 import OHLCVIntervalSettings from '../../components/admin/config/OHLCVIntervalSettings'
 import OnChainMetrics from '../../components/admin/onchain/OnChainMetrics'
 import OnChainActions from '../../components/admin/onchain/OnChainActions'
@@ -59,6 +57,7 @@ import WorldAssetsCollectionSettings from '../../components/admin/config/WorldAs
 import RealTimeLogs from '../../components/admin/logs/RealTimeLogs'
 import LogsTable from '../../components/admin/logs/LogsTable'
 import CardTools from '../../components/common/CardTools'
+import ConfigReadMe from '../../components/common/ConfigReadMe'
 import '../../components/common/CardTools.css'
 
 // Ticker Management Components
@@ -70,7 +69,7 @@ import useAssetTypes from '../../hooks/useAssetTypes'
 
 const AdminManage = () => {
   const { user, isAdmin, hasPermission } = useAuth()
-  const [activeTab, setActiveTab] = useState('scheduler')
+  const [activeTab, setActiveTab] = useState('config-readme')
   const [tickerActiveTab, setTickerActiveTab] = useState('Stocks')
   const [alert, setAlert] = useState(null)
   const [collapsedCards, setCollapsedCards] = useState({})
@@ -360,6 +359,16 @@ const AdminManage = () => {
           <CNav variant="tabs" className="mb-4">
             <CNavItem>
               <CNavLink
+                active={activeTab === 'config-readme'}
+                onClick={() => handleTabChange('config-readme')}
+                style={{ cursor: 'pointer' }}
+              >
+                <CIcon icon={cilInfo} className="me-2" />
+                Config ReadMe
+              </CNavLink>
+            </CNavItem>
+            <CNavItem>
+              <CNavLink
                 active={activeTab === 'scheduler'}
                 onClick={() => handleTabChange('scheduler')}
                 style={{ cursor: 'pointer' }}
@@ -422,6 +431,32 @@ const AdminManage = () => {
 
           {/* 탭 컨텐츠 */}
           <CTabContent style={{ maxHeight: 'none', overflow: 'visible' }}>
+            {/* Config ReadMe 탭 */}
+            <CTabPane
+              visible={activeTab === 'config-readme'}
+              style={{ maxHeight: 'none', overflow: 'visible' }}
+            >
+              <CCard className={`mb-4 ${collapsedCards['config-readme'] ? 'collapsed' : ''}`}>
+                <CCardHeader>
+                  <CCardTitle>
+                    <CIcon icon={cilInfo} className="me-2" />
+                    Configuration Documentation
+                  </CCardTitle>
+                  <CardTools
+                    onCollapse={(collapsed) => handleCardCollapse('config-readme', collapsed)}
+                    showCollapse={true}
+                    showRemove={false}
+                    showDropdown={false}
+                    showRefresh={false}
+                    showExport={false}
+                  />
+                </CCardHeader>
+                <CCardBody>
+                  <ConfigReadMe />
+                </CCardBody>
+              </CCard>
+            </CTabPane>
+
             {/* 스케줄러 탭 */}
             <CTabPane
               visible={activeTab === 'scheduler'}
@@ -453,13 +488,13 @@ const AdminManage = () => {
                   />
                 </CCardHeader>
                 <CCardBody>
-                  <ConfigForm
-                    configurations={schedulerConfigs.filter(config => 
-                      !['OHLCV_DATA_INTERVAL', 'OHLCV_DATA_INTERVALS', 'ENABLE_MULTIPLE_INTERVALS'].includes(config.config_key)
-                    )}
-                    onConfigChange={handleConfigChange}
-                    saving={configSaving}
-                  />
+                  <div className="alert alert-info">
+                    <h6>Scheduler Configuration</h6>
+                    <p className="mb-0">
+                      Scheduler settings are now managed through the grouped JSON configuration system.
+                      Please refer to the Config ReadMe tab for detailed information about available settings.
+                    </p>
+                  </div>
                 </CCardBody>
               </CCard>
             </CTabPane>
@@ -469,33 +504,33 @@ const AdminManage = () => {
               visible={activeTab === 'configuration'}
               style={{ maxHeight: 'none', overflow: 'visible' }}
             >
-              <ConfigStatus
-                status={configError ? 'error' : 'success'}
-                message={configError || 'Configuration loaded successfully'}
-                isLoading={configLoading}
-              />
-
-              <ConfigSection title="API Configuration">
-                <ConfigForm
-                  configurations={configurations.filter(
-                    (config) =>
-                      config.category !== 'scheduler' && config.category !== 'onchain_metrics',
-                  )}
-                  onConfigChange={handleConfigChange}
-                  saving={configSaving}
-                />
-              </ConfigSection>
-
-              <ConfigSection title="Actions">
-                <ConfigActions
-                  onSave={handleConfigSave}
-                  onReset={() => loadConfigurations()}
-                  onTest={() => addLog({ level: 'info', message: 'Configuration test completed' })}
-                  onExport={() => addLog({ level: 'info', message: 'Configuration exported' })}
-                  onImport={() => addLog({ level: 'info', message: 'Configuration imported' })}
-                  isSaving={configSaving}
-                  isTesting={false}
-                />
+              <ConfigSection title="Configuration Management">
+                <div className="alert alert-info">
+                  <h6>Configuration Status</h6>
+                  <p className="mb-0">
+                    {configError ? (
+                      <span className="text-danger">Error: {configError}</span>
+                    ) : (
+                      <span className="text-success">Configuration loaded successfully</span>
+                    )}
+                  </p>
+                </div>
+                
+                <div className="d-flex gap-2">
+                  <button 
+                    className="btn btn-primary" 
+                    onClick={handleConfigSave}
+                    disabled={configSaving}
+                  >
+                    {configSaving ? 'Saving...' : 'Save Configuration'}
+                  </button>
+                  <button 
+                    className="btn btn-secondary" 
+                    onClick={() => loadConfigurations()}
+                  >
+                    Reload Configuration
+                  </button>
+                </div>
               </ConfigSection>
             </CTabPane>
 
@@ -504,14 +539,16 @@ const AdminManage = () => {
               visible={activeTab === 'onchain'}
               style={{ maxHeight: 'none', overflow: 'visible' }}
             >
-              <OnChainStatus
-                status={onchainError ? 'error' : 'success'}
-                message={onchainError || 'On-chain metrics loaded successfully'}
-                isLoading={onchainLoading}
-                progress={null}
-                totalCollected={Object.keys(metrics).filter((key) => metrics[key].enabled).length}
-                totalAvailable={Object.keys(metrics).length}
-              />
+              <div className="alert alert-info mb-4">
+                <h6>On-chain Status</h6>
+                <p className="mb-0">
+                  {onchainError ? (
+                    <span className="text-danger">Error: {onchainError}</span>
+                  ) : (
+                    <span className="text-success">On-chain metrics loaded successfully</span>
+                  )}
+                </p>
+              </div>
 
               <CCard className={`mb-4 ${collapsedCards['onchain-metrics'] ? 'collapsed' : ''}`}>
                 <CCardHeader>
@@ -537,11 +574,13 @@ const AdminManage = () => {
                   />
                 </CCardHeader>
                 <CCardBody>
-                  <ConfigForm
-                    configurations={onchainConfigs}
-                    onConfigChange={handleConfigChange}
-                    saving={configSaving}
-                  />
+                  <div className="alert alert-info">
+                    <h6>On-chain Configuration</h6>
+                    <p className="mb-0">
+                      On-chain settings are now managed through the grouped JSON configuration system.
+                      Please refer to the Config ReadMe tab for detailed information about available settings.
+                    </p>
+                  </div>
                 </CCardBody>
               </CCard>
 
