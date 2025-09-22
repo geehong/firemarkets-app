@@ -22,12 +22,19 @@ class PolygonClient(TradFiAPIClient):
 
     def __init__(self):
         super().__init__()
+        self.name = "Polygon"
         self.base_url = "https://api.polygon.io"
+        self.api_key_env = "POLYGON_API_KEY"
+        self.rate_limit_info = {
+            "calls_per_minute": 1,
+            "calls_per_day": None,
+            "notes": "Lowered to avoid 429s on free tier"
+        }
         # 직접 환경 변수에서 읽기
         import os
-        self.api_key = os.getenv("POLYGON_API_KEY", "tUWX3e7_Z_ppi90QUsiogmxTbwuWnpa_")
+        self.api_key = os.getenv(self.api_key_env, "tUWX3e7_Z_ppi90QUsiogmxTbwuWnpa_")
         if not self.api_key:
-            logger.warning("POLYGON_API_KEY is not configured.")
+            logger.warning(f"{self.api_key_env} is not configured.")
 
     async def _request(self, path: str, params: Dict[str, Any] = None) -> Any:
         """Internal helper to perform GET requests with api key injected."""
@@ -73,11 +80,18 @@ class PolygonClient(TradFiAPIClient):
         """Return known public rate limits for Polygon free plan"""
         return {
             "free_tier": {
-                "calls_per_minute": 4,
+                "calls_per_minute": 1,
                 "calls_per_day": 500,
                 "real_time_quotes": False
             }
         }
+
+    def _normalize_symbol(self, symbol: str) -> str:
+        """Normalize symbols for Polygon (e.g., BRK-B -> BRK.B)."""
+        if not symbol:
+            return symbol
+        # Common US dash class shares to dot format used by Polygon
+        return symbol.replace('-', '.')
 
     async def get_ohlcv_data(
         self, 
@@ -163,21 +177,34 @@ class PolygonClient(TradFiAPIClient):
     async def get_company_profile(self, symbol: str) -> Optional[CompanyProfileData]:
         """Get company profile from Polygon"""
         try:
-            data = await self._request(f"/v3/reference/tickers/{symbol.upper()}")
+            symbol_norm = self._normalize_symbol(symbol)
+            data = await self._request(f"/v3/reference/tickers/{symbol_norm.upper()}")
             ticker_data = data.get("results", {})
             
             if ticker_data:
+                address_info = (ticker_data.get("address") or {})
+                branding = (ticker_data.get("branding") or {})
                 profile = CompanyProfileData(
                     symbol=symbol,
                     name=ticker_data.get("name", ""),
-                    description=ticker_data.get("description"),
+                    description_en=ticker_data.get("description") or None,
                     sector=ticker_data.get("sector"),
-                    industry=ticker_data.get("market"),
+                    industry=ticker_data.get("sic_description") or ticker_data.get("market"),
                     country=ticker_data.get("locale"),
                     website=ticker_data.get("homepage_url"),
-                    employees=None,  # Polygon에서 제공하지 않음
+                    employees=ticker_data.get("total_employees"),
                     currency=ticker_data.get("currency_name", "USD"),
                     market_cap=safe_float(ticker_data.get("market_cap")),
+                    address=address_info.get("address1") or None,
+                    city=address_info.get("city") or None,
+                    state=address_info.get("state") or None,
+                    zip_code=address_info.get("postal_code") or None,
+                    phone=ticker_data.get("phone_number") or None,
+                    logo_image_url=branding.get("logo_url") or None,
+                    ipo_date=safe_date_parse(ticker_data.get("list_date")),
+                    exchange=ticker_data.get("primary_exchange") or None,
+                    exchange_full_name=None,
+                    cik=ticker_data.get("cik") or None,
                     timestamp_utc=datetime.now()
                 )
                 return profile

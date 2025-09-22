@@ -76,12 +76,30 @@ async def get_bitcoin_halving_data(
         start_date_obj = datetime.strptime(period_info["start"], "%Y-%m-%d").date()
         end_date_obj = datetime.strptime(period_info["end"], "%Y-%m-%d").date()
 
-        # 비트코인 자산 ID 조회 (BTC 또는 BTCUSDT 지원)
-        bitcoin_asset = db.query(Asset).filter(
+        # 비트코인 자산 ID 조회 (BTC 또는 BTCUSDT 지원) - 실제 데이터가 존재하는 자산을 선택
+        candidate_assets = db.query(Asset).filter(
             Asset.ticker.in_(["BTC", "BTCUSDT"])
-        ).first()
-        if not bitcoin_asset:
+        ).all()
+        if not candidate_assets:
             raise HTTPException(status_code=503, detail="Bitcoin asset not found (BTC or BTCUSDT). Cannot fetch halving data.")
+
+        # 기간 내 OHLCV 데이터가 존재하는 자산을 우선 선택 (BTCUSDT 우선)
+        bitcoin_asset = None
+        for preferred_ticker in ["BTCUSDT", "BTC"]:
+            asset = next((a for a in candidate_assets if a.ticker == preferred_ticker), None)
+            if not asset:
+                continue
+            count = db.query(OHLCVData).filter(
+                OHLCVData.asset_id == asset.asset_id,
+                OHLCVData.timestamp_utc >= start_date_obj,
+                OHLCVData.timestamp_utc < (end_date_obj + timedelta(days=1))
+            ).count()
+            if count > 0:
+                bitcoin_asset = asset
+                break
+        # 둘 다 데이터가 없으면 첫 번째 자산 사용 (기존 동작 유지)
+        if bitcoin_asset is None:
+            bitcoin_asset = candidate_assets[0]
         
         # OHLCV 데이터 조회 (모든 일봉 데이터 - 주말/월말 포함)
         ohlcv_records = db.query(OHLCVData).filter(

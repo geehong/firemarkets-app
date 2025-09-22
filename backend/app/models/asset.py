@@ -135,6 +135,9 @@ class StockProfile(Base):
         Integer, ForeignKey("assets.asset_id"), nullable=False, unique=True
     )
     company_name = Column(String(255), nullable=False)
+    # Preferred fields: bilingual descriptions
+    description_en = Column(Text)
+    description_ko = Column(Text)
     description = Column(Text)
     sector = Column(String(100))
     industry = Column(String(100))

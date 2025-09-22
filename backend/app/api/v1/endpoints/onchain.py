@@ -112,19 +112,6 @@ def get_metric_data_range(metric_def: OnchainMetricsInfo, db: Session) -> Any:
     if not bitcoin_asset:
         return None
     
-    # HODL Waves Supply 특별 처리
-    if metric_def.metric_id == 'hodl_waves_supply':
-        # HODL Waves는 여러 필드 중 하나라도 있으면 데이터가 있다고 간주
-        result = db.query(
-            func.min(CryptoMetric.timestamp_utc).label('min_date'),
-            func.max(CryptoMetric.timestamp_utc).label('max_date'),
-            func.count(CryptoMetric.hodl_age_0d_1d).label('count')
-        ).filter(
-            CryptoMetric.asset_id == bitcoin_asset.asset_id,
-            CryptoMetric.hodl_age_0d_1d.isnot(None)
-        ).first()
-        return result
-    
     # 데이터베이스 필드명 매핑 (실제 데이터베이스의 metric_id에 맞춤)
     db_field_map = {
         'mvrv_z_score': 'mvrv_z_score',
@@ -334,78 +321,6 @@ async def get_metric_data(
     bitcoin_asset = get_bitcoin_asset(db)
     if not bitcoin_asset:
         raise HTTPException(status_code=404, detail="Bitcoin asset not found (BTC or BTCUSDT)")
-    
-    # HODL Waves Supply 특별 처리
-    if metric_id == 'hodl_waves_supply':
-        # HODL Waves는 여러 필드 중 하나라도 있으면 데이터가 있다고 간주
-        query = db.query(CryptoMetric).filter(
-            CryptoMetric.asset_id == bitcoin_asset.asset_id,
-            CryptoMetric.hodl_age_0d_1d.isnot(None)
-        )
-        
-        if start_date:
-            query = query.filter(CryptoMetric.timestamp_utc >= start_date)
-        if end_date:
-            query = query.filter(CryptoMetric.timestamp_utc <= end_date)
-        
-        records = query.order_by(desc(CryptoMetric.timestamp_utc)).limit(limit).all()
-        
-        # HODL Waves 데이터 포인트 생성
-        data_points = []
-        for i, record in enumerate(records):
-            # 모든 HODL 필드의 평균값 계산
-            hodl_fields = [
-                'hodl_age_0d_1d', 'hodl_age_1d_1w', 'hodl_age_1w_1m', 'hodl_age_1m_3m',
-                'hodl_age_3m_6m', 'hodl_age_6m_1y', 'hodl_age_1y_2y', 'hodl_age_2y_3y',
-                'hodl_age_3y_4y', 'hodl_age_4y_5y', 'hodl_age_5y_7y', 'hodl_age_7y_10y', 'hodl_age_10y'
-            ]
-            
-            values = []
-            for field in hodl_fields:
-                value = getattr(record, field)
-                if value is not None:
-                    values.append(float(value))
-            
-            if values:
-                avg_value = sum(values) / len(values)
-                
-                # 변화량 계산
-                change = None
-                change_percent = None
-                if i < len(records) - 1:
-                    prev_record = records[i + 1]
-                    prev_values = []
-                    for field in hodl_fields:
-                        value = getattr(prev_record, field)
-                        if value is not None:
-                            prev_values.append(float(value))
-                    
-                    if prev_values:
-                        prev_avg = sum(prev_values) / len(prev_values)
-                        change = avg_value - prev_avg
-                        change_percent = (change / prev_avg) * 100 if prev_avg != 0 else None
-                
-                data_points.append(MetricDataPoint(
-                    date=record.timestamp_utc,
-                    value=avg_value,
-                    change=change,
-                    change_percent=change_percent
-                ))
-        
-        # 메타데이터
-        metadata = {
-            "total_count": len(data_points),
-            "date_range": f"{data_points[-1].date if data_points else 'N/A'} to {data_points[0].date if data_points else 'N/A'}",
-            "last_updated": datetime.now().isoformat() + "Z",
-            "note": "HODL Waves Supply - Average of all age groups"
-        }
-        
-        return MetricDataResponse(
-            metric_id=metric_id,
-            metric_name=metric_def.name,
-            data=data_points,
-            metadata=metadata
-        )
     
     # 데이터베이스 필드명 매핑
     db_field_map = {

@@ -5,7 +5,8 @@ import asyncio
 import logging
 from typing import List, Dict, Optional, Set
 from dataclasses import dataclass
-import aiomysql
+from sqlalchemy import text
+from app.core.database import get_async_session_local
 from app.services.websocket.base_consumer import AssetType
 from app.core.config import GLOBAL_APP_CONFIGS
 
@@ -41,28 +42,8 @@ class AssetManager:
     """자산 관리자"""
     
     def __init__(self):
-        self.db_config = {
-            'host': GLOBAL_APP_CONFIGS.get('DB_HOST', 'db'),  # Docker 네트워크에서 'db' 사용
-            'port': GLOBAL_APP_CONFIGS.get('DB_PORT', 3306),
-            'user': GLOBAL_APP_CONFIGS.get('DB_USERNAME', 'geehong'),
-            'password': GLOBAL_APP_CONFIGS.get('DB_PASSWORD', 'Power6100'),
-            'db': GLOBAL_APP_CONFIGS.get('DB_DATABASE', 'markets'),
-            'charset': 'utf8mb4',
-            'autocommit': True
-        }
-        self._connection_pool = None
         self._cache: Dict[str, List[Asset]] = {}
         self._cache_ttl = 300  # 5분 캐시
-    
-    async def _get_connection_pool(self):
-        """데이터베이스 연결 풀 생성"""
-        if self._connection_pool is None:
-            self._connection_pool = await aiomysql.create_pool(
-                minsize=1,
-                maxsize=10,
-                **self.db_config
-            )
-        return self._connection_pool
     
     async def get_active_assets(self, force_refresh: bool = False) -> List[Asset]:
         """실시간 구독이 필요한 활성 자산 목록 조회"""
@@ -73,36 +54,42 @@ class AssetManager:
             return self._cache[cache_key]
         
         try:
-            pool = await self._get_connection_pool()
-            async with pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    query = """
+            session_local = get_async_session_local()
+            async with session_local() as session:
+                # 옵션 A: collect_price가 NULL 이거나 'true' 인 자산 포함, 그리고 활성화된 자산만
+                query = text(
+                    """
                     SELECT ticker, name, asset_type_id, data_source, exchange, currency, is_active
-                    FROM assets 
-                    WHERE collection_settings->>'collect_price' = 'true' 
-                    AND is_active = 1
+                    FROM assets
+                    WHERE (
+                        collection_settings IS NULL
+                        OR NOT (collection_settings ? 'collect_price')
+                        OR ((collection_settings->>'collect_price')::boolean IS TRUE)
+                    )
+                    AND is_active = true
                     ORDER BY asset_type_id, ticker
                     """
-                    await cursor.execute(query)
-                    results = await cursor.fetchall()
-                    
-                    assets = []
-                    for row in results:
-                        asset = Asset(
-                            ticker=row[0],
-                            name=row[1],
-                            asset_type_id=row[2],
-                            data_source=row[3],
-                            exchange=row[4],
-                            currency=row[5],
-                            is_active=bool(row[6])
-                        )
-                        assets.append(asset)
-                    
-                    # 캐시 저장
-                    self._cache[cache_key] = assets
-                    logger.info(f"Loaded {len(assets)} active assets from database")
-                    return assets
+                )
+                result = await session.execute(query)
+                rows = result.fetchall()
+
+                assets: List[Asset] = []
+                for row in rows:
+                    ticker, name, asset_type_id, data_source, exchange, currency, is_active = row
+                    assets.append(Asset(
+                        ticker=ticker,
+                        name=name,
+                        asset_type_id=asset_type_id,
+                        data_source=data_source,
+                        exchange=exchange,
+                        currency=currency,
+                        is_active=bool(is_active)
+                    ))
+
+                # 캐시 저장
+                self._cache[cache_key] = assets
+                logger.info(f"Loaded {len(assets)} active assets from database")
+                return assets
                     
         except Exception as e:
             logger.error(f"Failed to load active assets: {e}")
@@ -129,6 +116,5 @@ class AssetManager:
     
     async def close(self):
         """리소스 정리"""
-        if self._connection_pool:
-            self._connection_pool.close()
-            await self._connection_pool.wait_closed()
+        # SQLAlchemy async 세션은 context manager로 관리하므로 별도 정리 불필요
+        return

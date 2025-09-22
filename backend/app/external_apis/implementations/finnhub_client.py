@@ -39,7 +39,12 @@ class FinnhubClient(TradFiAPIClient):
             logger.warning("FINNHUB_API_KEY is not configured.")
         
         # Rate limiting
-        self.requests_per_minute = 59  # Free tier limit
+        self.requests_per_minute = 50  # Conservative under free tier limit (60 rpm)
+        self.rate_limit_info = {
+            "calls_per_minute": 50,
+            "calls_per_day": None,
+            "notes": "Lowered to avoid 429s on free tier"
+        }
         self.last_request_time = 0
         
         logger.info(f"Finnhub client initialized with API key: {self.api_key[:8] if self.api_key else 'None'}...")
@@ -179,17 +184,43 @@ class FinnhubClient(TradFiAPIClient):
                 logger.warning(f"No company profile found for {symbol}")
                 return None
             
+            # Safe parsing helpers
+            def _to_int(value):
+                try:
+                    return int(value) if value is not None else None
+                except Exception:
+                    try:
+                        return int(float(value))
+                    except Exception:
+                        return None
+
+            def _to_float(value):
+                try:
+                    return float(value) if value is not None else None
+                except Exception:
+                    return None
+
+            name = (data.get('name') or '').strip() or symbol
+
             return CompanyProfileData(
                 symbol=symbol,
-                name=data.get('name', ''),
-                description=data.get('description', ''),
-                industry=data.get('finnhubIndustry', ''),
-                sector=data.get('finnhubSector', ''),
-                country=data.get('country', ''),
-                website=data.get('weburl', ''),
-                employees=data.get('employeeTotal', 0),
-                market_cap=data.get('marketCapitalization', 0),
-                currency=data.get('currency', 'USD')
+                name=name,
+                # Schemas expect bilingual fields; map Finnhub description to English
+                description_en=(data.get('description') or None),
+                # Finnhub provides only finnhubIndustry; use it for industry/sector fallback
+                industry=(data.get('finnhubIndustry') or data.get('industry') or None),
+                sector=(data.get('finnhubIndustry') or data.get('sector') or None),
+                country=(data.get('country') or None),
+                website=(data.get('weburl') or None),
+                employees=_to_int(data.get('employeeTotal')),
+                market_cap=_to_float(data.get('marketCapitalization')),
+                currency=(data.get('currency') or None),
+                # required by CompanyProfileData
+                timestamp_utc=datetime.utcnow(),
+                # nice-to-have extras when present
+                exchange=(data.get('exchange') or None),
+                logo_image_url=(data.get('logo') or None),
+                ipo_date=None  # Finnhub 'ipo' is string; mapping can be added if needed
             )
             
         except Exception as e:

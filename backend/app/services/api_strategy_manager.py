@@ -33,6 +33,7 @@ class ApiStrategyManager:
         self.ohlcv_day_clients = [
             #TiingoClient(),       # 1순위 복구
             #FMPClient(),          # 2순위 (WebSocket 백업용)
+            FinnhubClient(),
             PolygonClient(),      # 3순위
             TwelveDataClient(),   # 4순위
         ]
@@ -54,6 +55,7 @@ class ApiStrategyManager:
         # 4. 주식 프로필용 클라이언트 (기업 프로필 데이터)
         # FMP는 API 제한이 심하므로 백업용으로만 사용
         self.stock_profiles_clients = [
+            FinnhubClient(),
             PolygonClient(),      # 1순위 (5 calls/min, 상세한 데이터)
             TwelveDataClient(),   # 2순위 (백업용)
            #FMPClient(),          # 3순위 (제한적, 백업용)
@@ -141,6 +143,24 @@ class ApiStrategyManager:
             "GCUSD",    # Gold USD: TwelveData 심볼 체계 불일치
             "FFEU",     # 비표준/미확인 심볼
         ])
+
+        # Apply optional scheduler-based client filter
+        try:
+            self._apply_scheduler_client_filter(
+                collector_key="stock_profiles_clients",
+                clients_attr_name="stock_profiles_clients",
+            )
+            # Also apply for financials and analyst estimates so they can be disabled during profile runs
+            self._apply_scheduler_client_filter(
+                collector_key="stock_financials_clients",
+                clients_attr_name="stock_financials_clients",
+            )
+            self._apply_scheduler_client_filter(
+                collector_key="stock_analyst_estimates_clients",
+                clients_attr_name="stock_analyst_estimates_clients",
+            )
+        except Exception as e:
+            logger.warning(f"[SchedulerFilter] skip: {e}")
 
     def _get_config_value(self, key: str, default: Any, cast: Any = str) -> Any:
         """단일 헬퍼: DB(ConfigManager) → 환경변수 → 기본값 순으로 설정 로드.
@@ -1702,6 +1722,34 @@ class ApiStrategyManager:
             "onchain_clients": [client.__class__.__name__ for client in self.onchain_clients]
         }
         return status
+
+    def _apply_scheduler_client_filter(self, collector_key: str, clients_attr_name: str) -> None:
+        """
+        Applies optional client overrides from SCHEDULER_CONFIG.
+        Expected JSON (optional): { "client_overrides": { "stock_profiles_clients": ["PolygonClient","TwelveDataClient"] } }
+        """
+        from app.core.config_manager import ConfigManager
+        import json
+        cfg = ConfigManager()
+        raw = cfg.get_scheduler_config()
+        if not raw:
+            return
+        data = json.loads(raw)
+        overrides = (data or {}).get("client_overrides")
+        if not overrides or not isinstance(overrides, dict):
+            return
+        names = overrides.get(collector_key)
+        if not names or not isinstance(names, list):
+            return
+        current_list = getattr(self, clients_attr_name, [])
+        name_to_instance = {c.__class__.__name__: c for c in current_list}
+        enabled = [name_to_instance[n] for n in names if n in name_to_instance]
+        disabled = [n for n in name_to_instance.keys() if n not in names]
+        if enabled:
+            setattr(self, clients_attr_name, enabled)
+            logger.info(f"[SchedulerFilter] {collector_key} enabled: {names}; disabled: {disabled}")
+        else:
+            logger.warning(f"[SchedulerFilter] No matching clients for {collector_key}: {names}")
 
 # 전역 인스턴스
 api_manager = ApiStrategyManager()

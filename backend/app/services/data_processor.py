@@ -950,7 +950,9 @@ class DataProcessor:
 
                         # 매핑: CompanyProfileData -> StockProfile 컬럼
                         company_name = data.get("name") or data.get("company_name")
-                        description = data.get("description")
+                        # Descriptions (prefer explicit bilingual fields if provided)
+                        description_en = data.get("description_en") or data.get("description")
+                        description_ko = data.get("description_ko")
                         sector = data.get("sector")
                         industry = data.get("industry")
                         website = data.get("website")
@@ -984,7 +986,9 @@ class DataProcessor:
                         pg_data = {
                             'asset_id': asset_id,
                             'company_name': company_name or "",
-                            'description': description,
+                            'description_en': description_en,
+                            'description_ko': description_ko,
+                            'description': description_en,  # backward-compat populate legacy column
                             'sector': sector,
                             'industry': industry,
                             'website': website,
@@ -1014,7 +1018,9 @@ class DataProcessor:
                             index_elements=['asset_id'],
                             set_={
                                 'company_name': stmt.excluded.company_name,
-                                'description': stmt.excluded.description,
+                                'description_en': stmt.excluded.description_en,
+                                'description_ko': stmt.excluded.description_ko,
+                                'description': stmt.excluded.description_en,
                                 'sector': stmt.excluded.sector,
                                 'industry': stmt.excluded.industry,
                                 'website': stmt.excluded.website,
