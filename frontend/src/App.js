@@ -1,8 +1,8 @@
-import React, { Suspense, useEffect } from 'react'
+import React, { Suspense, useEffect, useState } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import { useSelector } from 'react-redux'
-import { CSpinner, useColorModes } from '@coreui/react'
+import { CSpinner } from '@coreui/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import './scss/style.scss'
 
@@ -47,22 +47,39 @@ const AdminLogin = React.lazy(() => import('./components/auth/AdminLogin'))
 const OpenInterestTest = React.lazy(() => import('./pages/OpenInterestTest'))
 
 const App = () => {
-  const { isColorModeSet, setColorMode } = useColorModes('coreui-free-react-admin-template-theme')
+  const [colorMode, setColorMode] = useState('light')
   const storedTheme = useSelector((state) => state.theme)
+
+  // 간단한 색상 모드 설정 함수
+  const setColorModeHandler = (theme) => {
+    setColorMode(theme)
+    // 로컬 스토리지에 저장
+    localStorage.setItem('coreui-free-react-admin-template-theme', theme)
+    // HTML 요소에 테마 클래스 적용
+    document.documentElement.setAttribute('data-coreui-theme', theme)
+  }
+
+  // 색상 모드가 설정되었는지 확인하는 함수
+  const isColorModeSet = () => {
+    return localStorage.getItem('coreui-free-react-admin-template-theme') !== null
+  }
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.href.split('?')[1])
     const theme = urlParams.get('theme') && urlParams.get('theme').match(/^[A-Za-z0-9\s]+/)[0]
     if (theme) {
-      setColorMode(theme)
+      setColorModeHandler(theme)
     }
 
     if (isColorModeSet()) {
+      const savedTheme = localStorage.getItem('coreui-free-react-admin-template-theme')
+      setColorMode(savedTheme)
+      document.documentElement.setAttribute('data-coreui-theme', savedTheme)
       return
     }
 
-    setColorMode(storedTheme)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    setColorModeHandler(storedTheme || 'light')
+  }, [storedTheme])
 
   return (
     <AuthProvider>

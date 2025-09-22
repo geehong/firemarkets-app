@@ -53,32 +53,44 @@ class WorldAssetsRankingData(BaseModel):
 # ============================================================================
 
 class CompanyProfileData(BaseModel):
-    """기업 프로필 데이터의 표준 구조"""
+    """Standard structure for company profile data"""
     symbol: str
     name: str
     sector: Optional[str] = None
     industry: Optional[str] = None
-    description: Optional[str] = None
+    description_en: Optional[str] = None  # English description
+    description_ko: Optional[str] = None  # Korean description
     website: Optional[str] = None
     employees: Optional[int] = None
     country: Optional[str] = None
     currency: Optional[str] = None
     market_cap: Optional[float] = None
-    # DB 매핑 확장 필드
+    # Extended fields for DB mapping
     address: Optional[str] = None
     city: Optional[str] = None
-    state: Optional[str] = None  # 주/도 (CA, NY 등)
-    zip_code: Optional[str] = None  # 우편번호
+    state: Optional[str] = None  # State/Province (CA, NY, etc.)
+    zip_code: Optional[str] = None  # Postal code
     ceo: Optional[str] = None
     phone: Optional[str] = None
     logo_image_url: Optional[str] = None
     ipo_date: Optional[date] = None
-    # 거래소 및 식별자 정보
-    exchange: Optional[str] = None  # 거래소 코드 (NASDAQ, NYSE 등)
-    exchange_full_name: Optional[str] = None  # 거래소 전체명
-    cik: Optional[str] = None  # CIK 코드
-    isin: Optional[str] = None  # ISIN 코드
-    cusip: Optional[str] = None  # CUSIP 코드
+    # Exchange and identifier information
+    exchange: Optional[str] = None  # Exchange code (NASDAQ, NYSE, etc.)
+    exchange_full_name: Optional[str] = None  # Full exchange name
+    cik: Optional[str] = None  # CIK code
+    isin: Optional[str] = None  # ISIN code
+    cusip: Optional[str] = None  # CUSIP code
+    figi: Optional[str] = None  # FIGI code
+    # Trading information (FMP specific)
+    beta: Optional[float] = None
+    last_dividend: Optional[float] = None
+    price_range: Optional[str] = None
+    # Metadata
+    is_etf: Optional[bool] = None
+    is_actively_trading: Optional[bool] = None
+    is_adr: Optional[bool] = None
+    is_fund: Optional[bool] = None
+    data_source: Optional[str] = None  # API source tracking
     timestamp_utc: datetime
 
 class StockFinancialsData(BaseModel):

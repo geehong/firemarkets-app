@@ -2,6 +2,8 @@
 CoinMarketCap API client for cryptocurrency market data.
 """
 import logging
+import asyncio
+import time
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
@@ -26,6 +28,40 @@ class CoinMarketCapClient(CryptoAPIClient):
             'X-CMC_PRO_API_KEY': self.api_key,
             'Accept': 'application/json'
         } if self.api_key else {}
+        
+        # Rate limiting for free tier: 30 requests per minute
+        # 매우 보수적으로 설정하여 여러 인스턴스가 동시 실행되어도 안전하게
+        self.requests_per_minute = 10  # 30에서 10으로 줄임 (여러 인스턴스 고려)
+        self.request_times = []
+        self.min_delay_between_requests = 5.0  # 5초 지연
+    
+    async def _enforce_rate_limit(self):
+        """Enforce rate limiting for CoinMarketCap API"""
+        current_time = time.time()
+        
+        # Remove requests older than 1 minute
+        self.request_times = [t for t in self.request_times if current_time - t < 60]
+        
+        # If we've made 10 requests in the last minute, wait
+        if len(self.request_times) >= self.requests_per_minute:
+            wait_time = 60 - (current_time - self.request_times[0]) + 1
+            if wait_time > 0:
+                logger.info(f"CoinMarketCap rate limit reached, waiting {wait_time:.1f} seconds")
+                await asyncio.sleep(wait_time)
+                # Clean up old requests after waiting
+                current_time = time.time()
+                self.request_times = [t for t in self.request_times if current_time - t < 60]
+        
+        # Ensure minimum delay between requests
+        if self.request_times:
+            time_since_last = current_time - self.request_times[-1]
+            if time_since_last < self.min_delay_between_requests:
+                wait_time = self.min_delay_between_requests - time_since_last
+                logger.debug(f"CoinMarketCap minimum delay: waiting {wait_time:.1f} seconds")
+                await asyncio.sleep(wait_time)
+        
+        # Record this request
+        self.request_times.append(time.time())
     
     async def test_connection(self) -> bool:
         """Test CoinMarketCap API connection"""
@@ -185,6 +221,9 @@ class CoinMarketCapClient(CryptoAPIClient):
     async def get_crypto_data(self, symbol: str) -> Optional[CryptoData]:
         """Get comprehensive cryptocurrency data from CoinMarketCap"""
         try:
+            # Rate limiting 적용
+            await self._enforce_rate_limit()
+            
             # 심볼 정규화 (USDT 페어를 기본 심볼로 변환)
             normalized_symbol = self._normalize_symbol_for_coinmarketcap(symbol)
             logger.info(f"[{symbol}] CoinMarketCap API 호출 시도 (정규화: {normalized_symbol}): {self.base_url}/cryptocurrency/quotes/latest?symbol={normalized_symbol}&convert=USD")
@@ -197,18 +236,24 @@ class CoinMarketCapClient(CryptoAPIClient):
                     coin = data["data"][normalized_symbol]
                     quote = coin.get("quote", {}).get("USD", {})
                     
-                    crypto_data = CryptoData(
-                        symbol=symbol,
-                        price=safe_float(quote.get("price")),
-                        market_cap=safe_float(quote.get("market_cap")),
-                        volume_24h=safe_float(quote.get("volume_24h")),
-                        change_24h=safe_float(quote.get("percent_change_24h")),
-                        circulating_supply=safe_float(coin.get("circulating_supply")),
-                        total_supply=safe_float(coin.get("total_supply")),
-                        max_supply=safe_float(coin.get("max_supply")),
-                        rank=coin.get("cmc_rank"),
-                        timestamp_utc=datetime.now()
-                    )
+                    # 안전한 데이터 검증 및 변환
+                    try:
+                        crypto_data = CryptoData(
+                            symbol=symbol,
+                            price=safe_float(quote.get("price")),
+                            market_cap=safe_float(quote.get("market_cap")),
+                            volume_24h=safe_float(quote.get("volume_24h")),
+                            change_24h=safe_float(quote.get("percent_change_24h")),
+                            circulating_supply=safe_float(coin.get("circulating_supply")),
+                            total_supply=safe_float(coin.get("total_supply")),
+                            max_supply=safe_float(coin.get("max_supply")),
+                            rank=coin.get("cmc_rank") if coin.get("cmc_rank") is not None else None,
+                            timestamp_utc=datetime.now()
+                        )
+                    except Exception as validation_error:
+                        logger.error(f"CoinMarketCap data validation failed for {symbol}: {validation_error}")
+                        logger.error(f"Raw data: {data}")
+                        return None
                     return crypto_data
                     
         except Exception as e:

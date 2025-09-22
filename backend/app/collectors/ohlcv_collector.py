@@ -9,7 +9,7 @@ import json
 from typing import List, Dict, Any
 
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import or_, text
+from sqlalchemy import or_
 
 from .base_collector import BaseCollector
 from app.models.asset import Asset, AssetType
@@ -88,7 +88,7 @@ class OHLCVCollector(BaseCollector):
                 .join(AssetType)
                 .filter(
                     Asset.is_active == True,
-                    text("collection_settings->>'collect_price' = 'true'")
+                    Asset.collection_settings.op('->>')('collect_price') == 'true'
                 )
             )
             asset_id_tuples = query.all()

@@ -16,7 +16,7 @@ from app.external_apis.implementations import (
     FMPClient, TiingoClient,
     AlphaVantageClient, PolygonClient, TwelveDataClient,
     BinanceClient, CoinbaseClient, CoinGeckoClient, CoinMarketCapClient,
-    BitcoinDataClient
+    BitcoinDataClient, FinnhubClient
 )
 from app.crud.asset import crud_ohlcv
 from app.utils.logging_helper import ApiLoggingHelper as LoggingHelper
@@ -52,11 +52,17 @@ class ApiStrategyManager:
         ]
         
         # 4. 주식 프로필용 클라이언트 (기업 프로필 데이터)
+        # FMP는 API 제한이 심하므로 백업용으로만 사용
         self.stock_profiles_clients = [
-            FMPClient(),          # 1순위 (완전한 프로필 데이터)
-            #TiingoClient(),       # 2순위 복구
-            PolygonClient(),      # 3순위
-            TwelveDataClient(),   # 4순위
+            PolygonClient(),      # 1순위 (5 calls/min, 상세한 데이터)
+            TwelveDataClient(),   # 2순위 (백업용)
+           #FMPClient(),          # 3순위 (제한적, 백업용)
+        ]
+        
+        # 4-1. FMP 전용 주식 프로필 클라이언트 (주말 수집용)
+        # 주말에만 실행하여 API 제한을 우회
+        self.stock_profiles_fmp_clients = [
+            FMPClient(),          # FMP만 사용 (상세한 데이터)
         ]
         
         # 5. 주식 재무용 클라이언트 (재무 데이터)

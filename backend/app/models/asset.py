@@ -147,6 +147,7 @@ class StockProfile(Base):
     website = Column(String(255))
     ceo = Column(String(100))
     employees_count = Column(Integer)
+    market_cap = Column(BigInteger)  # 시가총액 (USD)
     ipo_date = Column(Date)
     logo_image_url = Column(String(255))
     # 거래소 및 식별자 정보
@@ -534,18 +535,18 @@ class ApiCallLog(Base):
     """API 호출 로그 테이블"""
     __tablename__ = 'api_call_logs'
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    log_id = Column(BigInteger, primary_key=True, autoincrement=True)
     api_name = Column(String(50), nullable=False, index=True)
-    endpoint = Column(String(200), nullable=True)
-    method = Column(String(10), nullable=True)
+    endpoint = Column(String(255), nullable=True)
+    asset_ticker = Column(String(20), nullable=True, index=True)
     status_code = Column(Integer, nullable=True)
     response_time_ms = Column(Integer, nullable=True)
-    data_points = Column(Integer, default=0)
+    success = Column(Boolean, default=False)
     error_message = Column(Text, nullable=True)
-    timestamp = Column(DateTime, server_default=func.now(), index=True)
+    created_at = Column(DateTime, server_default=func.now(), index=True)
     
     def __repr__(self):
-        return f"<ApiCallLog(id={self.id}, api='{self.api_name}', status={self.status_code})>"
+        return f"<ApiCallLog(log_id={self.log_id}, api='{self.api_name}', status={self.status_code})>"
 
 
 class TechnicalIndicator(Base):

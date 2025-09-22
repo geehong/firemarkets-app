@@ -79,7 +79,7 @@ class AssetManager:
                     query = """
                     SELECT ticker, name, asset_type_id, data_source, exchange, currency, is_active
                     FROM assets 
-                    WHERE JSON_EXTRACT(collection_settings, '$.collect_price') = true 
+                    WHERE collection_settings->>'collect_price' = 'true' 
                     AND is_active = 1
                     ORDER BY asset_type_id, ticker
                     """

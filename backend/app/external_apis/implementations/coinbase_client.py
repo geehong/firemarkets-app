@@ -23,7 +23,54 @@ class CoinbaseClient(CryptoAPIClient):
     
     def _convert_symbol_for_coinbase(self, symbol: str) -> str:
         """Coinbase API용 심볼 변환 (BTCUSDT -> BTC-USD)"""
-        # 일반적인 변환 규칙
+        # Coinbase에서 지원하는 심볼 매핑
+        coinbase_symbols = {
+            'BTC': 'BTC-USD',
+            'ETH': 'ETH-USD',
+            'ADA': 'ADA-USD',
+            'DOT': 'DOT-USD',
+            'LINK': 'LINK-USD',
+            'LTC': 'LTC-USD',
+            'XRP': 'XRP-USD',
+            'DOGE': 'DOGE-USD',
+            'BCH': 'BCH-USD',
+            'EOS': 'EOS-USD',
+            'ATOM': 'ATOM-USD',
+            'VET': 'VET-USD',
+            'FIL': 'FIL-USD',
+            'THETA': 'THETA-USD',
+            'AAVE': 'AAVE-USD',
+            'SUSHI': 'SUSHI-USD',
+            'COMP': 'COMP-USD',
+            'YFI': 'YFI-USD',
+            'SNX': 'SNX-USD',
+            'MKR': 'MKR-USD',
+            'CRV': 'CRV-USD',
+            '1INCH': '1INCH-USD',
+            'ALPHA': 'ALPHA-USD',
+            'ZEN': 'ZEN-USD',
+            'SKL': 'SKL-USD',
+            'GRT': 'GRT-USD',
+            'BAND': 'BAND-USD',
+            'NMR': 'NMR-USD',
+            'OCEAN': 'OCEAN-USD',
+            'REEF': 'REEF-USD',
+            'ALICE': 'ALICE-USD',
+            'TLM': 'TLM-USD',
+            'ICP': 'ICP-USD',
+            # Coinbase에서 지원하지 않는 심볼들
+            'XLM': None,  # Coinbase에서 지원하지 않음
+            'TRX': None,  # Coinbase에서 지원하지 않음
+            'UNI': None,  # Coinbase에서 지원하지 않음
+            'SHIB': None,  # Coinbase에서 지원하지 않음
+            'TON': None,  # Coinbase에서 지원하지 않음
+        }
+        
+        # 매핑 테이블에서 찾기
+        if symbol in coinbase_symbols:
+            return coinbase_symbols[symbol]
+        
+        # 일반적인 변환 규칙 (fallback)
         if symbol.endswith('USDT'):
             return symbol[:-4] + '-USD'
         elif symbol.endswith('USDC'):
@@ -31,8 +78,8 @@ class CoinbaseClient(CryptoAPIClient):
         elif symbol.endswith('BTC'):
             return symbol + '-USD'
         else:
-            # 기타 경우는 그대로 반환
-            return symbol
+            # 기본적으로 -USD 추가
+            return f"{symbol}-USD"
     
     async def test_connection(self) -> bool:
         """Test Coinbase API connection"""
@@ -167,6 +214,11 @@ class CoinbaseClient(CryptoAPIClient):
         try:
             # Coinbase API용 심볼 변환
             coinbase_symbol = self._convert_symbol_for_coinbase(symbol)
+            
+            # Coinbase에서 지원하지 않는 심볼인 경우 None 반환
+            if coinbase_symbol is None:
+                logger.warning(f"Coinbase does not support symbol: {symbol}")
+                return None
             
             async with httpx.AsyncClient() as client:
                 # Get product stats

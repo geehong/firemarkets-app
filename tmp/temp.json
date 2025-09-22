@@ -18,7 +18,6 @@
             "hour": 10,
             "minute": 1,
             "collectors": [
-                "stock_profiles_clients",
                 "stock_financials_clients",
                 "stock_analyst_estimates_clients"
             ],
@@ -30,6 +29,30 @@
             "collectors": [
                 "crypto_clients",
                 "etf_clients"
+            ],
+            "day_of_week": "mon"
+        },
+        {
+            "hour": 8,
+            "minute": 0,
+            "collectors": [
+                "stock_profiles_clients"
+            ],
+            "day_of_week": "tue,wed,thu,fri,sat"
+        },
+        {
+            "hour": 8,
+            "minute": 0,
+            "collectors": [
+                "stock_profiles_fmp_clients"
+            ],
+            "day_of_week": "sat,sun"
+        },
+        {
+            "hour": 10,
+            "minute": 40,
+            "collectors": [
+                "stock_profiles_clients"
             ],
             "day_of_week": "mon"
         }

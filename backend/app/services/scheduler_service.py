@@ -83,8 +83,16 @@ class SchedulerService:
                 loop.run_until_complete(collector_instance.collect_with_settings())
             except Exception as e:
                 self.logger.critical(f"Unhandled exception in {collector_class.__name__} runner: {e}", exc_info=True)
+                # Ensure transaction is rolled back on error
+                try:
+                    db.rollback()
+                except Exception as rollback_error:
+                    self.logger.error(f"Failed to rollback transaction: {rollback_error}")
             finally:
-                db.close()
+                try:
+                    db.close()
+                except Exception as close_error:
+                    self.logger.error(f"Failed to close database session: {close_error}")
                 loop.close()
 
         return run_collection_sync
@@ -183,8 +191,16 @@ class SchedulerService:
                                         loop.run_until_complete(asyncio.gather(*tasks))
                                 except Exception as e:
                                     self.logger.error(f"Group runner error for {group_name}: {e}", exc_info=True)
+                                    # Ensure transaction is rolled back on error
+                                    try:
+                                        db.rollback()
+                                    except Exception as rollback_error:
+                                        self.logger.error(f"Failed to rollback transaction: {rollback_error}")
                                 finally:
-                                    db.close()
+                                    try:
+                                        db.close()
+                                    except Exception as close_error:
+                                        self.logger.error(f"Failed to close database session: {close_error}")
                                     loop.close()
                             return _run_group
 
@@ -336,6 +352,11 @@ class SchedulerService:
                         
                     except Exception as e:
                         self.logger.error(f"❌ Manual execution failed for {job_name}: {e}")
+                        # Ensure transaction is rolled back on error
+                        try:
+                            db.rollback()
+                        except Exception as rollback_error:
+                            self.logger.error(f"Failed to rollback transaction: {rollback_error}")
                         results.append({
                             "collector": job_name,
                             "success": False,
@@ -343,7 +364,10 @@ class SchedulerService:
                             "duration": 0
                         })
                     finally:
-                        db.close()
+                        try:
+                            db.close()
+                        except Exception as close_error:
+                            self.logger.error(f"Failed to close database session: {close_error}")
                 else:
                     results.append({
                         "collector": job_name,

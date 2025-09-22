@@ -131,9 +131,16 @@ def create_collection_summary_log(
         
     except Exception as e:
         logger.error(f"Failed to create collection summary log: {e}")
+        try:
+            db.rollback()
+        except Exception as rollback_error:
+            logger.error(f"Failed to rollback transaction: {rollback_error}")
         return None
     finally:
-        db.close()
+        try:
+            db.close()
+        except Exception as close_error:
+            logger.error(f"Failed to close database session: {close_error}")
 
 
 def create_api_call_log(
@@ -171,7 +178,7 @@ def create_api_call_log(
             response_time_ms=response_time_ms or 0,
             success=success,
             error_message=error_message,
-            timestamp=datetime.now()
+            created_at=datetime.now()
         )
         db.add(log_entry)
         db.commit()
@@ -239,8 +246,17 @@ class CollectorLoggingHelper:
                 },
                 start_time=self.collection_start_time
             )
+        except Exception as e:
+            logger.error(f"Failed to create start collection log: {e}")
+            try:
+                db.rollback()
+            except Exception as rollback_error:
+                logger.error(f"Failed to rollback transaction: {rollback_error}")
         finally:
-            db.close()
+            try:
+                db.close()
+            except Exception as close_error:
+                logger.error(f"Failed to close database session: {close_error}")
         
         self.base_collector.log_task_progress(f"Starting {collection_type} collection", {
             "collector": self.collector_name,
@@ -541,7 +557,7 @@ class ApiLoggingHelper:
                     response_time_ms=0,  # 실제 응답 시간 측정 필요시 추가
                     success=True,
                     error_message=None,
-                    timestamp=datetime.now()
+                    created_at=datetime.now()
                 )
                 db.add(log_entry)
                 db.commit()
@@ -572,7 +588,7 @@ class ApiLoggingHelper:
                     response_time_ms=0,
                     success=False,
                     error_message=str(error)[:500],  # 에러 메시지 길이 제한
-                    timestamp=datetime.now()
+                    created_at=datetime.now()
                 )
                 db.add(log_entry)
                 db.commit()

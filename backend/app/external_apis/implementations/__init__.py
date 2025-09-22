@@ -15,6 +15,7 @@ from .coinbase_client import CoinbaseClient
 from .coingecko_client import CoinGeckoClient
 from .coinmarketcap_client import CoinMarketCapClient
 from .twelvedata_client import TwelveDataClient
+from .finnhub_client import FinnhubClient
 
 __all__ = [
     # Traditional Financial API Clients
@@ -23,6 +24,7 @@ __all__ = [
     "AlphaVantageClient",
     "PolygonClient",
     "TwelveDataClient",
+    "FinnhubClient",
     
     # Cryptocurrency API Clients
     "BinanceClient",

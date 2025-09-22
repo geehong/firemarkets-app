@@ -20,6 +20,64 @@ class BinanceClient(CryptoAPIClient):
     def __init__(self):
         super().__init__()
         self.base_url = "https://api.binance.com/api/v3"
+        
+        # Binance에서 지원하는 심볼 매핑
+        self.symbol_mapping = {
+            'BTC': 'BTCUSDT',
+            'ETH': 'ETHUSDT',
+            'ADA': 'ADAUSDT',
+            'DOT': 'DOTUSDT',
+            'LINK': 'LINKUSDT',
+            'LTC': 'LTCUSDT',
+            'XRP': 'XRPUSDT',
+            'DOGE': 'DOGEUSDT',
+            'BCH': 'BCHUSDT',
+            'EOS': 'EOSUSDT',
+            'XLM': 'XLMUSDT',
+            'TRX': 'TRXUSDT',
+            'UNI': 'UNIUSDT',
+            'ATOM': 'ATOMUSDT',
+            'VET': 'VETUSDT',
+            'FIL': 'FILUSDT',
+            'THETA': 'THETAUSDT',
+            'AAVE': 'AAVEUSDT',
+            'SUSHI': 'SUSHIUSDT',
+            'COMP': 'COMPUSDT',
+            'YFI': 'YFIUSDT',
+            'SNX': 'SNXUSDT',
+            'MKR': 'MKRUSDT',
+            'CRV': 'CRVUSDT',
+            '1INCH': '1INCHUSDT',
+            'ALPHA': 'ALPHAUSDT',
+            'ZEN': 'ZENUSDT',
+            'SKL': 'SKLUSDT',
+            'GRT': 'GRTUSDT',
+            'BAND': 'BANDUSDT',
+            'NMR': 'NMRUSDT',
+            'OCEAN': 'OCEANUSDT',
+            'REEF': 'REEFUSDT',
+            'ALICE': 'ALICEUSDT',
+            'TLM': 'TLMUSDT',
+            'ICP': 'ICPUSDT',
+            'XLM': 'XLMUSDT',
+            'TRX': 'TRXUSDT',
+            'UNI': 'UNIUSDT',
+            'SHIB': 'SHIBUSDT',
+            'TON': 'TONUSDT'
+        }
+    
+    def _normalize_symbol_for_binance(self, symbol: str) -> str:
+        """Binance API용 심볼 정규화"""
+        # 이미 USDT가 붙어있으면 그대로 반환
+        if symbol.endswith('USDT'):
+            return symbol
+        
+        # 매핑 테이블에서 찾기
+        if symbol in self.symbol_mapping:
+            return self.symbol_mapping[symbol]
+        
+        # 기본적으로 USDT 추가
+        return f"{symbol}USDT"
     
     async def test_connection(self) -> bool:
         """Test Binance API connection"""
@@ -53,9 +111,12 @@ class BinanceClient(CryptoAPIClient):
         Supports optional startTime/endTime (milliseconds) to fetch a specific window.
         """
         try:
+            # 심볼 정규화
+            normalized_symbol = self._normalize_symbol_for_binance(symbol)
+            
             async with httpx.AsyncClient() as client:
                 # Build query parameters
-                query = f"symbol={symbol}&interval={interval}"
+                query = f"symbol={normalized_symbol}&interval={interval}"
                 
                 # Convert date strings to milliseconds if provided
                 start_time_ms = None
@@ -73,7 +134,7 @@ class BinanceClient(CryptoAPIClient):
                 if limit is not None:
                     query += f"&limit={limit}"
                 url = f"{self.base_url}/klines?{query}"
-                data = await self._fetch_async(client, url, "Binance", symbol)
+                data = await self._fetch_async(client, url, "Binance", normalized_symbol)
                 
                 if isinstance(data, list) and data:  # 데이터가 비어있지 않은지 확인
                     from app.external_apis.base.schemas import OhlcvDataPoint
@@ -97,9 +158,12 @@ class BinanceClient(CryptoAPIClient):
     async def get_realtime_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Get real-time quote for a symbol"""
         try:
+            # 심볼 정규화
+            normalized_symbol = self._normalize_symbol_for_binance(symbol)
+            
             async with httpx.AsyncClient() as client:
-                url = f"{self.base_url}/ticker/24hr?symbol={symbol}"
-                data = await self._fetch_async(client, url, "Binance 24hr Ticker", symbol)
+                url = f"{self.base_url}/ticker/24hr?symbol={normalized_symbol}"
+                data = await self._fetch_async(client, url, "Binance 24hr Ticker", normalized_symbol)
                 
                 if isinstance(data, dict):
                     from app.external_apis.base.schemas import RealtimeQuoteData
@@ -141,10 +205,13 @@ class BinanceClient(CryptoAPIClient):
     async def get_crypto_data(self, symbol: str) -> Optional[CryptoData]:
         """Get comprehensive cryptocurrency data from Binance"""
         try:
+            # 심볼 정규화
+            normalized_symbol = self._normalize_symbol_for_binance(symbol)
+            
             async with httpx.AsyncClient() as client:
                 # Get 24hr ticker data
-                url = f"{self.base_url}/ticker/24hr?symbol={symbol}"
-                data = await self._fetch_async(client, url, "Binance 24hr Ticker", symbol)
+                url = f"{self.base_url}/ticker/24hr?symbol={normalized_symbol}"
+                data = await self._fetch_async(client, url, "Binance 24hr Ticker", normalized_symbol)
                 
                 if isinstance(data, dict):
                     crypto_data = CryptoData(

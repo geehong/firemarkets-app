@@ -202,4 +202,33 @@ export const useFourthHalvingStartPrice = () => {
     },
     staleTime: 10 * 60 * 1000, // 10분 (더 빠른 업데이트)
   })
+}
+
+// Open Interest 데이터 API 훅
+export const useOpenInterestData = (options = {}) => {
+  const {
+    limit = 1000,
+    includeAnalysis = true,
+    includeExchanges = true,
+    includeLeverage = true
+  } = options
+
+  return useQuery({
+    queryKey: ['open-interest-data', limit, includeAnalysis, includeExchanges, includeLeverage],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        limit: limit.toString(),
+        include_analysis: includeAnalysis.toString(),
+        include_exchanges: includeExchanges.toString(),
+        include_leverage: includeLeverage.toString()
+      })
+
+      const response = await fetch(`/api/v1/crypto/bitcoin/open-interest?${params}`)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch open interest data: ${response.status}`)
+      }
+      return response.json()
+    },
+    staleTime: 2 * 60 * 1000, // 2분
+  })
 } 

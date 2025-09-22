@@ -963,6 +963,7 @@ class DataProcessor:
                         ceo = data.get("ceo") or data.get("CEO")
                         phone = data.get("phone")
                         logo_image_url = data.get("image") or data.get("logo")
+                        market_cap = data.get("market_cap") or data.get("marketCap")
                         # 거래소 및 식별자 정보
                         exchange = data.get("exchange")
                         exchange_full_name = data.get("exchange_full_name") or data.get("exchangeFullName")
@@ -996,6 +997,7 @@ class DataProcessor:
                             'ceo': ceo,
                             'phone': phone,
                             'logo_image_url': logo_image_url,
+                            'market_cap': market_cap,
                             'ipo_date': ipo_date,
                             'exchange': exchange,
                             'exchange_full_name': exchange_full_name,
@@ -1025,6 +1027,7 @@ class DataProcessor:
                                 'ceo': stmt.excluded.ceo,
                                 'phone': stmt.excluded.phone,
                                 'logo_image_url': stmt.excluded.logo_image_url,
+                                'market_cap': stmt.excluded.market_cap,
                                 'ipo_date': stmt.excluded.ipo_date,
                                 'exchange': stmt.excluded.exchange,
                                 'exchange_full_name': stmt.excluded.exchange_full_name,
@@ -1238,7 +1241,7 @@ class DataProcessor:
                                 'source_code': stmt.excluded.source_code,
                                 'tags': stmt.excluded.tags,
                                 'is_active': stmt.excluded.is_active,
-                                'updated_at': func.now()
+                                'last_updated': func.now()
                             }
                         )
                         pg_db.execute(stmt)

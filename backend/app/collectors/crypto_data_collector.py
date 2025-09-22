@@ -7,7 +7,7 @@ import asyncio
 from typing import List, Dict, Any
 
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, text
+from sqlalchemy import or_
 
 from .base_collector import BaseCollector
 from app.models.asset import Asset, AssetType
@@ -79,7 +79,7 @@ class CryptoDataCollector(BaseCollector):
                 .filter(
                     Asset.is_active == True,
                     AssetType.type_name.ilike('%Crypto%'), # 'Crypto' 또는 'Cryptocurrency' 포함
-                    text("collection_settings->>'collect_crypto_data' = 'true'")
+                    Asset.collection_settings.op('->>')('collect_crypto_data') == 'true'
                 )
             )
             asset_id_tuples = query.all()

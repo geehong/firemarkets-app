@@ -7,7 +7,7 @@ import asyncio
 from typing import List, Dict, Any
 
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, text
+from sqlalchemy import or_
 
 from .base_collector import BaseCollector
 from app.models.asset import Asset, AssetType
@@ -80,8 +80,8 @@ class ETFCollector(BaseCollector):
                     Asset.is_active == True,
                     AssetType.type_name.ilike('%ETF%'),
                     or_(
-                        text("collection_settings->>'collect_price' = 'true'"),
-                        text("collection_settings->>'collect_assets_info' = 'true'")
+                        Asset.collection_settings.op('->>')('collect_price') == 'true',
+                        Asset.collection_settings.op('->>')('collect_assets_info') == 'true'
                     )
                 )
                 .all()

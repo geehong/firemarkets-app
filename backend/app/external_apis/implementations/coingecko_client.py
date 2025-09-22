@@ -2,6 +2,8 @@
 CoinGecko API client for cryptocurrency data.
 """
 import logging
+import asyncio
+import time
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import httpx
@@ -19,6 +21,39 @@ class CoinGeckoClient(CryptoAPIClient):
     def __init__(self):
         super().__init__()
         self.base_url = "https://api.coingecko.com/api/v3"
+        # Rate limiting for free tier: 30 requests per minute
+        # 매우 보수적으로 설정하여 여러 인스턴스가 동시 실행되어도 안전하게
+        self.requests_per_minute = 5  # 20에서 5로 줄임 (여러 인스턴스 고려)
+        self.request_times = []
+        self.min_delay_between_requests = 5.0  # 3초에서 5초로 늘림
+    
+    async def _enforce_rate_limit(self):
+        """Enforce rate limiting for CoinGecko API"""
+        current_time = time.time()
+        
+        # Remove requests older than 1 minute
+        self.request_times = [t for t in self.request_times if current_time - t < 60]
+        
+        # If we've made 30 requests in the last minute, wait
+        if len(self.request_times) >= self.requests_per_minute:
+            wait_time = 60 - (current_time - self.request_times[0]) + 1
+            if wait_time > 0:
+                logger.info(f"CoinGecko rate limit reached, waiting {wait_time:.1f} seconds")
+                await asyncio.sleep(wait_time)
+                # Clean up old requests after waiting
+                current_time = time.time()
+                self.request_times = [t for t in self.request_times if current_time - t < 60]
+        
+        # Ensure minimum delay between requests
+        if self.request_times:
+            time_since_last = current_time - self.request_times[-1]
+            if time_since_last < self.min_delay_between_requests:
+                wait_time = self.min_delay_between_requests - time_since_last
+                logger.debug(f"CoinGecko minimum delay: waiting {wait_time:.1f} seconds")
+                await asyncio.sleep(wait_time)
+        
+        # Record this request
+        self.request_times.append(time.time())
     
     async def test_connection(self) -> bool:
         """Test CoinGecko API connection"""
@@ -35,7 +70,7 @@ class CoinGeckoClient(CryptoAPIClient):
         """Get CoinGecko rate limit information"""
         return {
             "free_tier": {
-                "requests_per_minute": 50,
+                "requests_per_minute": 30,
                 "requests_per_day": 10000
             },
             "pro_tier": {
@@ -54,6 +89,9 @@ class CoinGeckoClient(CryptoAPIClient):
     ) -> List[OhlcvDataPoint]:
         """Get OHLCV data from CoinGecko"""
         try:
+            # Enforce rate limiting
+            await self._enforce_rate_limit()
+            
             async with httpx.AsyncClient() as client:
                 # CoinGecko는 일간 데이터를 기본으로 제공
                 if interval != "1d":
@@ -187,6 +225,45 @@ class CoinGeckoClient(CryptoAPIClient):
             "LTCUSDT": "litecoin",
             "BCHUSDT": "bitcoin-cash",
             "DOGEUSDT": "dogecoin",
+            "FTMUSDT": "fantom",
+            "FTM": "fantom",
+            "LINKUSDT": "chainlink",
+            "UNIUSDT": "uniswap",
+            "AAVEUSDT": "aave",
+            "SUSHIUSDT": "sushi",
+            "COMPUSDT": "compound-governance-token",
+            "YFIUSDT": "yearn-finance",
+            "SNXUSDT": "havven",
+            "MKRUSDT": "maker",
+            "CRVUSDT": "curve-dao-token",
+            "1INCHUSDT": "1inch",
+            "ALPHAUSDT": "alpha-finance",
+            "ZENUSDT": "horizen",
+            "SKLUSDT": "skale",
+            "GRTUSDT": "the-graph",
+            "BANDUSDT": "band-protocol",
+            "NMRUSDT": "numeraire",
+            "OCEANUSDT": "ocean-protocol",
+            "REEFUSDT": "reef",
+            "ALICEUSDT": "my-neighbor-alice",
+            "TLMUSDT": "alien-worlds",
+            "ICPUSDT": "internet-computer",
+            "XLMUSDT": "stellar",
+            "TRXUSDT": "tron",
+            "SHIBUSDT": "shiba-inu",
+            "TONUSDT": "the-open-network",
+            "INJUSDT": "injective-protocol",
+            "JASMYUSDT": "jasmycoin",
+            "LDOUSDT": "lido-dao",
+            "DYDXUSDT": "dydx",
+            "APEUSDT": "apecoin",
+            "ARUSDT": "arweave",
+            "ATOMUSDT": "cosmos",
+            "ETCUSDT": "ethereum-classic",
+            "DEXEUSDT": "dexe",
+            "ALGOUSDT": "algorand",
+            "FLOWUSDT": "flow",
+            "WBTCUSDT": "wrapped-bitcoin"
         }
         
         # 매핑이 있으면 사용, 없으면 USDT 제거 후 소문자로 변환
@@ -200,6 +277,9 @@ class CoinGeckoClient(CryptoAPIClient):
     async def get_crypto_data(self, symbol: str) -> Optional[CryptoData]:
         """Get comprehensive cryptocurrency data from CoinGecko"""
         try:
+            # Enforce rate limiting
+            await self._enforce_rate_limit()
+            
             async with httpx.AsyncClient() as client:
                 # CoinGecko는 coin ID를 사용
                 coin_id = self._normalize_symbol_for_coingecko(symbol)

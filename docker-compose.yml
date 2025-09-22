@@ -51,16 +51,16 @@ services:
       retries: 5
       start_period: 30s
 
-  # PostgreSQL 관리 도구 (pgweb)
-  pgweb:
-    image: sosedoff/pgweb:latest
-    container_name: fire_markets_pgweb
+  # PostgreSQL 관리 도구 (Adminer) - 가벼운 웹 기반
+  adminer:
+    image: adminer:latest
+    container_name: fire_markets_adminer
     restart: unless-stopped
     ports:
-      - "5052:8081"
-    # environment:
-      # DATABASE_URL을 제거하여 로그인 화면 표시
-      # DATABASE_URL: postgres://geehong:${DB_PASSWORD_PG}@db_postgres:5432/markets?sslmode=disable
+      - "5054:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: db_postgres
+      TZ: Asia/Seoul
     depends_on:
       db_postgres:
         condition: service_healthy
@@ -297,20 +297,6 @@ services:
     networks:
       - shared-network
 
-  dbeaver:
-    image: dbeaver/cloudbeaver:latest
-    container_name: fire_markets_dbeaver
-    restart: unless-stopped
-    # nginx-proxy-manager를 통해 접근하므로 외부 포트 제거
-    # ports:
-    #   - "8080:8978"
-    environment:
-      TZ: Asia/Seoul
-    volumes:
-      - dbeaver_data:/opt/cloudbeaver/workspace
-    networks:
-      - app_network
-      - shared-network
 
  
 
@@ -320,7 +306,6 @@ volumes:
   portainer_data:
   npm_data:
   npm_letsencrypt:
-  dbeaver_data:
 
 networks:
   app_network:

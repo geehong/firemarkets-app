@@ -98,8 +98,8 @@ docker-compose down pgadmin && docker compose up --build -d pgadmin
 ### 개별 서비스 빌드 및 실행
 ```bash
 # 백엔드만 빌드
-docker-compose up -d --build backend
-
+docker-compose build backend && docker-compose restart backend
+docker-compose stop backend && docker-compose up -d backend
 # 프론트엔드 빌드
 docker-compose up -d --build frontend
 
@@ -139,6 +139,8 @@ docker-compose --profile 8001 up -d websocket_orchestrator
 ```bash
 docker-compose down data_processor && docker-compose build data_processor && docker-compose up -d data_processor
 docker-compose down websocket_orchestrator && docker-compose build websocket_orchestrator && docker-compose up -d websocket_orchestrator
+docker-compose --profile processing down
+docker-compose --profile processing up -d --no-deps
 ```
 
 ---
@@ -155,6 +157,8 @@ docker-compose exec db mysql -u geehong -pPower6100 markets -e "SHOW INDEX FROM 
 
 # 중복 데이터 확인
 docker-compose exec db mysql -u geehong -pPower6100 markets -e "SELECT asset_id, timestamp_utc, COUNT(*) as count FROM ohlcv_day_data GROUP BY asset_id, timestamp_utc HAVING COUNT(*) > 1 LIMIT 10;"
+# 컬럼 정보만 SQL로 확인
+docker-compose exec db_postgres psql -U geehong -d markets -c "\d app_configurations"
 ```
 ## 📊 로그 모니터링
 
@@ -165,6 +169,8 @@ docker-compose logs scheduler backend
 
 # 실시간 로그 모니터링
 docker-compose logs data_processor --tail 50 -f
+
+timeout 300 docker-compose logs -f scheduler | grep -E "(crypto_clients|etf_clients|error|exception|failed|PostgreSQL|jsonb|operator does not exist)"
 ```
 
 ### 데이터 저장 관련 로그
@@ -185,12 +191,17 @@ docker-compose logs data_processor --tail 100 -f | grep -E "(자산 매칭 성�
 docker-compose logs websocket_orchestrator --tail 50 -f | grep -Ei "binance"
 
 # 연결 실패 로그
-docker logs fire_markets_websocket_orchestrator --tail 20 | grep -A 5 -B 5 "binance connection failed"
+docker logs fire_markets_websocket_orchestrator --tail 20 | grep -A 5 -B 5 "connection failed"
 
 # Finnhub 메시지 로그
 docker-compose logs websocket_orchestrator --since 24h | grep -E "(finnhub.*received|finnhub.*message|finnhub.*📨)" | head -20
 ```
+### 스케쥴 로그
+```bash
+ timeout 300 docker-compose logs -f scheduler | grep -E "(crypto_clients|etf_clients|error|exception|failed|PostgreSQL|jsonb|operator does not exist)"
+ docker-compose exec scheduler cat /app/app/collectors/etf_collector.py | grep -A 10 -B 5 "collection_settings"
 
+ ```
 ### 에러 및 예외 로그
 ```bash
 # 모든 서비스 에러 로그
