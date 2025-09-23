@@ -34,6 +34,8 @@ class StockCollector(BaseCollector):
         redis_queue_manager: RedisQueueManager,
     ):
         super().__init__(db, config_manager, api_manager, redis_queue_manager)
+        self.scheduled_data_types = None  # 스케줄에서 지정된 데이터 타입
+        self.client_priority = None  # 스케줄에서 지정된 클라이언트 우선순위
 
     async def _collect_data(self) -> Dict[str, Any]:
         """
@@ -88,9 +90,15 @@ class StockCollector(BaseCollector):
             self.logging_helper.log_error(f"Error getting target asset IDs: {e}")
             return []
 
+    def set_schedule_config(self, scheduled_data_types: List[str] = None, client_priority: List[str] = None):
+        """스케줄에서 지정된 데이터 타입과 클라이언트 우선순위를 설정"""
+        self.scheduled_data_types = scheduled_data_types
+        self.client_priority = client_priority
+        self.logging_helper.log_info(f"Schedule config set: data_types={scheduled_data_types}, client_priority={client_priority}")
+
     async def _fetch_and_enqueue_for_asset(self, asset_id: int) -> Dict[str, Any]:
         """
-        Fetches relevant stock data for a single asset based on its collection_settings and enqueues it.
+        Fetches relevant stock data for a single asset based on schedule and collection_settings.
         """
         enqueued_count = 0
         try:
@@ -102,14 +110,14 @@ class StockCollector(BaseCollector):
             
             collection_settings = asset.collection_settings or {}
             
-            # Check which data types to collect based on settings
-            collect_profile = collection_settings.get("collect_assets_info", False)
-            collect_financials = collection_settings.get("collect_financials", False)
-            collect_estimates = collection_settings.get("collect_estimates", False)
+            # 스케줄에서 지정된 데이터 타입과 자산별 설정을 조합하여 수집 여부 결정
+            collect_profile = self._should_collect_profile(collection_settings)
+            collect_financials = self._should_collect_financials(collection_settings)
+            collect_estimates = self._should_collect_estimates(collection_settings)
             
-            self.logging_helper.log_debug(f"Asset {asset_id} ({asset.ticker}) collection settings: profile={collect_profile}, financials={collect_financials}, estimates={collect_estimates}")
+            self.logging_helper.log_debug(f"Asset {asset_id} ({asset.ticker}) collection decision: profile={collect_profile}, financials={collect_financials}, estimates={collect_estimates}")
             
-            # Prepare tasks based on settings
+            # Prepare tasks based on combined settings
             tasks = []
             task_types = []
             
@@ -142,6 +150,16 @@ class StockCollector(BaseCollector):
                     payload = {"asset_id": asset_id, "data": profile_data.model_dump(mode='json')}
                     await self.redis_queue_manager.push_batch_task("stock_profile", payload)
                     enqueued_count += 1
+                elif isinstance(profile_data, dict):
+                    # API Strategy Manager가 Dict를 반환하는 경우 CompanyProfileData로 변환
+                    try:
+                        company_profile = schemas.CompanyProfileData(**profile_data)
+                        payload = {"asset_id": asset_id, "data": company_profile.model_dump(mode='json')}
+                        await self.redis_queue_manager.push_batch_task("stock_profile", payload)
+                        enqueued_count += 1
+                        self.logging_helper.log_info(f"Successfully converted and enqueued profile data for asset_id {asset_id}")
+                    except Exception as e:
+                        self.logging_helper.log_error(f"Failed to convert profile data to CompanyProfileData for asset_id {asset_id}: {e}")
                 elif isinstance(profile_data, Exception):
                     self.logging_helper.log_asset_error(asset_id, profile_data, context="fetching profile")
 
@@ -173,3 +191,27 @@ class StockCollector(BaseCollector):
         except Exception as e:
             self.logging_helper.log_asset_error(asset_id, e)
             return {"success": False, "error": str(e), "enqueued_count": 0}
+    
+    def _should_collect_profile(self, collection_settings: Dict) -> bool:
+        """프로필 수집 여부 결정 (스케줄 + 자산 설정)"""
+        # 스케줄에서 프로필이 지정되지 않았으면 수집하지 않음
+        if self.scheduled_data_types and "profile" not in self.scheduled_data_types:
+            return False
+        # 자산별 설정에서 프로필 수집이 비활성화되어 있으면 수집하지 않음
+        return collection_settings.get("collect_assets_info", False)
+    
+    def _should_collect_financials(self, collection_settings: Dict) -> bool:
+        """재무 수집 여부 결정 (스케줄 + 자산 설정)"""
+        # 스케줄에서 재무가 지정되지 않았으면 수집하지 않음
+        if self.scheduled_data_types and "financials" not in self.scheduled_data_types:
+            return False
+        # 자산별 설정에서 재무 수집이 비활성화되어 있으면 수집하지 않음
+        return collection_settings.get("collect_financials", False)
+    
+    def _should_collect_estimates(self, collection_settings: Dict) -> bool:
+        """추정치 수집 여부 결정 (스케줄 + 자산 설정)"""
+        # 스케줄에서 추정치가 지정되지 않았으면 수집하지 않음
+        if self.scheduled_data_types and "estimates" not in self.scheduled_data_types:
+            return False
+        # 자산별 설정에서 추정치 수집이 비활성화되어 있으면 수집하지 않음
+        return collection_settings.get("collect_estimates", False)

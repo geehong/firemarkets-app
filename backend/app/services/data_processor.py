@@ -988,7 +988,6 @@ class DataProcessor:
                             'company_name': company_name or "",
                             'description_en': description_en,
                             'description_ko': description_ko,
-                            'description': description_en,  # backward-compat populate legacy column
                             'sector': sector,
                             'industry': industry,
                             'website': website,
@@ -1020,7 +1019,6 @@ class DataProcessor:
                                 'company_name': stmt.excluded.company_name,
                                 'description_en': stmt.excluded.description_en,
                                 'description_ko': stmt.excluded.description_ko,
-                                'description': stmt.excluded.description_en,
                                 'sector': stmt.excluded.sector,
                                 'industry': stmt.excluded.industry,
                                 'website': stmt.excluded.website,

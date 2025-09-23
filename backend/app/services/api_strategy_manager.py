@@ -42,7 +42,7 @@ class ApiStrategyManager:
         # FMP는 실질적으로 일봉 위주이므로 인트라데이에서는 비활성화
         self.ohlcv_intraday_clients = [
             TwelveDataClient(),  
-            AlphaVantageClient(), # (4h, 1h 데이터 지원)
+            #AlphaVantageClient(), # (4h, 1h 데이터 지원) - 주석처리
             FMPClient(),          # 재활성화
         ]
         
@@ -64,13 +64,13 @@ class ApiStrategyManager:
         # 4-1. FMP 전용 주식 프로필 클라이언트 (주말 수집용)
         # 주말에만 실행하여 API 제한을 우회
         self.stock_profiles_fmp_clients = [
-            FMPClient(),          # FMP만 사용 (상세한 데이터)
+            #FMPClient(),          # FMP만 사용 (상세한 데이터)
         ]
         
         # 5. 주식 재무용 클라이언트 (재무 데이터)
         self.stock_financials_clients = [
-            AlphaVantageClient(),
-            FMPClient(),
+            #AlphaVantageClient(), # 주석처리
+            #FMPClient(),
             #TiingoClient(),      
             #PolygonClient(),
             #TwelveDataClient(),
@@ -78,7 +78,7 @@ class ApiStrategyManager:
         
         # 6. 주식 추정치용 클라이언트 (애널리스트 추정치)
         self.stock_analyst_estimates_clients = [
-            FMPClient(),
+            #FMPClient(),
             #AlphaVantageClient(),
             #TiingoClient(),
            # PolygonClient(),
@@ -95,7 +95,7 @@ class ApiStrategyManager:
         
         # 8. ETF용 클라이언트 (ETF 정보 수집)
         self.etf_clients = [
-            AlphaVantageClient(),
+            #AlphaVantageClient(), # 주석처리
             FMPClient(),
             TiingoClient(),
             PolygonClient(),
@@ -793,27 +793,49 @@ class ApiStrategyManager:
         finally:
             db.close()
         
-        # stock_profiles_clients 사용 (프로필 전용 우선순위)
-        for i, client in enumerate(self.stock_profiles_clients):
+        # stock_profiles_clients 사용 (병렬 실행)
+        import asyncio
+        
+        async def fetch_from_client(client):
             try:
-                self.logger.info(f"Attempting to fetch company profile for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.stock_profiles_clients)})")
+                self.logger.info(f"Attempting to fetch company profile for {ticker} using {client.__class__.__name__}")
                 
+                # Enforce per-client rate limit (Polygon: 4/min, etc.)
+                try:
+                    client_name = client.__class__.__name__.lower()
+                except Exception:
+                    client_name = "unknown"
+                # Only gate Polygon explicitly; others proceed as-is
+                if "polygon" in client_name:
+                    while not await self._check_rate_limit('polygon', client):
+                        await asyncio.sleep(1)
+
                 if hasattr(client, 'get_company_profile'):
                     data = await client.get_company_profile(ticker)
                 elif hasattr(client, 'get_profile'):
                     data = await client.get_profile(ticker)
                 else:
                     self.logger.warning(f"{client.__class__.__name__} has no company profile method")
-                    continue
+                    return None
                 
                 if data is not None:
                     self.logger.info(f"Successfully fetched company profile for {ticker} from {client.__class__.__name__}")
                     return data
                 else:
                     self.logger.warning(f"{client.__class__.__name__} returned empty company profile for {ticker}")
+                    return None
                     
             except Exception as e:
-                self.logger.warning(f"{client.__class__.__name__} failed for company profile {ticker}. Reason: {e}. Trying next client.")
+                self.logger.warning(f"{client.__class__.__name__} failed for company profile {ticker}. Reason: {e}")
+                return None
+        
+        # 모든 클라이언트를 병렬로 실행
+        results = await asyncio.gather(*[fetch_from_client(client) for client in self.stock_profiles_clients], return_exceptions=True)
+        
+        # 첫 번째 성공한 결과를 반환
+        for i, result in enumerate(results):
+            if result is not None and not isinstance(result, Exception):
+                return result
         
         self.logger.error(f"All API clients failed to fetch company profile for {ticker}")
         return None
@@ -1705,6 +1727,39 @@ class ApiStrategyManager:
             self.logger.error(f"Unknown data type: {data_type}")
             return None
     
+    def get_stock_profiles_clients(self, priority_override: List[str] = None):
+        """주식 프로필 클라이언트를 우선순위에 따라 반환"""
+        if priority_override:
+            return self._filter_clients_by_priority(self.stock_profiles_clients, priority_override)
+        return self.stock_profiles_clients
+    
+    def get_stock_financials_clients(self, priority_override: List[str] = None):
+        """주식 재무 클라이언트를 우선순위에 따라 반환"""
+        if priority_override:
+            return self._filter_clients_by_priority(self.stock_financials_clients, priority_override)
+        return self.stock_financials_clients
+    
+    def get_stock_analyst_estimates_clients(self, priority_override: List[str] = None):
+        """주식 추정치 클라이언트를 우선순위에 따라 반환"""
+        if priority_override:
+            return self._filter_clients_by_priority(self.stock_analyst_estimates_clients, priority_override)
+        return self.stock_analyst_estimates_clients
+    
+    def _filter_clients_by_priority(self, clients: List, priority_override: List[str]):
+        """클라이언트 우선순위에 따라 필터링"""
+        if not priority_override:
+            return clients
+        
+        filtered_clients = []
+        for client_name in priority_override:
+            for client in clients:
+                if client.__class__.__name__ == client_name:
+                    filtered_clients.append(client)
+                    break
+        
+        # 우선순위에 지정된 클라이언트가 없으면 기본 클라이언트 반환
+        return filtered_clients if filtered_clients else clients
+
     def get_api_status(self) -> Dict[str, List[str]]:
         """
         각 API 클라이언트의 상태를 반환합니다.

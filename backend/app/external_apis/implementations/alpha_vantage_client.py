@@ -198,7 +198,7 @@ class AlphaVantageClient(TradFiAPIClient):
                         profile = CompanyProfileData(
                             symbol=symbol,
                             name=data.get('Name', ''),
-                            description=data.get('Description'),
+                            description_en=data.get('Description'),
                             sector=data.get('Sector'),
                             industry=data.get('Industry'),
                             country=data.get('Country'),

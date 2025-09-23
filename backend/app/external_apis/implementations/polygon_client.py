@@ -26,7 +26,7 @@ class PolygonClient(TradFiAPIClient):
         self.base_url = "https://api.polygon.io"
         self.api_key_env = "POLYGON_API_KEY"
         self.rate_limit_info = {
-            "calls_per_minute": 1,
+            "calls_per_minute": 2,
             "calls_per_day": None,
             "notes": "Lowered to avoid 429s on free tier"
         }
@@ -80,7 +80,7 @@ class PolygonClient(TradFiAPIClient):
         """Return known public rate limits for Polygon free plan"""
         return {
             "free_tier": {
-                "calls_per_minute": 1,
+                "calls_per_minute": 4,
                 "calls_per_day": 500,
                 "real_time_quotes": False
             }

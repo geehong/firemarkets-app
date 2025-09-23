@@ -49,12 +49,21 @@
             "day_of_week": "sat,sun"
         },
         {
-            "hour": 10,
-            "minute": 40,
+            "hour": 11,
+            "minute": 11,
             "collectors": [
                 "stock_profiles_clients"
             ],
-            "day_of_week": "mon"
+            "day_of_week": "tue"
         }
-    ]
+    ],
+    "client_overrides": {
+        "stock_profiles_clients": [
+            "FinnhubClient",
+            "PolygonClient",
+            "TwelveDataClient"
+        ],
+        "stock_financials_clients": [],
+        "stock_analyst_estimates_clients": []
+    }
 }
