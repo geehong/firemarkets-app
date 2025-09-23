@@ -832,13 +832,38 @@ class ApiStrategyManager:
         # 모든 클라이언트를 병렬로 실행
         results = await asyncio.gather(*[fetch_from_client(client) for client in self.stock_profiles_clients], return_exceptions=True)
         
-        # 첫 번째 성공한 결과를 반환
+        # 모든 성공한 결과를 수집 (우선순위: Polygon > Finnhub > TwelveData)
+        successful_results = []
         for i, result in enumerate(results):
             if result is not None and not isinstance(result, Exception):
-                return result
+                client_name = self.stock_profiles_clients[i].__class__.__name__
+                successful_results.append((client_name, result))
         
-        self.logger.error(f"All API clients failed to fetch company profile for {ticker}")
-        return None
+        if not successful_results:
+            self.logger.error(f"All API clients failed to fetch company profile for {ticker}")
+            return None
+        
+        # 우선순위에 따라 병합 (Polygon > Finnhub > TwelveData)
+        merged_data = {}
+        priority_order = ['PolygonClient', 'FinnhubClient', 'TwelveDataClient']
+        
+        for priority_client in priority_order:
+            for client_name, result in successful_results:
+                if client_name == priority_client:
+                    # null이 아닌 값만 덮어쓰기
+                    if isinstance(result, dict):
+                        for key, value in result.items():
+                            if value is not None:
+                                merged_data[key] = value
+                    else:
+                        # CompanyProfileData 객체인 경우
+                        for field_name, field_value in result.__dict__.items():
+                            if field_value is not None:
+                                merged_data[field_name] = field_value
+                    break
+        
+        self.logger.info(f"Merged company profile data for {ticker} from {len(successful_results)} sources")
+        return merged_data
 
     async def get_stock_financials(self, asset_id: int) -> Optional[Dict[str, Any]]:
         """

@@ -56,18 +56,14 @@ class AssetManager:
         try:
             session_local = get_async_session_local()
             async with session_local() as session:
-                # 옵션 A: collect_price가 NULL 이거나 'true' 인 자산 포함, 그리고 활성화된 자산만
+                # 코인(자산타입=8) 중 crypto_data에 존재하는 자산만 구독 대상으로 사용
                 query = text(
                     """
-                    SELECT ticker, name, asset_type_id, data_source, exchange, currency, is_active
-                    FROM assets
-                    WHERE (
-                        collection_settings IS NULL
-                        OR NOT (collection_settings ? 'collect_price')
-                        OR ((collection_settings->>'collect_price')::boolean IS TRUE)
-                    )
-                    AND is_active = true
-                    ORDER BY asset_type_id, ticker
+                    SELECT a.ticker, a.name, a.asset_type_id, a.data_source, a.exchange, a.currency, a.is_active
+                    FROM assets a
+                    WHERE a.asset_type_id = 8
+                      AND a.asset_id IN (SELECT asset_id FROM crypto_data)
+                    ORDER BY a.ticker
                     """
                 )
                 result = await session.execute(query)

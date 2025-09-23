@@ -334,7 +334,7 @@ const HistoryTableAgGrid = ({
   // 기본 그리드 옵션
   const defaultGridOptions = {
     pagination: true,
-    paginationPageSize: 25,
+    paginationPageSize: 10,
     paginationPageSizeSelector: [10, 25, 50, 100, 200, 500, 1000],
     defaultColDef: {
       resizable: true,
@@ -345,6 +345,7 @@ const HistoryTableAgGrid = ({
     domLayout: 'autoHeight', // 전체 높이 사용
     rowHeight: 35,
     headerHeight: 40,
+    // 기본 페이징 패널 표시
     onGridSizeChanged: onGridSizeChanged, // 반응형 컬럼 숨김 기능 추가
     onGridReady: (params) => {
       setGridApi(params.api)
@@ -379,6 +380,17 @@ const HistoryTableAgGrid = ({
       ...customGridOptions
     };
   }, [customGridOptions]);
+
+  // Transparent theme for background
+  const gridTheme = useMemo(() => {
+    // Use default theme background; keep subtle hover/selection tweaks
+    return themeQuartz.withParams({
+      rowHoverColor: 'rgba(0,0,0,0.04)',
+      selectedRowBackgroundColor: 'rgba(0, 123, 255, 0.08)'
+    })
+  }, [])
+
+  // 커스텀 페이징 제거
 
   // 유틸리티 함수 - 통화 형식 변환
   const formatCurrency = (value) => {
@@ -456,9 +468,9 @@ const HistoryTableAgGrid = ({
         columnDefs={columnDefs}
         rowData={normalizedData}
         gridOptions={gridOptions}
-        theme={themeQuartz} // 새로운 Theming API 사용
+        theme={gridTheme} // 새로운 Theming API 사용 (투명 배경 적용)
         pagination={true}
-        paginationPageSize={25}
+        paginationPageSize={10}
         paginationPageSizeSelector={[10, 25, 50, 100, 200, 500, 1000]}
         {...props}
       />

@@ -117,8 +117,10 @@ class CoinbaseWSConsumer(BaseWSConsumer):
                 else:
                     # 처음 구독 시에는 정규화 수행
                     if ticker.endswith('USDT'):
-                        # DOTUSDT -> DOT-USD
-                        base_currency = ticker.replace('USDT', '')
+                        # DOTUSDT -> DOT-USD, USDT -> USDT-USD(특수 케이스)
+                        base_currency = ticker[:-4]  # strip trailing 'USDT'
+                        if not base_currency:
+                            base_currency = 'USDT'
                         product_id = f"{base_currency}-USD"
                     else:
                         # 다른 형식 처리
@@ -177,8 +179,8 @@ class CoinbaseWSConsumer(BaseWSConsumer):
         self.is_running = True
         logger.info(f"🚀 {self.client_name} started with {len(self.subscribed_tickers)} tickers")
         
-        # 수신 주기 설정 (기본 15초)
-        self.consumer_interval = int(GLOBAL_APP_CONFIGS.get("WEBSOCKET_CONSUMER_INTERVAL_SECONDS", 15))
+        # 수신 주기 설정 (완화: 기본 1초로 단축)
+        self.consumer_interval = int(GLOBAL_APP_CONFIGS.get("WEBSOCKET_CONSUMER_INTERVAL_SECONDS", 1))
         self.last_save_time = time.time()
         logger.info(f"⏰ {self.client_name} 저장 주기: {self.consumer_interval}초")
         

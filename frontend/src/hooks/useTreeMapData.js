@@ -208,41 +208,43 @@ const usePerformanceTreeMapDataFromTreeMap = () => {
     setError(null)
 
     try {
-      console.log('[PerformanceTreeMap] fetching /api/v1/assets/market-caps')
-      // /assets/market-caps/today API 사용 (오늘 날짜의 모든 자산 로드, asset_id null 포함)
-      const response = await axios.get(
-        '/api/v1/assets/market-caps/today?has_asset_id=false&limit=1000'
-      )
-      
+      console.log('[PerformanceTreeMap] fetching /api/v1/treemap/live')
+      const response = await axios.get('/api/v1/treemap/live')
+
       console.log('[PerformanceTreeMap] status:', response.status)
-      console.log('[PerformanceTreeMap] data length:', response.data?.data?.length)
-      
-      if (response.data && response.data.data) {
-        const marketCapData = response.data.data
-        
-        // 본드 데이터 제외하고 성과 데이터 매핑
-        const performanceData = marketCapData
-          .filter(asset => !asset.is_bond && !asset.bond_type) // 본드 데이터 제외
+      console.log('[PerformanceTreeMap] total_count:', response.data?.total_count)
+
+      if (response.data && Array.isArray(response.data.data)) {
+        const rows = response.data.data
+
+        // 본드(채권) 제외 규칙 유지: view에는 없지만 안전 가드
+        const performanceData = rows
+          .filter(asset => !asset.is_bond && !asset.bond_type)
           .map(asset => ({
-            ...asset,
-            // 성과 데이터 매핑
-            performance: asset.daily_change_percent || 0,
-            // PerformanceTreeMap이 기대하는 필드명으로 매핑
-            type_name: asset.type_name || asset.category,
-            market_cap: asset.market_cap,
-            market_cap_usd: asset.market_cap, // 호환성을 위해 추가
-            current_price: asset.current_price || asset.price,
-            price_usd: asset.current_price || asset.price, // 호환성을 위해 추가
-            volume: asset.volume || 0,
-            change_percent_24h: asset.daily_change_percent || 0,
-            daily_change_percent: asset.daily_change_percent || 0,
-            category: asset.type_name || asset.category,
-            country: asset.country || 'Unknown',
+            // 백엔드 뷰 필드 매핑
+            asset_id: asset.asset_id,
             ticker: asset.ticker,
             name: asset.name,
-            rank: asset.rank,
+            type_name: asset.asset_type,
+            category: asset.asset_type,
+            market_cap: asset.market_cap,
+            market_cap_usd: asset.market_cap,
+            current_price: asset.current_price,
+            price_usd: asset.current_price,
+            logo_url: asset.logo_url,
+            // 색상(성과) 값: 24h 변화율 사용
+            performance: asset.price_change_percentage_24h || 0,
+            change_percent_24h: asset.price_change_percentage_24h || 0,
+            daily_change_percent: asset.price_change_percentage_24h || 0,
+            // 기타
+            volume: 0,
+            country: 'Global',
+            rank: undefined,
+            // 업데이트 타임스탬프 전달
+            realtime_updated_at: asset.realtime_updated_at,
+            daily_data_updated_at: asset.daily_data_updated_at,
           }))
-        
+
         console.log('[PerformanceTreeMap] processed data length:', performanceData.length)
         console.log('[PerformanceTreeMap] sample data:', performanceData.slice(0, 3))
         setData(performanceData)

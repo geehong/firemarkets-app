@@ -34,3 +34,4 @@ alpaca-trade-api==3.0.2
 aiomysql==0.2.0
 greenlet==3.0.3
 psycopg2-binary==2.9.9
+asyncpg==0.29.0

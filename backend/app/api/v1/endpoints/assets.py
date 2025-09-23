@@ -1,6 +1,7 @@
 # backend_temp/app/api/v1/endpoints/assets.py
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from sqlalchemy import func, extract
 from typing import List, Optional, Dict, Any
 from datetime import date, datetime, timedelta
@@ -14,7 +15,8 @@ from ....schemas.asset import (
     AssetsListResponse, AssetTypesResponse, MarketCapsResponse, AssetDetailResponse,
     OHLCVResponse, StockProfileResponse, StockFinancialsResponse, StockEstimatesResponse,
     IndexInfoResponse, ETFInfoResponse, ETFSectorExposureResponse, ETFHoldingsResponse,
-    CryptoMetricsResponse, TechnicalIndicatorsResponse, PriceResponse
+    CryptoMetricsResponse, TechnicalIndicatorsResponse, PriceResponse,
+    TreemapLiveResponse, TreemapLiveItem
 )
 from ....schemas.common import TickerSummaryResponse
 
@@ -904,14 +906,22 @@ def get_stock_profile_for_asset(
 ):
     """자산의 회사 프로필 정보 조회"""
     try:
+        logger.debug(f"[stock-profile] resolve start asset_identifier={asset_identifier}")
+        print(f"[stock-profile] resolve start asset_identifier={asset_identifier}")
         asset_id = resolve_asset_identifier(db, asset_identifier)
+        logger.debug(f"[stock-profile] resolved asset_id={asset_id}")
+        print(f"[stock-profile] resolved asset_id={asset_id}")
         profile = get_stock_profile(db, asset_id)
+        logger.debug(f"[stock-profile] raw profile={profile}")
+        print(f"[stock-profile] raw profile={profile}")
         if not profile:
             raise HTTPException(status_code=404, detail="Stock profile not found")
         return profile
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception(f"[stock-profile] error for asset_identifier={asset_identifier}")
+        print(f"[stock-profile] exception: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get stock profile: {str(e)}")
 
 @router.get("/stock-financials/asset/{asset_identifier}", response_model=StockFinancialsResponse)
@@ -1276,32 +1286,175 @@ def db_get_ohlcv_data(db: Session, asset_id: int, start_date: Optional[date], en
 def get_stock_profile(db: Session, asset_id: int):
     """주식 프로필 조회"""
     from ....models import StockProfile
-    profile = db.query(StockProfile).filter(StockProfile.asset_id == asset_id).first()
+    # 명시적으로 필요한 컬럼만 선택하여 legacy 'description' 컬럼 참조를 회피
+    profile_row = db.query(
+        StockProfile.profile_id,
+        StockProfile.asset_id,
+        StockProfile.company_name,
+        StockProfile.sector,
+        StockProfile.industry,
+        StockProfile.description_en,
+        StockProfile.description_ko,
+        StockProfile.website,
+        StockProfile.employees_count,
+        StockProfile.country,
+        StockProfile.city,
+        StockProfile.address,
+        StockProfile.phone,
+        StockProfile.ceo,
+        StockProfile.ipo_date,
+        StockProfile.logo_image_url,
+        StockProfile.updated_at,
+    ).filter(StockProfile.asset_id == asset_id).first()
     
-    if not profile:
+    if not profile_row:
         return None
     
     # SQLAlchemy 모델을 딕셔너리로 변환
     profile_dict = {
-        'profile_id': profile.profile_id,
-        'asset_id': profile.asset_id,
-        'company_name': profile.company_name,
-        'sector': profile.sector,
-        'industry': profile.industry,
-        'description': profile.description,
-        'website': profile.website,
-        'employees_count': profile.employees_count,
-        'country': profile.country,
-        'city': profile.city,
-        'address': profile.address,
-        'phone': profile.phone,
-        'ceo': profile.ceo,
-        'ipo_date': profile.ipo_date,
-        'logo_image_url': profile.logo_image_url,
-        'updated_at': profile.updated_at,
+        'profile_id': profile_row.profile_id,
+        'asset_id': profile_row.asset_id,
+        'company_name': profile_row.company_name,
+        'sector': profile_row.sector,
+        'industry': profile_row.industry,
+        # Prefer English description; fallback to Korean; else None
+        'description': getattr(profile_row, 'description_en', None) or getattr(profile_row, 'description_ko', None),
+        'website': profile_row.website,
+        'employees_count': profile_row.employees_count,
+        'country': profile_row.country,
+        'city': profile_row.city,
+        'address': profile_row.address,
+        'phone': profile_row.phone,
+        'ceo': profile_row.ceo,
+        'ipo_date': profile_row.ipo_date,
+        'logo_image_url': profile_row.logo_image_url,
+        'updated_at': profile_row.updated_at,
     }
-    
+    logger.debug(f"[stock-profile] profile_dict={profile_dict}")
+    print(f"[stock-profile] profile_dict={profile_dict}")
     return profile_dict
+
+
+# ============================================================================
+# Treemap Live View Endpoint
+# ============================================================================
+
+TREEMAP_VIEW_SQL = """
+CREATE OR REPLACE VIEW treemap_live_view AS
+SELECT
+    a.asset_id,
+    a.ticker,
+    a.name,
+    at.type_name AS asset_type,
+
+    war.market_cap_usd AS market_cap,
+
+    COALESCE(rq.change_percent,
+             ohlcv_daily.change_percent,
+             war.daily_change_percent) AS price_change_percentage_24h,
+
+    COALESCE(rq.price,
+             ohlcv_daily.close_price,
+             war.price_usd) AS current_price,
+
+    CASE
+        WHEN rq.timestamp_utc IS NOT NULL AND rq.timestamp_utc > (NOW() AT TIME ZONE 'UTC') - INTERVAL '5 minutes' THEN 'REALTIME'
+        WHEN at.type_name = 'Crypto' THEN 'STATIC_24H'
+        ELSE 'STATIC_CLOSED'
+    END AS market_status,
+
+    rq.timestamp_utc AS realtime_updated_at,
+    ohlcv_daily.timestamp_utc AS daily_data_updated_at
+
+FROM assets a
+JOIN asset_types at ON a.asset_type_id = at.asset_type_id
+
+JOIN LATERAL (
+    SELECT o.timestamp_utc, o.close_price, o.change_percent
+    FROM ohlcv_day_data o
+    WHERE o.asset_id = a.asset_id
+    ORDER BY o.timestamp_utc DESC
+    LIMIT 1
+) ohlcv_daily ON true
+
+LEFT JOIN stock_profiles sp ON sp.asset_id = a.asset_id
+LEFT JOIN crypto_data cd ON cd.asset_id = a.asset_id
+LEFT JOIN world_assets_ranking war ON war.asset_id = a.asset_id
+
+LEFT JOIN LATERAL (
+    SELECT r.timestamp_utc, r.price, r.change_percent
+    FROM realtime_quotes r
+    WHERE r.asset_id = a.asset_id
+    ORDER BY r.timestamp_utc DESC
+    LIMIT 1
+) rq ON true
+
+WHERE
+    a.is_active = true
+    AND war.market_cap_usd IS NOT NULL
+    AND (
+        ohlcv_daily.timestamp_utc >= date_trunc('day', (NOW() AT TIME ZONE 'UTC') - INTERVAL '3 days')
+        OR war.market_cap_usd IS NOT NULL
+    );
+"""
+
+
+@router.get("/treemap/live", response_model=TreemapLiveResponse)
+def get_treemap_live(
+    db: Session = Depends(get_db)
+):
+    """트리맵 실시간 뷰 데이터 조회 (뷰 없으면 생성 후 조회)"""
+    try:
+        # 먼저 조회 시도
+        rows = db.execute(text(
+            """
+            SELECT asset_id, ticker, name, asset_type, market_cap, logo_url,
+                   price_change_percentage_24h, current_price,
+                   market_status, realtime_updated_at, daily_data_updated_at
+            FROM treemap_live_view
+            """
+        )).fetchall()
+    except Exception as e:
+        # 뷰가 없거나 스키마 이슈일 수 있으므로 생성 후 1회 재시도
+        logger.warning(f"treemap_live_view select failed, creating view. error={e}")
+        try:
+            db.execute(text(TREEMAP_VIEW_SQL))
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception("Failed to create treemap_live_view")
+            raise HTTPException(status_code=500, detail="Failed to create treemap view")
+        # 재조회
+        try:
+            rows = db.execute(text(
+                """
+                SELECT asset_id, ticker, name, asset_type, market_cap, logo_url,
+                       price_change_percentage_24h, current_price,
+                       market_status, realtime_updated_at, daily_data_updated_at
+                FROM treemap_live_view
+                """
+            )).fetchall()
+        except Exception as e2:
+            logger.exception("treemap_live_view select failed after create")
+            raise HTTPException(status_code=500, detail=f"Failed to query treemap view: {str(e2)}")
+
+    items = [
+        TreemapLiveItem(
+            asset_id=r.asset_id,
+            ticker=r.ticker,
+            name=r.name,
+            asset_type=r.asset_type,
+            market_cap=float(r.market_cap) if r.market_cap is not None else None,
+            logo_url=r.logo_url,
+            price_change_percentage_24h=float(r.price_change_percentage_24h) if r.price_change_percentage_24h is not None else None,
+            current_price=float(r.current_price) if r.current_price is not None else None,
+            market_status=r.market_status,
+            realtime_updated_at=r.realtime_updated_at,
+            daily_data_updated_at=r.daily_data_updated_at,
+        ) for r in rows
+    ]
+
+    return TreemapLiveResponse(data=items, total_count=len(items))
 
 def get_stock_financials(db: Session, asset_id: int, limit: int):
     """주식 재무 정보 조회"""

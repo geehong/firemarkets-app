@@ -213,7 +213,7 @@ class FinnhubClient(TradFiAPIClient):
                 country=(data.get('country') or None),
                 website=(data.get('weburl') or None),
                 employees=_to_int(data.get('employeeTotal')),
-                market_cap=_to_float(data.get('marketCapitalization')),
+                market_cap=_to_float(data.get('marketCapitalization')) * 1000000 if _to_float(data.get('marketCapitalization')) is not None else None,
                 currency=(data.get('currency') or None),
                 # required by CompanyProfileData
                 timestamp_utc=datetime.utcnow(),
@@ -234,8 +234,10 @@ class FinnhubClient(TradFiAPIClient):
             market_cap = data.get('marketCapitalization')
             
             if market_cap:
-                logger.info(f"Market cap for {symbol}: ${market_cap:,.0f}")
-                return float(market_cap)
+                # Finnhub provides market cap in millions, convert to USD
+                market_cap_usd = float(market_cap) * 1000000
+                logger.info(f"Market cap for {symbol}: ${market_cap_usd:,.0f}")
+                return market_cap_usd
             else:
                 logger.warning(f"No market cap data for {symbol}")
                 return None

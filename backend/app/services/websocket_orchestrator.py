@@ -215,7 +215,7 @@ class WebSocketOrchestrator:
         # 자산 할당 변경 로그
         log_to_websocket_orchestrator_logs("INFO", f"Asset assignment rebalancing started - clearing {len(old_assignments)} existing assignments")
         
-        # 자산을 세분화된 타입으로 분류
+        # 자산을 세분화된 타입으로 분류 (asset_type_id 기반)
         assets_by_type = self._classify_assets_by_detailed_type(assets)
         
         # 각 자산 타입별로 최적 할당
@@ -226,51 +226,11 @@ class WebSocketOrchestrator:
         logger.info(f"✅ Rebalancing completed. {len(self.assignments)} consumers assigned")
     
     def _classify_assets_by_detailed_type(self, assets: List[Asset]) -> Dict[AssetType, List[Asset]]:
-        """자산을 세분화된 타입으로 분류"""
-        from app.services.websocket.base_consumer import AssetType
-        
-        assets_by_type = {}
-        
-        # ETF/펀드 티커 목록 (일반적인 패턴)
-        etf_tickers = {
-            'SPY', 'QQQ', 'IWM', 'VTI', 'VOO', 'VEA', 'VWO', 'BND', 'AGG', 'TLT',
-            'GLD', 'SLV', 'USO', 'UNG', 'VTV', 'VUG', 'VB', 'VO', 'VXUS', 'IEFA',
-            'IVV', 'FFEU', 'VTI', 'VTV', 'VXUS'
-        }
-        
-        # 외국계 주식 티커
-        foreign_tickers = {
-            '2222.SR',  # 사우디아라비아 아람코
-            'TCEHY',    # 중국 텐센트
-            'TSM',      # 대만 TSMC
-        }
-        
-        # 커머디티 티커 (일반적인 패턴)
-        commodity_tickers = {
-            'GC', 'SI', 'CL', 'NG', 'HG', 'PL', 'PA', 'ZC', 'ZS', 'ZW',
-            'GOLD', 'SILVER', 'OIL', 'GAS', 'GCUSD', 'SIUSD'  # 실제 데이터베이스에 있는 커머디티
-        }
-        
+        """자산을 세분화된 타입으로 분류 (자산 타입 기반)"""
+        assets_by_type: Dict[AssetType, List[Asset]] = {}
         for asset in assets:
-            ticker = asset.ticker.upper()
-            
-            # 암호화폐 (USDT로 끝나는 것들)
-            if ticker.endswith('USDT'):
-                asset_type = AssetType.CRYPTO
-            # ETF/펀드
-            elif ticker in etf_tickers:
-                asset_type = AssetType.ETF
-            # 외국계 주식
-            elif ticker in foreign_tickers:
-                asset_type = AssetType.FOREIGN
-            # 커머디티
-            elif ticker in commodity_tickers:
-                asset_type = AssetType.COMMODITY
-                logger.info(f"🔍 Classified {ticker} as COMMODITY")
-            # 기본적으로는 개별 주식으로 분류
-            else:
-                asset_type = AssetType.STOCK
-            
+            # AssetManager.Asset.asset_type 프로퍼티는 asset_type_id로부터 변환됨
+            asset_type = asset.asset_type
             if asset_type not in assets_by_type:
                 assets_by_type[asset_type] = []
             assets_by_type[asset_type].append(asset)
@@ -316,7 +276,6 @@ class WebSocketOrchestrator:
             return
         
         # 자산 타입별로 이미 분류되었으므로 추가 필터링 불필요
-        
         tickers = [asset.ticker for asset in assets]
         fallback_names = [c[0] for c in available_consumers]
         logger.info(f"📊 Assigning {len(tickers)} {asset_type.value} tickers using fallback order: {fallback_names}")

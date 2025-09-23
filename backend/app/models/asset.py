@@ -138,7 +138,6 @@ class StockProfile(Base):
     # Preferred fields: bilingual descriptions
     description_en = Column(Text)
     description_ko = Column(Text)
-    description = Column(Text)
     sector = Column(String(100))
     industry = Column(String(100))
     country = Column(String(50))

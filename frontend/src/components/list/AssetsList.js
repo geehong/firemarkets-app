@@ -1,6 +1,7 @@
 // frontend/src/views/assetslist/AssetsList.js
 import React, { useEffect, useState, useMemo } from 'react'
 import axios from 'axios'
+import { usePerformanceTreeMapDataFromTreeMap } from '../../hooks/useTreeMapData'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import {
@@ -10,22 +11,10 @@ import {
   getPaginationRowModel,
 } from '@tanstack/react-table'
 
-import {
-  CCard,
-  CCardBody,
-  CCardHeader,
-  CCol,
-  CRow,
-  CTable,
-  CTableHead,
-  CTableRow,
-  CTableHeaderCell,
-  CTableBody,
-  CTableDataCell,
-  CButton,
-  CButtonGroup,
-  CFormSelect,
-} from '@coreui/react'
+// Removed CoreUI card/layout wrappers for standalone rendering
+import CIcon from '@coreui/icons-react'
+import { cilAlarm } from '@coreui/icons'
+import HistoryTableAgGrid from '../tables/HistoryTableAgGrid'
 
 const AssetsList = () => {
   const [assets, setAssets] = useState([])
@@ -43,37 +32,30 @@ const AssetsList = () => {
 
   console.log('AssetsList Component Rendered. typeNameFromQuery:', typeNameFromQuery)
 
+  // Treemap live 훅 사용하여 목록 데이터 구성 (페이지네이션은 클라이언트 사이드로 간단히 처리)
+  const { data: treemapData, loading: liveLoading, error: liveError, refreshData } = usePerformanceTreeMapDataFromTreeMap()
+
   useEffect(() => {
-    const fetchAssets = async () => {
-      console.log('fetchAssets called.')
-      setLoading(true)
-      setError(null)
-      try {
-        const params = {}
-        if (typeNameFromQuery) {
-          params.type_name = typeNameFromQuery
-          console.log(`Filtering by type_name: ${typeNameFromQuery}`)
-        } else {
-          console.log('No type_name query parameter found. Fetching all assets.')
-        }
-        params.limit = pagination.pageSize
-        params.offset = pagination.pageIndex * pagination.pageSize
-        console.log('API Request Params:', params)
-
-        const response = await axios.get('/api/v1/assets', { params })
-        setAssets(response.data.data)
-        setTotalCount(response.data.total_count)
-      } catch (err) {
-        setError('자산 목록을 불러오는데 실패했습니다. 백엔드 서버를 확인해주세요.')
-        console.error('API 호출 에러:', err)
-      } finally {
-        setLoading(false)
-        console.log('fetchAssets finished.')
-      }
+    setLoading(liveLoading)
+    if (liveError) {
+      setError(liveError)
+      setAssets([])
+      setTotalCount(0)
+      return
     }
-
-    fetchAssets()
-  }, [typeNameFromQuery, pagination.pageIndex, pagination.pageSize])
+    if (!treemapData) {
+      setAssets([])
+      setTotalCount(0)
+      return
+    }
+    // type_name 필터 적용
+    const filtered = typeNameFromQuery
+      ? treemapData.filter((a) => (a.type_name || a.category) === typeNameFromQuery)
+      : treemapData
+    setTotalCount(filtered.length)
+    // AG Grid 사용: 전체 데이터 전달 (그리드 자체 페이지네이션 활용 가능)
+    setAssets(filtered)
+  }, [treemapData, liveLoading, liveError, typeNameFromQuery])
 
   const columns = useMemo(
     () => [
@@ -81,32 +63,30 @@ const AssetsList = () => {
       //   header: 'ID',
       //   accessorKey: 'asset_id',
       // },
+      { header: 'ID', accessorKey: 'asset_id' },
       {
-        header: '티커',
-        accessorKey: 'ticker',
+        header: 'Symbol',
+        accessorKey: 'logo_url',
+        cell: (info) => {
+          const url = info.getValue()
+          const fallback = '🔹'
+          return url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={url} alt="logo" style={{ width: 20, height: 20, borderRadius: 2 }} />
+          ) : (
+            <span>{fallback}</span>
+          )
+        },
       },
+      { header: 'Ticker', accessorKey: 'ticker' },
       {
-        header: '이름',
+        header: 'Name',
         accessorKey: 'name',
         cell: (info) => {
           const asset = info.row.original
-          const handleClick = () => {
-            console.log(
-              'Asset name clicked:',
-              asset.name,
-              'Asset ID:',
-              asset.ticker,
-              'Asset Type:',
-              asset.type_name,
-            )
-
-            // 모든 자산 타입을 /overviews/ 경로로 이동
-            navigate(`/overviews/${asset.ticker}`)
-          }
-
           return (
             <span
-              onClick={handleClick}
+              onClick={() => navigate(`/overviews/${asset.ticker}`)}
               style={{ cursor: 'pointer', color: '#007bff', textDecoration: 'underline' }}
             >
               {info.getValue()}
@@ -115,22 +95,136 @@ const AssetsList = () => {
         },
       },
       {
-        header: '유형',
-        accessorKey: 'type_name',
+        header: 'Price',
+        accessorKey: 'current_price',
+        cell: (info) => (info.getValue() != null ? `$${Number(info.getValue()).toFixed(2)}` : '-'),
       },
       {
-        header: '거래소',
-        accessorKey: 'exchange',
-        cell: (info) => info.getValue() || '-',
+        header: 'Change(%)',
+        accessorKey: 'daily_change_percent',
+        cell: (info) => {
+          const v = info.getValue() ?? 0
+          const color = v > 0 ? '#2ecc59' : v < 0 ? '#f73539' : '#a0a0a0'
+          return <span style={{ color }}>{(v >= 0 ? '+' : '') + v.toFixed(2)}%</span>
+        },
       },
       {
-        header: '통화',
-        accessorKey: 'currency',
-        cell: (info) => info.getValue() || '-',
+        header: 'Market Cap(BIN)',
+        accessorKey: 'market_cap',
+        cell: (info) => (info.getValue() != null ? `${(Number(info.getValue())/1e9).toFixed(1)} BIN` : '-'),
+      },
+      {
+        header: 'Status',
+        accessorKey: 'market_status',
+        cell: (info) => {
+          const status = info.getValue()
+          const isClosed = status === 'STATIC_CLOSED'
+          const color = isClosed ? '#f73539' : '#2ecc59'
+          return <span title={status} style={{ color }}>●</span>
+        },
       },
     ],
     [navigate],
   )
+
+  // AG Grid 컬럼 정의 (HistoryTableAgGrid와 호환)
+  const columnDefs = useMemo(
+    () => [
+      { field: 'asset_id', headerName: 'ID', minWidth: 80 },
+      {
+        field: 'logo_url', headerName: 'Symbol', minWidth: 90, cellRenderer: (params) => {
+          const url = params.value
+          const fallback = '🔹'
+          return url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={url} alt="logo" style={{ width: 20, height: 20, borderRadius: 2 }} />
+          ) : (
+            <span>{fallback}</span>
+          )
+        }
+      },
+      { field: 'ticker', headerName: 'Ticker', minWidth: 110 },
+      {
+        field: 'name', headerName: 'Name', minWidth: 220, cellRenderer: (params) => {
+          const t = params.data?.ticker
+          const text = params.value ?? ''
+          const handleClick = (e) => {
+            e?.stopPropagation?.()
+            if (t) {
+              navigate(`/overviews/${t}`)
+            }
+          }
+          return (
+            <span
+              style={{ color: '#007bff', cursor: 'pointer', textDecoration: 'underline' }}
+              data-ticker={t || ''}
+              onClick={handleClick}
+            >
+              {text}
+            </span>
+          )
+        },
+      },
+      { field: 'current_price', headerName: 'Price', minWidth: 120, valueFormatter: (p) => p.value != null ? `$${Number(p.value).toFixed(2)}` : '', cellStyle: (p) => {
+          const v = p.data?.daily_change_percent ?? 0
+          return { color: v >= 0 ? '#007c32' : '#d91400', fontWeight: 700, fontSize: '.875rem' }
+        }
+      },
+      { field: 'daily_change_percent', headerName: 'Change(%)', minWidth: 120, valueFormatter: (p) => {
+          const v = p.value ?? 0
+          return `${v >= 0 ? '+' : ''}${Number(v).toFixed(2)}%`
+        }, cellStyle: (p) => {
+          const v = p.value ?? 0
+          const base = { fontWeight: 700, fontSize: '.875rem' }
+          if (v > 0) return { ...base, color: '#007c32' }
+          if (v < 0) return { ...base, color: '#d91400' }
+          return { ...base, color: '#a0a0a0' }
+        }
+      },
+      { field: 'market_cap', headerName: 'Market Cap(BIN)', minWidth: 160, valueFormatter: (p) => p.value != null ? `${(Number(p.value)/1e9).toFixed(1)} BIN` : '' },
+      { field: 'market_status', headerName: 'Status', minWidth: 100, cellRenderer: (p) => {
+          // For Stock/ETF/Fund, use NY market hours. Others are always considered open.
+          const typeRaw = p.data?.type_name || p.data?.category || ''
+          const type = String(typeRaw).toLowerCase()
+          const marketSensitive = ['stock', 'stocks', 'etf', 'fund', 'funds'].includes(type)
+
+          let isOpen = true
+          if (marketSensitive) {
+            const now = new Date()
+            const nyHourStr = now.toLocaleString('en-US', { timeZone: 'America/New_York', hour12: false, hour: '2-digit' })
+            const nyMinuteStr = now.toLocaleString('en-US', { timeZone: 'America/New_York', hour12: false, minute: '2-digit' })
+            const nyWeekday = now.toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short' }) // Mon, Tue, ...
+            const nyHour = parseInt(nyHourStr, 10)
+            const nyMinute = parseInt(nyMinuteStr, 10)
+            const minutesSinceMidnight = nyHour * 60 + nyMinute
+            const isWeekday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(nyWeekday)
+            const marketOpenMin = 9 * 60 + 30 // 09:30
+            const marketCloseMin = 16 * 60 // 16:00
+            isOpen = isWeekday && minutesSinceMidnight >= marketOpenMin && minutesSinceMidnight < marketCloseMin
+          }
+
+          const color = isOpen ? '#007bff' : '#f73539' // blue open, red closed
+          const label = isOpen ? '개장' : '폐장'
+
+          return (
+            <span title={label} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', color }}>
+              <CIcon icon={cilAlarm} style={{ color }} size="sm" />
+            </span>
+          )
+        }
+      },
+    ],
+    [navigate],
+  )
+
+  // Name 컬럼 클릭 시 개요 페이지로 이동
+  const gridOptions = useMemo(() => ({
+    onCellClicked: (event) => {
+      if (event.colDef.field === 'name' && event.data?.ticker) {
+        navigate(`/overviews/${event.data.ticker}`)
+      }
+    }
+  }), [navigate])
 
   const table = useReactTable({
     data: assets,
@@ -151,83 +245,28 @@ const AssetsList = () => {
     return <p>등록된 자산이 없거나 해당 유형의 자산이 없습니다.</p>
 
   return (
-    <CRow>
-      <CCol xs={12}>
-        <CCard className="mb-4">
-          <CCardHeader>
-            <strong>{typeNameFromQuery ? `${typeNameFromQuery}` : 'All Assets'}</strong>
-          </CCardHeader>
-          <CCardBody>
-            <CTable hover responsive striped className="mb-3">
-              <CTableHead>
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <CTableRow key={headerGroup.id}>
-                    {headerGroup.headers.map((header) => (
-                      <CTableHeaderCell key={header.id} scope="col">
-                        {header.isPlaceholder
-                          ? null
-                          : flexRender(header.column.columnDef.header, header.getContext())}
-                      </CTableHeaderCell>
-                    ))}
-                  </CTableRow>
-                ))}
-              </CTableHead>
-              <CTableBody>
-                {table.getRowModel().rows.map((row) => (
-                  <CTableRow key={row.id}>
-                    {row.getVisibleCells().map((cell) => (
-                      <CTableDataCell key={cell.id}>
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </CTableDataCell>
-                    ))}
-                  </CTableRow>
-                ))}
-              </CTableBody>
-            </CTable>
-
-            <div className="d-flex justify-content-between align-items-right mt-3">
-              <div className="d-flex align-items-right gap-2">
-                <CFormSelect
-                  value={table.getState().pagination.pageSize}
-                  onChange={(e) => {
-                    table.setPageSize(Number(e.target.value))
-                  }}
-                  className="w-auto"
-                >
-                  {[5, 10, 20, 30, 40, 50].map((pageSize) => (
-                    <option key={pageSize} value={pageSize}>
-                      {pageSize}
-                    </option>
-                  ))}
-                </CFormSelect>
-                <span className="text-sm text-gray-700"> Total {totalCount}</span>
-              </div>
-              <CButtonGroup>
-                <CButton
-                  color="primary"
-                  variant="outline"
-                  onClick={() => table.previousPage()}
-                  disabled={!table.getCanPreviousPage()}
-                >
-                  Prev
-                </CButton>
-                <CButton
-                  color="primary"
-                  variant="outline"
-                  onClick={() => table.nextPage()}
-                  disabled={!table.getCanNextPage()}
-                >
-                  Next
-                </CButton>
-              </CButtonGroup>
-              <span className="text-sm text-gray-700">
-                Page {table.getState().pagination.pageIndex + 1} / {table.getPageCount()}
-              </span>
-            </div>
-          </CCardBody>
-        </CCard>
-      </CCol>
-    </CRow>
+    <div>
+      <div style={{ fontWeight: 700, marginBottom: 8, textAlign: 'center' }}>
+        {typeNameFromQuery ? `${typeNameFromQuery}` : 'All Assets'}
+      </div>
+      <HistoryTableAgGrid
+        data={assets}
+        columnDefs={columnDefs}
+        loading={loading}
+        error={error ? { message: error } : null}
+        height={600}
+        style={{
+          '--ag-border-color': 'transparent',
+          '--ag-row-border-color': 'transparent',
+          '--ag-borders': 'none',
+          '--ag-row-border-style': 'none',
+        }}
+        autoGenerateColumns={false}
+        dataType="assets"
+        gridOptions={gridOptions}
+      />
+      <div className="mt-2">Total {totalCount}</div>
+    </div>
   )
 }
 

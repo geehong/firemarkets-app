@@ -230,7 +230,7 @@ class StockProfileResponse(BaseModel):
     employees_count: Optional[int] = Field(None, description="Number of employees")
     ipo_date: Optional[date] = Field(None, description="IPO date")
     logo_image_url: Optional[str] = Field(None, description="Logo URL")
-    updated_at: datetime = Field(..., description="Last update timestamp")
+    updated_at: Optional[datetime] = Field(None, description="Last update timestamp")
 
 
 class StockFinancialItem(BaseModel):
@@ -455,6 +455,23 @@ class TreemapResponse(BaseModel):
     data: List[Dict[str, Any]]
     total_market_cap: float
     last_updated: datetime
+
+class TreemapLiveItem(BaseModel):
+    asset_id: int
+    ticker: str
+    name: str
+    asset_type: str
+    market_cap: float
+    logo_url: Optional[str] = None
+    price_change_percentage_24h: Optional[float] = None
+    current_price: Optional[float] = None
+    market_status: str
+    realtime_updated_at: Optional[datetime] = None
+    daily_data_updated_at: Optional[datetime] = None
+
+class TreemapLiveResponse(BaseModel):
+    data: List[TreemapLiveItem]
+    total_count: int
 
 class AssetsRankingResponse(BaseModel):
     """자산 순위 응답 스키마"""

@@ -45,8 +45,8 @@ const CustomBreadcrumb = () => {
       const typeName = sessionStorage.getItem('lastAssetType') || 'Stocks'
 
       if (typeName) {
-        // 수정: 자산 타입 클릭 시 오버뷰 페이지로 이동
-        const assetTypePath = `/overviews?type_name=${typeName}`
+        // 자산 타입 클릭 시 자산 목록 페이지로 이동
+        const assetTypePath = `/assets?type_name=${typeName}`
         breadcrumbs.push({ name: typeName, path: assetTypePath, clickable: true })
       }
 
@@ -279,8 +279,8 @@ const CustomBreadcrumb = () => {
   // 자산 타입 선택 핸들러
   const handleAssetTypeChange = (selectedTypeName) => {
     if (selectedTypeName) {
-      console.log('CustomBreadcrumb: Navigating to asset type overview:', selectedTypeName)
-      navigate(`/overviews?type_name=${selectedTypeName}`)
+      console.log('CustomBreadcrumb: Navigating to asset type list:', selectedTypeName)
+      navigate(`/assets?type_name=${selectedTypeName}`)
     }
   }
 

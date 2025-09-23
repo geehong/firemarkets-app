@@ -164,6 +164,121 @@ class CoinMarketCapClient(CryptoAPIClient):
         
         return None
     
+    async def get_quote_details(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Get detailed quote fields (including percent changes) from CoinMarketCap.
+        Returns dict with keys: name, symbol, percent_change_1h, percent_change_24h, percent_change_7d, percent_change_30d,
+        price, market_cap, volume_24h, circulating_supply, total_supply, max_supply, rank
+        """
+        try:
+            # Rate limiting 적용
+            await self._enforce_rate_limit()
+
+            normalized_symbol = self._normalize_symbol_for_coinmarketcap(symbol)
+            if not normalized_symbol:
+                normalized_symbol = (symbol or "").strip().upper()
+            async with httpx.AsyncClient() as client:
+                url = f"{self.base_url}/cryptocurrency/quotes/latest?symbol={normalized_symbol}&convert=USD"
+                data = await self._fetch_async_with_headers(client, url, "CoinMarketCap Quotes", normalized_symbol)
+
+                if isinstance(data, dict) and "data" in data and normalized_symbol in data["data"]:
+                    coin = data["data"][normalized_symbol]
+                    quote = coin.get("quote", {}).get("USD", {})
+
+                    return {
+                        "name": coin.get("name"),
+                        "symbol": normalized_symbol,
+                        "percent_change_1h": safe_float(quote.get("percent_change_1h")),
+                        "percent_change_24h": safe_float(quote.get("percent_change_24h")),
+                        "percent_change_7d": safe_float(quote.get("percent_change_7d")),
+                        "percent_change_30d": safe_float(quote.get("percent_change_30d")),
+                        "price": safe_float(quote.get("price")),
+                        "market_cap": safe_float(quote.get("market_cap")),
+                        "volume_24h": safe_float(quote.get("volume_24h")),
+                        "circulating_supply": safe_float(coin.get("circulating_supply")),
+                        "total_supply": safe_float(coin.get("total_supply")),
+                        "max_supply": safe_float(coin.get("max_supply")),
+                        "rank": coin.get("cmc_rank") if coin.get("cmc_rank") is not None else None,
+                    }
+        except Exception as e:
+            logger.error(f"CoinMarketCap get_quote_details failed for {symbol}: {e}")
+        return None
+
+    async def get_metadata(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Fetch metadata for a cryptocurrency (logo, website, description, tags, slug, date_added, category)."""
+        if not self.api_key:
+            return None
+        try:
+            # Rate limiting 적용
+            await self._enforce_rate_limit()
+
+            normalized_symbol = self._normalize_symbol_for_coinmarketcap(symbol)
+            if not normalized_symbol:
+                normalized_symbol = (symbol or "").strip().upper()
+            async with httpx.AsyncClient() as client:
+                url = f"{self.base_url}/cryptocurrency/info?symbol={normalized_symbol}"
+                data = await self._fetch_async_with_headers(client, url, "CoinMarketCap Info", normalized_symbol)
+                if isinstance(data, dict) and "data" in data and normalized_symbol in data["data"]:
+                    info = data["data"][normalized_symbol]
+                    urls = info.get("urls", {}) if isinstance(info.get("urls"), dict) else {}
+                    website_url = None
+                    if isinstance(urls.get("website"), list) and urls.get("website"):
+                        website_url = urls.get("website")[0]
+
+                    explorer_urls = urls.get("explorer") if isinstance(urls.get("explorer"), list) else None
+                    source_code_urls = urls.get("source_code") if isinstance(urls.get("source_code"), list) else None
+
+                    return {
+                        "category": info.get("category"),
+                        "description": info.get("description"),
+                        "logo_url": info.get("logo"),
+                        "website_url": website_url,
+                        "slug": info.get("slug"),
+                        "date_added": info.get("date_added"),
+                        "tags": info.get("tags"),
+                        "explorer": explorer_urls,
+                        "source_code": source_code_urls,
+                    }
+                # 일부 자산은 symbol 조회가 실패할 수 있어 id로 재시도
+                if isinstance(data, dict) and data.get("status", {}).get("error_code") == 400:
+                    # quotes로 id/slug 확보 후 id로 조회 시도
+                    details = await self.get_quote_details(symbol)
+                    if details and isinstance(details, dict):
+                        async with httpx.AsyncClient() as client2:
+                            coin_id = None
+                            try:
+                                # quotes를 다시 호출하여 id 포함 응답 받기
+                                url_q = f"{self.base_url}/cryptocurrency/quotes/latest?symbol={normalized_symbol}&convert=USD"
+                                data_q = await self._fetch_async_with_headers(client2, url_q, "CoinMarketCap Quotes", normalized_symbol)
+                                if isinstance(data_q, dict) and "data" in data_q and normalized_symbol in data_q["data"]:
+                                    coin_id = data_q["data"][normalized_symbol].get("id")
+                            except Exception:
+                                pass
+                            if coin_id:
+                                url_by_id = f"{self.base_url}/cryptocurrency/info?id={coin_id}"
+                                data2 = await self._fetch_async_with_headers(client2, url_by_id, "CoinMarketCap Info by ID", str(coin_id))
+                                if isinstance(data2, dict) and "data" in data2 and str(coin_id) in data2["data"]:
+                                    info = data2["data"][str(coin_id)]
+                                    urls = info.get("urls", {}) if isinstance(info.get("urls"), dict) else {}
+                                    website_url = None
+                                    if isinstance(urls.get("website"), list) and urls.get("website"):
+                                        website_url = urls.get("website")[0]
+                                    explorer_urls = urls.get("explorer") if isinstance(urls.get("explorer"), list) else None
+                                    source_code_urls = urls.get("source_code") if isinstance(urls.get("source_code"), list) else None
+                                    return {
+                                        "category": info.get("category"),
+                                        "description": info.get("description"),
+                                        "logo_url": info.get("logo"),
+                                        "website_url": website_url,
+                                        "slug": info.get("slug"),
+                                        "date_added": info.get("date_added"),
+                                        "tags": info.get("tags"),
+                                        "explorer": explorer_urls,
+                                        "source_code": source_code_urls,
+                                    }
+        except Exception as e:
+            logger.error(f"CoinMarketCap get_metadata failed for {symbol}: {e}")
+        return None
+
     async def get_exchange_info(self) -> Optional[Dict[str, Any]]:
         """Get exchange information from CoinMarketCap"""
         try:

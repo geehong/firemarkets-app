@@ -546,19 +546,19 @@ class DataProcessor:
                         
                         # Coinbase provider의 경우 심볼 형식 변환 (ETH-USD -> ETHUSDT, DOGE-USD -> DOGEUSDT)
                         if provider == 'coinbase':
-                            coinbase_mapping = {
-                                'BTC-USD': 'BTCUSDT',
-                                'ETH-USD': 'ETHUSDT',
-                                'ADA-USD': 'ADAUSDT',
-                                'DOT-USD': 'DOTUSDT',
-                                'LTC-USD': 'LTCUSDT',
-                                'XRP-USD': 'XRPUSDT',
-                                'DOGE-USD': 'DOGEUSDT',
-                                'BCH-USD': 'BCHUSDT'
+                            # 일반 규칙: XXX-USD -> XXXUSDT, 예외는 개별 매핑
+                            if symbol.endswith('-USD') and len(symbol) > 4:
+                                base = symbol[:-4]
+                                symbol = f"{base}USDT"
+                                logger.debug(f"🔄 Coinbase 심볼 일반 변환: {original_symbol} -> {symbol}")
+                            # 필요시 예외 매핑 추가
+                            coinbase_overrides = {
+                                'WBTC-USD': 'WBTCUSDT',
+                                'PAXG-USD': 'PAXGUSDT'
                             }
-                            if symbol in coinbase_mapping:
-                                symbol = coinbase_mapping[symbol]
-                                logger.debug(f"🔄 Coinbase 심볼 변환: {original_symbol} -> {symbol}")
+                            if original_symbol in coinbase_overrides:
+                                symbol = coinbase_overrides[original_symbol]
+                                logger.debug(f"🔄 Coinbase 심볼 예외 변환: {original_symbol} -> {symbol}")
                         
                         # Swissquote provider의 경우 심볼 역정규화 (XAU/USD -> GCUSD, XAG/USD -> SIUSD)
                         if provider == 'swissquote':
@@ -964,7 +964,7 @@ class DataProcessor:
                         zip_code = data.get("zip_code") or data.get("zip")  # 우편번호
                         ceo = data.get("ceo") or data.get("CEO")
                         phone = data.get("phone")
-                        logo_image_url = data.get("image") or data.get("logo")
+                        logo_image_url = data.get("logo_image_url") or data.get("image") or data.get("logo")
                         market_cap = data.get("market_cap") or data.get("marketCap")
                         # 거래소 및 식별자 정보
                         exchange = data.get("exchange")

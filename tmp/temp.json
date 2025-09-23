@@ -50,7 +50,7 @@
         },
         {
             "hour": 11,
-            "minute": 11,
+            "minute": 28,
             "collectors": [
                 "stock_profiles_clients"
             ],

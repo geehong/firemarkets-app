@@ -92,6 +92,8 @@ const PerformanceTreeMapToday = () => {
       assetsAdded++
       
       const category = asset.category || asset.type_name || 'Other'
+      const isEtfOrFund = (category.toLowerCase().includes('etf') || category.toLowerCase().includes('fund'))
+      const displayName = isEtfOrFund ? (asset.ticker || asset.name) : asset.name
       
       let value = asset.market_cap || asset.market_cap_usd || 1
       
@@ -108,13 +110,15 @@ const PerformanceTreeMapToday = () => {
       const colorValue = asset.performance !== undefined ? asset.performance : (asset.daily_change_percent || 0)
 
       const childNode = {
-        name: asset.name,
+        name: displayName,
         id: asset.ticker || asset.name,
         value: value,
         parent: category,
         colorValue: colorValue,
         custom: {
-          fullName: asset.name,
+          fullName: displayName,
+          originalName: asset.name,
+          displayTicker: asset.ticker,
           performance: (() => {
             const perf = asset.performance !== undefined ? asset.performance : (asset.daily_change_percent || 0)
             return (perf < 0 ? '' : '+') + perf.toFixed(2) + '%'
@@ -152,6 +156,24 @@ const PerformanceTreeMapToday = () => {
     const result = createTreeMapData(data)
     return result
   }, [data, loading])
+
+  // 최신 업데이트 날짜(YYYY-MM-DD) 계산
+  const updatedDateLabel = useMemo(() => {
+    if (!data || data.length === 0) return ''
+    const toDate = (v) => (v ? new Date(v) : null)
+    let latest = null
+    for (const a of data) {
+      const r = toDate(a.realtime_updated_at)
+      const d = toDate(a.daily_data_updated_at)
+      if (r && (!latest || r > latest)) latest = r
+      if (d && (!latest || d > latest)) latest = d
+    }
+    if (!latest) return ''
+    const yyyy = latest.getFullYear()
+    const mm = String(latest.getMonth() + 1).padStart(2, '0')
+    const dd = String(latest.getDate()).padStart(2, '0')
+    return `${yyyy}-${mm}-${dd}`
+  }, [data])
 
   // Plugin for relative font size
   useEffect(() => {
@@ -299,7 +321,7 @@ const PerformanceTreeMapToday = () => {
         },
       ],
       title: {
-        text: `Today's Asset Performance TreeMap (Daily Change)`,
+        text: `Today's Asset Performance TreeMap (Daily Change : ${updatedDateLabel || 'N/A'} Updated)`,
         align: 'left',
         style: {
           color: 'white',
@@ -313,11 +335,10 @@ const PerformanceTreeMapToday = () => {
               `<div style="background: rgba(37, 41, 49, 0.95); border: 1px solid #00d4ff; border-radius: 5px; padding: 10px; color: white; font-size: 12px; max-width: 350px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
                 <div style="font-weight: bold; color: #00d4ff; margin-bottom: 8px;">Chart Information</div>
                 <div style="margin-bottom: 6px;"><b>Color shows daily change:</b> Red (loss) → Gray (neutral) → Green (gain)</div>
-                <div style="margin-bottom: 6px;"><b>Data source:</b> /api/v1/assets/market-caps/today</div>
+                <div style="margin-bottom: 6px;"><b>Data source:</b> /api/v1/treemap/live</div>
                 <div style="margin-bottom: 6px;"><b>Interaction:</b> Click to drill down</div>
                 <div style="margin-bottom: 6px;"><b>Size adjustment:</b> Commodities (70%), Crypto (130%)</div>
-                <div style="margin-bottom: 6px;"><b>Assets:</b> Stocks, ETFs, Cryptocurrencies, Commodities</div>
-                <div style="margin-bottom: 6px;"><b>Countries:</b> Stocks show actual countries, others show "Global"</div>
+                <div style="margin-bottom: 6px;"><b>Assets:</b> Stocks, ETFs, Cryptocurrencies</div>
               </div>`,
               this.chart.plotLeft + 10,
               this.chart.plotTop + 10,
@@ -342,7 +363,6 @@ const PerformanceTreeMapToday = () => {
       tooltip: {
         followPointer: true,
         outside: true,
-        headerFormat: '<span style="font-size: 0.9em; font-weight: bold; color: #00d4ff">{point.custom.fullName}</span><br/>',
         formatter: function() {
           const point = this.point;
           const colorValue = point.colorValue || 0;
@@ -355,6 +375,16 @@ const PerformanceTreeMapToday = () => {
           }
           
           let tooltipContent = '<div style="padding: 5px;">';
+          const cat = (point.custom.category || point.custom.type_name || 'Other').toLowerCase();
+          const isEtfOrFund = cat.includes('etf') || cat.includes('fund');
+          // Header: ETF/펀드는 "Name(Ticker)" 형식으로 표시, 그 외는 fullName
+          if (isEtfOrFund && point.custom.originalName) {
+            const tkr = point.custom.displayTicker || point.custom.ticker || '';
+            const nameTicker = tkr ? (point.custom.originalName + ' (' + tkr + ')') : point.custom.originalName;
+            tooltipContent += '<div style="font-weight:bold; color:#00d4ff; margin-bottom:4px">' + nameTicker + '</div><br/>';
+          } else if (point.custom.fullName) {
+            tooltipContent += '<div style="font-weight:bold; color:#00d4ff; margin-bottom:4px">' + point.custom.fullName + '</div><br/>';
+          }
           // 원본 시가총액 계산 (조정된 값에서 역산)
           let originalMarketCap = point.value;
           const category = point.custom.category || point.custom.type_name || 'Other';
@@ -364,7 +394,7 @@ const PerformanceTreeMapToday = () => {
             originalMarketCap = point.value / 1.3; // 130%로 조정된 것을 원복
           }
           
-          tooltipContent += '<b style="color: #ffffff;">Market Cap:</b> <span style="color: #00d4ff;">USD ' + (originalMarketCap / 1000000000).toFixed(1) + ' bln</span><br/>';
+          tooltipContent += '<b style="color: #ffffff;">Market Cap:</b> <span style="color: #00d4ff;">USD ' + (originalMarketCap / 1000000000).toFixed(1) + ' BIN</span><br/>';
           
           if (point.custom.performance) {
             tooltipContent += '<b style="color: #ffffff;">Daily Change:</b> <span style="color: ' + changeColor + ';">' + point.custom.performance + '</span><br/>';
@@ -374,7 +404,8 @@ const PerformanceTreeMapToday = () => {
             tooltipContent += '<b style="color: #ffffff;">Price:</b> <span style="color: #00d4ff;">$' + point.custom.price + '</span><br/>';
           }
           
-          if (point.custom.ticker) {
+          // ETF/펀드는 Ticker 라인 생략
+          if (point.custom.ticker && !isEtfOrFund) {
             tooltipContent += '<b style="color: #ffffff;">Ticker:</b> <span style="color: #a0a0a0;">' + point.custom.ticker + '</span><br/>';
           }
           

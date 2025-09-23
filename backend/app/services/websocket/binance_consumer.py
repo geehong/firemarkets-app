@@ -194,8 +194,8 @@ class BinanceWSConsumer(BaseWSConsumer):
         self.is_running = True
         logger.info(f"🚀 {self.client_name} started with {len(self.subscribed_tickers)} tickers")
         
-        # 수신 주기 설정 (기본 15초)
-        self.consumer_interval = int(GLOBAL_APP_CONFIGS.get("WEBSOCKET_CONSUMER_INTERVAL_SECONDS", 15))
+        # 수신 주기 설정 (완화: 기본 1초로 단축)
+        self.consumer_interval = int(GLOBAL_APP_CONFIGS.get("WEBSOCKET_CONSUMER_INTERVAL_SECONDS", 1))
         self.last_save_time = time.time()
         logger.info(f"⏰ {self.client_name} 저장 주기: {self.consumer_interval}초")
         
