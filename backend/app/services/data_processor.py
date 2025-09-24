@@ -560,6 +560,16 @@ class DataProcessor:
                                 symbol = coinbase_overrides[original_symbol]
                                 logger.debug(f"🔄 Coinbase 심볼 예외 변환: {original_symbol} -> {symbol}")
                         
+                        # 공통 보정: 베이스 심볼을 USDT 페어로 보정 (예: BTC -> BTCUSDT)
+                        # - 대상: binance, coinbase
+                        # - 조건: 이미 USDT 접미사가 아니고, 코인베이스의 -USD 규칙이 적용되지 않은 경우
+                        if provider in ('binance', 'coinbase'):
+                            if not symbol.endswith('USDT') and '-' not in symbol:
+                                candidate_usdt = f"{symbol}USDT"
+                                if candidate_usdt in ticker_to_asset_id:
+                                    logger.debug(f"🔄 베이스→USDT 보정: {symbol} -> {candidate_usdt}")
+                                    symbol = candidate_usdt
+                        
                         # Swissquote provider의 경우 심볼 역정규화 (XAU/USD -> GCUSD, XAG/USD -> SIUSD)
                         if provider == 'swissquote':
                             swissquote_mapping = {
@@ -571,6 +581,27 @@ class DataProcessor:
                                 logger.debug(f"🔄 Swissquote 심볼 역정규화: {original_symbol} -> {symbol}")
                             
                         asset_id = ticker_to_asset_id.get(symbol)
+                        if not asset_id:
+                            # Fallbacks for crypto symbols: try base/USDT/-USD forms
+                            if provider in ('binance', 'coinbase'):
+                                fallback_candidates = []
+                                if symbol.endswith('USDT'):
+                                    base = symbol[:-4]
+                                    fallback_candidates = [base, f"{base}-USD"]
+                                elif symbol.endswith('-USD'):
+                                    base = symbol[:-4]
+                                    fallback_candidates = [f"{base}USDT", base]
+                                else:
+                                    base = symbol
+                                    fallback_candidates = [f"{base}USDT", f"{base}-USD", base]
+
+                                for cand in fallback_candidates:
+                                    if cand in ticker_to_asset_id:
+                                        logger.debug(f"🔄 Fallback symbol mapping: {symbol} -> {cand}")
+                                        symbol = cand
+                                        asset_id = ticker_to_asset_id[cand]
+                                        break
+
                         if not asset_id:
                             logger.warning(f"❌ 자산 매칭 실패 - symbol: {symbol} (사용 가능한 자산: {list(ticker_to_asset_id.keys())[:10]}...)")
                             continue

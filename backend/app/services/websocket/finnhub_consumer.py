@@ -56,6 +56,13 @@ class FinnhubWSConsumer(BaseWSConsumer):
                 logger.error("Finnhub API key not configured")
                 return False
             
+            # 연결 시도 정보 로깅 (민감정보 마스킹)
+            try:
+                token_hint = (self.api_key[:4] + "***" + self.api_key[-2:]) if self.api_key and len(self.api_key) > 6 else "set"
+                logger.info(f"🔌 {self.client_name} connecting to ws.finnhub.io (token={token_hint})")
+            except Exception:
+                pass
+
             # 연결 타임아웃 설정
             self.websocket = await asyncio.wait_for(
                 websockets.connect(self.ws_url, ping_interval=20, ping_timeout=10),
@@ -126,6 +133,8 @@ class FinnhubWSConsumer(BaseWSConsumer):
                 self.original_tickers = set(tickers)
                 self.subscribed_tickers = []  # 재구독 시 초기화
             
+            logger.info(f"📝 {self.client_name} subscribe start: total={len(tickers)}, skip_normalization={skip_normalization}")
+            sent_count = 0
             for ticker in tickers:
                 if skip_normalization:
                     # 재연결 시에는 정규화 건너뛰기
@@ -133,12 +142,18 @@ class FinnhubWSConsumer(BaseWSConsumer):
                 else:
                     # 처음 구독 시에는 정규화 수행
                     norm = self._normalize_symbol(ticker)
+                # 정규화 매핑 로그
+                if not skip_normalization and norm != ticker:
+                    logger.debug(f"🔁 {self.client_name} normalize: {ticker} -> {norm}")
                 
                 subscribe_msg = {"type": "subscribe", "symbol": norm}
+                logger.debug(f"➡️  {self.client_name} send subscribe payload: {subscribe_msg}")
                 await self.websocket.send(json.dumps(subscribe_msg))
                 self.subscribed_tickers.append(norm)  # List로 순서 보장
                 logger.info(f"📋 {self.client_name} subscribed to {norm}")
+                sent_count += 1
             
+            logger.info(f"✅ {self.client_name} subscribe done: sent={sent_count}, unique_now={len(set(self.subscribed_tickers))}")
             return True
             
         except Exception as e:
@@ -172,7 +187,7 @@ class FinnhubWSConsumer(BaseWSConsumer):
             return
         
         self.is_running = True
-        logger.info(f"🚀 {self.client_name} started with {len(self.subscribed_tickers)} tickers")
+        logger.info(f"🚀 {self.client_name} started with {len(self.subscribed_tickers)} tickers: {self.subscribed_tickers[:20]}{'...' if len(self.subscribed_tickers) > 20 else ''}")
         
         # 수신 주기 설정 (기본 15초)
         self.consumer_interval = int(GLOBAL_APP_CONFIGS.get("WEBSOCKET_CONSUMER_INTERVAL_SECONDS", 15))

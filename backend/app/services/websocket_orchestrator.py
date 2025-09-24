@@ -275,7 +275,8 @@ class WebSocketOrchestrator:
             logger.warning(f"⚠️ No active consumers available for {asset_type.value}")
             return
         
-        # 자산 타입별로 이미 분류되었으므로 추가 필터링 불필요
+        # Provider-specific filtering
+        # STOCK: do not drop ETFs here; we will route via provider filters
         tickers = [asset.ticker for asset in assets]
         fallback_names = [c[0] for c in available_consumers]
         logger.info(f"📊 Assigning {len(tickers)} {asset_type.value} tickers using fallback order: {fallback_names}")
@@ -285,8 +286,62 @@ class WebSocketOrchestrator:
             # 암호화폐의 경우 균등 분배
             await self._assign_crypto_tickers_equally(tickers, available_consumers, asset_type)
         else:
-            # 다른 자산 타입은 기존 Fallback 순서 방식
-            await self._assign_tickers_fallback_order(tickers, available_consumers, asset_type)
+            # 다른 자산 타입은 기존 Fallback 순서 방식 + 제공자별 제한 적용
+            foreign_suffixes = ('.SR', '.HK', '.L', '.TO', '.SW', '.KS', '.KQ', '.SI', '.AX', '.SS', '.SZ')
+            def finnhub_filter(t: str) -> bool:
+                # 미국 비상장(해외거래소 접미사) 제외. 단, BRK.B는 예외로 허용
+                if t == 'BRK.B':
+                    return True
+                return not any(t.endswith(sfx) for sfx in foreign_suffixes)
+
+            if asset_type == AssetType.STOCK and any(name == 'alpaca' for name, _, _ in available_consumers):
+                alpaca_allowed = {a.ticker for a in assets if getattr(a, 'has_etf_info', False)}
+                finnhub_allowed = {a.ticker for a in assets if getattr(a, 'has_financials', False)}
+                etf_tickers = [t for t in tickers if t in alpaca_allowed]
+                non_etf_tickers = [t for t in tickers if t not in alpaca_allowed]
+
+                # 1) ETF 대상은 Alpaca 우선으로 배정
+                alpaca_first = []
+                others = []
+                for name, consumer, config in available_consumers:
+                    if name == 'alpaca':
+                        alpaca_first.append((name, consumer, config))
+                    else:
+                        others.append((name, consumer, config))
+                consumers_alpaca_first = alpaca_first + others
+
+                if etf_tickers:
+                    await self._assign_tickers_fallback_order_with_filters(
+                        etf_tickers,
+                        consumers_alpaca_first,
+                        asset_type,
+                        provider_filters={
+                            'alpaca': (lambda t: True),  # etf_tickers만 전달되므로 True
+                            'finnhub': (lambda t: finnhub_filter(t) and (t in finnhub_allowed))
+                        }
+                    )
+
+                # 2) 비-ETF는 원래 순서(일반적으로 finnhub 우선)로 배정
+                if non_etf_tickers:
+                    await self._assign_tickers_fallback_order_with_filters(
+                        non_etf_tickers,
+                        available_consumers,
+                        asset_type,
+                        provider_filters={
+                            'alpaca': (lambda t: False),  # Alpaca는 ETF만
+                            'finnhub': (lambda t: finnhub_filter(t) and (t in finnhub_allowed))
+                        }
+                    )
+            else:
+                # Alpaca가 없거나 주식 외 타입: 기본 필터만 적용하여 배정
+                await self._assign_tickers_fallback_order_with_filters(
+                    tickers,
+                    available_consumers,
+                    asset_type,
+                    provider_filters={
+                        'finnhub': (lambda t: finnhub_filter(t) if asset_type == AssetType.STOCK else True)
+                    }
+                )
         
         # 할당 결과 요약
         for provider_name, assignment in self.assignments.items():
@@ -358,6 +413,39 @@ class WebSocketOrchestrator:
             
             if not assigned:
                 logger.warning(f"⚠️ No available slots for {asset_type.value} ticker {ticker} - all consumers at capacity or unsupported")
+
+    async def _assign_tickers_fallback_order_with_filters(self, tickers: List[str], available_consumers: List, asset_type: AssetType, provider_filters: Dict[str, callable]):
+        """Fallback 할당(제공자별 필터 적용)"""
+        for ticker in tickers:
+            assigned = False
+            for provider_name, consumer, config in available_consumers:
+                # provider filter
+                filter_func = provider_filters.get(provider_name, lambda t: True)
+                try:
+                    if not filter_func(ticker):
+                        logger.debug(f"⛔ Skipping {ticker} for {provider_name} due to provider filter")
+                        continue
+                except Exception:
+                    pass
+
+                current_assigned = len(self.assignments.get(provider_name, ConsumerAssignment(consumer, [], [], 0)).assigned_tickers)
+                if current_assigned < config.max_subscriptions:
+                    if provider_name in self.assignments:
+                        self.assignments[provider_name].assigned_tickers.append(ticker)
+                    else:
+                        self.assignments[provider_name] = ConsumerAssignment(
+                            consumer=consumer,
+                            assigned_tickers=[ticker],
+                            asset_types=[asset_type],
+                            priority=config.priority
+                        )
+                    logger.info(f"📋 Assigned {asset_type.value} ticker {ticker} to {provider_name} (filtered, {current_assigned + 1}/{config.max_subscriptions})")
+                    assigned = True
+                    break
+                else:
+                    logger.debug(f"⚠️ {provider_name} is full ({current_assigned}/{config.max_subscriptions})")
+            if not assigned:
+                logger.warning(f"⚠️ No available slots for {asset_type.value} ticker {ticker} - all consumers at capacity or filtered out")
     
     async def _handle_consumer_failure(self, failed_consumer_name: str, failed_tickers: List[str]):
         """Consumer 실패 시 다른 Consumer로 재할당"""

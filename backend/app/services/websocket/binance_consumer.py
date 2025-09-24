@@ -13,6 +13,7 @@ from datetime import datetime
 from app.services.websocket.base_consumer import BaseWSConsumer, ConsumerConfig, AssetType
 from app.core.config import GLOBAL_APP_CONFIGS
 from app.core.websocket_logging import WebSocketLogger
+from app.utils.asset_mapping_loader import get_symbol_for_provider
 # websocket_log_service removed - using file logging only
 
 logger = logging.getLogger(__name__)
@@ -95,14 +96,10 @@ class BinanceWSConsumer(BaseWSConsumer):
         logger.info(f"🔌 {self.client_name} disconnected")
     
     def _normalize_symbol(self, ticker: str) -> str:
-        """Binance 심볼 규격으로 정규화
-        - 모든 심볼은 소문자로 변환
-        - USDT로 끝나는 심볼은 그대로 사용
-        """
+        """Binance 심볼 규격으로 정규화 (asset_mapping.json 반영)"""
         t = (ticker or '').upper().strip()
-        if t.endswith('USDT'):
-            return t.lower()
-        return t.lower()
+        normalized = get_symbol_for_provider(t, "binance").upper()
+        return normalized.lower()
     
     async def subscribe(self, tickers: List[str], skip_normalization: bool = False) -> bool:
         """티커 구독"""

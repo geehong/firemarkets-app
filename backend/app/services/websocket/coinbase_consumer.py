@@ -13,6 +13,7 @@ from datetime import datetime
 from app.services.websocket.base_consumer import BaseWSConsumer, ConsumerConfig, AssetType
 from app.core.config import GLOBAL_APP_CONFIGS
 from app.core.websocket_logging import WebSocketLogger
+from app.utils.asset_mapping_loader import get_symbol_for_provider
 # websocket_log_service removed - using file logging only
 
 logger = logging.getLogger(__name__)
@@ -86,14 +87,9 @@ class CoinbaseWSConsumer(BaseWSConsumer):
         logger.info(f"🔌 {self.client_name} disconnected")
     
     def _normalize_symbol(self, ticker: str) -> str:
-        """Coinbase 심볼 규격으로 정규화
-        - Coinbase는 대문자 심볼 사용
-        - USDT 대신 USD 사용
-        """
+        """Coinbase 심볼 규격으로 정규화 (asset_mapping.json 반영)"""
         t = (ticker or '').upper().strip()
-        if t.endswith('USDT'):
-            return t.replace('USDT', 'USD')
-        return t
+        return get_symbol_for_provider(t, "coinbase")
     
     async def subscribe(self, tickers: List[str], skip_normalization: bool = False) -> bool:
         """티커 구독"""
@@ -116,15 +112,7 @@ class CoinbaseWSConsumer(BaseWSConsumer):
                     product_id = ticker
                 else:
                     # 처음 구독 시에는 정규화 수행
-                    if ticker.endswith('USDT'):
-                        # DOTUSDT -> DOT-USD, USDT -> USDT-USD(특수 케이스)
-                        base_currency = ticker[:-4]  # strip trailing 'USDT'
-                        if not base_currency:
-                            base_currency = 'USDT'
-                        product_id = f"{base_currency}-USD"
-                    else:
-                        # 다른 형식 처리
-                        product_id = ticker.replace('_', '-')
+                    product_id = self._normalize_symbol(ticker).replace('_', '-')
                 
                 product_ids.append(product_id)
                 self.subscribed_tickers.append(ticker)  # List로 순서 보장

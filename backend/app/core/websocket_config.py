@@ -21,7 +21,7 @@ class WebSocketConfig:
     # API 제공자별 설정
     PROVIDERS = {
         'finnhub': ProviderConfig(
-            max_subscriptions=20,
+            max_subscriptions=45,
             supported_asset_types=[AssetType.STOCK, AssetType.FOREX],
             rate_limit_per_minute=60,
             priority=1,  # 동일 우선순위로 분산 배정
@@ -37,7 +37,7 @@ class WebSocketConfig:
             health_check_interval=60
         ),
         'alpaca': ProviderConfig(
-            max_subscriptions=20,
+            max_subscriptions=25,
             supported_asset_types=[AssetType.STOCK, AssetType.ETF],  # 주식 + ETF 지원
             rate_limit_per_minute=200,
             priority=1,  # 동일 우선순위로 분산 배정

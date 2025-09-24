@@ -82,6 +82,7 @@ export default defineConfig(() => {
           replacement: `${path.resolve(__dirname, 'src')}/`,
         },
       ],
+      dedupe: ['react', 'react-dom', 'react/jsx-runtime'],
       extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json', '.scss'],
     },
     server: {
@@ -91,6 +92,9 @@ export default defineConfig(() => {
       allowedHosts: ['firemarkets.net', 'localhost', 'fire_markets_frontend', '172.20.0.0/16', '172.21.0.0/16'],
       hmr: {
         overlay: false, // HMR 오버레이 비활성화 (URI malformed 에러 방지)
+      },
+      headers: {
+        'Cache-Control': 'no-store',
       },
       proxy: {
         '/api': {

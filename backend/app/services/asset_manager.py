@@ -22,6 +22,9 @@ class Asset:
     exchange: Optional[str] = None
     currency: Optional[str] = None
     is_active: bool = True
+    # provider-specific eligibility flags
+    has_financials: bool = False
+    has_etf_info: bool = False
     
     @property
     def asset_type(self) -> AssetType:
@@ -56,13 +59,28 @@ class AssetManager:
         try:
             session_local = get_async_session_local()
             async with session_local() as session:
-                # 코인(자산타입=8) 중 crypto_data에 존재하는 자산만 구독 대상으로 사용
+                # 모든 활성 자산 로드
+                # - 코인: crypto_data에 존재하는 것만 포함
+                # - 비코인(주식/ETF/외환/상품 등): 이전 조건대로 collect_price=true 인 자산만 포함
                 query = text(
                     """
-                    SELECT a.ticker, a.name, a.asset_type_id, a.data_source, a.exchange, a.currency, a.is_active
+                    SELECT 
+                        a.ticker,
+                        a.name,
+                        a.asset_type_id,
+                        a.data_source,
+                        a.exchange,
+                        a.currency,
+                        a.is_active,
+                        EXISTS(SELECT 1 FROM stock_financials sf WHERE sf.asset_id = a.asset_id) AS has_financials,
+                        EXISTS(SELECT 1 FROM etf_info ei WHERE ei.asset_id = a.asset_id) AS has_etf_info
                     FROM assets a
-                    WHERE a.asset_type_id = 8
-                      AND a.asset_id IN (SELECT asset_id FROM crypto_data)
+                    WHERE a.is_active = TRUE
+                      AND (
+                        (a.asset_type_id = 8 AND a.asset_id IN (SELECT asset_id FROM crypto_data))
+                        OR
+                        (a.asset_type_id <> 8 AND COALESCE(a.collection_settings->>'collect_price', 'true') = 'true')
+                      )
                     ORDER BY a.ticker
                     """
                 )
@@ -71,7 +89,7 @@ class AssetManager:
 
                 assets: List[Asset] = []
                 for row in rows:
-                    ticker, name, asset_type_id, data_source, exchange, currency, is_active = row
+                    ticker, name, asset_type_id, data_source, exchange, currency, is_active, has_financials, has_etf_info = row
                     assets.append(Asset(
                         ticker=ticker,
                         name=name,
@@ -79,7 +97,9 @@ class AssetManager:
                         data_source=data_source,
                         exchange=exchange,
                         currency=currency,
-                        is_active=bool(is_active)
+                        is_active=bool(is_active),
+                        has_financials=bool(has_financials),
+                        has_etf_info=bool(has_etf_info)
                     ))
 
                 # 캐시 저장
