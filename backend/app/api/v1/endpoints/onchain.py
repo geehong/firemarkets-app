@@ -8,7 +8,7 @@ from datetime import datetime, date, timedelta
 from sqlalchemy import func, desc
 import statistics
 
-from ....core.database import get_db
+from ....core.database import get_postgres_db
 from ....models.asset import Asset, OnchainMetricsInfo, CryptoMetric
 from ....schemas.common import (
     OnchainMetricCategoryResponse, OnchainMetricToggleResponse, 
@@ -247,7 +247,7 @@ def get_bitcoin_asset(db: Session) -> Optional[Asset]:
     ).first()
 
 @router.get("/onchain/metrics", response_model=List[OnchainMetricInfo])
-async def get_onchain_metrics(db: Session = Depends(get_db)):
+async def get_onchain_metrics(db: Session = Depends(get_postgres_db)):
     """모든 온체인 메트릭 정보를 조회합니다."""
     try:
         # 데이터베이스에서 메트릭 정보 조회
@@ -285,7 +285,7 @@ async def get_onchain_metrics(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to get onchain metrics: {str(e)}")
 
 @router.get("/onchain/metrics/{metric_id}/data-range", response_model=MetricDataRange)
-async def get_metric_data_range_endpoint(metric_id: str, db: Session = Depends(get_db)):
+async def get_metric_data_range_endpoint(metric_id: str, db: Session = Depends(get_postgres_db)):
     """특정 메트릭의 데이터 범위를 조회합니다."""
     metric_def = get_metric_definition(metric_id, db)
     data_range = get_metric_data_range(metric_def, db)
@@ -298,7 +298,7 @@ async def get_metric_data_range_endpoint(metric_id: str, db: Session = Depends(g
     )
 
 @router.get("/onchain/metrics/categories", response_model=OnchainMetricCategoryResponse)
-async def get_metric_categories(db: Session = Depends(get_db)):
+async def get_metric_categories(db: Session = Depends(get_postgres_db)):
     """온체인 메트릭 카테고리 목록을 조회합니다."""
     categories = db.query(OnchainMetricsInfo.category).distinct().all()
     return {"categories": [cat[0] for cat in categories]}
@@ -312,7 +312,7 @@ async def get_metric_data(
     end_date: Optional[date] = Query(None, description="종료 날짜 (YYYY-MM-DD)"),
     limit: int = Query(1000, ge=1, le=10000, description="데이터 개수 제한"),
     format: str = Query("json", regex="^(json|csv)$", description="응답 형식"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """특정 메트릭의 데이터를 조회합니다."""
     metric_def = get_metric_definition(metric_id, db)
@@ -378,7 +378,7 @@ async def get_metric_data(
 async def get_latest_metric_data(
     metric_id: str,
     days: int = Query(30, ge=1, le=365, description="최근 N일 데이터"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """특정 메트릭의 최신 데이터를 조회합니다."""
     end_date = date.today()
@@ -391,7 +391,7 @@ async def get_metric_stats(
     metric_id: str,
     period: str = Query("1m", regex="^(1w|1m|3m|6m|1y|all)$", description="분석 기간"),
     include: str = Query("min,max,avg,median,volatility", description="포함할 통계"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """메트릭의 통계 정보를 조회합니다."""
     start_date, end_date = get_period_dates(period)
@@ -426,7 +426,7 @@ async def get_metric_stats(
 async def get_dashboard_summary(
     include: str = Query("latest,stats,trends", description="포함할 정보"),
     refresh: Optional[int] = Query(None, ge=1, description="자동 새로고침 간격 (초)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """대시보드 요약 정보를 조회합니다."""
     # 활성 메트릭 수
@@ -463,7 +463,7 @@ async def get_dashboard_summary(
 async def run_metric(
     metric_id: str,
     request: MetricRunRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """특정 메트릭을 실행합니다."""
     try:
@@ -493,7 +493,7 @@ async def run_metric(
 async def run_all_metrics(
     collection_type: str = Query("recent", description="Collection type: recent or all"),
     force_update: bool = Query(False, description="Force update existing data"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """모든 활성 메트릭을 실행합니다."""
     try:
@@ -550,7 +550,7 @@ async def run_all_metrics(
 @router.get("/onchain/metrics/{metric_id}/status", response_model=OnchainMetricStatusResponse)
 async def get_metric_status(
     metric_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """특정 메트릭의 상태를 조회합니다."""
     try:

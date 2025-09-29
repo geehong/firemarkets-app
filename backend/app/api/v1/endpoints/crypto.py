@@ -7,7 +7,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime, date, timedelta
 
-from ....core.database import get_db
+from ....core.database import get_postgres_db
 from ....models import Asset, OHLCVData
 from ....collectors import CryptoDataCollector
 from ....schemas.asset import (
@@ -65,7 +65,7 @@ async def get_bitcoin_halving_data(
     period_number: int = Path(..., ge=1, le=len(HALVING_DATES), description=f"Bitcoin halving period (1-{len(HALVING_DATES)})"),
     normalize_to_price: Optional[float] = Query(None, description="정규화할 기준 가격 (null이면 4차 반감기 시작가격 사용)"),
     include_ohlcv: bool = Query(True, description="OHLCV 데이터 포함 여부 (False면 close_price만 포함)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """비트코인 반감기 기간별 OHLCV 데이터를 조회합니다."""
     try:
@@ -241,7 +241,7 @@ async def get_bitcoin_halving_data(
         raise HTTPException(status_code=500, detail=f"Failed to get halving data: {str(e)}")
 
 @router.get("/bitcoin/halving-summary", response_model=BitcoinHalvingSummary)
-async def get_halving_summary(db: Session = Depends(get_db)):
+async def get_halving_summary(db: Session = Depends(get_postgres_db)):
     """모든 반감기 기간의 요약 정보를 조회합니다."""
     try:
         summary = []
@@ -317,7 +317,7 @@ async def get_next_halving_info():
 @router.get("/data/asset/{asset_identifier}", response_model=CryptoDataResponse)
 async def get_crypto_data_by_asset(
     asset_identifier: str = Path(..., description="Asset ID (integer) or Ticker (string)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """Get cryptocurrency data by asset ID or ticker"""
     try:
@@ -364,7 +364,7 @@ async def get_crypto_data_by_asset(
 
 
 @router.get("/top", response_model=TopCryptosResponse)
-async def get_top_cryptos(limit: int = 100, db: Session = Depends(get_db)):
+async def get_top_cryptos(limit: int = 100, db: Session = Depends(get_postgres_db)):
     """Get top cryptocurrencies by market cap"""
     try:
         if limit > 1000:
@@ -403,7 +403,7 @@ async def get_top_cryptos(limit: int = 100, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to get top cryptos: {str(e)}")
 
 # @router.get("/metrics/{symbol}", response_model=CryptoMetricsResponse)
-# async def get_crypto_metrics(symbol: str, days: int = 30, db: Session = Depends(get_db)):
+# async def get_crypto_metrics(symbol: str, days: int = 30, db: Session = Depends(get_postgres_db)):
 #     """Get cryptocurrency metrics history from OHLCV data"""
 #     try:
 #         if days > 365:
@@ -459,7 +459,7 @@ async def get_top_cryptos(limit: int = 100, db: Session = Depends(get_db)):
 #         raise HTTPException(status_code=500, detail=f"Failed to get crypto metrics: {str(e)}")
 
 @router.post("/update/{symbol}", response_model=ReloadResponse)
-async def update_crypto_data(symbol: str, db: Session = Depends(get_db)):
+async def update_crypto_data(symbol: str, db: Session = Depends(get_postgres_db)):
     """Update cryptocurrency data using CryptoDataCollector"""
     try:
         # Find asset by ticker
@@ -492,7 +492,7 @@ async def update_crypto_data(symbol: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to update crypto data: {str(e)}")
 
 @router.get("/global-metrics", response_model=GlobalCryptoMetrics)
-async def get_global_crypto_metrics(db: Session = Depends(get_db)):
+async def get_global_crypto_metrics(db: Session = Depends(get_postgres_db)):
     """Get global cryptocurrency market metrics from database"""
     try:
         from ....models.asset import CryptoData

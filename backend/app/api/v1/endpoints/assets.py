@@ -7,7 +7,7 @@ from typing import List, Optional, Dict, Any
 from datetime import date, datetime, timedelta
 import logging
 
-from ....core.database import get_db, get_postgres_db
+from ....core.database import get_postgres_db
 from ....core.cache import cache_with_invalidation, invalidate_asset_types_cache, invalidate_assets_cache
 from ....core.database_optimization import get_asset_types_optimized, get_assets_optimized, get_ohlcv_data_optimized
 from ....models import OHLCVData, Asset
@@ -27,7 +27,7 @@ router = APIRouter()
 @router.get("/asset-types", response_model=AssetTypesResponse)
 @cache_with_invalidation(expire=3600)  # 1시간 TTL로 증가 (자산 유형은 거의 변경되지 않음)
 def get_asset_types(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_postgres_db),
     has_data: bool = Query(False, description="데이터가 있는 자산 유형만 필터링합니다."),
     include_description: bool = Query(True, description="description 필드 포함 여부")
 ):
@@ -81,7 +81,7 @@ def get_all_assets(
     has_ohlcv_data: bool = Query(False, description="OHLCV 데이터가 있는 자산만 필터링합니다."),
     limit: int = Query(1000, ge=1, description="페이지당 자산 개수"),
     offset: int = Query(0, ge=0, description="데이터 시작 오프셋"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """모든 자산 목록 조회"""
     try:
@@ -198,7 +198,7 @@ def get_assets_market_caps(
     has_asset_data: bool = Query(True, description="데이터베이스에 자산이 있는 것만 필터링합니다."),
     limit: int = Query(100, ge=1, description="페이지당 자산 개수"),  # 기본값을 100으로 줄임
     offset: int = Query(0, ge=0, description="데이터 시작 오프셋"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """모든 자산의 최신 market_cap 데이터 조회 (TreeMap용) - 자산 유형별 다른 데이터 소스 사용"""
     try:
@@ -558,7 +558,7 @@ def get_assets_market_caps(
 @cache_with_invalidation(expire=1800)  # 30분 캐시 (자산 상세 정보는 자주 변경되지 않음)
 def get_asset_detail(
     asset_identifier: str = Path(..., description="Asset ID (integer) or Ticker (string)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """단일 자산 상세 정보 조회 (실시간 가격 정보 포함)"""
     try:
@@ -613,7 +613,7 @@ def get_ohlcv_data(
     start_date: Optional[date] = Query(None, description="시작 날짜 (YYYY-MM-DD)"),
     end_date: Optional[date] = Query(None, description="종료 날짜 (YYYY-MM-DD)"),
     limit: int = Query(50000, ge=1, le=100000, description="최대 데이터 포인트 수"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """OHLCV 데이터 조회 (차트용)"""
     try:
@@ -817,7 +817,7 @@ def get_price_data(
     start_date: Optional[date] = Query(None, description="시작 날짜 (YYYY-MM-DD)"),
     end_date: Optional[date] = Query(None, description="종료 날짜 (YYYY-MM-DD)"),
     limit: int = Query(1000, ge=1, le=10000, description="최대 데이터 포인트 수"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """가격 데이터만 반환 (OHLCV 대신 최적화된 API)"""
     try:
@@ -903,7 +903,7 @@ def get_price_data(
 @router.get("/stock-profile/asset/{asset_identifier}", response_model=StockProfileResponse)
 def get_stock_profile_for_asset(
     asset_identifier: str = Path(..., description="Asset ID (integer) or Ticker (string)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """자산의 회사 프로필 정보 조회"""
     try:
@@ -929,7 +929,7 @@ def get_stock_profile_for_asset(
 def get_stock_financials_for_asset(
     asset_identifier: str = Path(..., description="Asset ID (integer) or Ticker (string)"),
     limit: int = Query(10, ge=1, le=100, description="조회할 데이터 개수"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """자산의 재무 정보 조회"""
     try:
@@ -943,7 +943,7 @@ def get_stock_financials_for_asset(
 def get_stock_estimates_for_asset(
     asset_identifier: str = Path(..., description="Asset ID (integer) or Ticker (string)"),
     limit: int = Query(10, ge=1, le=100, description="조회할 데이터 개수"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """자산의 애널리스트 예측 정보 조회"""
     try:
@@ -957,7 +957,7 @@ def get_stock_estimates_for_asset(
 def get_index_info_for_asset(
     asset_identifier: str = Path(..., description="Asset ID (integer) or Ticker (string)"),
     limit: int = Query(10, ge=1, le=100, description="조회할 데이터 개수"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """자산의 지수 정보 조회"""
     try:
@@ -970,7 +970,7 @@ def get_index_info_for_asset(
 @router.get("/etf-info/asset/{asset_identifier}", response_model=ETFInfoResponse)
 def get_etf_info_for_asset(
     asset_identifier: str = Path(..., description="Asset ID (integer) or Ticker (string)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """자산의 ETF 정보 조회"""
     try:
@@ -987,7 +987,7 @@ def get_etf_info_for_asset(
 @router.get("/etf-sector-exposure/{etf_info_id}", response_model=ETFSectorExposureResponse)
 def get_etf_sector_exposure(
     etf_info_id: int = Path(..., description="ETF Info ID"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """ETF 섹터 노출도 조회"""
     try:
@@ -1024,7 +1024,7 @@ def get_etf_sector_exposure(
 def get_etf_holdings(
     etf_info_id: int = Path(..., description="ETF Info ID"),
     limit: int = Query(50, ge=1, le=200, description="조회할 보유 종목 개수"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """ETF 보유 종목 조회"""
     try:
@@ -1064,7 +1064,7 @@ def get_etf_holdings(
 @router.get("/crypto-metrics/asset/{asset_identifier}", response_model=CryptoMetricsResponse)
 def get_crypto_metrics_for_asset(
     asset_identifier: str = Path(..., description="Asset ID (integer) or Ticker (string)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """암호화폐 메트릭 정보 조회"""
     try:
@@ -1132,7 +1132,7 @@ def get_technical_indicators_for_asset(
     indicator_type: Optional[str] = Query(None, description="Filter by indicator type (e.g., SMA, EMA)"),
     data_interval: str = Query("1d", description="Data interval (e.g., 1d, 1h)"),
     limit: int = Query(100, ge=1, le=1000),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """기술적 지표 데이터 조회"""
     try:
@@ -1147,7 +1147,7 @@ def get_technical_indicators_for_asset(
 @cache_with_invalidation(expire=5)  # 5초 TTL (티커 요약은 매우 자주 변경됨)
 def get_ticker_summary(
     tickers: str = Query(..., description="쉼표로 구분된 티커 목록"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """대시보드 위젯용 티커 요약 데이터 조회"""
     try:
@@ -1403,7 +1403,7 @@ WHERE
 
 @router.get("/treemap/live", response_model=TreemapLiveResponse)
 def get_treemap_live(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """트리맵 실시간 뷰 데이터 조회 (뷰 없으면 생성 후 조회)"""
     try:

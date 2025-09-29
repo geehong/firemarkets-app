@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from datetime import datetime, timedelta
 import logging
 
-from ....core.database import get_db
+from ....core.database import get_postgres_db
 from ....models.asset import ApiCallLog
 from ....models.asset import SchedulerLog
 from ....schemas.common import LogDeleteResponse
@@ -57,7 +57,7 @@ def get_scheduler_logs(
     limit: int = Query(20, ge=1, le=100, description="Number of logs to return"),
     status: Optional[str] = Query(None, description="Filter by status"),
     job_name: Optional[str] = Query(None, description="Filter by job name"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """스케줄러 로그를 조회합니다."""
     try:
@@ -83,7 +83,7 @@ def get_api_logs(
     endpoint: Optional[str] = Query(None, description="Filter by endpoint"),
     status_code: Optional[int] = Query(None, description="Filter by status code"),
     method: Optional[str] = Query(None, description="Filter by HTTP method"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """API 호출 로그를 조회합니다."""
     try:
@@ -108,7 +108,7 @@ def get_api_logs(
 @router.get("/logs/scheduler/summary", response_model=LogSummary)
 def get_scheduler_logs_summary(
     days: int = Query(7, ge=1, le=30, description="Number of days to analyze"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """스케줄러 로그 요약을 조회합니다."""
     try:
@@ -154,7 +154,7 @@ def get_scheduler_logs_summary(
 @router.get("/logs/api/summary", response_model=LogSummary)
 def get_api_logs_summary(
     days: int = Query(7, ge=1, le=30, description="Number of days to analyze"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """API 호출 로그 요약을 조회합니다."""
     try:
@@ -203,7 +203,7 @@ def get_api_logs_summary(
 @router.delete("/logs/scheduler", response_model=LogDeleteResponse)
 def clear_scheduler_logs(
     days: int = Query(30, ge=1, description="Delete logs older than N days"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """오래된 스케줄러 로그를 삭제합니다."""
     try:
@@ -225,7 +225,7 @@ def clear_scheduler_logs(
 @router.delete("/logs/api", response_model=LogDeleteResponse)
 def clear_api_logs(
     days: int = Query(30, ge=1, description="Delete logs older than N days"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """오래된 API 호출 로그를 삭제합니다."""
     try:

@@ -8,7 +8,7 @@ import pandas as pd
 from scipy.stats import pearsonr
 from sqlalchemy import func
 
-from ....core.database import get_db
+from ....core.database import get_postgres_db
 from ....core.cache import cache_with_invalidation
 from ....models.asset import OHLCVData, Asset, OnchainMetricsInfo, CryptoMetric
 from ....schemas.asset import PriceDataPoint, PriceResponse
@@ -164,7 +164,7 @@ async def get_integrated_metrics(
     end_date: Optional[date] = Query(None, description="종료 날짜 (YYYY-MM-DD)"),
     limit: int = Query(1000, ge=1, le=10000, description="최대 데이터 포인트 수"),
     compute: Optional[str] = Query(None, description="분석 옵션 (예: correlation)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """온체인 메트릭과 가격 데이터 통합 조회"""
     try:

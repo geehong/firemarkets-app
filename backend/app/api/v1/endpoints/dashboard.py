@@ -8,7 +8,7 @@ from sqlalchemy import desc
 from pydantic import BaseModel, Field
 from dateutil.relativedelta import relativedelta
 
-from ....core.database import get_db
+from ....core.database import get_postgres_db
 from ....models import Asset, AssetType, OHLCVData
 
 # --- Pydantic 스키마 정의 ---
@@ -49,7 +49,7 @@ router = APIRouter()
 
 # --- API 엔드포인트 정의 ---
 @router.get("/dashboard/summary", response_model=MarketSummaryResponse)
-def get_dashboard_summary(db: Session = Depends(get_db)):
+def get_dashboard_summary(db: Session = Depends(get_postgres_db)):
     """대시보드 시장 요약 데이터를 반환합니다."""
     return MarketSummaryResponse(
         total_market_cap=2_500_000_000_000.0,
@@ -61,7 +61,7 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
 @router.get("/dashboard/top-assets", response_model=PaginatedAssetResponse)
 def get_dashboard_top_assets(
     limit: int = Query(5, ge=1, description="표시할 상위 자산 개수"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """주요 자산 목록을 반환합니다."""
     base_query = db.query(Asset, AssetType.type_name) \
@@ -94,7 +94,7 @@ def get_dashboard_top_assets(
 @router.get("/widgets/ticker-summary", response_model=TickerSummaryResponse)
 def get_ticker_summary_for_widgets(
     tickers: str = Query("BTCUSDT,SPY,MSFT", description="쉼표로 구분된 티커 목록"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """위젯에 표시할 여러 티커의 요약 정보를 반환합니다."""
     ticker_list = [t.strip().upper() for t in tickers.split(',')]

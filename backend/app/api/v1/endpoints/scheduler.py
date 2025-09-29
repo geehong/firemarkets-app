@@ -7,7 +7,7 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 from datetime import datetime
 
-from ....core.database import get_db, SessionLocal
+from ....core.database import get_postgres_db, SessionLocal
 from ....models import SchedulerLog
 from ....models.asset import AppConfiguration
 from ....core.websocket import scheduler
@@ -114,7 +114,7 @@ def get_scheduler_status() -> SchedulerStatus:
         return SchedulerStatus()
 
 @router.get("/scheduler/status", response_model=SchedulerStatus)
-def get_scheduler_status_endpoint(db: Session = Depends(get_db)):
+def get_scheduler_status_endpoint(db: Session = Depends(get_postgres_db)):
     """스케줄러 상태를 조회합니다."""
     try:
         from datetime import datetime, timedelta
@@ -202,7 +202,7 @@ def get_scheduler_status_endpoint(db: Session = Depends(get_db)):
         return SchedulerStatus()
 
 @router.get("/scheduler/status/{period}", response_model=SchedulerStatus)
-def get_scheduler_status_by_period(period: str, db: Session = Depends(get_db)):
+def get_scheduler_status_by_period(period: str, db: Session = Depends(get_postgres_db)):
     """기간별 스케줄러 상태를 조회합니다."""
     try:
         from datetime import datetime, timedelta
@@ -371,7 +371,7 @@ def collect_all_now_manually():
         raise HTTPException(status_code=500, detail=f"Failed to run manual collections: {str(e)}")
 
 @router.post("/scheduler/enable-test-mode", response_model=SchedulerActionResponse)
-def enable_test_mode(db: Session = Depends(get_db)):
+def enable_test_mode(db: Session = Depends(get_postgres_db)):
     """테스트 모드를 활성화합니다 (짧은 간격으로 스케줄 실행)"""
     try:
         logger.info("Enabling test mode")
@@ -411,7 +411,7 @@ def enable_test_mode(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to enable test mode: {str(e)}")
 
 @router.post("/scheduler/disable-test-mode", response_model=SchedulerActionResponse)
-def disable_test_mode(db: Session = Depends(get_db)):
+def disable_test_mode(db: Session = Depends(get_postgres_db)):
     """테스트 모드를 비활성화합니다 (일반 24시간 간격으로 복원)"""
     try:
         logger.info("Disabling test mode")
@@ -451,7 +451,7 @@ def disable_test_mode(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to disable test mode: {str(e)}")
 
 @router.post("/scheduler/fix-running-jobs", response_model=SchedulerActionResponse)
-def fix_running_jobs(db: Session = Depends(get_db)):
+def fix_running_jobs(db: Session = Depends(get_postgres_db)):
     """실행 중인 작업들을 강제로 완료 처리합니다."""
     try:
         logger.info("Fixing running jobs")
@@ -547,7 +547,7 @@ def get_scheduler_jobs_detail():
         raise HTTPException(status_code=500, detail="Failed to get scheduler jobs detail")
 
 @router.get("/scheduler/jobs/history", response_model=List[SchedulerLogResponse])
-def get_scheduler_jobs_history(db: Session = Depends(get_db)):
+def get_scheduler_jobs_history(db: Session = Depends(get_postgres_db)):
     """스케줄러 작업 히스토리를 조회합니다."""
     try:
         # 최근 작업 로그 조회

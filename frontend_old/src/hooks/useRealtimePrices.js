@@ -7,57 +7,8 @@ import { realtimeAPI } from '../services/api';
  * @param {'crypto' | 'stock'} assetType - 자산 유형
  * @param {object} options - react-query 옵션 (예: refetchInterval)
  */
-export const useRealtimePrices = (symbols, assetType = 'crypto', options = {}) => {
-  return useQuery({
-    // queryKey에 assetType을 포함하여 캐시가 섞이지 않도록 함
-    queryKey: ['realtimePrices', assetType, symbols],
-    queryFn: async () => {
-      // 백엔드가 단건만 허용할 가능성을 대비해 순차 호출로 병합
-      const results = {}
-      for (const sym of symbols) {
-        try {
-          const r = await realtimeAPI.getQuotesPrice(sym)
-          // { prices: {SYM: {...}} } 또는 {SYM: {...}} 형태 허용
-          const payload = r.data?.prices || r.data || {}
-          // 디버그: 비트코인과 금만 로그 출력 (주석처리)
-          // try {
-          //   if (sym === 'BTCUSDT' || sym === 'GCUSD') {
-          //     // eslint-disable-next-line no-console
-          //     console.log('[quotes-price] symbol=', sym, 'payload=', payload)
-          //   }
-          // } catch {}
-          if (payload[sym]) {
-            results[sym] = payload[sym]
-          } else if (Array.isArray(payload.quotes) && payload.quotes.length > 0) {
-            // 백엔드: { asset_identifier, quotes: [ { price, change_percent, ... } ] }
-            results[sym] = payload.quotes[0]
-          } else if (payload.price != null) {
-            results[sym] = payload
-          }
-        } catch {}
-      }
-      const prices = results
-      // try {
-      //   // 비트코인과 금만 merged 로그 출력 (주석처리)
-      //   const filteredPrices = {};
-      //   if (prices.BTCUSDT) filteredPrices.BTCUSDT = prices.BTCUSDT;
-      //   if (prices.GCUSD) filteredPrices.GCUSD = prices.GCUSD;
-      //   if (Object.keys(filteredPrices).length > 0) {
-      //     // eslint-disable-next-line no-console
-      //     console.log('[quotes-price] merged=', filteredPrices)
-      //   }
-      // } catch {}
-      return prices;
-    },
-    enabled: !!symbols && symbols.length > 0,
-    refetchInterval: assetType === 'crypto' ? 10000 : 300000, // 암호화폐는 10초, 주식은 5분
-    staleTime: assetType === 'crypto' ? 9000 : 270000, // 주식은 4.5분
-    gcTime: assetType === 'crypto' ? 30000 : 600000, // 주식은 10분 캐시 유지
-    retry: 3, // 실패 시 3번 재시도
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // 지수 백오프
-    ...options,
-  });
-};
+// MySQL API가 제거되어 더 이상 사용되지 않음
+// PostgreSQL API만 사용: useRealtimePricesPg
 
 /**
  * 암호화폐 실시간 가격 데이터를 가져오는 커스텀 훅
@@ -80,75 +31,8 @@ export const useStockPrices = (symbols, options = {}) => {
 /**
  * 지연 스파크라인(1일) 데이터 훅: quotes-delay-price를 사용
  */
-export const useDelaySparkline = (symbols = [], dataInterval = '15m', limit = 96, options = {}) => {
-  return useQuery({
-    queryKey: ['delaySparkline', symbols, dataInterval, limit],
-    queryFn: async () => {
-      const out = {}
-      for (const sym of symbols) {
-        try {
-          // 1) 우선 quotes-delay-price 시도 (1일치 데이터만 요청)
-          const r = await realtimeAPI.getQuotesDelayPrice(sym, dataInterval, 1)
-          let payload = r.data || {}
-          // try {
-          //   // 비트코인과 금만 delay 로그 출력 (주석처리)
-          //   if (sym === 'BTCUSDT' || sym === 'GCUSD') {
-          //     // eslint-disable-next-line no-console
-          //     console.log('[quotes-delay-price] symbol=', sym, 'payload structure:', Object.keys(payload))
-          //   }
-          // } catch {}
-          
-          // API 응답 구조에 맞게 데이터 추출
-          let points = []
-          if (Array.isArray(payload.quotes)) {
-            points = payload.quotes
-          } else if (Array.isArray(payload.data)) {
-            points = payload.data
-          } else if (Array.isArray(payload)) {
-            points = payload
-          } else if (Array.isArray(payload[sym])) {
-            points = payload[sym]
-          }
-          
-          // try {
-          //   // 비트코인과 금만 포인트 수 로그 출력 (주석처리)
-          //   if (sym === 'BTCUSDT' || sym === 'GCUSD') {
-          //     // eslint-disable-next-line no-console
-          //     console.log('[quotes-delay-price] symbol=', sym, 'points=', points.length)
-          //   }
-          // } catch {}
-
-          // 2) 비어 있으면 인트라데이 OHLCV(4h) 백업으로 사용
-          if (!Array.isArray(points) || points.length === 0) {
-            try {
-              // 비트코인과 금만 백업 API 로그 출력 (주석처리)
-              // if (sym === 'BTCUSDT' || sym === 'GCUSD') {
-              //   // eslint-disable-next-line no-console
-              //   console.log('[intraday-ohlcv] 백업 API 호출:', sym)
-              // }
-              const o = await realtimeAPI.getIntradayOhlcv(sym, '4h', true, 1)
-              const arr = o.data?.data || []
-              points = arr.map(d => ({ timestamp_utc: d.timestamp || d.timestamp_utc, price: d.close }))
-              // if (sym === 'BTCUSDT' || sym === 'GCUSD') {
-              //   // eslint-disable-next-line no-console
-              //   console.log('[intraday-ohlcv] 백업 데이터 포인트:', points.length)
-              // }
-            } catch {}
-          }
-
-          // Reverse the order to get latest data first (in case backend returns oldest first)
-          out[sym] = points.reverse()
-        } catch {}
-      }
-      return out
-    },
-    enabled: !!symbols && symbols.length > 0,
-    staleTime: 60000,
-    gcTime: 300000,
-    refetchInterval: 60000,
-    ...options,
-  });
-};
+// MySQL API가 제거되어 더 이상 사용되지 않음
+// PostgreSQL API만 사용: useDelaySparklinePg
 
 /**
  * 실시간 자산 테이블 데이터를 가져오는 커스텀 훅

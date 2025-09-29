@@ -4,14 +4,14 @@ from sqlalchemy.orm import Session
 from app.core.security import security_manager
 # from app.models.user import User
 # from app.models.session import TokenBlacklist
-from app.core.database import get_db
+from app.core.database import get_postgres_db
 from datetime import datetime
 
 reusable_oauth2 = HTTPBearer(auto_error=False)
 
 async def get_current_user(
     token: str = Depends(reusable_oauth2), 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """현재 인증된 사용자 가져오기"""
     if not token or not token.credentials:

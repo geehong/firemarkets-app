@@ -1,6 +1,6 @@
 # backend_temp/app/models/asset.py
 from sqlalchemy import (BIGINT, BigInteger, DECIMAL, TIMESTAMP, Boolean, Column, Date,
-                        DateTime, ForeignKey, Integer, String, Text, func, JSON, Float)
+                        DateTime, ForeignKey, Integer, String, Text, func, JSON, Float, UniqueConstraint)
 from sqlalchemy.orm import relationship
 
 from ..core.database import Base
@@ -348,6 +348,11 @@ class RealtimeQuoteTimeDelay(Base):
     data_source = Column(String(32), nullable=False)
     data_interval = Column(String(10), nullable=False, default='15m')
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+    # Enforce uniqueness regardless of data source
+    __table_args__ = (
+        UniqueConstraint('asset_id', 'timestamp_utc', name='uq_realtime_delay_asset_ts'),
+    )
 
 
 class OnchainMetricsInfo(Base):

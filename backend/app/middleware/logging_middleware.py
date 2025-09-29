@@ -2,7 +2,7 @@ import time
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
-from ..core.database import get_db
+from ..core.database import get_postgres_db
 from ..models.asset import ApiCallLog
 from ..utils.logger import get_logger
 
@@ -51,7 +51,7 @@ class APILoggingMiddleware(BaseHTTPMiddleware):
                     error_message = f"HTTP {status_code}"
             
             # 데이터베이스에 로그 기록
-            db = next(get_db())
+            db = next(get_postgres_db())
             try:
                 api_log = ApiCallLog(
                     api_name=api_name,

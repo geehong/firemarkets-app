@@ -200,10 +200,6 @@ export const realtimeAPI = {
   // 자산 테이블 데이터 조회
   getAssetsTable: (params) => api.get('/realtime/table', { params }),
   
-  // 실시간 가격 데이터 조회 (신규 엔드포인트)
-  getQuotesPrice: (symbolOrId) => api.get('/realtime/quotes-price', { params: { asset_identifier: symbolOrId } }),
-  getQuotesDelayPrice: (symbolOrId, dataInterval = '15m', days = 1) =>
-    api.get('/realtime/quotes-delay-price', { params: { asset_identifier: symbolOrId, data_interval: dataInterval, days } }),
   getIntradayOhlcv: (assetIdentifier, dataInterval = '4h', ohlcv = true, days = 1) =>
     api.get('/realtime/intraday-ohlcv', { params: { asset_identifier: assetIdentifier, data_interval: dataInterval, ohlcv, days } }),
   

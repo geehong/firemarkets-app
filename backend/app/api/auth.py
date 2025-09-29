@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.dependencies.auth_deps import get_current_user
 from app.models.asset import User, TokenBlacklist, AuditLog
 from app.core.security import security_manager
-from app.core.database import get_db
+from app.core.database import get_postgres_db
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 import json
@@ -60,7 +60,7 @@ def authenticate_admin_user(username: str, password: str, db: Session, request: 
 async def admin_login(
     credentials: LoginSchema,
     request: Request,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """관리자 로그인"""
     try:
@@ -132,7 +132,7 @@ async def admin_logout(
     response: Response,
     request: Request,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """관리자 로그아웃"""
     # 현재 토큰을 블랙리스트에 추가
@@ -173,7 +173,7 @@ async def admin_logout(
 @router.post("/admin/refresh")
 async def refresh_token(
     refresh_token: str = Cookie(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """Refresh token을 사용하여 새로운 access token 발급"""
     if not refresh_token:

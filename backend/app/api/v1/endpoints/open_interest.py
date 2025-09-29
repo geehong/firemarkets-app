@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from datetime import datetime, date, timedelta
 
-from ....core.database import get_db
+from ....core.database import get_postgres_db
 from ....services.endpoint.open_interest_service import OpenInterestService
 from ....schemas.open_interest import (
     OpenInterestAnalysisResponse,
@@ -23,7 +23,7 @@ async def get_open_interest_analysis(
     end_date: Optional[date] = Query(None, description="종료 날짜 (YYYY-MM-DD)"),
     limit: int = Query(1000, ge=1, le=10000, description="데이터 개수 제한"),
     include_exchanges: str = Query("all", description="포함할 거래소 (all 또는 comma-separated)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """Open Interest Futures 분석 데이터를 조회합니다."""
     try:
@@ -84,7 +84,7 @@ async def get_open_interest_analysis(
 async def get_exchange_analysis(
     exchange: Optional[str] = Query(None, description="특정 거래소"),
     period: str = Query("1m", regex="^(1w|1m|3m|6m|1y|all)$", description="분석 기간"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """거래소별 Open Interest 분석을 조회합니다."""
     try:
@@ -166,7 +166,7 @@ async def get_exchange_analysis(
 async def get_leverage_analysis(
     period: str = Query("1m", regex="^(1w|1m|3m|6m|1y|all)$", description="분석 기간"),
     include_market_cap: bool = Query(True, description="시가총액 포함 여부"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """Open Interest 레버리지 분석을 조회합니다."""
     try:
@@ -256,7 +256,7 @@ async def get_leverage_analysis(
 @router.get("/open-interest/stats", response_model=OpenInterestStatsResponse)
 async def get_open_interest_stats(
     period: str = Query("1m", regex="^(1w|1m|3m|6m|1y|all)$", description="분석 기간"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """Open Interest 통계 정보를 조회합니다."""
     try:
@@ -340,7 +340,7 @@ async def get_open_interest_stats(
 @router.get("/open-interest/latest", response_model=OpenInterestAnalysisResponse)
 async def get_latest_open_interest(
     days: int = Query(7, ge=1, le=30, description="최근 N일 데이터"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """최신 Open Interest 데이터를 조회합니다."""
     try:

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from ....models import AppConfiguration
-from ....core.database import get_db
+from ....core.database import get_postgres_db
 
 # --- Pydantic 스키마 정의 ---
 
@@ -47,7 +47,7 @@ router = APIRouter()
 @router.get("/configurations/grouped/{config_key}", response_model=GroupedConfigurationResponse)
 def get_grouped_configuration(
     config_key: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """그룹화된 JSON 설정을 조회합니다."""
     import json
@@ -108,7 +108,7 @@ def get_grouped_configuration(
 def update_grouped_configuration(
     config_key: str,
     update_data: GroupedConfigurationUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """그룹화된 JSON 설정을 업데이트합니다."""
     import json
@@ -162,7 +162,7 @@ def update_grouped_configuration(
         raise HTTPException(status_code=500, detail=f"Failed to update configuration: {str(e)}")
 
 @router.get("/configurations/grouped", response_model=List[GroupedConfigurationResponse])
-def get_all_grouped_configurations(db: Session = Depends(get_db)):
+def get_all_grouped_configurations(db: Session = Depends(get_postgres_db)):
     """모든 그룹화된 JSON 설정을 조회합니다."""
     import json
     

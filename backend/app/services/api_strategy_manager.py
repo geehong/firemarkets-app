@@ -508,9 +508,9 @@ class ApiStrategyManager:
         """
         # historical_days를 먼저 가져오기
         from app.models import AppConfiguration
-        from app.core.database import get_db
+        from app.core.database import get_postgres_db
         
-        db = next(get_db())
+        db = next(get_postgres_db())
         try:
             historical_days_config = db.query(AppConfiguration).filter(
                 AppConfiguration.config_key == "HISTORICAL_DATA_DAYS_PER_RUN"
@@ -1074,9 +1074,9 @@ class ApiStrategyManager:
         if days is None:
             # DB 설정에서 historical_days 가져오기
             from app.models import AppConfiguration
-            from app.core.database import get_db
+            from app.core.database import get_postgres_db
             
-            db = next(get_db())
+            db = next(get_postgres_db())
             try:
                 historical_days_config = db.query(AppConfiguration).filter(
                     AppConfiguration.config_key == "HISTORICAL_DATA_DAYS_PER_RUN"
@@ -1428,9 +1428,9 @@ class ApiStrategyManager:
         Prioritizes recency, then progressively deepens historical data.
         """
         from app.models import AppConfiguration, Asset, AssetType
-        from app.core.database import get_db
+        from app.core.database import get_postgres_db
         
-        db = next(get_db())
+        db = next(get_postgres_db())
         try:
             # 자산 타입 확인 (캐시 사용)
             asset_type, is_crypto = self._get_asset_type_cached(db, asset_id)

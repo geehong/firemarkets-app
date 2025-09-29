@@ -7,7 +7,7 @@ import asyncio
 import logging
 from datetime import datetime
 
-from ....core.database import get_db
+from ....core.database import get_postgres_db
 from ....schemas.common import CollectionStatusResponse, CollectionSettingsResponse, LastCollectionsResponse, ReloadResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any
@@ -30,7 +30,7 @@ collection_tasks = {}
 async def execute_data_collection(
     asset_id: int,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """개별 티커의 데이터 수집 실행"""
     
@@ -134,7 +134,7 @@ async def stop_data_collection(asset_id: int):
 async def update_ticker_collection_settings(
     asset_id: int,
     settings: dict,  # JSON 형태의 설정
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """특정 티커의 수집 설정을 업데이트합니다."""
     try:
@@ -170,7 +170,7 @@ async def update_ticker_collection_settings(
 @router.put("/bulk-update", response_model=List[CollectionSettingsResponse])
 async def bulk_update_ticker_collection_settings(
     request: BulkUpdateRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """여러 티커의 수집 설정을 일괄 업데이트합니다."""
     try:
@@ -239,7 +239,7 @@ async def bulk_update_ticker_collection_settings(
 async def update_ticker_last_collections(
     asset_id: int,
     last_collections: dict,  # JSON 형태의 마지막 수집 시간
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """특정 티커의 마지막 수집 시간을 업데이트합니다."""
     try:

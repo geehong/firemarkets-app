@@ -5,7 +5,7 @@ import time
 from typing import List, Dict, Any
 from datetime import datetime, date
 
-from ....core.database import get_db
+from ....core.database import get_postgres_db
 from ....models.asset import WorldAssetsRanking, BondMarketData, AssetType
 from ....schemas.asset import (
     CollectionStatus, PerformanceTreemapResponse
@@ -21,7 +21,7 @@ router = APIRouter()
 
 
 @router.get("/world-assets/collection-status", response_model=CollectionStatus)
-async def get_world_assets_collection_status(db: Session = Depends(get_db)):
+async def get_world_assets_collection_status(db: Session = Depends(get_postgres_db)):
     """
     World Assets 수집 상태 조회
     """
@@ -70,7 +70,7 @@ async def get_world_assets_collection_status(db: Session = Depends(get_db)):
 
 
 @router.post("/world-assets/collect-data", response_model=ReloadResponse)
-async def collect_world_assets_data(db: Session = Depends(get_db)):
+async def collect_world_assets_data(db: Session = Depends(get_postgres_db)):
     """
     World Assets 데이터 수집 실행
     """
@@ -107,7 +107,7 @@ async def collect_world_assets_data(db: Session = Depends(get_db)):
 @router.get("/world-assets/top-assets-by-category")
 @cache_with_invalidation(expire=1800)  # 30분 캐시 (세계 자산 랭킹은 자주 변경되지 않음)
 async def get_top_assets_by_category(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_postgres_db),
     limit: int = 30
 ):
     """
@@ -249,7 +249,7 @@ async def get_top_assets_by_category(
 @router.get("/world-assets/performance-treemap", response_model=PerformanceTreemapResponse)
 @cache_with_invalidation(expire=300)  # 5분 캐시 (성과 데이터는 자주 변경되지 않음)
 async def get_performance_treemap_data(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_postgres_db),
     performance_period: str = Query("1d", description="성과 계산 기간 (1d, 1w, 1m, 3m, 6m, 1y, 2y, 3y, 5y, 10y)"),
     limit: int = Query(100, description="최대 자산 개수")
 ):
@@ -469,7 +469,7 @@ async def get_performance_treemap_data(
 
 @router.get("/world-assets/missing-mappings")
 async def get_missing_asset_mappings(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_postgres_db),
     ranking_date: str = None
 ):
     """
@@ -491,7 +491,7 @@ async def get_missing_asset_mappings(
 
 @router.post("/world-assets/update-mappings")
 async def update_asset_mappings_endpoint(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_postgres_db),
     ranking_date: str = None
 ):
     """
@@ -518,7 +518,7 @@ async def get_today_market_caps(
     has_asset_id: bool = Query(False, description="asset_id가 있는 자산만 필터링합니다."),
     limit: int = Query(1000, ge=1, description="페이지당 자산 개수"),
     offset: int = Query(0, ge=0, description="데이터 시작 오프셋"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """오늘 날짜의 world_assets_ranking 데이터만 조회 (TreeMap용) - 중복 제거 및 크기 조정"""
     try:

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from typing import Dict, Any
 from pydantic import BaseModel
 
-from ....core.database import get_db
+from ....core.database import get_postgres_db
 from ....collectors import OHLCVCollector, StockCollector, ETFCollector, WorldAssetsCollector
 from ....core.websocket import scheduler
 
@@ -49,7 +49,7 @@ def run_single_asset_test(asset_id: int, db: Session):
         logger.error(f"Error in OHLCV test for asset {asset_id}: {e}", exc_info=True)
 
 @router.post("/ohlcv/run", response_model=CollectorResponse)
-async def run_ohlcv_collection(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def run_ohlcv_collection(background_tasks: BackgroundTasks, db: Session = Depends(get_postgres_db)):
     """OHLCV 데이터 수집을 수동으로 실행"""
     try:
         background_tasks.add_task(run_collector_async, OHLCVCollector, db)
@@ -63,7 +63,7 @@ async def run_ohlcv_collection(background_tasks: BackgroundTasks, db: Session = 
         raise HTTPException(status_code=500, detail=f"Failed to start OHLCV collection: {str(e)}")
 
 @router.post("/ohlcv/test-asset", response_model=CollectorResponse)
-async def test_ohlcv_asset(request: AssetTestRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def test_ohlcv_asset(request: AssetTestRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_postgres_db)):
     """개별 자산 OHLCV 테스트"""
     try:
         # 개별 자산 테스트를 위한 특별한 함수 실행
@@ -78,12 +78,12 @@ async def test_ohlcv_asset(request: AssetTestRequest, background_tasks: Backgrou
         raise HTTPException(status_code=500, detail=f"Failed to start OHLCV test: {str(e)}")
 
 @router.post("/onchain/run", response_model=CollectorResponse)
-async def run_onchain_collection(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def run_onchain_collection(background_tasks: BackgroundTasks, db: Session = Depends(get_postgres_db)):
     """온체인 컬렉터는 v2 전환 동안 비활성화"""
     raise HTTPException(status_code=503, detail="Onchain collector temporarily disabled during v2 transition")
 
 @router.post("/stock/run", response_model=CollectorResponse)
-async def run_stock_collection(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def run_stock_collection(background_tasks: BackgroundTasks, db: Session = Depends(get_postgres_db)):
     """주식 데이터 수집을 수동으로 실행"""
     try:
         background_tasks.add_task(run_collector_async, StockCollector, db)
@@ -97,7 +97,7 @@ async def run_stock_collection(background_tasks: BackgroundTasks, db: Session = 
         raise HTTPException(status_code=500, detail=f"Failed to start stock collection: {str(e)}")
 
 @router.post("/etf/run", response_model=CollectorResponse)
-async def run_etf_collection(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def run_etf_collection(background_tasks: BackgroundTasks, db: Session = Depends(get_postgres_db)):
     """ETF 데이터 수집을 수동으로 실행"""
     try:
         background_tasks.add_task(run_collector_async, ETFCollector, db)
@@ -111,12 +111,12 @@ async def run_etf_collection(background_tasks: BackgroundTasks, db: Session = De
         raise HTTPException(status_code=500, detail=f"Failed to start ETF collection: {str(e)}")
 
 @router.post("/technical/run", response_model=CollectorResponse)
-async def run_technical_collection(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def run_technical_collection(background_tasks: BackgroundTasks, db: Session = Depends(get_postgres_db)):
     """기술적 지표 컬렉터는 v2 전환 동안 비활성화"""
     raise HTTPException(status_code=503, detail="Technical collector temporarily disabled during v2 transition")
 
 @router.post("/world-assets/run", response_model=CollectorResponse)
-async def run_world_assets_collection(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def run_world_assets_collection(background_tasks: BackgroundTasks, db: Session = Depends(get_postgres_db)):
     """세계 자산 데이터 수집을 수동으로 실행"""
     try:
         background_tasks.add_task(run_collector_async, WorldAssetsCollector, db)
@@ -130,7 +130,7 @@ async def run_world_assets_collection(background_tasks: BackgroundTasks, db: Ses
         raise HTTPException(status_code=500, detail=f"Failed to start world assets collection: {str(e)}")
 
 @router.post("/all/run", response_model=CollectorResponse)
-async def run_all_collections(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def run_all_collections(background_tasks: BackgroundTasks, db: Session = Depends(get_postgres_db)):
     """모든 데이터 수집을 수동으로 실행"""
     try:
         # 모든 collector를 순차적으로 실행

@@ -8,7 +8,7 @@ from typing import Optional, List
 import logging
 from pydantic import BaseModel
 
-from ....core.database import get_db, get_postgres_db
+from ....core.database import get_postgres_db
 # Tiingo consumer import removed - using direct implementation
 # scheduler_service import removed - not used in current endpoints
 from ....core.cache import cache_with_invalidation
@@ -40,7 +40,7 @@ async def get_assets_table(
     sort_by: Optional[str] = Query("market_cap", description="정렬 필드 (market_cap, price, change_percent_today, volume_today)"),
     order: Optional[str] = Query("desc", description="정렬 순서 (asc/desc)"),
     search: Optional[str] = Query(None, description="검색어 (ticker 또는 name)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """자산 테이블 데이터 조회 (가격, 변화율, 시총액, 거래량, 52주 변화율, 30일 스파크라인 포함)"""
     try:
@@ -111,40 +111,6 @@ async def get_assets_table(
 # 실시간 가격 데이터 조회 API (개선된 버전)
 # ============================================================================
 
-@router.get("/quotes-price")
-@cache_with_invalidation(expire=10)  # 10초 캐시 (실시간 데이터)
-async def get_realtime_quotes_price(
-    asset_identifier: str = Query(..., description="Asset ID (integer) or Ticker (string)"),
-    db: Session = Depends(get_db)
-):
-    """
-    실시간 가격 데이터 조회 (거의 라이브)
-    asset_identifier: Asset ID (integer) 또는 Ticker (string)
-    """
-    try:
-        from ....services.endpoint.realtime_quotes_service import RealtimeQuotesService
-        
-        # asset_identifier가 숫자인지 확인 (Asset ID)
-        if asset_identifier.isdigit():
-            asset_id = int(asset_identifier)
-            quotes = await RealtimeQuotesService.get_latest_quotes_by_asset_id(db, asset_id)
-        else:
-            # Ticker로 조회
-            quotes = await RealtimeQuotesService.get_latest_quotes_by_ticker(db, asset_identifier)
-        
-        if not quotes:
-            raise HTTPException(status_code=404, detail="No realtime quotes found")
-        
-        return {
-            "asset_identifier": asset_identifier,
-            "quotes": quotes,
-            "data_source": "realtime_quotes",
-            "timestamp": quotes[0].timestamp_utc if quotes else None
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to get realtime quotes: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get realtime quotes: {str(e)}")
 
 
 @router.get("/pg/quotes-price")
@@ -184,57 +150,6 @@ async def get_realtime_quotes_price_postgres(
         raise HTTPException(status_code=500, detail=f"Failed to get realtime quotes from PostgreSQL: {str(e)}")
 
 
-@router.get("/quotes-delay-price")
-async def get_realtime_quotes_delay_price(
-    asset_identifier: str = Query(..., description="Asset ID (integer) or Ticker (string)"),
-    data_interval: str = Query("15m", description="Data interval (15m, 30m, 1h, 2h, 3h)"),
-    days: int = Query(1, ge=1, le=1, description="Number of days to fetch (limited to 1 day)"),
-    db: Session = Depends(get_db)
-):
-    """
-    실시간 가격 데이터 조회 (지연 데이터)
-    asset_identifier: Asset ID (integer) 또는 Ticker (string)
-    data_interval: 데이터 간격 (15m, 30m, 1h, 2h, 3h)
-    """
-    try:
-        from ....services.endpoint.realtime_quotes_service import RealtimeQuotesService
-        
-        # 지원되는 간격 확인
-        supported_intervals = ["15m", "30m", "1h", "2h", "3h"]
-        if data_interval not in supported_intervals:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Unsupported interval: {data_interval}. Supported: {supported_intervals}"
-            )
-        
-        # asset_identifier가 숫자인지 확인 (Asset ID)
-        if asset_identifier.isdigit():
-            asset_id = int(asset_identifier)
-            quotes = await RealtimeQuotesService.get_delay_quotes_by_asset_id(
-                db, asset_id, data_interval, days=days
-            )
-        else:
-            # Ticker로 조회
-            quotes = await RealtimeQuotesService.get_delay_quotes_by_ticker(
-                db, asset_identifier, data_interval, days=days
-            )
-        
-        if not quotes:
-            raise HTTPException(status_code=404, detail="No delay quotes found")
-        
-        return {
-            "asset_identifier": asset_identifier,
-            "quotes": quotes,
-            "data_source": "realtime_quotes_time_delay",
-            "data_interval": data_interval,
-            "timestamp": quotes[0].timestamp_utc if quotes else None
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get delay quotes: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get delay quotes: {str(e)}")
 
 
 @router.get("/pg/quotes-delay-price")
@@ -297,7 +212,7 @@ async def get_ohlcv_intraday(
     ohlcv: bool = Query(True, description="true=OHLCV 데이터, false=close price만"),
     data_interval: str = Query("4h", description="Data interval (4h, 6h, 12h, 24h)"),
     days: int = Query(1, ge=1, le=1, description="Number of days to fetch (limited to 1 day)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_postgres_db)
 ):
     """
     OHLCV 인트라데이 데이터 조회

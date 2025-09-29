@@ -155,7 +155,7 @@ async def get_realtime_stock_prices(symbols: List[str]) -> Dict[str, Dict[str, A
     # 2-b) 여전히 누락된 심볼은 기본 가격만 DB에서 보완
     if missing:
         try:
-            db = next(deps.get_db())
+            db = next(deps.get_postgres_db())
             for symbol in missing:
                 asset = db.query(Asset).filter(Asset.ticker == symbol.upper()).first()
                 if not asset:

@@ -9,7 +9,7 @@ patches and features.
 
 ## Using the issue tracker
 
-The [issue tracker](https://github.com/coreui/coreui-free-bootstrap-admin-template/issues) is
+The [issue tracker](https://github.com/coreui/coreui-free-react-admin-template/issues) is
 the preferred channel for [bug reports](#bug-reports), [features requests](#feature-requests)
 and [submitting pull requests](#pull-requests), but please respect the following
 restrictions:
@@ -89,11 +89,11 @@ included in the project:
 
    ```bash
    # Clone your fork of the repo into the current directory
-   git clone https://github.com/<your-username>/coreui.git
+   git clone https://github.com/<your-username>/coreui-react.git
    # Navigate to the newly cloned directory
    cd coreui
    # Assign the original repo to a remote called "upstream"
-   git remote add upstream https://github.com/coreui/coreui.git
+   git remote add upstream https://github.com/coreui/coreui-react.git
    ```
 
 2. If you cloned a while ago, get the latest changes from upstream:
