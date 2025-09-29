@@ -105,6 +105,7 @@ async def collect_world_assets_data(db: Session = Depends(get_db)):
 
 
 @router.get("/world-assets/top-assets-by-category")
+@cache_with_invalidation(expire=1800)  # 30분 캐시 (세계 자산 랭킹은 자주 변경되지 않음)
 async def get_top_assets_by_category(
     db: Session = Depends(get_db),
     limit: int = 30

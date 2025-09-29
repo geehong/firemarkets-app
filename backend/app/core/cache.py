@@ -76,4 +76,17 @@ def cache_with_invalidation(expire: int = 60, key_builder=None):
         expire: 캐시 만료 시간 (초)
         key_builder: 캐시 키 생성 함수
     """
-    return cache(expire=expire, key_builder=key_builder) 
+    return cache(expire=expire, key_builder=key_builder)
+
+# 최적화된 캐시 TTL 설정
+CACHE_TTL = {
+    'realtime': 10,      # 실시간 데이터 (10초)
+    'frequent': 60,      # 자주 변경되는 데이터 (1분)
+    'normal': 300,       # 일반 데이터 (5분)
+    'stable': 1800,      # 안정적인 데이터 (30분)
+    'static': 3600,      # 정적 데이터 (1시간)
+}
+
+def get_optimized_cache_ttl(data_type: str = 'normal') -> int:
+    """데이터 타입에 따른 최적화된 TTL 반환"""
+    return CACHE_TTL.get(data_type, CACHE_TTL['normal']) 

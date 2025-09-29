@@ -1,1 +1,7 @@
-build/
+
+# Ignore artifacts:
+build
+coverage
+
+#ignore source
+src

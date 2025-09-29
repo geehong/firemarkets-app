@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<svg fill="#000000" width="800px" height="800px" viewBox="0 -8 72 72" id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg">
-  <title>line-chart</title>
-  <rect x="12.149" y="5.477" width="5.367" height="40.407" style="stroke: rgb(0, 0, 0);"/>
-  <rect x="29.975" y="15.351" width="5.367" height="40.407" style="stroke: rgb(0, 0, 0); stroke-width: 1; transform-box: fill-box; transform-origin: 50% 50%;" transform="matrix(0, 1, -1, 0, 5.743931, 12.501516)"/>
-  <path style="stroke: rgb(0, 0, 0);" d="M 13.737 46.367 L 12.161 46.591 C 12.09 50.907 17.919 50.778 17.904 50.759 L 17.792 46.366 L 13.737 46.367 Z"/>
-  <path style="stroke: rgb(0, 0, 0); stroke-width: 1;" d="M 20.183 32.827 L 30.778 21.6 L 38.051 29.822 L 56.291 11.085 L 56.291 39.998 L 20.341 39.998 L 20.183 32.827 Z"/>
-</svg>

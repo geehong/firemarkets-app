@@ -555,6 +555,7 @@ def get_assets_market_caps(
         raise HTTPException(status_code=500, detail=f"Failed to get market caps: {str(e)}")
 
 @router.get("/assets/{asset_identifier}", response_model=AssetDetailResponse)
+@cache_with_invalidation(expire=1800)  # 30분 캐시 (자산 상세 정보는 자주 변경되지 않음)
 def get_asset_detail(
     asset_identifier: str = Path(..., description="Asset ID (integer) or Ticker (string)"),
     db: Session = Depends(get_db)
@@ -1125,6 +1126,7 @@ def get_crypto_metrics_for_asset(
         raise HTTPException(status_code=500, detail=f"Failed to get crypto metrics: {str(e)}")
 
 @router.get("/technical-indicators/asset/{asset_identifier}", response_model=TechnicalIndicatorsResponse)
+@cache_with_invalidation(expire=600)  # 10분 캐시 (기술적 지표는 자주 변경되지 않음)
 def get_technical_indicators_for_asset(
     asset_identifier: str = Path(..., description="Asset ID (integer) or Ticker (string)"),
     indicator_type: Optional[str] = Query(None, description="Filter by indicator type (e.g., SMA, EMA)"),

@@ -112,6 +112,7 @@ async def get_assets_table(
 # ============================================================================
 
 @router.get("/quotes-price")
+@cache_with_invalidation(expire=10)  # 10초 캐시 (실시간 데이터)
 async def get_realtime_quotes_price(
     asset_identifier: str = Query(..., description="Asset ID (integer) or Ticker (string)"),
     db: Session = Depends(get_db)
@@ -147,6 +148,7 @@ async def get_realtime_quotes_price(
 
 
 @router.get("/pg/quotes-price")
+@cache_with_invalidation(expire=10)  # 10초 캐시 (실시간 데이터)
 async def get_realtime_quotes_price_postgres(
     asset_identifier: str = Query(..., description="Asset ID (integer) or Ticker (string)"),
     postgres_db: Session = Depends(get_postgres_db)

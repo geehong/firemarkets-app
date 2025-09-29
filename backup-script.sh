@@ -11,24 +11,27 @@ BACKUP_DATE=$(date +"%Y_%m_%d")
 BACKUP_TIME=$(date +"%Y_%m_%d_%H_%M")
 BACKUP_DIR="/home/geehong/backup/${BACKUP_DATE}"
 
-# 백업 디렉토리 생성
+# 백업 디렉토리 생성 및 확인
+echo "백업 디렉토리 생성 중: $BACKUP_DIR"
 mkdir -p "$BACKUP_DIR"
-cd "$BACKUP_DIR"
+if [ ! -d "$BACKUP_DIR" ]; then
+    echo "✗ 백업 디렉토리 생성 실패: $BACKUP_DIR"
+    exit 1
+fi
+echo "✓ 백업 디렉토리 생성 완료: $BACKUP_DIR"
+
+# 백업 디렉토리로 이동
+cd "$BACKUP_DIR" || {
+    echo "✗ 백업 디렉토리로 이동 실패: $BACKUP_DIR"
+    exit 1
+}
+echo "현재 작업 디렉토리: $(pwd)"
 
 echo "=== FireMarkets App 백업 시작: $(date) ==="
 echo "백업 디렉토리: $BACKUP_DIR"
 
 # 1. 데이터베이스 백업
-echo "1. MySQL 데이터베이스 백업 중..."
-docker exec fire_markets_db mysqldump -u geehong -pPower6100 --single-transaction --routines --triggers --no-tablespaces markets > "markets_mysql_backup_${BACKUP_TIME}.sql"
-if [ $? -eq 0 ]; then
-    echo "✓ MySQL 데이터베이스 백업 완료: markets_mysql_backup_${BACKUP_TIME}.sql"
-else
-    echo "✗ MySQL 데이터베이스 백업 실패"
-fi
-
-# PostgreSQL 데이터베이스 백업
-echo "1-2. PostgreSQL 데이터베이스 백업 중..."
+echo "1. PostgreSQL 데이터베이스 백업 중..."
 PGPASSWORD=${DB_PASSWORD_PG} docker exec fire_markets_db_postgres pg_dump -U geehong -d markets > "markets_postgres_backup_${BACKUP_TIME}.sql"
 if [ $? -eq 0 ]; then
     echo "✓ PostgreSQL 데이터베이스 백업 완료: markets_postgres_backup_${BACKUP_TIME}.sql"
@@ -38,14 +41,6 @@ fi
 
 # 2. Docker 볼륨 백업
 echo "2. Docker 볼륨 백업 중..."
-
-# MySQL 데이터베이스 볼륨 백업
-docker run --rm -v firemarkets-app_db_data:/data -v "$(pwd)":/backup alpine tar czf "/backup/mysql_volume_backup_${BACKUP_TIME}.tar.gz" -C /data .
-if [ $? -eq 0 ]; then
-    echo "✓ MySQL 볼륨 백업 완료: mysql_volume_backup_${BACKUP_TIME}.tar.gz"
-else
-    echo "✗ MySQL 볼륨 백업 실패"
-fi
 
 # PostgreSQL 데이터베이스 볼륨 백업
 docker run --rm -v firemarkets-app_pg_data:/data -v "$(pwd)":/backup alpine tar czf "/backup/postgres_volume_backup_${BACKUP_TIME}.tar.gz" -C /data .
@@ -85,8 +80,14 @@ fi
 echo ""
 echo "=== 백업 완료: $(date) ==="
 echo "백업 위치: $BACKUP_DIR"
+echo "백업 디렉토리 존재 확인: $(test -d "$BACKUP_DIR" && echo "존재함" || echo "존재하지 않음")"
 echo "백업 파일들:"
-ls -la "$BACKUP_DIR"
+if [ -d "$BACKUP_DIR" ]; then
+    ls -la "$BACKUP_DIR"
+    echo "백업 파일 개수: $(ls -1 "$BACKUP_DIR" | wc -l)"
+else
+    echo "✗ 백업 디렉토리가 존재하지 않습니다: $BACKUP_DIR"
+fi
 
 # 5. 오래된 백업 정리 (30일 이상 된 백업 삭제)
 echo "5. 오래된 백업 정리 중..."

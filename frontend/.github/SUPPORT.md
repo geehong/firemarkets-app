@@ -6,4 +6,5 @@ See the [contributing guidelines](CONTRIBUTING.md) for sharing bug reports.
 
 For general troubleshooting or help getting started:
 
-- Search or start a new discussion on [GitHub Discussions](https://github.com/coreui/coreui-free-react-admin-template/discussions).
+- Join [the official community](https://community.coreui.io/).
+- Ask and explore Stack Overflow with the [`coreui`](https://stackoverflow.com/questions/tagged/coreui) tag.

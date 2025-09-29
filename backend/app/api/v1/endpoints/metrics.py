@@ -156,6 +156,7 @@ def calculate_correlation(price_data: List[Dict], metric_data: List[Dict]) -> Di
 
 @router.get("/metrics/{asset_identifier}")
 # @cache_with_invalidation(expire=300)  # 캐시 비활성화
+@cache_with_invalidation(expire=300)  # 5분 캐시 (메트릭 데이터는 자주 변경되지 않음)
 async def get_integrated_metrics(
     asset_identifier: str = Path(..., description="Asset ID (integer) or Ticker (string)"),
     metrics: str = Query(..., description="쉼표로 구분된 메트릭 목록 (예: price,mvrvZscore,sopr)"),
