@@ -1,7 +1,13 @@
 # app/main.py
+import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import auth
+from app.api.v1.endpoints import (
+    realtime, scheduler, collectors, assets, world_assets, crypto, 
+    onchain, etf, dashboard, configurations, admin, logs, metrics, 
+    open_interest, tickers
+)
 from app.core.database import engine
 from app.models.user import User
 from app.models.session import UserSession, TokenBlacklist, AuditLog
@@ -53,6 +59,23 @@ socket_app = socketio.ASGIApp(sio, app)
 
 # 라우터 등록
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+
+# v1 API 엔드포인트들
+app.include_router(realtime.router, prefix="/api/v1/realtime", tags=["realtime"])
+app.include_router(scheduler.router, prefix="/api/v1/scheduler", tags=["scheduler"])
+app.include_router(collectors.router, prefix="/api/v1/collectors", tags=["collectors"])
+app.include_router(assets.router, prefix="/api/v1/assets", tags=["assets"])
+app.include_router(world_assets.router, prefix="/api/v1/world-assets", tags=["world-assets"])
+app.include_router(crypto.router, prefix="/api/v1/crypto", tags=["crypto"])
+app.include_router(onchain.router, prefix="/api/v1/onchain", tags=["onchain"])
+app.include_router(etf.router, prefix="/api/v1/etf", tags=["etf"])
+app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboard"])
+app.include_router(configurations.router, prefix="/api/v1/configurations", tags=["configurations"])
+app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
+app.include_router(logs.router, prefix="/api/v1/logs", tags=["logs"])
+app.include_router(metrics.router, prefix="/api/v1/metrics", tags=["metrics"])
+app.include_router(open_interest.router, prefix="/api/v1/open-interest", tags=["open-interest"])
+app.include_router(tickers.router, prefix="/api/v1/tickers", tags=["tickers"])
 
 @app.get("/")
 async def root():

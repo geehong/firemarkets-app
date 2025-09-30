@@ -4,8 +4,15 @@ import { CWidgetStatsD, CRow, CCol } from '@coreui/react'
 import CIcon from '@coreui/icons-react'
 import { cibFacebook, cibLinkedin, cibTwitter, cilCalendar } from '@coreui/icons'
 import { CChart } from '@coreui/react-chartjs'
+import { useRealtimePricesWebSocket } from '../../hooks/useWebSocket'
+import { useDelaySparklinePg } from '../../hooks/useRealtime'
 
 const WidgetsBrand = (props) => {
+  // 실시간 암호화폐 데이터
+  const cryptoSymbols = ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'BNB', 'SOL', 'USDC', 'DOGEUSDT', 'TRX', 'ADAUSDT', 'LINK', 'AVAX', 'WBTC', 'XLM', 'BCHUSDT', 'HBAR', 'LTCUSDT', 'CRO', 'SHIB', 'TON', 'DOTUSDT']
+  const { prices: realtimePrices, connected } = useRealtimePricesWebSocket(cryptoSymbols)
+  const { data: sparklineData } = useDelaySparklinePg(cryptoSymbols, '15m', 1)
+  
   const chartOptions = {
     elements: {
       line: {
@@ -36,40 +43,54 @@ const WidgetsBrand = (props) => {
 
   return (
     <CRow className={props.className} xs={{ gutter: 4 }}>
-      <CCol sm={6} xl={4} xxl={3}>
-        <CWidgetStatsD
-          {...(props.withCharts && {
-            chart: (
-              <CChart
-                className="position-absolute w-100 h-100"
-                type="line"
-                data={{
-                  labels: ['January', 'February', 'March', 'April', 'May', 'June', 'July'],
-                  datasets: [
-                    {
-                      backgroundColor: 'rgba(255,255,255,.1)',
-                      borderColor: 'rgba(255,255,255,.55)',
-                      pointHoverBackgroundColor: '#fff',
-                      borderWidth: 2,
-                      data: [65, 59, 84, 84, 51, 55, 40],
-                      fill: true,
-                    },
-                  ],
-                }}
-                options={chartOptions}
-              />
-            ),
-          })}
-          icon={<CIcon icon={cibFacebook} height={52} className="my-4 text-white" />}
-          values={[
-            { title: 'friends', value: '89K' },
-            { title: 'feeds', value: '459' },
-          ]}
-          style={{
-            '--cui-card-cap-bg': '#3b5998',
-          }}
-        />
-      </CCol>
+      {cryptoSymbols.slice(0, 4).map((symbol, index) => {
+        const coin = realtimePrices[symbol] || {}
+        const name = symbol.replace('USDT', '')
+        const price = coin.price || 0
+        const changePercent = coin.change_percent || 0
+        const sparklinePoints = sparklineData[symbol] || []
+        const chartData = sparklinePoints.map(point => point.price || point.close_price || 0)
+        
+        const icons = [cibFacebook, cibLinkedin, cibTwitter, cilCalendar]
+        const colors = ['#3b5998', '#0077b5', '#1da1f2', '#ff6b6b']
+        
+        return (
+          <CCol key={symbol} sm={6} xl={4} xxl={3}>
+            <CWidgetStatsD
+              {...(props.withCharts && {
+                chart: (
+                  <CChart
+                    className="position-absolute w-100 h-100"
+                    type="line"
+                    data={{
+                      labels: chartData.map((_, i) => i),
+                      datasets: [
+                        {
+                          backgroundColor: 'rgba(255,255,255,.1)',
+                          borderColor: changePercent > 0 ? 'rgba(40,167,69,.8)' : 'rgba(220,53,69,.8)',
+                          pointHoverBackgroundColor: '#fff',
+                          borderWidth: 2,
+                          data: chartData,
+                          fill: true,
+                        },
+                      ],
+                    }}
+                    options={chartOptions}
+                  />
+                ),
+              })}
+              icon={<CIcon icon={icons[index]} height={52} className="my-4 text-white" />}
+              values={[
+                { title: '가격', value: `$${price.toLocaleString()}` },
+                { title: '변화율', value: `${changePercent > 0 ? '+' : ''}${changePercent.toFixed(2)}%` },
+              ]}
+              style={{
+                '--cui-card-cap-bg': colors[index],
+              }}
+            />
+          </CCol>
+        )
+      })}
       <CCol sm={6} xl={4} xxl={3}>
         <CWidgetStatsD
           {...(props.withCharts && {

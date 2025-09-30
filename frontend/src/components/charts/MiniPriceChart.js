@@ -2,8 +2,9 @@ import React, { useMemo, useEffect, useState, useRef } from 'react'
 import Highcharts from 'highcharts/highstock'
 import HighchartsReact from 'highcharts-react-official'
 import { useDelaySparklinePg, useRealtimePricesPg } from '../../hooks/useRealtime'
+import { useRealtimePricesWebSocket } from '../../hooks/useWebSocket'
 
-const MiniPriceChart = ({ assetIdentifier = '1' }) => {
+const MiniPriceChart = ({ assetIdentifier = 'BTCUSDT' }) => {
   // Fetch delay quotes (15m interval, 1 day)
   const { data: delayData, isLoading } = useDelaySparklinePg(
     assetIdentifier ? [assetIdentifier] : [],
@@ -11,11 +12,20 @@ const MiniPriceChart = ({ assetIdentifier = '1' }) => {
     1
   )
 
-  // Fetch realtime latest price to use as the visual last point
+  // WebSocket 실시간 가격 (우선 사용), API는 폴백으로만 사용
+  // WebSocket 구독 심볼: 기본 심볼이 USDT로 끝나지 않으면 USDT 페어도 같이 구독
+  const wsSymbols = useMemo(() => {
+    if (!assetIdentifier) return []
+    const up = String(assetIdentifier).toUpperCase()
+    return up.endsWith('USDT') ? [up] : [up, `${up}USDT`]
+  }, [assetIdentifier])
+
+  const { prices: wsPrices, connected: wsConnected } = useRealtimePricesWebSocket(wsSymbols)
+  // API 폴백 (낮은 빈도)
   const { data: realtimeMap } = useRealtimePricesPg(
     assetIdentifier ? [assetIdentifier] : [],
     'crypto',
-    { refetchInterval: 60000 } // 60초로 증가하여 API 요청 빈도 50% 감소
+    { refetchInterval: 120000 }
   )
 
   // Map quotes -> [timestampMs, close(price)]
@@ -102,50 +112,45 @@ const MiniPriceChart = ({ assetIdentifier = '1' }) => {
     }
   }, [seriesData])
 
-  // Build last point using realtime price when available
-  // Animated last point: between realtime fetches, apply small variation every 100ms
+  // 마지막 포인트: WebSocket 가격 우선, 없으면 마지막 종가
   const [lastAnimatedY, setLastAnimatedY] = useState(null)
   const baseYRef = useRef(null)
-  const intervalRef = useRef(null)
 
-  // Update base price from realtime (preferred) or last series close
+  // 기준 가격 갱신: WebSocket 가격 우선, 없으면 API, 최종적으로 마지막 종가
   useEffect(() => {
     if (!seriesData || seriesData.length === 0) return
-    const rt = realtimeMap?.[assetIdentifier]
-    const rtPrice = rt && typeof rt.price !== 'undefined' ? Number(rt.price) : undefined
+    // WebSocket 가격: 정확 키 우선, 없으면 USDT 페어 키 참조
+    const upId = String(assetIdentifier).toUpperCase()
+    const wsPriceRaw = wsPrices?.[upId]?.price ?? wsPrices?.[`${upId}USDT`]?.price
+    const wsPrice = typeof wsPriceRaw !== 'undefined' ? Number(wsPriceRaw) : undefined
+    const apiPriceRaw = realtimeMap?.[upId]?.price ?? realtimeMap?.[`${upId}USDT`]?.price
+    const apiPrice = typeof apiPriceRaw !== 'undefined' ? Number(apiPriceRaw) : undefined
     const close = seriesData[seriesData.length - 1][1]
-    const base = (typeof rtPrice === 'number' && isFinite(rtPrice)) ? rtPrice : close
+    const base = (typeof wsPrice === 'number' && isFinite(wsPrice))
+      ? wsPrice
+      : (typeof apiPrice === 'number' && isFinite(apiPrice))
+        ? apiPrice
+        : close
     baseYRef.current = base
     setLastAnimatedY((prev) => (prev == null ? base : prev))
-  }, [realtimeMap, seriesData, assetIdentifier])
+  }, [wsPrices, realtimeMap, seriesData, assetIdentifier])
 
-  // 100ms animation tick: variation in [-0.05%, +0.05%] around the base,
-  // clamped to a tight band so it visually connects to the last line point
+  // WebSocket 업데이트 시 마지막 포인트를 즉시 갱신 (임의 변동 제거)
   useEffect(() => {
     if (!seriesData || seriesData.length === 0) return
-    if (intervalRef.current) clearInterval(intervalRef.current)
-    intervalRef.current = setInterval(() => {
-      const lastClose = seriesData[seriesData.length - 1][1]
-      const base = (typeof baseYRef.current === 'number' && isFinite(baseYRef.current)) ? baseYRef.current : lastClose
-      if (typeof lastClose !== 'number' || !isFinite(lastClose)) return
-      // Visual variation: [-0.05%, +0.05%]
-      const variation = (Math.random() * 0.001) - 0.0005 // -0.0005 ~ +0.0005
-      let next = Number((base * (1 + variation)).toFixed(4))
-      // Clamp to a tight band around lastClose (±0.25%) to ensure connection
-      const band = lastClose * 0.0025
-      const bandMin = lastClose - band
-      const bandMax = lastClose + band
-      if (next < bandMin) next = Number(bandMin.toFixed(4))
-      if (next > bandMax) next = Number(bandMax.toFixed(4))
-      // Clamp to fixed y-axis to avoid drifting out of visible area
-      if (typeof yAxisRange.min === 'number' && typeof yAxisRange.max === 'number') {
-        if (next < yAxisRange.min) next = yAxisRange.min
-        if (next > yAxisRange.max) next = yAxisRange.max
-      }
-      setLastAnimatedY(next)
-    }, 500)
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
-  }, [seriesData, yAxisRange.min, yAxisRange.max])
+    const lastClose = seriesData[seriesData.length - 1][1]
+    const upId2 = String(assetIdentifier).toUpperCase()
+    const wsPriceRaw = wsPrices?.[upId2]?.price ?? wsPrices?.[`${upId2}USDT`] ?.price
+    const wsPrice = typeof wsPriceRaw !== 'undefined' ? Number(wsPriceRaw) : undefined
+    const apiPriceRaw = realtimeMap?.[upId2]?.price ?? realtimeMap?.[`${upId2}USDT`]?.price
+    const apiPrice = typeof apiPriceRaw !== 'undefined' ? Number(apiPriceRaw) : undefined
+    const next = (typeof wsPrice === 'number' && isFinite(wsPrice))
+      ? wsPrice
+      : (typeof apiPrice === 'number' && isFinite(apiPrice))
+        ? apiPrice
+        : lastClose
+    setLastAnimatedY(next)
+  }, [wsPrices, realtimeMap, seriesData, assetIdentifier])
 
   const lastPointData = useMemo(() => {
     if (!seriesData || seriesData.length === 0) return []

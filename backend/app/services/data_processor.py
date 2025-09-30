@@ -7,14 +7,14 @@ import json
 import logging
 import time
 import datetime
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional, List
 from contextlib import asynccontextmanager
 
 import redis.asyncio as redis
 from sqlalchemy.orm import Session
 
-from ..core.config import GLOBAL_APP_CONFIGS, config_manager
+from ..core.config import GLOBAL_APP_CONFIGS
 from ..models.asset import RealtimeQuote, RealtimeQuoteTimeDelay
 from ..models.asset import Asset, OHLCVData, WorldAssetsRanking
 from ..crud.asset import crud_ohlcv, crud_asset
@@ -38,7 +38,7 @@ class DataProcessor:
         logger.info("DataProcessor 인스턴스 생성 중...")
         self.redis_client: Optional[redis.Redis] = None
         self.running = False
-        self.config_manager = config_manager
+        self.config_manager = config_manager # config_manager is now passed from run_data_processor
         self.redis_queue_manager = redis_queue_manager
         
         # 처리 통계 (먼저 초기화)
@@ -48,6 +48,11 @@ class DataProcessor:
             "errors": 0,
             "last_processed": None
         }
+
+        # 전일 종가 캐시 (성능 최적화)
+        self.prev_close_cache: Dict[int, float] = {}
+        self.last_cache_refresh: Optional[datetime] = None
+        self.cache_refresh_interval = timedelta(minutes=60) # 1시간마다 캐시 갱신
         
         # Redis 설정
         self.redis_host = GLOBAL_APP_CONFIGS.get("REDIS_HOST", "redis")
@@ -68,10 +73,10 @@ class DataProcessor:
         self.current_source_index = 0
         self.source_failures = {}
         self.max_failures_per_source = 5
-        self.fallback_interval = 30  # 30초마다 백업 소스 시도
-        self.processing_interval = float(GLOBAL_APP_CONFIGS.get("REALTIME_PROCESSING_INTERVAL_SECONDS", 1.0))
+        self.fallback_interval = 30  # 30초마다 백업 소스 시도 (현재 미사용)
+        self.processing_interval = float(GLOBAL_APP_CONFIGS.get("REALTIME_PROCESSING_INTERVAL_SECONDS", 0.1)) # 1초 -> 0.1초 (100ms)
         self.time_window_minutes = int(GLOBAL_APP_CONFIGS.get("WEBSOCKET_TIME_WINDOW_MINUTES", 15))
-        self.stream_block_ms = int(GLOBAL_APP_CONFIGS.get("REALTIME_STREAM_BLOCK_MS", 100))
+        self.stream_block_ms = int(GLOBAL_APP_CONFIGS.get("REALTIME_STREAM_BLOCK_MS", 50)) # 100ms -> 50ms
         
         # 가격 범위 검증 설정
         self.price_ranges = self._initialize_price_ranges()
@@ -170,7 +175,7 @@ class DataProcessor:
                                 'price': float(data['lastPrice']),
                                 'change_amount': float(data['priceChange']),
                                 'change_percent': float(data['priceChangePercent']),
-                                'timestamp_utc': datetime.now(timezone.utc),
+                                'timestamp_utc': datetime.now(timezone.utc).isoformat(),
                                 'data_source': 'binance_api_fallback'
                             }
                 except Exception as e:
@@ -184,6 +189,34 @@ class DataProcessor:
         # Redis Queue Manager (for batch queue + DLQ)
         self.queue_manager = RedisQueueManager(config_manager=config_manager) if config_manager else None
     
+    async def _refresh_prev_close_cache(self):
+        """메모리에 전일 종가 캐시를 갱신합니다."""
+        logger.info("🔄 전일 종가 캐시 갱신 시작...")
+        async with self.get_db_session() as db:
+            try:
+                from sqlalchemy import text
+                # 각 자산별 가장 최근의 일봉 데이터(전일 종가)를 가져오는 쿼리
+                query = text("""
+                    WITH latest_ohlcv AS (
+                        SELECT
+                            asset_id,
+                            close_price,
+                            ROW_NUMBER() OVER(PARTITION BY asset_id ORDER BY timestamp_utc DESC) as rn
+                        FROM ohlcv_day_data
+                    )
+                    SELECT asset_id, close_price
+                    FROM latest_ohlcv
+                    WHERE rn = 1;
+                """)
+                result = await db.execute(query)
+                rows = result.fetchall()
+                
+                self.prev_close_cache = {row[0]: float(row[1]) for row in rows if row[1] is not None}
+                self.last_cache_refresh = datetime.now(timezone.utc)
+                logger.info(f"✅ 전일 종가 캐시 갱신 완료: {len(self.prev_close_cache)}개 자산")
+            except Exception as e:
+                logger.error(f"❌ 전일 종가 캐시 갱신 실패: {e}")
+
     def _update_source_health(self, source_name: str):
         """소스별 마지막 데이터 수신 시간 업데이트"""
         self.source_last_seen[source_name] = time.time()
@@ -467,6 +500,14 @@ class DataProcessor:
     async def _process_realtime_streams(self) -> int:
         """실시간 스트림 데이터 처리 - Consumer Group 사용"""
         logger.debug("🚀 _process_realtime_streams 시작")
+
+        # 주기적으로 전일 종가 캐시 갱신
+        if not self.last_cache_refresh or (datetime.now(timezone.utc) - self.last_cache_refresh) > self.cache_refresh_interval:
+            await self._refresh_prev_close_cache()
+        
+        
+        # WebSocket 전송 테스트 (스트림 처리 시작 시)
+        logger.info("🧪 WebSocket 전송 테스트 - 스트림 처리 시작")
         
         if not self.redis_client:
             logger.info("Redis client not available for realtime streams")
@@ -556,10 +597,10 @@ class DataProcessor:
             # 현재 활성화된 암호화폐 소스 결정
             active_crypto_source = self._get_active_crypto_source()
             logger.info(f"🎯 현재 활성 암호화폐 소스: {active_crypto_source}")
-            
-            # 메시지 처리
-            for stream_name, messages in all_stream_data:
-                # Redis에서 반환되는 스트림 이름이 bytes 타입일 수 있으므로 문자열로 변환
+
+            # 메시지 처리 (스트리밍 방식으로 변경)
+            for stream_name_bytes, messages in all_stream_data:
+                stream_name_str = stream_name_bytes.decode('utf-8') if isinstance(stream_name_bytes, bytes) else stream_name_bytes
                 stream_name_str = stream_name.decode('utf-8') if isinstance(stream_name, bytes) else stream_name
                 group_name = self.realtime_streams[stream_name_str]
                 source_name = stream_name_str.split(':')[0]  # 'binance:realtime' -> 'binance'
@@ -587,7 +628,7 @@ class DataProcessor:
                         logger.info(f"✅ {source_name} 활성 소스, 데이터 처리 진행")
                 
                 for message_id, message_data in messages:
-                    try:
+                    try: # 개별 메시지 처리 루프
                         logger.debug(f"🔍 메시지 {message_id} 처리 시작")
                         logger.debug(f"📋 원본 메시지 데이터: {message_data}")
                         
@@ -703,9 +744,11 @@ class DataProcessor:
                         # Change 계산 (prev_close 조회)
                         change_amount, change_percent = await self._calculate_change(asset_id, price)
                         logger.debug(f"📈 Change 계산 - amount: {change_amount}, percent: {change_percent}")
-                        
-                        quote_data = {
+
+                        # --- 즉시 발행 로직 (Streaming) ---
+                        websocket_data = {
                             "asset_id": asset_id,
+                            "ticker": symbol,
                             "timestamp_utc": timestamp_utc,
                             "price": price,
                             "volume": volume,
@@ -714,34 +757,15 @@ class DataProcessor:
                             "data_source": provider[:32]  # 32자 제한
                         }
                         
-                        # ticker 필드가 있다면 제거 (DB 저장용 데이터에는 ticker 불필요)
-                        if 'ticker' in quote_data:
-                            del quote_data['ticker']
-                            logger.debug("🔧 ticker 필드 제거됨 (DB 저장용)")
+                        # DB 저장용 데이터 준비 (ticker 필드 제외)
+                        db_quote_data = websocket_data.copy()
+                        del db_quote_data['ticker']
                         
-                        logger.debug(f"💾 저장할 데이터: {quote_data}")
-                        records_to_save.append(quote_data)
+                        # DB 저장 목록에 추가
+                        records_to_save.append(db_quote_data)
                         ack_items.append((stream_name_str, group_name, message_id))
-                        logger.debug(f"✅ 메시지 {message_id} 처리 완료")
-                        
-                        # BTCUSDT 데이터 특별 로그
-                        if asset_id == 1 or 'BTCUSDT' in str(quote_data):
-                            logger.info(f"🚀 BTCUSDT 데이터 추가됨: asset_id={asset_id}, price={quote_data.get('price')}")
-                        
-                        # 개별 메시지 처리 후 바로 WebSocket으로 전송
-                        try:
-                            # WebSocket 전송용 데이터에 ticker 필드 추가
-                            websocket_data = quote_data.copy()
-                            websocket_data['ticker'] = symbol  # 프론트엔드에서 필요한 ticker 필드
-                            
-                            from ..core.websocket import broadcast_realtime_quote
-                            await broadcast_realtime_quote(websocket_data)
-                            
-                            logger.info(f"📡 WebSocket 직접 전송 완료: asset_id={asset_id} ${quote_data.get('price')}")
-                            
-                        except Exception as ws_error:
-                            logger.error(f"❌ WebSocket 직접 전송 실패: {ws_error}")
-                        
+                        logger.debug(f"✅ 메시지 {message_id} 처리 완료 및 저장 대기")
+
                     except Exception as e:
                         import traceback
                         logger.error(f"❌ 스트림 메시지 {message_id} 처리 실패: {e}")
@@ -914,36 +938,30 @@ class DataProcessor:
 
     async def _calculate_change(self, asset_id: int, current_price: float) -> tuple:
         """Change 계산 - prev_close 조회 우선순위"""
-        try:
-            # PostgreSQL에서 최근 일봉 데이터에서 전일 종가 조회
-            from ..core.database import get_postgres_db
-            from ..models.asset import OHLCVData
-            from sqlalchemy import desc
-            
-            pg_db = next(get_postgres_db())
+        # 1. 메모리 캐시에서 조회 (가장 빠름)
+        prev_close = self.prev_close_cache.get(asset_id)
+        
+        if prev_close is not None:
             try:
-                # 최근 일봉 데이터에서 전일 종가 조회
-                latest_day_data = pg_db.query(OHLCVData).filter(
-                    OHLCVData.asset_id == asset_id
-                ).order_by(desc(OHLCVData.timestamp_utc)).first()
-                
-                if latest_day_data and latest_day_data.close_price:
-                    prev_close = float(latest_day_data.close_price)
-                    change_amount = current_price - prev_close
-                    change_percent = (change_amount / prev_close) * 100.0 if prev_close != 0 else None
-                    return change_amount, change_percent
-                
-                # 2. 외부 API 백업값 (향후 구현)
-                # TODO: 외부 API에서 prev_close 조회
-                
-                # 3. 없으면 null
+                change_amount = current_price - prev_close
+                change_percent = (change_amount / prev_close) * 100.0 if prev_close != 0 else 0.0
+                return change_amount, change_percent
+            except (TypeError, ValueError):
                 return None, None
-            finally:
-                pg_db.close()
-            
-        except Exception as e:
-            logger.warning(f"Change 계산 실패 asset_id={asset_id}: {e}")
-            return None, None
+
+        # 2. 캐시에 없으면 DB 조회 (폴백) - 이 경우는 거의 발생하지 않아야 함
+        logger.warning(f"캐시 미스: asset_id={asset_id}. DB에서 prev_close 조회 시도.")
+        # 캐시를 즉시 갱신하여 다음 요청부터는 캐시를 사용하도록 함
+        await self._refresh_prev_close_cache()
+        # 갱신된 캐시에서 다시 조회
+        prev_close = self.prev_close_cache.get(asset_id)
+        if prev_close is not None:
+            change_amount = current_price - prev_close
+            change_percent = (change_amount / prev_close) * 100.0 if prev_close != 0 else 0.0
+            return change_amount, change_percent
+
+        # 3. 최종적으로 없으면 null 반환
+        return None, None
 
     async def _bulk_save_realtime_quotes(self, records: List[Dict[str, Any]]) -> bool:
         """실시간 인용 데이터 일괄 저장 - PostgreSQL"""

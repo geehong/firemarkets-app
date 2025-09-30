@@ -7,7 +7,6 @@ from pydantic import BaseModel
 
 from ....core.database import get_postgres_db
 from ....collectors import OHLCVCollector, StockCollector, ETFCollector, WorldAssetsCollector
-from ....core.websocket import scheduler
 
 logger = logging.getLogger(__name__)
 

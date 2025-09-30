@@ -10,7 +10,6 @@ from datetime import datetime
 from ....core.database import get_postgres_db, SessionLocal
 from ....models import SchedulerLog
 from ....models.asset import AppConfiguration
-from ....core.websocket import scheduler
 from ....services.scheduler_service import scheduler_service
 
 logger = logging.getLogger(__name__)
@@ -76,36 +75,13 @@ class SchedulerJobsResponse(BaseModel):
 def get_scheduler_status() -> SchedulerStatus:
     """실제 스케줄러 상태를 반환합니다."""
     try:
-        # 스케줄러가 실제로 시작되었는지 확인
-        # 작업이 등록되어 있고 스케줄러가 실행 중일 때만 Running으로 판단
-        is_running = False
-        
-        if scheduler:
-            # 스케줄러가 시작되었고 실제로 작업이 등록되어 있는지 확인
-            jobs = scheduler.get_jobs()
-            if scheduler.running and jobs:
-                is_running = True
-            else:
-                # 작업이 없거나 스케줄러가 시작되지 않았으면 Stopped
-                is_running = False
-        
-        status = "Running" if is_running else "Stopped"
-        
-        # 작업 수 계산
-        total_jobs = len(scheduler.get_jobs()) if scheduler else 0
-        
-        # 다음 실행 시간 계산
-        next_run = None
-        if scheduler and scheduler.get_jobs():
-            next_job = scheduler.get_jobs()[0]
-            next_run = next_job.next_run_time
-        
+        # 스케줄러가 제거되었으므로 기본 상태 반환
         return SchedulerStatus(
-            isRunning=is_running,
-            status=status,
-            lastRun=None,  # 로그에서 가져올 예정
-            nextRun=next_run,
-            totalJobs=total_jobs,
+            isRunning=False,
+            status="Stopped",
+            lastRun=None,
+            nextRun=None,
+            totalJobs=0,
             completedJobs=0,
             failedJobs=0
         )
@@ -119,20 +95,10 @@ def get_scheduler_status_endpoint(db: Session = Depends(get_postgres_db)):
     try:
         from datetime import datetime, timedelta
         
-        # 실제 스케줄러 상태 확인
+        # 스케줄러가 제거되었으므로 기본값 사용
         is_running = False
-        next_run = None
         total_jobs = 0
-        
-        if scheduler:
-            # 스케줄러가 실제로 실행 중인지 확인
-            is_running = scheduler.running
-            total_jobs = len(scheduler.get_jobs())
-            
-            # 다음 실행 시간 계산
-            if scheduler.get_jobs():
-                next_job = scheduler.get_jobs()[0]
-                next_run = next_job.next_run_time
+        next_run = None
         
         # 현재 시간
         now = datetime.now()
@@ -490,53 +456,7 @@ def get_scheduler_jobs_detail():
     """스케줄러에 등록된 작업들의 상세 정보를 조회합니다."""
     try:
         jobs = []
-        if scheduler:
-            for job in scheduler.get_jobs():
-                # 작업 설명 매핑
-                job_descriptions = {
-                    'periodic_data_fetch': 'OHLCV 가격 데이터 수집',
-                    'onchain_data_fetch': '온체인 메트릭 데이터 수집',
-                    'company_info_fetch': '회사 정보 데이터 수집',
-                    'etf_info_fetch': 'ETF 정보 데이터 수집',
-                    'technical_indicators_fetch': '기술적 지표 데이터 수집',
-                    'crypto_data_fetch': '암호화폐 데이터 수집',
-                    'world_assets_fetch': '세계 자산 데이터 수집'
-                }
-                
-                # 간격 정보 추출
-                interval_info = str(job.trigger)
-                if 'interval' in interval_info:
-                    if 'minutes=' in interval_info:
-                        minutes = interval_info.split('minutes=')[1].split(',')[0]
-                        interval = f"{minutes}분마다"
-                    elif 'hours=' in interval_info:
-                        hours = interval_info.split('hours=')[1].split(',')[0]
-                        interval = f"{hours}시간마다"
-                    elif 'days=' in interval_info:
-                        days = interval_info.split('days=')[1].split(',')[0]
-                        interval = f"{days}일마다"
-                    elif '1 day' in interval_info:
-                        interval = "1일마다"
-                    elif '4:00:00' in interval_info:
-                        interval = "4시간마다"
-                    elif '6:00:00' in interval_info:
-                        interval = "6시간마다"
-                    elif '8:00:00' in interval_info:
-                        interval = "8시간마다"
-                    else:
-                        interval = interval_info.replace('interval[', '').replace(']', '')
-                else:
-                    interval = "정의되지 않음"
-                
-                jobs.append(JobDetail(
-                    job_id=job.id,
-                    job_name=job_descriptions.get(job.id, job.id),
-                    next_run_time=job.next_run_time,
-                    trigger=str(job.trigger),
-                    is_enabled=True,  # 등록된 작업은 모두 활성화된 것으로 간주
-                    description=job_descriptions.get(job.id, f"작업 ID: {job.id}"),
-                    interval=interval
-                ))
+        # 스케줄러가 제거되었으므로 빈 목록 반환
         
         return SchedulerJobsResponse(
             jobs=jobs,

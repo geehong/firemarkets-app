@@ -30,12 +30,20 @@ import {
 } from '@coreui/icons'
 import { CChartBar, CChartLine } from '@coreui/react-chartjs'
 import { DocsExample } from 'src/components'
+import { useRealtimePricesWebSocket } from '../../hooks/useWebSocket'
+import { useRealtimePricesPg, useDelaySparklinePg } from '../../hooks/useRealtime'
 
 import WidgetsBrand from './WidgetsBrand'
 import WidgetsDropdown from './WidgetsDropdown'
 
 const Widgets = () => {
   const random = (min, max) => Math.floor(Math.random() * (max - min + 1) + min)
+  
+  // 실시간 암호화폐 데이터
+  const cryptoSymbols = ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'BNB', 'SOL', 'USDC', 'DOGEUSDT', 'TRX', 'ADAUSDT', 'LINK', 'AVAX', 'WBTC', 'XLM', 'BCHUSDT', 'HBAR', 'LTCUSDT', 'CRO', 'SHIB', 'TON', 'DOTUSDT']
+  const { prices: realtimePrices, connected, loading } = useRealtimePricesWebSocket(cryptoSymbols)
+  const { data: pgPrices, isLoading: pgLoading } = useRealtimePricesPg(cryptoSymbols)
+  const { data: sparklineData, isLoading: sparklineLoading } = useDelaySparklinePg(cryptoSymbols, '15m', 1)
 
   return (
     <CCard className="mb-4">
@@ -46,38 +54,24 @@ const Widgets = () => {
         </DocsExample>
         <DocsExample href="components/widgets/#cwidgetstatsb">
           <CRow xs={{ gutter: 4 }}>
-            <CCol xs={12} sm={6} xl={4} xxl={3}>
-              <CWidgetStatsB
-                progress={{ color: 'success', value: 89.9 }}
-                text="Lorem ipsum dolor sit amet enim."
-                title="Widget title"
-                value="89.9%"
-              />
-            </CCol>
-            <CCol xs={12} sm={6} xl={4} xxl={3}>
-              <CWidgetStatsB
-                value="12.124"
-                title="Widget title"
-                progress={{ color: 'info', value: 89.9 }}
-                text="Lorem ipsum dolor sit amet enim."
-              />
-            </CCol>
-            <CCol xs={12} sm={6} xl={4} xxl={3}>
-              <CWidgetStatsB
-                value="$98.111,00"
-                title="Widget title"
-                progress={{ color: 'warning', value: 89.9 }}
-                text="Lorem ipsum dolor sit amet enim."
-              />
-            </CCol>
-            <CCol xs={12} sm={6} xl={4} xxl={3}>
-              <CWidgetStatsB
-                value="2 TB"
-                title="Widget title"
-                progress={{ color: 'primary', value: 89.9 }}
-                text="Lorem ipsum dolor sit amet enim."
-              />
-            </CCol>
+            {cryptoSymbols.map((symbol, index) => {
+              const coin = realtimePrices[symbol] || {}
+              const name = symbol.replace('USDT', '')
+              const price = coin.price || 0
+              const changePercent = coin.change_percent || 0
+              const progressColor = changePercent > 0 ? 'success' : changePercent < 0 ? 'danger' : 'secondary'
+              
+              return (
+                <CCol key={symbol} xs={12} sm={6} xl={4} xxl={3}>
+                  <CWidgetStatsB
+                    progress={{ color: progressColor, value: Math.abs(changePercent) }}
+                    text={`WebSocket 연결: ${connected ? '연결됨' : '연결 끊김'}`}
+                    title={name}
+                    value={`$${price.toLocaleString()} (${changePercent > 0 ? '+' : ''}${changePercent.toFixed(2)}%)`}
+                  />
+                </CCol>
+              )
+            })}
           </CRow>
         </DocsExample>
         <DocsExample href="components/widgets/#cwidgetstatsb">

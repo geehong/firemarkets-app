@@ -112,6 +112,15 @@ def load_and_set_global_configs():
         "REDIS_DB": REDIS_DB,
         "REDIS_PASSWORD": REDIS_PASSWORD
     })
+
+    # 실시간 스트림 목록 추가
+    GLOBAL_APP_CONFIGS["REALTIME_STREAMS"] = [
+        "finnhub:realtime",
+        "alpaca:realtime",
+        "binance:realtime",
+        "coinbase:realtime",
+        "swissquote:realtime",
+    ]
     
     # ConfigLoader에서 추가 설정 로드
     GLOBAL_APP_CONFIGS.update({
@@ -139,6 +148,9 @@ def load_and_set_global_configs():
     try:
         app_configs = db.query(AppConfiguration).filter(AppConfiguration.is_active == True).all()
         for config in app_configs:
+            # Skip None configs
+            if config is None:
+                continue
             # Handle JSON type configurations (grouped configs)
             if config.data_type == 'json' and config.config_value:
                 try:

@@ -1,9 +1,20 @@
 # app/core/websocket.py
 import socketio
 import time
+import asyncio
+import json
+import redis.asyncio as redis
 from datetime import datetime, timezone
+from app.core.config import GLOBAL_APP_CONFIGS
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.memory import MemoryJobStore
+
+# DataProcessor를 모듈 레벨에서 한 번만 임포트하여 재사용합니다.
+try:
+    from app.services.data_processor import data_processor as processor
+except ImportError:
+    processor = None
+    print("⚠️ [초기화 경고] DataProcessor 모듈을 찾을 수 없습니다. 백업 데이터 기능이 비활성화됩니다.")
 
 # Socket.IO 설정 - 모든 도메인 허용
 
@@ -44,6 +55,13 @@ async def disconnect(sid):
     # 현재 연결된 클라이언트 수 확인
     connected_clients = len(sio.manager.rooms.get('/', {}))
     print(f"👥 남은 연결된 클라이언트 수: {connected_clients}")
+
+# (신규) Broadcaster 서비스로부터 이벤트를 받아 처리
+@sio.event
+async def broadcast_quote(sid, data):
+    """websocket_broadcaster 서비스로부터 받은 데이터를 클라이언트에게 브로드캐스트합니다."""
+    print(f"📢 Broadcaster로부터 수신: {data.get('ticker')}")
+    await broadcast_realtime_quote(data)
 
 # 실시간 가격 데이터 구독 이벤트
 @sio.event
@@ -143,34 +161,22 @@ async def broadcast_realtime_quote(quote_data):
         price = quote_data.get('price')
         ticker = quote_data.get('ticker', f'ASSET_{asset_id}')
         change_percent = quote_data.get('change_percent', 0)
-        data_source = quote_data.get('data_source', 'unknown')
         
-        print(f"📊 Broadcasting realtime quote 시작: asset_id={asset_id} - ${price}")
-        print(f"🔍 브로드캐스트 데이터 상세: {quote_data}")
-        print(f"📈 가격 정보: {ticker} = ${price} ({change_percent:+.2f}%) - 소스: {data_source}")
+        if not ticker:
+            print(f"⚠️ 브로드캐스트 건너뜀: ticker 정보가 없습니다. data={quote_data}")
+            return
+
+        # 로그 출력 시 None 값 안전하게 처리
+        change_percent_str = f"{change_percent:+.2f}%" if change_percent is not None else "N/A"
+
+        # 데이터를 전송할 룸 이름 지정
+        target_room = f"prices_{ticker}"
         
-        # 연결된 클라이언트 수 확인
-        connected_clients = len(sio.manager.rooms.get('/', {}))
-        print(f"👥 현재 연결된 클라이언트 수: {connected_clients}")
+        print(f"🚀 Broadcasting 'realtime_quote' to room '{target_room}': ${price} ({change_percent_str})")
         
-        # 연결된 클라이언트 ID 목록 출력
-        if connected_clients > 0:
-            client_ids = list(sio.manager.rooms.get('/', {}).keys())
-            print(f"🔗 연결된 클라이언트 ID: {client_ids}")
-        else:
-            print("⚠️ 연결된 클라이언트가 없습니다 - 데이터가 전송되지 않습니다")
-        
-        # record_data를 그대로 브로드캐스트 (ticker 필드는 data_processor에서 이미 추가됨)
-        print(f"📡 브로드캐스트 데이터 구성 완료: {quote_data}")
-        
-        # 모든 클라이언트에게 브로드캐스트
-        print(f"🚀 WebSocket emit 시작: realtime_quote 이벤트")
-        await sio.emit('realtime_quote', quote_data)
-        
-        print(f"✅ Broadcasted realtime quote 성공: asset_id={asset_id} - ${price}")
-        print(f"📤 전송된 이벤트: realtime_quote")
-        print(f"📤 전송된 데이터: {quote_data}")
-        print(f"🎯 수신 대상: {connected_clients}명의 클라이언트")
+        # 특정 룸으로만 이벤트 전송
+        await sio.emit('realtime_quote', quote_data, room=target_room)
+        print(f"✅ Broadcasted to room '{target_room}' successfully.")
         
     except Exception as e:
         print(f"❌ Failed to broadcast realtime quote: {e}")
@@ -197,14 +203,11 @@ async def request_backup_data(sid, data):
     print(f"Client {sid} requesting backup data for: {symbols}")
     
     try:
-        # DataProcessor에서 백업 데이터 가져오기 (import 오류 방지)
-        try:
-            from ...services.data_processor import DataProcessor
-            processor = DataProcessor()
+        if processor:
             backup_data = await processor.get_backup_data(symbols)
-        except ImportError as import_error:
-            print(f"⚠️ DataProcessor import 실패: {import_error}")
+        else:
             backup_data = None
+            print("⚠️ DataProcessor 인스턴스가 없어 백업 데이터를 가져올 수 없습니다.")
         
         if backup_data:
             await sio.emit('backup_data_response', {
@@ -214,13 +217,13 @@ async def request_backup_data(sid, data):
             }, to=sid)
         else:
             await sio.emit('backup_data_error', {
-                'message': 'No backup data available',
-                'timestamp': datetime.now(timezone.utc).isoformat()
+                'message': '백업 데이터를 사용할 수 없습니다.',
+                'timestamp': datetime.now(timezone.utc).isoformat() # ISO 문자열로 변환
             }, to=sid)
     except Exception as e:
         await sio.emit('backup_data_error', {
             'message': f'Backup data request failed: {str(e)}',
-            'timestamp': datetime.now(timezone.utc).isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat() # ISO 문자열로 변환
         }, to=sid)
 
 @sio.event
@@ -306,60 +309,3 @@ async def test_hardcoded_data(sid, data):
             print(f"✅ 하드코딩 테스트 데이터 전송 완료: {data_item['ticker']}")
         except Exception as e:
             print(f"❌ 하드코딩 테스트 데이터 전송 실패: {e}")
-
-# 주기적 하드코딩 테스트 데이터 전송 (30초마다)
-def send_periodic_test_data():
-    """주기적으로 하드코딩된 테스트 데이터 전송"""
-    import asyncio
-    
-    async def _send_test_data():
-        test_data = {
-            'asset_id': 1,
-            'ticker': 'BTCUSDT',
-            'price': 50000.0 + (time.time() % 1000),  # 시간에 따라 변하는 가격
-            'change_amount': 1000.0,
-            'change_percent': 2.0,
-            'timestamp_utc': datetime.now(timezone.utc).isoformat(),
-            'data_source': 'periodic_hardcoded_test'
-        }
-        
-        print(f"🔄 주기적 하드코딩 테스트 데이터 전송: {test_data['ticker']} - ${test_data['price']}")
-        await sio.emit('realtime_quote', test_data)
-        print(f"✅ 주기적 하드코딩 테스트 데이터 전송 완료")
-    
-    # 비동기 함수 실행
-    asyncio.create_task(_send_test_data())
-
-# 스케줄러에 주기적 테스트 작업 추가
-try:
-    scheduler.add_job(
-        send_periodic_test_data,
-        'interval',
-        seconds=30,
-        id='hardcoded_test_data',
-        replace_existing=True
-    )
-    print("✅ 주기적 하드코딩 테스트 스케줄러 등록 완료 (30초마다)")
-except Exception as e:
-    print(f"❌ 주기적 하드코딩 테스트 스케줄러 등록 실패: {e}")
-
-# APScheduler 설정 - MemoryJobStore를 사용하되 daemon=True로 설정하여 독립 실행
-from apscheduler.jobstores.memory import MemoryJobStore
-
-jobstores = {
-    'default': MemoryJobStore()
-}
-
-scheduler = BackgroundScheduler(
-    daemon=True,  # 메인 프로세스와 독립적으로 실행
-    jobstores=jobstores,
-    job_defaults={
-        'coalesce': True,
-        'max_instances': 1,
-        'misfire_grace_time': 300,
-    },
-    timezone='UTC'
-)
-
-
-

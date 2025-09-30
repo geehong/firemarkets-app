@@ -14,7 +14,7 @@ export const useRealtime = (symbols = []) => {
       return { symbol: s, payload: null, error: new Error('invalid symbol') }
     }
     try {
-      const res = await axios.get('/realtime/pg/quotes-price', {
+      const res = await axios.get('https://backend.firemarkets.net/api/v1/realtime/pg/quotes-price', {
         params: { asset_identifier: s },
         paramsSerializer,
       })

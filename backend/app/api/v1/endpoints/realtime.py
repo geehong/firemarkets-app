@@ -259,8 +259,12 @@ async def get_realtime_quotes_delay_price_postgres(
                 .limit(100)\
                 .all()
         else:
-            # Ticker로 조회
-            asset = postgres_db.query(Asset).filter(Asset.ticker == asset_identifier).first()
+            # Ticker로 조회 (대소문자 정규화 및 USDT 페어 폴백 지원)
+            ticker = asset_identifier.upper()
+            quotes = []
+
+            # 1) 정확히 동일한 ticker 자산 조회
+            asset = postgres_db.query(Asset).filter(Asset.ticker == ticker).first()
             if asset:
                 quotes = postgres_db.query(RealtimeQuoteTimeDelay)\
                     .filter(RealtimeQuoteTimeDelay.asset_id == asset.asset_id)\
@@ -268,8 +272,18 @@ async def get_realtime_quotes_delay_price_postgres(
                     .order_by(desc(RealtimeQuoteTimeDelay.timestamp_utc))\
                     .limit(100)\
                     .all()
-            else:
-                quotes = []
+
+            # 2) 지연 데이터가 없고, 기본 코인 티커인 경우 USDT 페어로 폴백 시도 (예: DOT -> DOTUSDT)
+            if not quotes and not ticker.endswith("USDT"):
+                usdt_ticker = f"{ticker}USDT"
+                asset_usdt = postgres_db.query(Asset).filter(Asset.ticker == usdt_ticker).first()
+                if asset_usdt:
+                    quotes = postgres_db.query(RealtimeQuoteTimeDelay)\
+                        .filter(RealtimeQuoteTimeDelay.asset_id == asset_usdt.asset_id)\
+                        .filter(RealtimeQuoteTimeDelay.data_interval == data_interval)\
+                        .order_by(desc(RealtimeQuoteTimeDelay.timestamp_utc))\
+                        .limit(100)\
+                        .all()
         
         if not quotes:
             raise HTTPException(status_code=404, detail="No delay quotes found")
