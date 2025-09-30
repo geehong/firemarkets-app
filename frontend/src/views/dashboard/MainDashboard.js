@@ -1,10 +1,12 @@
-import React, { useMemo, useState, useEffect } from 'react'
+import React, { useMemo, useState, useEffect, lazy, Suspense } from 'react'
 import { CRow, CCol, CCard, CCardHeader, CCardBody, CCardTitle } from '@coreui/react'
-import DefaultChart from 'src/components/charts/defaultchart/DefaultChart'
-import HistoryTableDefault from 'src/components/tables/HistoryTableDefault'
+
+// 지연 로딩으로 번들 크기 감소 (TreeMap은 모듈 의존성 때문에 즉시 로드)
 import { PerformanceTreeMapToday } from 'src/components/charts/threemap'
-import RealTimeWidgetsTypeA from 'src/components/widgets/RealTimeWidgetsTypeA'
-import MiniPriceChart from 'src/components/charts/MiniPriceChart'
+const DefaultChart = lazy(() => import('src/components/charts/defaultchart/DefaultChart'))
+const HistoryTableDefault = lazy(() => import('src/components/tables/HistoryTableDefault'))
+const RealTimeWidgetsTypeA = lazy(() => import('src/components/widgets/RealTimeWidgetsTypeA'))
+const MiniPriceChart = lazy(() => import('src/components/charts/MiniPriceChart'))
 
 const MainDashboard = () => {
   const chartGroups = [
@@ -32,11 +34,17 @@ const MainDashboard = () => {
       }, group.delay)
       timers.push(startTimer)
     })
+    
+    // Cleanup function to prevent memory leaks
     return () => {
       timers.forEach((t) => {
-        clearTimeout(t)
-        clearInterval(t)
+        if (t) {
+          clearTimeout(t)
+          clearInterval(t)
+        }
       })
+      // Clear state to free memory
+      setGroupIndices({})
     }
   }, [])
 
@@ -59,7 +67,9 @@ const MainDashboard = () => {
               return (
                 <CCol key={key} xs={12} sm={6} md={6} lg={6} xl={6} className="mb-3">
                   <div style={{ height: '300px', minHeight: '300px', width: '100%' }}>
-                    <MiniPriceChart assetIdentifier={symbol} />
+                    <Suspense fallback={<div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading chart...</div>}>
+                      <MiniPriceChart assetIdentifier={symbol} />
+                    </Suspense>
                   </div>
                 </CCol>
               )
@@ -74,17 +84,13 @@ const MainDashboard = () => {
         </div>
       </div>
 
-      <CCard className="mb-4">
-        <CCardHeader>
-          <CCardTitle className="card-title">Real-time Widgets</CCardTitle>
-        </CCardHeader>
-        <CCardBody>
-          <RealTimeWidgetsTypeA symbols={currentSymbols} />
-        </CCardBody>
-      </CCard>
 
-      <DefaultChart />
-      <HistoryTableDefault />
+      <Suspense fallback={<div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading Chart...</div>}>
+        <DefaultChart />
+      </Suspense>
+      <Suspense fallback={<div style={{ height: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading Table...</div>}>
+        <HistoryTableDefault />
+      </Suspense>
     </>
   )
 }

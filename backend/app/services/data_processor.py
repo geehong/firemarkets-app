@@ -31,6 +31,7 @@ class DataProcessor:
     - Redis Queue에서 배치 데이터 처리
     - 데이터 검증 및 변환
     - PostgreSQL DB 저장
+    - 외부 WebSocket 오류 대응 (다중 백업 소스)
     """
     
     def __init__(self, config_manager=None, redis_queue_manager=None):
@@ -40,6 +41,14 @@ class DataProcessor:
         self.config_manager = config_manager
         self.redis_queue_manager = redis_queue_manager
         
+        # 처리 통계 (먼저 초기화)
+        self.stats = {
+            "realtime_processed": 0,
+            "batch_processed": 0,
+            "errors": 0,
+            "last_processed": None
+        }
+        
         # Redis 설정
         self.redis_host = GLOBAL_APP_CONFIGS.get("REDIS_HOST", "redis")
         self.redis_port = GLOBAL_APP_CONFIGS.get("REDIS_PORT", 6379)
@@ -48,6 +57,18 @@ class DataProcessor:
         
         # 처리 설정 (DB 설정 우선, 기본값 fallback)
         self.batch_size = int(GLOBAL_APP_CONFIGS.get("REALTIME_BATCH_SIZE", 1000))
+        
+        # 외부 WebSocket 오류 대응 설정
+        self.backup_sources = [
+            "binance_websocket",
+            "coinbase_websocket", 
+            "kraken_websocket",
+            "api_fallback"
+        ]
+        self.current_source_index = 0
+        self.source_failures = {}
+        self.max_failures_per_source = 5
+        self.fallback_interval = 30  # 30초마다 백업 소스 시도
         self.processing_interval = float(GLOBAL_APP_CONFIGS.get("REALTIME_PROCESSING_INTERVAL_SECONDS", 1.0))
         self.time_window_minutes = int(GLOBAL_APP_CONFIGS.get("WEBSOCKET_TIME_WINDOW_MINUTES", 15))
         self.stream_block_ms = int(GLOBAL_APP_CONFIGS.get("REALTIME_STREAM_BLOCK_MS", 100))
@@ -84,17 +105,84 @@ class DataProcessor:
         self.source_health_timeout = 30  # 30초 이상 데이터 없으면 비활성으로 간주 (5초 → 30초로 증가)
         self.batch_queue = "batch_data_queue"
         logger.info("DataProcessor 인스턴스 생성 완료")
+    
+    def get_current_source(self):
+        """현재 활성 데이터 소스 반환"""
+        return self.backup_sources[self.current_source_index]
+    
+    def mark_source_failure(self, source):
+        """데이터 소스 실패 기록"""
+        if source not in self.source_failures:
+            self.source_failures[source] = 0
+        self.source_failures[source] += 1
+        logger.warning(f"🚨 데이터 소스 실패: {source} (실패 횟수: {self.source_failures[source]})")
+        
+        # 최대 실패 횟수 초과 시 다음 소스로 전환
+        if self.source_failures[source] >= self.max_failures_per_source:
+            self.switch_to_next_source()
+    
+    def mark_source_success(self, source):
+        """데이터 소스 성공 기록"""
+        if source in self.source_failures:
+            self.source_failures[source] = 0
+        logger.info(f"✅ 데이터 소스 복구: {source}")
+    
+    def switch_to_next_source(self):
+        """다음 백업 소스로 전환"""
+        old_source = self.get_current_source()
+        self.current_source_index = (self.current_source_index + 1) % len(self.backup_sources)
+        new_source = self.get_current_source()
+        logger.warning(f"🔄 데이터 소스 전환: {old_source} → {new_source}")
+        
+        logger.info(f"🔄 데이터 소스 전환: {old_source} → {new_source}")
+    
+    async def get_backup_data(self, symbols):
+        """백업 데이터 소스에서 데이터 가져오기"""
+        current_source = self.get_current_source()
+        
+        try:
+            if current_source == "api_fallback":
+                # API 폴백: REST API로 데이터 가져오기
+                return await self._fetch_from_api_fallback(symbols)
+            else:
+                # API 폴백 소스들
+                return await self._fetch_from_api_fallback(symbols)
+                
+        except Exception as e:
+            logger.error(f"❌ 백업 데이터 소스 실패 ({current_source}): {e}")
+            self.mark_source_failure(current_source)
+            return None
+    
+    async def _fetch_from_api_fallback(self, symbols):
+        """API 폴백으로 데이터 가져오기"""
+        import aiohttp
+        
+        results = {}
+        async with aiohttp.ClientSession() as session:
+            for symbol in symbols:
+                try:
+                    # Binance API 폴백
+                    url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}"
+                    async with session.get(url, timeout=5) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            results[symbol] = {
+                                'price': float(data['lastPrice']),
+                                'change_amount': float(data['priceChange']),
+                                'change_percent': float(data['priceChangePercent']),
+                                'timestamp_utc': datetime.now(timezone.utc),
+                                'data_source': 'binance_api_fallback'
+                            }
+                except Exception as e:
+                    logger.warning(f"API 폴백 실패 ({symbol}): {e}")
+        
+        if results:
+            self.mark_source_success("api_fallback")
+        return results
+    
 
         # Redis Queue Manager (for batch queue + DLQ)
         self.queue_manager = RedisQueueManager(config_manager=config_manager) if config_manager else None
-        
-        # 처리 통계
-        self.stats = {
-            "realtime_processed": 0,
-            "batch_processed": 0,
-            "errors": 0,
-            "last_processed": None
-        }
     
     def _update_source_health(self, source_name: str):
         """소스별 마지막 데이터 수신 시간 업데이트"""
@@ -626,10 +714,33 @@ class DataProcessor:
                             "data_source": provider[:32]  # 32자 제한
                         }
                         
+                        # ticker 필드가 있다면 제거 (DB 저장용 데이터에는 ticker 불필요)
+                        if 'ticker' in quote_data:
+                            del quote_data['ticker']
+                            logger.debug("🔧 ticker 필드 제거됨 (DB 저장용)")
+                        
                         logger.debug(f"💾 저장할 데이터: {quote_data}")
                         records_to_save.append(quote_data)
                         ack_items.append((stream_name_str, group_name, message_id))
                         logger.debug(f"✅ 메시지 {message_id} 처리 완료")
+                        
+                        # BTCUSDT 데이터 특별 로그
+                        if asset_id == 1 or 'BTCUSDT' in str(quote_data):
+                            logger.info(f"🚀 BTCUSDT 데이터 추가됨: asset_id={asset_id}, price={quote_data.get('price')}")
+                        
+                        # 개별 메시지 처리 후 바로 WebSocket으로 전송
+                        try:
+                            # WebSocket 전송용 데이터에 ticker 필드 추가
+                            websocket_data = quote_data.copy()
+                            websocket_data['ticker'] = symbol  # 프론트엔드에서 필요한 ticker 필드
+                            
+                            from ..core.websocket import broadcast_realtime_quote
+                            await broadcast_realtime_quote(websocket_data)
+                            
+                            logger.info(f"📡 WebSocket 직접 전송 완료: asset_id={asset_id} ${quote_data.get('price')}")
+                            
+                        except Exception as ws_error:
+                            logger.error(f"❌ WebSocket 직접 전송 실패: {ws_error}")
                         
                     except Exception as e:
                         import traceback
@@ -896,6 +1007,8 @@ class DataProcessor:
                         postgres_db.execute(stmt)
                         logger.debug(f"✅ PostgreSQL 실시간 레코드 저장/업데이트 완료")
                         
+                        # WebSocket 브로드캐스트는 배치 저장 단계에서 처리됨
+                        
                         # PostgreSQL 시간 윈도우 지연 테이블 저장 (UPSERT)
                         logger.debug("🔄 PostgreSQL 지연 테이블 처리 시작")
                         time_window = self._get_time_window(record_data['timestamp_utc'])
@@ -929,6 +1042,7 @@ class DataProcessor:
                         logger.debug("🔄 PostgreSQL 커밋 실행 중...")
                         postgres_db.commit()
                         logger.debug("✅ PostgreSQL 커밋 완료")
+                        
                         
                         success_count += 1
                         logger.debug(f"✅ 레코드 {i+1} PostgreSQL 저장 성공")

@@ -1,7 +1,7 @@
 import React, { useMemo, useEffect, useState, useRef } from 'react'
 import Highcharts from 'highcharts/highstock'
 import HighchartsReact from 'highcharts-react-official'
-import { useDelaySparklinePg, useRealtimePricesPg } from '../../hooks/useRealtimePricesPg'
+import { useDelaySparklinePg, useRealtimePricesPg } from '../../hooks/useRealtime'
 
 const MiniPriceChart = ({ assetIdentifier = '1' }) => {
   // Fetch delay quotes (15m interval, 1 day)
@@ -15,7 +15,7 @@ const MiniPriceChart = ({ assetIdentifier = '1' }) => {
   const { data: realtimeMap } = useRealtimePricesPg(
     assetIdentifier ? [assetIdentifier] : [],
     'crypto',
-    { refetchInterval: 10000 }
+    { refetchInterval: 60000 } // 60초로 증가하여 API 요청 빈도 50% 감소
   )
 
   // Map quotes -> [timestampMs, close(price)]
@@ -72,6 +72,8 @@ const MiniPriceChart = ({ assetIdentifier = '1' }) => {
 
   // Fixed Y-axis range based on current seriesData (like PgSql example)
   const [yAxisRange, setYAxisRange] = useState({ min: null, max: null })
+  // Fixed X-axis range to prevent chart movement
+  const [xAxisRange, setXAxisRange] = useState({ min: null, max: null })
   useEffect(() => {
     if (!seriesData || seriesData.length === 0) return
     const prices = seriesData.map(p => p[1]).filter(v => typeof v === 'number' && isFinite(v))
@@ -80,10 +82,24 @@ const MiniPriceChart = ({ assetIdentifier = '1' }) => {
     const maxPrice = Math.max(...prices)
     const range = maxPrice - minPrice
     const padding = range * 0.1 // 10% padding
-    setYAxisRange({
+          setYAxisRange({
       min: Number((minPrice - padding).toFixed(4)),
       max: Number((maxPrice + padding).toFixed(4)),
     })
+    
+    // Set X-axis range with padding (like PgSql example)
+    const timestamps = seriesData.map(p => p[0]).filter(v => typeof v === 'number' && isFinite(v))
+    if (timestamps.length > 0) {
+      const minTime = Math.min(...timestamps)
+      const maxTime = Math.max(...timestamps)
+      // Add padding: left 2h, right 4h (like PgSql)
+      const leftPaddingMs = 2 * 60 * 60 * 1000  // 2h
+      const rightPaddingMs = 4 * 60 * 60 * 1000 // 4h
+          setXAxisRange({
+            min: Math.round(minTime - leftPaddingMs),
+            max: Math.round(maxTime + rightPaddingMs)
+      })
+    }
   }, [seriesData])
 
   // Build last point using realtime price when available
@@ -187,13 +203,42 @@ const MiniPriceChart = ({ assetIdentifier = '1' }) => {
     navigator: { enabled: false, height: 0 },
     scrollbar: { enabled: false },
     // Add right padding so the last point and its label have space
-    xAxis: { type: 'datetime', gridLineWidth: 1, gridLineColor: '#333333', labels: { style: { color: '#a0a0a0' } }, overscroll: 14400000, maxPadding: 0.05 },
-        yAxis: {
+    xAxis: {
+        type: 'datetime',
+        gridLineWidth: 1,
+        gridLineColor: '#333333',
+        labels: { style: { color: '#a0a0a0' } },
+      overscroll: 14400000, 
+      maxPadding: 0.05,
+      min: typeof xAxisRange.min === 'number' ? xAxisRange.min : undefined,
+      max: typeof xAxisRange.max === 'number' ? xAxisRange.max : undefined,
+        minPadding: 0,
+      maxPadding: 0,
+      startOnTick: false,
+      endOnTick: false
+    },
+    yAxis: {
       title: { text: 'Close', style: { color: '#a0a0a0' } },
       gridLineColor: '#333333',
       labels: { style: { color: '#a0a0a0' }, formatter: function () { return typeof this.value === 'number' ? this.value.toFixed(2) : this.value } },
       min: typeof yAxisRange.min === 'number' ? yAxisRange.min : undefined,
       max: typeof yAxisRange.max === 'number' ? yAxisRange.max : undefined,
+        minPadding: 0,
+        maxPadding: 0,
+        startOnTick: false,
+        endOnTick: false,
+        lastVisiblePrice: {
+            enabled: true,
+            label: {
+                enabled: true,
+                style: { color: '#000000', fontWeight: 'bold' },
+                backgroundColor: '#00d4ff',
+                borderColor: '#ffffff',
+                borderWidth: 1,
+                borderRadius: 2,
+                padding: 2
+            }
+        }
     },
     // tooltip: { enabled: false },
     plotOptions: {
@@ -267,7 +312,7 @@ const MiniPriceChart = ({ assetIdentifier = '1' }) => {
             },
       },
     ],
-  }), [seriesData, assetIdentifier, lastPointData])
+  }), [seriesData, assetIdentifier, lastPointData, xAxisRange, yAxisRange])
 
   if (isLoading && (!seriesData || seriesData.length === 0)) {
     return (

@@ -2,7 +2,7 @@ import React from 'react'
 import PropTypes from 'prop-types'
 import { CRow, CCol, CWidgetStatsA } from '@coreui/react'
 import { CChartLine } from '@coreui/react-chartjs'
-import { useRealtimePricesPg, useDelaySparklinePg } from '../../hooks/useRealtimePricesPg'
+import { useRealtimePricesPg, useDelaySparklinePg } from '../../hooks/useRealtime'
 
 // 변화율에 따른 배경색 (정방향: -10% 빨강 → 0% 회색 → +10% 초록)
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v))

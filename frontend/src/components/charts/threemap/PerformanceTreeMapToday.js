@@ -7,6 +7,14 @@ import { usePerformanceTreeMapDataFromTreeMap } from '../../../hooks/useTreeMapD
 import 'highcharts/modules/treemap'
 import 'highcharts/modules/coloraxis'
 
+// 모듈 초기화 확인
+if (typeof Highcharts !== 'undefined') {
+  // TreeMap 모듈이 제대로 로드되었는지 확인
+  if (!Highcharts.seriesTypes.treemap) {
+    console.warn('Highcharts treemap module not loaded properly')
+  }
+}
+
 // Highcharts 모듈 등록
 Highcharts.setOptions({
   chart: {

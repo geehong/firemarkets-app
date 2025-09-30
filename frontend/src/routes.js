@@ -52,6 +52,9 @@ const Toasts = React.lazy(() => import('./views/notifications/toasts/Toasts'))
 
 const Widgets = React.lazy(() => import('./views/widgets/Widgets'))
 
+// Test
+const Test01 = React.lazy(() => import('./views/test/Test01'))
+
 const routes = [
   { path: '/', exact: true, name: 'Home' },
   { path: '/dashboard', name: 'Dashboard', element: MainDashboard },
@@ -98,6 +101,7 @@ const routes = [
   { path: '/notifications/modals', name: 'Modals', element: Modals },
   { path: '/notifications/toasts', name: 'Toasts', element: Toasts },
   { path: '/widgets', name: 'Widgets', element: Widgets },
+  { path: '/test/test01', name: 'Test01 - WebSocket 실시간 데이터', element: Test01 },
 ]
 
 export default routes

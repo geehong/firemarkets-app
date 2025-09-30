@@ -116,35 +116,108 @@ async def get_assets_table(
 @router.get("/pg/quotes-price")
 @cache_with_invalidation(expire=10)  # 10초 캐시 (실시간 데이터)
 async def get_realtime_quotes_price_postgres(
-    asset_identifier: str = Query(..., description="Asset ID (integer) or Ticker (string)"),
+    asset_identifier: str = Query(..., description="Asset ID(s) or Ticker(s) - comma separated for multiple"),
     postgres_db: Session = Depends(get_postgres_db)
 ):
     """
     실시간 가격 데이터 조회 (PostgreSQL 전용)
-    asset_identifier: Asset ID (integer) 또는 Ticker (string)
+    asset_identifier: Asset ID (integer) 또는 Ticker (string), 쉼표로 구분하여 다중 조회 가능
     """
     try:
-        from ....services.endpoint.realtime_quotes_service import RealtimeQuotesService
+        from ....models.asset import RealtimeQuote, Asset
+        from sqlalchemy import desc
         
-        # asset_identifier가 숫자인지 확인 (Asset ID)
-        if asset_identifier.isdigit():
-            asset_id = int(asset_identifier)
-            quotes = await RealtimeQuotesService.get_latest_quotes_by_asset_id(postgres_db, asset_id)
+        # 쉼표로 구분된 다중 자산 처리
+        identifiers = [s.strip() for s in asset_identifier.split(',') if s.strip()]
+        
+        if len(identifiers) == 1:
+            # 단일 자산 조회 (기존 로직)
+            identifier = identifiers[0]
+            if identifier.isdigit():
+                asset_id = int(identifier)
+                quotes = postgres_db.query(RealtimeQuote)\
+                    .filter(RealtimeQuote.asset_id == asset_id)\
+                    .order_by(desc(RealtimeQuote.timestamp_utc))\
+                    .limit(1)\
+                    .all()
+            else:
+                # ticker로 조회
+                asset = postgres_db.query(Asset).filter(Asset.ticker == identifier).first()
+                if asset:
+                    quotes = postgres_db.query(RealtimeQuote)\
+                        .filter(RealtimeQuote.asset_id == asset.asset_id)\
+                        .order_by(desc(RealtimeQuote.timestamp_utc))\
+                        .limit(1)\
+                        .all()
+                else:
+                    quotes = []
+            
+            if not quotes:
+                raise HTTPException(status_code=404, detail="No realtime quotes found")
+            
+            quote = quotes[0]
+            return {
+                "asset_id": quote.asset_id,
+                "timestamp_utc": quote.timestamp_utc.isoformat() if quote.timestamp_utc else None,
+                "price": float(quote.price) if quote.price else None,
+                "volume": float(quote.volume) if quote.volume else None,
+                "change_amount": float(quote.change_amount) if quote.change_amount else None,
+                "change_percent": float(quote.change_percent) if quote.change_percent else None,
+                "data_source": quote.data_source,
+                "database": "postgresql"
+            }
         else:
-            # Ticker로 조회
-            quotes = await RealtimeQuotesService.get_latest_quotes_by_ticker(postgres_db, asset_identifier)
+            # 다중 자산 조회
+            results = []
+            for identifier in identifiers:
+                try:
+                    if identifier.isdigit():
+                        asset_id = int(identifier)
+                        quotes = postgres_db.query(RealtimeQuote)\
+                            .filter(RealtimeQuote.asset_id == asset_id)\
+                            .order_by(desc(RealtimeQuote.timestamp_utc))\
+                            .limit(1)\
+                            .all()
+                    else:
+                        # ticker로 조회
+                        asset = postgres_db.query(Asset).filter(Asset.ticker == identifier).first()
+                        if asset:
+                            quotes = postgres_db.query(RealtimeQuote)\
+                                .filter(RealtimeQuote.asset_id == asset.asset_id)\
+                                .order_by(desc(RealtimeQuote.timestamp_utc))\
+                                .limit(1)\
+                                .all()
+                        else:
+                            quotes = []
+                    
+                    if quotes:
+                        quote = quotes[0]
+                        results.append({
+                            "asset_id": quote.asset_id,
+                            "timestamp_utc": quote.timestamp_utc.isoformat() if quote.timestamp_utc else None,
+                            "price": float(quote.price) if quote.price else None,
+                            "volume": float(quote.volume) if quote.volume else None,
+                            "change_amount": float(quote.change_amount) if quote.change_amount else None,
+                            "change_percent": float(quote.change_percent) if quote.change_percent else None,
+                            "data_source": quote.data_source
+                        })
+                except Exception as e:
+                    logger.warning(f"Failed to get quote for {identifier}: {e}")
+                    continue
+            
+            if not results:
+                raise HTTPException(status_code=404, detail="No realtime quotes found for any assets")
+            
+            return {
+                "asset_identifiers": identifiers,
+                "quotes": results,
+                "data_source": "realtime_quotes",
+                "database": "postgresql",
+                "count": len(results)
+            }
         
-        if not quotes:
-            raise HTTPException(status_code=404, detail="No realtime quotes found")
-        
-        return {
-            "asset_identifier": asset_identifier,
-            "quotes": quotes,
-            "data_source": "realtime_quotes",
-            "database": "postgresql",
-            "timestamp": quotes[0].timestamp_utc if quotes else None
-        }
-        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get realtime quotes from PostgreSQL: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get realtime quotes from PostgreSQL: {str(e)}")
@@ -165,7 +238,8 @@ async def get_realtime_quotes_delay_price_postgres(
     data_interval: 데이터 간격 (15m, 30m, 1h, 2h, 3h)
     """
     try:
-        from ....services.endpoint.realtime_quotes_service import RealtimeQuotesService
+        from ....models.asset import RealtimeQuoteTimeDelay, Asset
+        from sqlalchemy import desc
         
         # 지원되는 간격 확인
         supported_intervals = ["15m", "30m", "1h", "2h", "3h"]
@@ -178,14 +252,24 @@ async def get_realtime_quotes_delay_price_postgres(
         # asset_identifier가 숫자인지 확인 (Asset ID)
         if asset_identifier.isdigit():
             asset_id = int(asset_identifier)
-            quotes = await RealtimeQuotesService.get_delay_quotes_by_asset_id(
-                postgres_db, asset_id, data_interval, days=days
-            )
+            quotes = postgres_db.query(RealtimeQuoteTimeDelay)\
+                .filter(RealtimeQuoteTimeDelay.asset_id == asset_id)\
+                .filter(RealtimeQuoteTimeDelay.data_interval == data_interval)\
+                .order_by(desc(RealtimeQuoteTimeDelay.timestamp_utc))\
+                .limit(100)\
+                .all()
         else:
             # Ticker로 조회
-            quotes = await RealtimeQuotesService.get_delay_quotes_by_ticker(
-                postgres_db, asset_identifier, data_interval, days=days
-            )
+            asset = postgres_db.query(Asset).filter(Asset.ticker == asset_identifier).first()
+            if asset:
+                quotes = postgres_db.query(RealtimeQuoteTimeDelay)\
+                    .filter(RealtimeQuoteTimeDelay.asset_id == asset.asset_id)\
+                    .filter(RealtimeQuoteTimeDelay.data_interval == data_interval)\
+                    .order_by(desc(RealtimeQuoteTimeDelay.timestamp_utc))\
+                    .limit(100)\
+                    .all()
+            else:
+                quotes = []
         
         if not quotes:
             raise HTTPException(status_code=404, detail="No delay quotes found")

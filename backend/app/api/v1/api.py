@@ -16,8 +16,7 @@ from .endpoints import (
     admin,
     metrics,
     open_interest,
-    realtime,
-    realtime_quotes
+    realtime
 )
 from .external_apis import router as external_apis_router
 from app.schemas.common import ApiV1RootResponse
@@ -57,7 +56,6 @@ api_router.include_router(admin.router, tags=["admin"])
 api_router.include_router(metrics.router, tags=["metrics"])
 api_router.include_router(open_interest.router, tags=["open-interest"])
 api_router.include_router(realtime.router, prefix="/realtime", tags=["realtime"])
-api_router.include_router(realtime_quotes.router, prefix="/realtime-quotes", tags=["realtime-quotes"])
 
 # External APIs router
 api_router.include_router(external_apis_router, tags=["external-apis"])

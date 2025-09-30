@@ -13,6 +13,7 @@ import {
   cilPuzzle,
   cilSpeedometer,
   cilStar,
+  cilBug,
 } from '@coreui/icons'
 import { CNavGroup, CNavItem, CNavTitle } from '@coreui/react'
 
@@ -450,6 +451,18 @@ const _nav = [
       color: 'info',
       text: 'NEW',
     },
+  },
+  {
+    component: CNavGroup,
+    name: '테스트',
+    icon: <CIcon icon={cilBug} customClassName="nav-icon" />,
+    items: [
+      {
+        component: CNavItem,
+        name: 'Test01 - WebSocket 실시간 데이터',
+        to: '/test/test01',
+      },
+    ],
   },
   {
     component: CNavTitle,
