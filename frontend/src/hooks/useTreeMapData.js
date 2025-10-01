@@ -208,8 +208,8 @@ const usePerformanceTreeMapDataFromTreeMap = () => {
     setError(null)
 
     try {
-      console.log('[PerformanceTreeMap] fetching /api/v1/treemap/live')
-      const response = await axios.get('/api/v1/treemap/live')
+      console.log('[PerformanceTreeMap] fetching /api/v1/assets/treemap/live')
+      const response = await axios.get('/api/v1/assets/treemap/live')
 
       console.log('[PerformanceTreeMap] status:', response.status)
       console.log('[PerformanceTreeMap] total_count:', response.data?.total_count)

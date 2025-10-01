@@ -127,6 +127,13 @@ export const useRealtimePricesPg = (symbols = [], assetType = 'crypto', options 
               try {
                 const r = await realtimeAPI.getQuotesPricePg(sym);
                 const payload = r?.data || {};
+                
+                // Handle "No delay quotes found" or similar error responses gracefully
+                if (payload.detail === "No delay quotes found" || payload.detail) {
+                  console.info(`No realtime data found for ${sym}: ${payload.detail}`);
+                  return; // Skip this symbol
+                }
+                
                 if (Array.isArray(payload.quotes) && payload.quotes.length > 0) {
                   results[sym] = payload.quotes[0];
                 } else if (payload.price != null) {
@@ -189,6 +196,14 @@ export const useDelaySparklinePg = (
             try {
               const r = await realtimeAPI.getQuotesDelayPricePg(sym, dataInterval, safeDays);
               const payload = r?.data || {};
+              
+              // Handle "No delay quotes found" response gracefully
+              if (payload.detail === "No delay quotes found") {
+                console.info(`No delay quotes found for ${sym}, returning empty array`);
+                out[sym] = [];
+                return;
+              }
+              
               let points = [];
               if (Array.isArray(payload.quotes)) points = payload.quotes;
               else if (Array.isArray(payload.data)) points = payload.data;
@@ -196,6 +211,7 @@ export const useDelaySparklinePg = (
               out[sym] = Array.isArray(points) ? points : [];
             } catch (e) {
               console.warn(`PostgreSQL delay sparkline fetch failed for ${sym}:`, e);
+              out[sym] = []; // Ensure we always have an empty array as fallback
             }
           })
         );

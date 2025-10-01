@@ -1,36 +1,15 @@
 import React, { useMemo, useEffect, useState, useRef } from 'react'
 import Highcharts from 'highcharts/highstock'
 import HighchartsReact from 'highcharts-react-official'
-import { useDelaySparklinePg, useRealtimePricesPg } from '../../hooks/useRealtime'
-import { useRealtimePricesWebSocket } from '../../hooks/useWebSocket'
 
-const MiniPriceChart = ({ assetIdentifier = 'BTCUSDT' }) => {
-  // Fetch delay quotes (15m interval, 1 day)
-  const { data: delayData, isLoading } = useDelaySparklinePg(
-    assetIdentifier ? [assetIdentifier] : [],
-    '15m',
-    1
-  )
-
-  // WebSocket 실시간 가격 (우선 사용), API는 폴백으로만 사용
-  // WebSocket 구독 심볼: 기본 심볼이 USDT로 끝나지 않으면 USDT 페어도 같이 구독
-  const wsSymbols = useMemo(() => {
-    if (!assetIdentifier) return []
-    const up = String(assetIdentifier).toUpperCase()
-    return up.endsWith('USDT') ? [up] : [up, `${up}USDT`]
-  }, [assetIdentifier])
-
-  const { prices: wsPrices, connected: wsConnected } = useRealtimePricesWebSocket(wsSymbols)
-  // API 폴백 (낮은 빈도)
-  const { data: realtimeMap } = useRealtimePricesPg(
-    assetIdentifier ? [assetIdentifier] : [],
-    'crypto',
-    { refetchInterval: 120000 }
-  )
+const MiniPriceChart = ({ assetIdentifier = 'BTCUSDT', delayData, wsPrices }) => {
+  // isLoading 상태는 이제 MainDashboard에서 관리되어야 하지만,
+  // 여기서는 delayData 유무로 로딩 상태를 판단합니다.
+  const isLoading = !delayData;
 
   // Map quotes -> [timestampMs, close(price)]
   const seriesData = useMemo(() => {
-    const quotes = delayData?.[assetIdentifier] || []
+    const quotes = delayData || []
     if (!Array.isArray(quotes) || quotes.length === 0) return []
 
     // Deduplicate by timestamp: prefer coinbase > binance > others
@@ -61,121 +40,80 @@ const MiniPriceChart = ({ assetIdentifier = 'BTCUSDT' }) => {
     return points
   }, [delayData, assetIdentifier])
 
-  // Debug: show first 10 and last 10 points actually used in the chart
+  // API 요청 로그 (지연 데이터만)
   useEffect(() => {
-    if (!seriesData || seriesData.length === 0) return
-    const head = seriesData.slice(0, 10)
-    const tail = seriesData.slice(-10)
-    console.log('[MiniPriceChart] seriesData head(10):', head)
-    console.log('[MiniPriceChart] seriesData tail(10):', tail)
-    // Additionally log duplicate resolution stats
-    const allTs = (delayData?.[assetIdentifier] || [])
-      .map((q) => q?.timestamp_utc || q?.timestamp)
-      .filter(Boolean)
-    const uniqueCount = new Set(allTs).size
-    console.log('[MiniPriceChart] dedup stats:', {
-      total: allTs.length,
-      unique: uniqueCount,
-      removed: allTs.length - uniqueCount,
+    console.log(`[MiniPriceChart] ${assetIdentifier} API 요청 상태:`, {
+      delayData: delayData ? Object.keys(delayData) : 'No delay data'
     })
-  }, [seriesData])
+  }, [assetIdentifier, delayData])
 
-  // Fixed Y-axis range based on current seriesData (like PgSql example)
+  const chartRef = useRef(null)
+  const [lastPointData, setLastPointData] = useState([])
   const [yAxisRange, setYAxisRange] = useState({ min: null, max: null })
-  // Fixed X-axis range to prevent chart movement
-  const [xAxisRange, setXAxisRange] = useState({ min: null, max: null })
-  useEffect(() => {
-    if (!seriesData || seriesData.length === 0) return
-    const prices = seriesData.map(p => p[1]).filter(v => typeof v === 'number' && isFinite(v))
-    if (prices.length === 0) return
-    const minPrice = Math.min(...prices)
-    const maxPrice = Math.max(...prices)
-    const range = maxPrice - minPrice
-    const padding = range * 0.1 // 10% padding
-          setYAxisRange({
-      min: Number((minPrice - padding).toFixed(4)),
-      max: Number((maxPrice + padding).toFixed(4)),
-    })
-    
-    // Set X-axis range with padding (like PgSql example)
-    const timestamps = seriesData.map(p => p[0]).filter(v => typeof v === 'number' && isFinite(v))
-    if (timestamps.length > 0) {
-      const minTime = Math.min(...timestamps)
-      const maxTime = Math.max(...timestamps)
-      // Add padding: left 2h, right 4h (like PgSql)
-      const leftPaddingMs = 2 * 60 * 60 * 1000  // 2h
-      const rightPaddingMs = 4 * 60 * 60 * 1000 // 4h
-          setXAxisRange({
-            min: Math.round(minTime - leftPaddingMs),
-            max: Math.round(maxTime + rightPaddingMs)
-      })
-    }
-  }, [seriesData])
+  const [isYAxisInitialized, setIsYAxisInitialized] = useState(false)
 
-  // 마지막 포인트: WebSocket 가격 우선, 없으면 마지막 종가
-  const [lastAnimatedY, setLastAnimatedY] = useState(null)
-  const baseYRef = useRef(null)
-
-  // 기준 가격 갱신: WebSocket 가격 우선, 없으면 API, 최종적으로 마지막 종가
+  // temp_debug.js 방식으로 마지막 포인트 업데이트
   useEffect(() => {
-    if (!seriesData || seriesData.length === 0) return
-    // WebSocket 가격: 정확 키 우선, 없으면 USDT 페어 키 참조
-    const upId = String(assetIdentifier).toUpperCase()
-    const wsPriceRaw = wsPrices?.[upId]?.price ?? wsPrices?.[`${upId}USDT`]?.price
-    const wsPrice = typeof wsPriceRaw !== 'undefined' ? Number(wsPriceRaw) : undefined
-    const apiPriceRaw = realtimeMap?.[upId]?.price ?? realtimeMap?.[`${upId}USDT`]?.price
-    const apiPrice = typeof apiPriceRaw !== 'undefined' ? Number(apiPriceRaw) : undefined
-    const close = seriesData[seriesData.length - 1][1]
-    const base = (typeof wsPrice === 'number' && isFinite(wsPrice))
-      ? wsPrice
-      : (typeof apiPrice === 'number' && isFinite(apiPrice))
-        ? apiPrice
-        : close
-    baseYRef.current = base
-    setLastAnimatedY((prev) => (prev == null ? base : prev))
-  }, [wsPrices, realtimeMap, seriesData, assetIdentifier])
+    if (!seriesData || seriesData.length === 0) return;
 
-  // WebSocket 업데이트 시 마지막 포인트를 즉시 갱신 (임의 변동 제거)
-  useEffect(() => {
-    if (!seriesData || seriesData.length === 0) return
-    const lastClose = seriesData[seriesData.length - 1][1]
+    const n = seriesData.length;
+    const lastClose = seriesData[n - 1][1];
+    const prevTs = n > 1 ? seriesData[n - 2][0] : seriesData[n - 1][0];
+    const prevY = n > 1 ? seriesData[n - 2][1] : seriesData[n - 1][1];
+    const lastTs = seriesData[n - 1][0];
+    const nowTs = Date.now(); // 마지막 포인트를 현재 시간으로 설정
+
     const upId2 = String(assetIdentifier).toUpperCase()
-    const wsPriceRaw = wsPrices?.[upId2]?.price ?? wsPrices?.[`${upId2}USDT`] ?.price
+    const wsPriceRaw = wsPrices?.[upId2]?.price ?? wsPrices?.[`${upId2}USDT`]?.price
     const wsPrice = typeof wsPriceRaw !== 'undefined' ? Number(wsPriceRaw) : undefined
-    const apiPriceRaw = realtimeMap?.[upId2]?.price ?? realtimeMap?.[`${upId2}USDT`]?.price
-    const apiPrice = typeof apiPriceRaw !== 'undefined' ? Number(apiPriceRaw) : undefined
+    
+
+    
+    // 우선순위: WebSocket > 마지막 가격
     const next = (typeof wsPrice === 'number' && isFinite(wsPrice))
       ? wsPrice
-      : (typeof apiPrice === 'number' && isFinite(apiPrice))
-        ? apiPrice
-        : lastClose
-    setLastAnimatedY(next)
-  }, [wsPrices, realtimeMap, seriesData, assetIdentifier])
+      : lastClose
 
-  const lastPointData = useMemo(() => {
-    if (!seriesData || seriesData.length === 0) return []
-    const n = seriesData.length
-    const prevTs = n > 1 ? seriesData[n - 2][0] : seriesData[n - 1][0]
-    const prevY = n > 1 ? seriesData[n - 2][1] : seriesData[n - 1][1]
-    const lastTs = seriesData[n - 1][0]
-    const y = (typeof lastAnimatedY === 'number' && isFinite(lastAnimatedY)) ? lastAnimatedY : seriesData[n - 1][1]
-    const change = y - prevY
+    const change = next - prevY
     const changePercent = prevY !== 0 ? (change / prevY) * 100 : 0
     const isUp = change >= 0
     const upColor = '#18c58f'
     const downColor = '#ff4d4f'
-    // Connector point: no marker/label
-    const p1 = { x: prevTs, y: prevY, marker: { enabled: false }, dataLabels: { enabled: false }, color: isUp ? upColor : downColor }
-    // Last point with custom payload for label formatter
-    const p2 = {
-      x: lastTs,
-      y,
+
+    // 가중치 적용: 움직임을 30% 더 크게 (1.3배)
+    const weightedChange = change * 1.3
+    const weightedNext = prevY + weightedChange
+
+    // --- Y축 범위 초기 설정 (한 번만) ---
+    if (!isYAxisInitialized) {
+      // 초기 데이터 기준으로 Y축 범위 설정 (PgSql 방식과 동일)
+      const prices = seriesData.map(p => p[1]);
+      const minPrice = Math.min(...prices);
+      const maxPrice = Math.max(...prices);
+      const priceRange = maxPrice - minPrice;
+      const padding = priceRange * 0.1; // 10% 패딩 (PgSql과 동일)
+      
+      setYAxisRange({
+        min: parseFloat((minPrice - padding).toFixed(4)),
+        max: parseFloat((maxPrice + padding).toFixed(4))
+      });
+      setIsYAxisInitialized(true);
+    }
+
+    // React 상태를 업데이트하여 차트 리렌더링을 유도
+    const newLastPoint = {
+      x: nowTs, // X축을 현재 시간으로 업데이트
+      y: weightedNext, // 가중치가 적용된 가격 사용 (30% 증폭)
       color: isUp ? upColor : downColor,
       marker: { enabled: true, fillColor: isUp ? upColor : downColor, lineColor: '#ffffff', lineWidth: 2, radius: 5 },
-      custom: { prevY, change, changePercent, isUp }
-    }
-    return [p1, p2]
-  }, [seriesData, lastAnimatedY])
+      custom: { prevY, change: weightedChange, changePercent: changePercent * 1.3, isUp }
+    };
+    
+    // 연결선 시작점을 마지막 데이터 포인트로 설정
+    const p1 = { x: lastTs, y: lastClose, marker: { enabled: false }, dataLabels: { enabled: false }, color: isUp ? upColor : downColor };
+    setLastPointData([p1, newLastPoint]);
+
+  }, [wsPrices, seriesData, assetIdentifier]);
 
   // Simple name mapping for title display
   const tickerNames = {
@@ -197,6 +135,28 @@ const MiniPriceChart = ({ assetIdentifier = 'BTCUSDT' }) => {
   }
   const titleText = `${tickerNames[assetIdentifier] || assetIdentifier} (${assetIdentifier})`
 
+  // X축 범위는 초기에 한 번만 설정하여 좌우 이동 방지 (PgSql 방식과 동일)
+  const [xAxisRange, setXAxisRange] = useState({ min: null, max: null })
+  const [isXAxisInitialized, setIsXAxisInitialized] = useState(false)
+  
+  useEffect(() => {
+    if (!seriesData || seriesData.length === 0 || isXAxisInitialized) return;
+    
+    const timestamps = seriesData.map(p => p[0]);
+    const minTime = Math.min(...timestamps);
+    const maxTime = Math.max(...timestamps);
+    
+    // 좌/우 패딩: 좌 2시간, 우 4시간 (PgSql과 동일)
+    const leftPaddingMs = 2 * 60 * 60 * 1000;  // 2h
+    const rightPaddingMs = 4 * 60 * 60 * 1000; // 4h
+    
+    setXAxisRange({
+      min: Math.round(minTime - leftPaddingMs),
+      max: Math.round(maxTime + rightPaddingMs)
+    });
+    setIsXAxisInitialized(true);
+  }, [seriesData, isXAxisInitialized, assetIdentifier]);
+
   const options = useMemo(() => ({
     title: { text: titleText, style: { color: '#ffffff' } },
     chart: { height: 300, backgroundColor: '#1a1a1a', style: { fontFamily: 'Inter, sans-serif' }, animation: false },
@@ -214,10 +174,9 @@ const MiniPriceChart = ({ assetIdentifier = 'BTCUSDT' }) => {
         gridLineColor: '#333333',
         labels: { style: { color: '#a0a0a0' } },
       overscroll: 14400000, 
-      maxPadding: 0.05,
-      min: typeof xAxisRange.min === 'number' ? xAxisRange.min : undefined,
-      max: typeof xAxisRange.max === 'number' ? xAxisRange.max : undefined,
-        minPadding: 0,
+      min: xAxisRange.min,
+      max: xAxisRange.max,
+      minPadding: 0,
       maxPadding: 0,
       startOnTick: false,
       endOnTick: false
@@ -226,8 +185,8 @@ const MiniPriceChart = ({ assetIdentifier = 'BTCUSDT' }) => {
       title: { text: 'Close', style: { color: '#a0a0a0' } },
       gridLineColor: '#333333',
       labels: { style: { color: '#a0a0a0' }, formatter: function () { return typeof this.value === 'number' ? this.value.toFixed(2) : this.value } },
-      min: typeof yAxisRange.min === 'number' ? yAxisRange.min : undefined,
-      max: typeof yAxisRange.max === 'number' ? yAxisRange.max : undefined,
+      min: yAxisRange.min,
+      max: yAxisRange.max,
         minPadding: 0,
         maxPadding: 0,
         startOnTick: false,
@@ -317,9 +276,9 @@ const MiniPriceChart = ({ assetIdentifier = 'BTCUSDT' }) => {
             },
       },
     ],
-  }), [seriesData, assetIdentifier, lastPointData, xAxisRange, yAxisRange])
+  }), [seriesData, assetIdentifier, lastPointData, xAxisRange, yAxisRange]);
 
-  if (isLoading && (!seriesData || seriesData.length === 0)) {
+  if (isLoading || !seriesData || seriesData.length === 0) {
     return (
       <div style={{ 
         display: 'flex', 
@@ -328,7 +287,7 @@ const MiniPriceChart = ({ assetIdentifier = 'BTCUSDT' }) => {
         height: '300px',
         width: '100%'
       }}>
-        <div>Loading delay quotes...</div>
+        <div>Loading {assetIdentifier} chart...</div>
       </div>
     )
   }
@@ -350,6 +309,7 @@ const MiniPriceChart = ({ assetIdentifier = 'BTCUSDT' }) => {
         highcharts={Highcharts}
         constructorType={'stockChart'}
         options={options}
+        ref={chartRef}
       />
     </>
   )

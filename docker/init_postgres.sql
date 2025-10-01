@@ -1,133 +1,166 @@
--- PostgreSQL 초기화 스크립트
--- FireMarkets 프로젝트용 PostgreSQL 스키마
+-- PostgreSQL 동적 메뉴 시스템 추가 스크립트
+-- FireMarkets 프로젝트용 - 기존 테이블은 건드리지 않고 메뉴 시스템만 추가
 
--- 기본 확장 기능 활성화
+-- 기본 확장 기능 활성화 (이미 존재할 수 있음)
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
--- asset_types 테이블 생성
-CREATE TABLE IF NOT EXISTS asset_types (
-    asset_type_id SERIAL PRIMARY KEY,
-    type_name VARCHAR(100) NOT NULL,
-    description TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- asset_types 데이터 삽입
-INSERT INTO asset_types (asset_type_id, type_name, description, created_at, updated_at) VALUES
-(1, 'Indices', 'Statistical measures that track the performance of a group of assets, such as stocks or bonds, representing a particular market or sector. Key Features: Benchmarking, passive investment, examples include S&P 500, NASDAQ, KOSPI.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(2, 'Stocks', 'Shares of ownership in a company that represent a claim on part of the company''s assets and earnings. Key Features: Voting rights, dividend potential, capital appreciation, traded on stock exchanges.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(3, 'Commodities', 'Basic raw materials or primary agricultural products that can be bought and sold, such as gold, oil, wheat, and coffee. Key Features: Standardized quality, fungible (interchangeable), traded in large quantities, price volatility based on supply/demand.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(4, 'Currencies', 'Legal tender issued by governments that serves as a medium of exchange, store of value, and unit of account. Key Features: Exchange rates fluctuate, traded in pairs (EUR/USD), influenced by economic policies and market sentiment.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(5, 'ETFs', 'Investment funds that trade on stock exchanges like individual stocks but hold a diversified portfolio of assets. Key Features: Instant diversification, low fees, real-time trading, tracks indexes or specific sectors.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(6, 'Bonds', 'Debt securities where investors loan money to entities (governments or corporations) for a defined period at fixed interest rates. Key Features: Regular interest payments, principal repayment at maturity, generally lower risk than stocks.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(7, 'Funds', 'Investment vehicles that pool money from multiple investors to purchase a diversified portfolio of securities. Key Features: Professional management, diversification, various types (mutual funds, hedge funds), shared costs and risks.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(8, 'Crypto', 'Digital or virtual currencies secured by cryptography and typically based on blockchain technology. Key Features: Decentralized, high volatility, 24/7 trading, no central authority, examples include Bitcoin and Ethereum.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-ON CONFLICT (asset_type_id) DO NOTHING;
-
--- assets 테이블 생성
-CREATE TABLE IF NOT EXISTS assets (
-    asset_id SERIAL PRIMARY KEY,
-    ticker VARCHAR(50) NOT NULL,
-    asset_type_id INTEGER NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    exchange VARCHAR(100),
-    currency VARCHAR(10),
+-- >> START: Dynamic Menu System Setup
+-- ------------------------------------------------------------------
+-- 1. 메뉴 구조를 저장할 테이블
+CREATE TABLE IF NOT EXISTS menus (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    path VARCHAR(255),
+    icon VARCHAR(100),
+    parent_id INTEGER REFERENCES menus(id) ON DELETE CASCADE,
+    "order" INTEGER DEFAULT 0,
     is_active BOOLEAN DEFAULT TRUE,
-    description TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    data_source VARCHAR(50) NOT NULL DEFAULT 'fmp',
-    collection_settings JSONB,
-    last_collections JSONB,
-    CONSTRAINT fk_assets_asset_type FOREIGN KEY (asset_type_id) REFERENCES asset_types(asset_type_id) ON DELETE RESTRICT
+    -- 'static' 또는 'dynamic'으로 메뉴 항목의 출처를 구분
+    source_type VARCHAR(20) DEFAULT 'static' NOT NULL,
+    -- JSON 컬럼: 메뉴의 추가 정보 (설명, 권한, 설정 등)
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
--- assets 테이블에 UNIQUE 제약 조건 추가
-ALTER TABLE assets ADD CONSTRAINT uq_assets_ticker UNIQUE (ticker);
-
--- assets 데이터 삽입 (일부 샘플 데이터)
-INSERT INTO assets (asset_id, ticker, asset_type_id, name, exchange, currency, is_active, description, created_at, updated_at, data_source, collection_settings, last_collections) VALUES
-(1, 'BTCUSDT', 8, 'Bitcoin', 'Binance', 'USDT', TRUE, 'The pioneering decentralized digital currency, operating on a peer-to-peer network.', '2025-06-25 02:21:21', '2025-09-05 08:32:18', 'binance', '{"data_source": "binance", "collect_price": true, "collect_onchain": true, "collect_estimates": false, "collect_financials": false, "collect_assets_info": false, "collect_crypto_data": true, "collect_technical_indicators": false}', '{"crypto_data": "2025-08-28T13:23:45.517925"}'),
-(2, 'ETHUSDT', 8, 'Ethereum', 'Binance', 'USDT', TRUE, 'A decentralized open-source blockchain system that features its own cryptocurrency, Ether.', '2025-06-25 02:21:21', '2025-09-05 04:16:29', 'binance', '{"data_source": "binance", "collect_price": true, "collect_onchain": true, "collect_estimates": false, "collect_financials": false, "collect_assets_info": false, "collect_crypto_data": true, "collect_technical_indicators": false}', '{"crypto_data": "2025-08-29T14:11:14.196706"}'),
-(3, 'GCUSD', 3, 'Gold Spot (USD)', 'COMEX', 'USD', TRUE, 'A precious metal, commonly used as an investment.', '2025-06-25 02:21:21', '2025-09-05 08:31:24', 'fmp', '{"data_source": "fmp", "collect_price": true, "collect_onchain": false, "collect_estimates": false, "collect_financials": false, "collect_assets_info": false, "collect_technical_indicators": false}', NULL),
-(4, 'SPY', 5, 'SPDR S&P 500 ETF Trust', 'AMEX', 'USD', TRUE, 'An exchange-traded fund that tracks the S&P 500 Index.', '2025-06-25 02:21:21', '2025-09-07 01:30:26', 'alpha_vantage', '{"data_source": "tiingo", "collect_price": true, "collect_onchain": false, "collect_estimates": false, "collect_financials": false, "collect_assets_info": true, "collect_company_info": false, "collect_technical_indicators": false}', NULL),
-(5, 'MSFT', 2, 'Microsoft Corporation', 'NASDAQ', 'USD', TRUE, 'Industry: Software - Infrastructure', '2025-06-25 02:21:21', '2025-09-05 04:15:45', 'tiingo', '{"data_source": "tiingo", "collect_price": true, "collect_onchain": false, "collect_estimates": true, "collect_financials": true, "collect_assets_info": true, "collect_company_info": false, "collect_technical_indicators": false}', NULL)
-ON CONFLICT (asset_id) DO NOTHING;
-
--- OHLCV 데이터 테이블 생성
-CREATE TABLE IF NOT EXISTS ohlcv_day_data (
-    ohlcv_id SERIAL PRIMARY KEY,
-    asset_id INTEGER NOT NULL,
-    timestamp_utc TIMESTAMP NOT NULL,
-    data_interval VARCHAR(10),
-    open_price DECIMAL(24, 10) NOT NULL,
-    high_price DECIMAL(24, 10) NOT NULL,
-    low_price DECIMAL(24, 10) NOT NULL,
-    close_price DECIMAL(24, 10) NOT NULL,
-    volume BIGINT,
-    adjusted_close DECIMAL(24, 10),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_ohlcv_day_asset FOREIGN KEY (asset_id) REFERENCES assets(asset_id) ON DELETE CASCADE
-);
-
--- OHLCV 인트라데이 데이터 테이블 생성
-CREATE TABLE IF NOT EXISTS ohlcv_intraday_data (
-    ohlcv_id SERIAL PRIMARY KEY,
-    asset_id INTEGER NOT NULL,
-    timestamp_utc TIMESTAMP NOT NULL,
-    data_interval VARCHAR(10),
-    open_price DECIMAL(24, 10) NOT NULL,
-    high_price DECIMAL(24, 10) NOT NULL,
-    low_price DECIMAL(24, 10) NOT NULL,
-    close_price DECIMAL(24, 10) NOT NULL,
-    volume BIGINT,
-    adjusted_close DECIMAL(24, 10),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_ohlcv_intraday_asset FOREIGN KEY (asset_id) REFERENCES assets(asset_id) ON DELETE CASCADE
-);
-
--- UNIQUE 제약 조건 추가 (UPSERT를 위해 필수)
-ALTER TABLE ohlcv_day_data ADD CONSTRAINT uq_ohlcv_day_data 
-    UNIQUE (asset_id, timestamp_utc, data_interval);
-
-ALTER TABLE ohlcv_intraday_data ADD CONSTRAINT uq_ohlcv_intraday_data 
-    UNIQUE (asset_id, timestamp_utc, data_interval);
-
--- 인덱스 생성
-CREATE INDEX IF NOT EXISTS idx_ohlcv_day_asset ON ohlcv_day_data(asset_id);
-CREATE INDEX IF NOT EXISTS idx_ohlcv_day_asset_date ON ohlcv_day_data(asset_id, timestamp_utc);
-CREATE INDEX IF NOT EXISTS idx_ohlcv_day_timestamp ON ohlcv_day_data(timestamp_utc);
-
-CREATE INDEX IF NOT EXISTS idx_ohlcv_intraday_asset ON ohlcv_intraday_data(asset_id);
-CREATE INDEX IF NOT EXISTS idx_ohlcv_intraday_asset_date ON ohlcv_intraday_data(asset_id, timestamp_utc);
-CREATE INDEX IF NOT EXISTS idx_ohlcv_intraday_timestamp ON ohlcv_intraday_data(timestamp_utc);
-
--- 업데이트 시간 자동 갱신을 위한 트리거 함수
-CREATE OR REPLACE FUNCTION update_updated_at_column()
+-- 2. 메뉴 업데이트 시각을 기록할 트리거 함수
+CREATE OR REPLACE FUNCTION update_menus_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.updated_at = CURRENT_TIMESTAMP;
+    NEW.updated_at = NOW();
     RETURN NEW;
 END;
 $$ language 'plpgsql';
 
--- 트리거 생성
-DROP TRIGGER IF EXISTS update_ohlcv_day_data_updated_at ON ohlcv_day_data;
-CREATE TRIGGER update_ohlcv_day_data_updated_at 
-    BEFORE UPDATE ON ohlcv_day_data 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- 3. 트리거 적용
+DROP TRIGGER IF EXISTS trg_update_menus_updated_at ON menus;
+CREATE TRIGGER trg_update_menus_updated_at
+    BEFORE UPDATE ON menus
+    FOR EACH ROW
+    EXECUTE FUNCTION update_menus_updated_at();
 
-DROP TRIGGER IF EXISTS update_ohlcv_intraday_data_updated_at ON ohlcv_intraday_data;
-CREATE TRIGGER update_ohlcv_intraday_data_updated_at 
-    BEFORE UPDATE ON ohlcv_intraday_data 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- 4. 동적 메뉴를 업데이트하는 저장 프로시저
+CREATE OR REPLACE FUNCTION refresh_dynamic_menus()
+RETURNS void AS $$
+DECLARE
+    assets_menu_id INT;
+    onchain_menu_id INT;
+    map_menu_id INT;
+    asset_type_record RECORD;
+    onchain_category_record RECORD;
+    onchain_metric_record RECORD;
+    onchain_category_menu_id INT;
+BEGIN
+    -- 1. 기존 동적 메뉴 항목 삭제
+    DELETE FROM menus WHERE source_type = 'dynamic';
+
+    -- 2. 정적 메인 메뉴 ID 확인 및 없으면 생성
+    -- Assets
+    SELECT id INTO assets_menu_id FROM menus WHERE name = 'Assets' AND parent_id IS NULL;
+    IF assets_menu_id IS NULL THEN
+        INSERT INTO menus (name, icon, "order", source_type, metadata) 
+        VALUES ('Assets', 'cibGoldenline', 20, 'static', '{"description": "자산 분석 및 관리", "permissions": ["user", "admin"], "badge": null}') 
+        RETURNING id INTO assets_menu_id;
+    END IF;
+
+    -- OnChain
+    SELECT id INTO onchain_menu_id FROM menus WHERE name = 'OnChain' AND parent_id IS NULL;
+    IF onchain_menu_id IS NULL THEN
+        INSERT INTO menus (name, icon, "order", source_type, metadata) 
+        VALUES ('OnChain', 'cibBitcoin', 30, 'static', '{"description": "온체인 데이터 분석", "permissions": ["user", "admin"], "badge": "NEW"}') 
+        RETURNING id INTO onchain_menu_id;
+    END IF;
+
+    -- Map
+    SELECT id INTO map_menu_id FROM menus WHERE name = 'Map' AND parent_id IS NULL;
+    IF map_menu_id IS NULL THEN
+        INSERT INTO menus (name, icon, "order", source_type, metadata) 
+        VALUES ('Map', 'cilChartPie', 40, 'static', '{"description": "지도 및 시각화", "permissions": ["user", "admin"], "badge": null}') 
+        RETURNING id INTO map_menu_id;
+    END IF;
+
+    -- 3. 'Assets' 하위 메뉴 동적 생성 (asset_types 테이블 기반)
+    FOR asset_type_record IN SELECT type_name FROM asset_types ORDER BY asset_type_id LOOP
+        INSERT INTO menus (name, path, parent_id, "order", source_type, metadata)
+        VALUES (
+            asset_type_record.type_name,
+            '/assets?type_name=' || asset_type_record.type_name,
+            assets_menu_id,
+            (SELECT COALESCE(MAX("order"), 0) + 10 FROM menus WHERE parent_id = assets_menu_id),
+            'dynamic',
+            '{"description": "' || asset_type_record.type_name || ' 자산 분석", "permissions": ["user", "admin"], "badge": null}'
+        );
+    END LOOP;
+
+    -- 4. 'OnChain' 하위 메뉴 동적 생성 (onchain_metrics_info 테이블 기반)
+    FOR onchain_category_record IN 
+        SELECT DISTINCT category FROM onchain_metrics_info WHERE is_enabled = TRUE ORDER BY category 
+    LOOP
+        -- 카테고리 그룹 메뉴 생성
+        INSERT INTO menus (name, icon, parent_id, "order", source_type, metadata)
+        VALUES (
+            REPLACE(INITCAP(REPLACE(onchain_category_record.category, '_', ' ')), 'Btc', 'BTC'), -- 'market_metrics' -> 'Market Metrics'
+            'cibMatrix',
+            onchain_menu_id,
+            (SELECT COALESCE(MAX("order"), 0) + 10 FROM menus WHERE parent_id = onchain_menu_id),
+            'dynamic',
+            '{"description": "' || onchain_category_record.category || ' 메트릭 분석", "permissions": ["user", "admin"], "badge": null}'
+        ) RETURNING id INTO onchain_category_menu_id;
+
+        -- 카테고리별 개별 메트릭 메뉴 생성
+        FOR onchain_metric_record IN 
+            SELECT metric_id, name FROM onchain_metrics_info 
+            WHERE category = onchain_category_record.category AND is_enabled = TRUE 
+            ORDER BY name 
+        LOOP
+            INSERT INTO menus (name, path, parent_id, "order", source_type, metadata)
+            VALUES (
+                onchain_metric_record.name,
+                '/onchain/overviews?metric=' || onchain_metric_record.metric_id,
+                onchain_category_menu_id,
+                (SELECT COALESCE(MAX("order"), 0) + 10 FROM menus WHERE parent_id = onchain_category_menu_id),
+                'dynamic',
+                '{"description": "' || onchain_metric_record.name || ' 분석", "permissions": ["user", "admin"], "badge": null}'
+            );
+        END LOOP;
+    END LOOP;
+
+    -- 5. 'Map' 하위 메뉴 정적으로 생성 (필요시 동적으로 변경 가능)
+    -- 이미 있는 경우 중복 방지
+    IF NOT EXISTS (SELECT 1 FROM menus WHERE name = 'Performance Map' AND parent_id = map_menu_id) THEN
+        INSERT INTO menus (name, path, parent_id, "order", source_type, metadata)
+        VALUES ('Performance Map', '/overviews/treemap', map_menu_id, 10, 'static', '{"description": "성과 지도 시각화", "permissions": ["user", "admin"], "badge": null}');
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM menus WHERE name = 'World Assets TreeMap' AND parent_id = map_menu_id) THEN
+        INSERT INTO menus (name, path, parent_id, "order", source_type, metadata)
+        VALUES ('World Assets TreeMap', '/world-assets-treemap', map_menu_id, 20, 'static', '{"description": "전 세계 자산 트리맵", "permissions": ["user", "admin"], "badge": null}');
+    END IF;
+
+END;
+$$ LANGUAGE plpgsql;
+
+-- 6. 초기 정적 메뉴 데이터 삽입 (중복 방지)
+INSERT INTO menus (name, path, icon, "order", source_type, metadata) 
+SELECT 'Dashboard', '/dashboard', 'cilSpeedometer', 10, 'static', '{"description": "대시보드 메인 페이지", "permissions": ["user", "admin"], "badge": "NEW"}'
+WHERE NOT EXISTS (SELECT 1 FROM menus WHERE name = 'Dashboard' AND path = '/dashboard');
+
+-- 7. 저장 프로시저 최초 실행 (오류 발생 시 무시)
+DO $$
+BEGIN
+    PERFORM refresh_dynamic_menus();
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Dynamic menu refresh failed: %', SQLERRM;
+END $$;
+
+-- ------------------------------------------------------------------
+-- << END: Dynamic Menu System Setup
 
 -- 완료 메시지
 DO $$
 BEGIN
-    RAISE NOTICE 'PostgreSQL 초기화 완료: 테이블 생성 및 데이터 삽입 완료';
+    RAISE NOTICE 'Dynamic Menu System 추가 완료: menu_info 테이블 및 저장 프로시저 생성됨';
+    RAISE NOTICE '기존 테이블들은 건드리지 않았습니다.';
 END $$;

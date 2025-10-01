@@ -6,7 +6,7 @@ from app.api import auth
 from app.api.v1.endpoints import (
     realtime, scheduler, collectors, assets, world_assets, crypto, 
     onchain, etf, dashboard, configurations, admin, logs, metrics, 
-    open_interest, tickers
+    open_interest, tickers, navigation
 )
 from app.core.database import engine
 from app.models.user import User
@@ -76,6 +76,7 @@ app.include_router(logs.router, prefix="/api/v1/logs", tags=["logs"])
 app.include_router(metrics.router, prefix="/api/v1/metrics", tags=["metrics"])
 app.include_router(open_interest.router, prefix="/api/v1/open-interest", tags=["open-interest"])
 app.include_router(tickers.router, prefix="/api/v1/tickers", tags=["tickers"])
+app.include_router(navigation.router, prefix="/api/v1/navigation", tags=["navigation"])
 
 @app.get("/")
 async def root():

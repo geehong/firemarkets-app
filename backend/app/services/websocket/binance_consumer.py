@@ -45,10 +45,12 @@ class BinanceWSConsumer(BaseWSConsumer):
         return None
     
     async def connect(self) -> bool:
-        """WebSocket 연결"""
+        """WebSocket 연결 - Coinbase와 동일한 구조"""
         try:
-            self.ws_logger.connection_attempt(self.ws_url)
-            # websocket_log_service removed - using file logging only
+            logger.info(f"🔌 {self.client_name} attempting connection to {self.ws_url}")
+            
+            # 연결 전 잠시 대기 (동시 연결 방지)
+            await asyncio.sleep(0.1)
             
             self._ws = await asyncio.wait_for(
                 websockets.connect(
@@ -57,28 +59,23 @@ class BinanceWSConsumer(BaseWSConsumer):
                     ping_timeout=10,
                     close_timeout=10
                 ),
-                timeout=30.0  # 30초 타임아웃 추가
+                timeout=30.0  # 30초 타임아웃
             )
             self.is_connected = True
             self.connection_errors = 0
-            
-            self.ws_logger.connection_success()
-            # websocket_log_service removed - using file logging only
+            logger.info(f"✅ {self.client_name} connected")
             return True
             
         except asyncio.TimeoutError:
-            error_msg = "Connection timeout after 30 seconds"
-            self.ws_logger.connection_failed(error_msg)
-            # websocket_log_service removed - using file logging only
+            logger.error(f"❌ {self.client_name} connection timeout after 30 seconds")
             self.connection_errors += 1
             self.is_connected = False
             self._ws = None
             return False
             
         except Exception as e:
-            error_msg = f"Connection failed: {e}"
-            self.ws_logger.connection_failed(error_msg)
-            # websocket_log_service removed - using file logging only
+            logger.error(f"❌ {self.client_name} connection failed: {e}")
+            logger.error(f"❌ {self.client_name} error type: {type(e).__name__}")
             self.connection_errors += 1
             self.is_connected = False
             self._ws = None
@@ -183,11 +180,7 @@ class BinanceWSConsumer(BaseWSConsumer):
             return False
     
     async def run(self):
-        """메인 실행 루프 - 메시지 필터링 모드"""
-        if not self.is_connected:
-            logger.error(f"❌ {self.client_name} not connected")
-            return
-        
+        """메인 실행 루프 - Coinbase와 동일한 구조"""
         self.is_running = True
         logger.info(f"🚀 {self.client_name} started with {len(self.subscribed_tickers)} tickers")
         
@@ -196,22 +189,59 @@ class BinanceWSConsumer(BaseWSConsumer):
         self.last_save_time = time.time()
         logger.info(f"⏰ {self.client_name} 저장 주기: {self.consumer_interval}초")
         
+        max_reconnect_attempts = 5
+        reconnect_attempts = 0
+        reconnect_delay = 5
+        
         try:
-            async for message in self._ws:
-                if not self.is_running:
-                    break
-                
+            while self.is_running and reconnect_attempts < max_reconnect_attempts:
                 try:
-                    data = json.loads(message)
-                    await self._handle_message(data)
-                except json.JSONDecodeError as e:
-                    logger.error(f"❌ {self.client_name} JSON decode error: {e}")
-                except Exception as e:
-                    logger.error(f"❌ {self.client_name} message handling error: {e}")
+                    # 연결 시도
+                    if not self.is_connected:
+                        if not await self.connect():
+                            logger.error(f"❌ {self.client_name} connection failed")
+                            reconnect_attempts += 1
+                            await asyncio.sleep(reconnect_delay)
+                            continue
                     
-        except websockets.exceptions.ConnectionClosed:
-            logger.warning(f"⚠️ {self.client_name} connection closed")
-            self.is_connected = False
+                    # 구독 시도
+                    if not await self.subscribe(list(self.subscribed_tickers)):
+                        logger.error(f"❌ {self.client_name} subscription failed")
+                        reconnect_attempts += 1
+                        await asyncio.sleep(reconnect_delay)
+                        continue
+                    
+                    # 연결 및 구독 성공
+                    reconnect_attempts = 0
+                    logger.info(f"✅ {self.client_name} connected and subscribed to {len(self.subscribed_tickers)} tickers")
+                    
+                    # 메시지 수신 루프
+                    async for message in self._ws:
+                        if not self.is_running:
+                            break
+                        
+                        try:
+                            data = json.loads(message)
+                            await self._handle_message(data)
+                        except json.JSONDecodeError as e:
+                            logger.error(f"❌ {self.client_name} JSON decode error: {e}")
+                        except Exception as e:
+                            logger.error(f"❌ {self.client_name} message handling error: {e}")
+                            
+                except websockets.exceptions.ConnectionClosed:
+                    logger.warning(f"⚠️ {self.client_name} connection closed")
+                    self.is_connected = False
+                    reconnect_attempts += 1
+                    await asyncio.sleep(reconnect_delay)
+                except Exception as e:
+                    logger.error(f"❌ {self.client_name} run error: {e}")
+                    self.is_connected = False
+                    reconnect_attempts += 1
+                    await asyncio.sleep(reconnect_delay)
+            
+            if reconnect_attempts >= max_reconnect_attempts:
+                logger.error(f"❌ {self.client_name} max reconnection attempts reached")
+                
         except Exception as e:
             logger.error(f"❌ {self.client_name} run error: {e}")
         finally:
@@ -219,9 +249,9 @@ class BinanceWSConsumer(BaseWSConsumer):
             logger.info(f"🛑 {self.client_name} stopped")
     
     async def _handle_message(self, data: dict):
-        """메시지 처리 - 주기적 저장 필터링"""
+        """메시지 처리 - Coinbase와 동일한 구조"""
         try:
-            # 구독 응답 처리 (저장 주기와 무관하게 처리)
+            # 구독 응답 처리
             if "result" in data and "id" in data:
                 if data["result"] is None:
                     logger.debug(f"📨 {self.client_name} subscription response: {data}")
@@ -229,17 +259,8 @@ class BinanceWSConsumer(BaseWSConsumer):
                     logger.info(f"📨 {self.client_name} subscription result: {data}")
                 return
             
-            # 저장 주기 체크 (스트림 데이터만)
+            # 모든 메시지 처리 (저장 주기 체크 제거)
             if "stream" in data and "data" in data:
-                current_time = time.time()
-                if current_time - self.last_save_time < self.consumer_interval:
-                    # 아직 저장 시간이 되지 않았으면 메시지만 받고 저장하지 않음
-                    logger.debug(f"⏰ {self.client_name} skipping message (not time to save yet)")
-                    return
-                
-                # 저장 시간이 되었으면 데이터 처리
-                self.last_save_time = current_time
-                
                 stream_name = data["stream"]
                 stream_data = data["data"]
                 
@@ -275,7 +296,7 @@ class BinanceWSConsumer(BaseWSConsumer):
                     'provider': self.client_name
                 })
                 
-                logger.debug(f"📈 {self.client_name} {symbol}: ${price} (Vol: {quantity})")
+                logger.info(f"📈 {self.client_name} {symbol}: ${price} (Vol: {quantity})")
                 
         except Exception as e:
             logger.error(f"❌ {self.client_name} trade processing error: {e}")
@@ -299,7 +320,7 @@ class BinanceWSConsumer(BaseWSConsumer):
                     'type': 'ticker'
                 })
                 
-                logger.debug(f"📊 {self.client_name} {symbol}: ${last_price} (24h Vol: {volume})")
+                logger.info(f"📈 {self.client_name} {symbol}: ${last_price} (Vol24h: {volume})")
                 
         except Exception as e:
             logger.error(f"❌ {self.client_name} ticker processing error: {e}")

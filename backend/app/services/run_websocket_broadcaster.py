@@ -16,6 +16,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional, List
 
 import redis.asyncio as redis
+from redis import exceptions
 import socketio
 
 # 프로젝트 루트를 Python 경로에 추가
@@ -29,6 +30,12 @@ from app.utils.helpers import safe_float
 logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
+# Force DEBUG to stdout
+import sys
+_sh = logging.StreamHandler(sys.stdout)
+_sh.setLevel(logging.DEBUG)
+_sh.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+logging.getLogger().addHandler(_sh)
 logger = logging.getLogger("WebSocketBroadcaster")
 logger.setLevel(logging.DEBUG)
 # Ensure root handlers also emit DEBUG
@@ -156,7 +163,7 @@ async def listen_to_redis_and_broadcast():
                 try:
                     await redis_client.xgroup_create(name=stream_name, groupname=group_name, id="0", mkstream=True)
                     logger.info(f"✅ Consumer Group 생성: {group_name} on {stream_name}")
-                except redis.exceptions.ResponseError as e:
+                except exceptions.ResponseError as e:
                     if "BUSYGROUP" in str(e):
                         logger.debug(f"ℹ️ Consumer Group '{group_name}'가 이미 존재합니다.")
                     else:
@@ -190,7 +197,7 @@ async def listen_to_redis_and_broadcast():
                         if stream_data:
                             # (stream_name, messages) 튜플을 리스트에 추가
                             all_messages.extend(stream_data)
-                    except redis.exceptions.ResponseError as e:
+                    except exceptions.ResponseError as e:
                         logger.error(f"스트림 '{stream_name}' 읽기 오류: {e}", exc_info=True)
                         continue
 
@@ -239,10 +246,10 @@ async def listen_to_redis_and_broadcast():
                             # 오류 발생 시에도 ACK 처리하여 무한 루프 방지
                             await redis_client.xack(stream_name, group_name, message_id)
 
-        except asyncio.CancelledError as e:
-            logger.error("🛑 listen_to_redis_and_broadcast cancelled.", exc_info=True)
+        except asyncio.CancelledError:
+            logger.info("🛑 Redis listener task was cancelled.")
             raise
-        except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError) as e:
+        except (exceptions.ConnectionError, exceptions.TimeoutError) as e:
             logger.exception(f"❌ Redis Stream 연결 오류: {e}")
         except Exception as e:
             logger.exception(f"❌ Redis 리스너 루프 예기치 않은 오류: {e}")
@@ -271,23 +278,26 @@ async def main():
     # Redis 리스너 시작
     listener_task = asyncio.create_task(listen_to_redis_and_broadcast())
 
-    # 종료 시그널 대기
-    shutdown_event = asyncio.Event()
-
     def _signal_handler(*_):
         logger.info("SIGINT 또는 SIGTERM 수신, 종료합니다...")
-        shutdown_event.set()
+        # 태스크를 직접 취소
+        if not listener_task.done():
+            listener_task.cancel()
 
     loop = asyncio.get_running_loop()
     loop.add_signal_handler(signal.SIGINT, _signal_handler)
     loop.add_signal_handler(signal.SIGTERM, _signal_handler)
 
-    await shutdown_event.wait()
-
-    # 정리
-    listener_task.cancel()
-    await sio_client.disconnect()
-    logger.info("👋 Broadcaster 서비스가 종료되었습니다.")
+    try:
+        # 태스크가 끝날 때까지 대기
+        await listener_task
+    except asyncio.CancelledError:
+        logger.info("Listener task successfully cancelled.")
+    finally:
+        # 정리
+        if sio_client.connected:
+            await sio_client.disconnect()
+        logger.info("👋 Broadcaster 서비스가 종료되었습니다.")
 
 
 if __name__ == "__main__":

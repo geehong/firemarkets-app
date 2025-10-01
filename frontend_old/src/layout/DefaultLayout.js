@@ -1,72 +1,36 @@
 // frontend/src/layout/DefaultLayout.js
-import React, { useState, useEffect, useRef } from 'react' // useState, useEffect, useRef 임포트
+import React from 'react'
 import { AppContent, AppSidebar, AppFooter, AppHeader } from '../components/index'
-
-// 필요한 CoreUI 컴포넌트들을 임포트합니다.
-import { CNavGroup, CNavItem, CNavTitle } from '@coreui/react'
-import CIcon from '@coreui/icons-react'
-// 실제로 사용되는 아이콘만 임포트 (성능 최적화)
-// import {
-//   cilBell,
-//   cilCalculator,
-//   cilChartPie,
-//   cilCursor,
-//   cilDescription,
-//   cilDrop,
-//   cilExternalLink,
-//   cilNotes,
-//   cilPencil,
-//   cilPuzzle,
-//   cilSpeedometer,
-//   cilStar,
-//   cibBtc,
-//   cibGoldenline,
-//   cilGraph,
-//   cilChart,
-//   cilBank,
-//   cilChartLine,
-//   cilFactory,
-//   cilDollar,
-//   cilSwapHorizontal,
-//   cilCalendarCheck,
-//   cilLibrary,
-//   cibBitcoin,
-//   cilBarChart,
-//   cilSettings,
-//   cilShieldAlt,
-//   cilClock,
-//   cilList,
-//   cilDataTransferDown,
-//   cibMatrix,
-// } from '@coreui/icons'
-
-import axios from 'axios' // axios 임포트
+import { useNavigation } from '../hooks/useNavigation' // 동적 네비게이션 훅
 import getNavigationItems from '../_nav' // <<--- _nav.js에서 함수 임포트
 
 const DefaultLayout = () => {
-  const [assetTypes, setAssetTypes] = useState([]) // 자산 유형 상태
-  const hasFetchedAssetTypes = useRef(false) // 데이터 중복 Fetch 방지 Ref
+  // 동적 네비게이션 메뉴 로드
+  const { menuItems, loading, error } = useNavigation()
 
-  useEffect(() => {
-    // asset_types 데이터를 한 번만 가져오도록
-    if (hasFetchedAssetTypes.current) return
+  // 로딩 중이거나 에러가 있을 때의 처리
+  if (loading) {
+    return (
+      <div className="wrapper">
+        <AppSidebar />
+        <div className="body flex-grow-1 px-3">
+          <div className="d-flex justify-content-center align-items-center" style={{ height: '100vh' }}>
+            <div className="spinner-border" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
-    const fetchAssetTypes = async () => {
-      try {
-        const response = await axios.get('/api/v1/asset-types?has_data=true&include_description=false') // 최적화된 자산 유형 (description 제외)
-        setAssetTypes(response.data.data)
-        hasFetchedAssetTypes.current = true // Fetch 완료 플래그 설정
-      } catch (error) {
-        console.error('자산 유형을 불러오는데 실패했습니다:', error)
-      }
-    }
+  if (error) {
+    console.error('Navigation error:', error)
+    // 에러가 있어도 기본 레이아웃은 표시
+  }
 
-    fetchAssetTypes()
-  }, []) // 의존성 배열을 비워 컴포넌트 마운트 시 한 번만 실행
-
-  // assetTypes가 변경될 때마다 내비게이션 아이템을 다시 생성
-  // getNavigationItems 함수에 assetTypes를 인자로 전달하여 메뉴 아이템을 받습니다.
-  const dynamicNavItems = getNavigationItems(assetTypes)
+  // 동적 메뉴 아이템 생성
+  const dynamicNavItems = getNavigationItems(menuItems)
 
   return (
     <div>

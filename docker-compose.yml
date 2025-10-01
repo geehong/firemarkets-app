@@ -229,7 +229,7 @@ services:
         condition: service_healthy
     volumes:
       - ./.env:/app/.env:ro
-    command: ["python", "-m", "app.services.run_websocket_orchestrator"]
+    command: ["sh", "-c", "cd /app && python -m app.services.run_websocket_orchestrator"]
     healthcheck:
       disable: true
     networks:
