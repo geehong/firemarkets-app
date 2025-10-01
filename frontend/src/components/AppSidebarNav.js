@@ -29,8 +29,12 @@ export const AppSidebarNav = ({ items }) => {
   }
 
   const navItem = (item, index, indent = false) => {
-    const { component, name, badge, icon, ...rest } = item
+    const { component, name, badge, icon, tooltip, ...rest } = item
     const Component = component
+    
+    // 툴팁이 있는 경우 title 속성 추가
+    const tooltipProps = tooltip ? { title: tooltip } : {}
+    
     return (
       <Component as="div" key={index}>
         {rest.to || rest.href ? (
@@ -38,21 +42,28 @@ export const AppSidebarNav = ({ items }) => {
             {...(rest.to && { as: NavLink })}
             {...(rest.href && { target: '_blank', rel: 'noopener noreferrer' })}
             {...rest}
+            {...tooltipProps}
           >
             {navLink(name, icon, badge, indent)}
           </CNavLink>
         ) : (
-          navLink(name, icon, badge, indent)
+          <div {...tooltipProps}>
+            {navLink(name, icon, badge, indent)}
+          </div>
         )}
       </Component>
     )
   }
 
   const navGroup = (item, index) => {
-    const { component, name, icon, items, to, ...rest } = item
+    const { component, name, icon, items, to, tooltip, ...rest } = item
     const Component = component
+    
+    // 툴팁이 있는 경우 title 속성 추가
+    const tooltipProps = tooltip ? { title: tooltip } : {}
+    
     return (
-      <Component compact as="div" key={index} toggler={navLink(name, icon)} {...rest}>
+      <Component compact as="div" key={index} toggler={navLink(name, icon)} {...rest} {...tooltipProps}>
         {items?.map((item, index) =>
           item.items ? navGroup(item, index) : navItem(item, index, true),
         )}

@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 import logging
 
 from ....core.database import get_postgres_db
-from ....core.cache import cache_with_invalidation, invalidate_asset_types_cache, invalidate_assets_cache
+from ....core.cache import invalidate_asset_types_cache, invalidate_assets_cache
 from ....core.database_optimization import get_asset_types_optimized, get_assets_optimized, get_ohlcv_data_optimized
 from ....models import OHLCVData, Asset
 from ....schemas.asset import (
@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.get("/asset-types", response_model=AssetTypesResponse)
-@cache_with_invalidation(expire=3600)  # 1시간 TTL로 증가 (자산 유형은 거의 변경되지 않음)
 def get_asset_types(
     db: Session = Depends(get_postgres_db),
     has_data: bool = Query(False, description="데이터가 있는 자산 유형만 필터링합니다."),
@@ -75,7 +74,6 @@ def get_asset_types(
         raise HTTPException(status_code=500, detail=f"Failed to get asset types: {str(e)}")
 
 @router.get("/assets", response_model=AssetsListResponse)
-@cache_with_invalidation(expire=600)  # 10분 TTL로 증가 (자산 목록은 자주 변경되지 않음)
 def get_all_assets(
     type_name: Optional[str] = Query(None, description="필터링할 자산 유형 이름"),
     has_ohlcv_data: bool = Query(False, description="OHLCV 데이터가 있는 자산만 필터링합니다."),
@@ -135,7 +133,6 @@ def get_all_assets(
         raise HTTPException(status_code=500, detail=f"Failed to get assets: {str(e)}")
 
 @router.get("/assets-lists", response_model=AssetsListResponse)
-@cache_with_invalidation(expire=600)
 def get_all_assets_pg(
     type_name: Optional[str] = Query(None, description="필터링할 자산 유형 이름"),
     has_ohlcv_data: bool = Query(True, description="OHLCV 데이터가 있는 자산만 필터링합니다."),
@@ -191,7 +188,6 @@ def get_all_assets_pg(
         raise HTTPException(status_code=500, detail=f"Failed to get assets (pg): {str(e)}")
 
 @router.get("/assets/market-caps", response_model=MarketCapsResponse)
-@cache_with_invalidation(expire=10)  # 10초 TTL (시가총액은 자주 변경됨)
 def get_assets_market_caps(
     type_name: Optional[str] = Query(None, description="필터링할 자산 유형 이름"),
     has_ohlcv_data: bool = Query(True, description="OHLCV 데이터가 있는 자산만 필터링합니다."),
@@ -555,7 +551,6 @@ def get_assets_market_caps(
         raise HTTPException(status_code=500, detail=f"Failed to get market caps: {str(e)}")
 
 @router.get("/assets/{asset_identifier}", response_model=AssetDetailResponse)
-@cache_with_invalidation(expire=1800)  # 30분 캐시 (자산 상세 정보는 자주 변경되지 않음)
 def get_asset_detail(
     asset_identifier: str = Path(..., description="Asset ID (integer) or Ticker (string)"),
     db: Session = Depends(get_postgres_db)
@@ -606,7 +601,6 @@ def get_asset_detail(
         raise HTTPException(status_code=500, detail=f"Failed to get asset detail: {str(e)}")
 
 @router.get("/ohlcv/{asset_identifier}", response_model=OHLCVResponse)
-@cache_with_invalidation(expire=300)  # 5분 TTL (OHLCV 데이터는 자주 변경되지 않음)
 def get_ohlcv_data(
     asset_identifier: str = Path(..., description="Asset ID (integer) or Ticker (string)"),
     data_interval: str = Query("1d", description="데이터 간격 (예: 1d, 1h, 1W는 주별 마지막 거래일, 1M은 월별 마지막 거래일 데이터)"),
@@ -791,7 +785,7 @@ def get_ohlcv_data(
                 'close_price': float(ohlcv.close_price) if ohlcv.close_price else None,
                 'volume': float(ohlcv.volume) if ohlcv.volume else None,
                 'change_percent': float(ohlcv.change_percent) if ohlcv.change_percent else None,
-                'data_interval': infer_interval(ohlcv.timestamp_utc, ohlcv.data_interval),
+                'data_interval': infer_interval(ohlcv.timestamp_utc, ohlcv.data_interval or '1d'),
             }
             ohlcv_data_points.append(ohlcv_dict)
         
@@ -810,7 +804,6 @@ def get_ohlcv_data(
 
 
 @router.get("/price/{asset_identifier}", response_model=PriceResponse)
-@cache_with_invalidation(expire=60)  # 1분 캐시
 def get_price_data(
     asset_identifier: str = Path(..., description="Asset ID (integer) or Ticker (string)"),
     data_interval: str = Query("1d", description="데이터 간격 (예: 1d, 1h, 4h)"),
@@ -1126,7 +1119,7 @@ def get_crypto_metrics_for_asset(
         raise HTTPException(status_code=500, detail=f"Failed to get crypto metrics: {str(e)}")
 
 @router.get("/technical-indicators/asset/{asset_identifier}", response_model=TechnicalIndicatorsResponse)
-@cache_with_invalidation(expire=600)  # 10분 캐시 (기술적 지표는 자주 변경되지 않음)
+  # 10분 캐시 (기술적 지표는 자주 변경되지 않음)
 def get_technical_indicators_for_asset(
     asset_identifier: str = Path(..., description="Asset ID (integer) or Ticker (string)"),
     indicator_type: Optional[str] = Query(None, description="Filter by indicator type (e.g., SMA, EMA)"),
@@ -1144,7 +1137,6 @@ def get_technical_indicators_for_asset(
         raise HTTPException(status_code=500, detail=f"Failed to get technical indicators: {str(e)}")
 
 @router.get("/widgets/ticker-summary", response_model=TickerSummaryResponse)
-@cache_with_invalidation(expire=5)  # 5초 TTL (티커 요약은 매우 자주 변경됨)
 def get_ticker_summary(
     tickers: str = Query(..., description="쉼표로 구분된 티커 목록"),
     db: Session = Depends(get_postgres_db)
@@ -1265,11 +1257,12 @@ def get_latest_ohlcv(db: Session, asset_id: int):
 
 def db_get_ohlcv_data(db: Session, asset_id: int, start_date: Optional[date], end_date: Optional[date], data_interval: str, limit: int = 50000):
     """OHLCV 데이터 조회 (데이터베이스 함수)"""
+    from sqlalchemy import or_
     # 일봉 데이터 - 모든 데이터 조회 (주말/월말 포함)
     if data_interval == '1d':
         query = db.query(OHLCVData).filter(
-            OHLCVData.asset_id == asset_id
-            # data_interval 필터링 제거 - 모든 일봉 데이터 조회
+            OHLCVData.asset_id == asset_id,
+            or_(OHLCVData.data_interval == '1d', OHLCVData.data_interval.is_(None))
         )
     else:
         # 다른 간격 데이터 (4h, 1h 등)

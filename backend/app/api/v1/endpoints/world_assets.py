@@ -12,7 +12,6 @@ from ....schemas.asset import (
 )
 from ....schemas.common import ReloadResponse
 import logging
-from ....core.cache import cache_with_invalidation
 from ....utils.asset_mapper import update_asset_mappings, get_missing_asset_info
 
 logger = logging.getLogger(__name__)
@@ -105,7 +104,6 @@ async def collect_world_assets_data(db: Session = Depends(get_postgres_db)):
 
 
 @router.get("/world-assets/top-assets-by-category")
-@cache_with_invalidation(expire=1800)  # 30분 캐시 (세계 자산 랭킹은 자주 변경되지 않음)
 async def get_top_assets_by_category(
     db: Session = Depends(get_postgres_db),
     limit: int = 30
@@ -247,7 +245,6 @@ async def get_top_assets_by_category(
 
 
 @router.get("/world-assets/performance-treemap", response_model=PerformanceTreemapResponse)
-@cache_with_invalidation(expire=300)  # 5분 캐시 (성과 데이터는 자주 변경되지 않음)
 async def get_performance_treemap_data(
     db: Session = Depends(get_postgres_db),
     performance_period: str = Query("1d", description="성과 계산 기간 (1d, 1w, 1m, 3m, 6m, 1y, 2y, 3y, 5y, 10y)"),
@@ -512,7 +509,6 @@ async def update_asset_mappings_endpoint(
 
 
 @router.get("/assets/market-caps/today")
-@cache_with_invalidation(expire=10)  # 10초 TTL (시가총액은 자주 변경됨)
 async def get_today_market_caps(
     type_name: str = Query(None, description="필터링할 자산 유형 이름"),
     has_asset_id: bool = Query(False, description="asset_id가 있는 자산만 필터링합니다."),

@@ -1,7 +1,6 @@
-import React, { useMemo, useState, useEffect, lazy, Suspense } from 'react'
+import React, { useMemo, useEffect, lazy, Suspense } from 'react'
 import { CRow, CCol, CCard, CCardHeader, CCardBody, CCardTitle } from '@coreui/react'
-import { useDelaySparklinePg } from 'src/hooks/useRealtime'
-import { useRealtimePricesWebSocket } from 'src/hooks/useWebSocket'
+import { useAPI } from 'src/hooks/useAPI'
 import useWebSocketStore from 'src/store/websocketStore'
 
 // 지연 로딩으로 번들 크기 감소 (TreeMap은 모듈 의존성 때문에 즉시 로드)
@@ -12,112 +11,81 @@ const RealTimeWidgetsTypeA = lazy(() => import('src/components/widgets/RealTimeW
 const MiniPriceChart = lazy(() => import('src/components/charts/MiniPriceChart'))
 
 const MainDashboard = () => {
-  const [isUSMarketOpen, setIsUSMarketOpen] = useState(false);
-
-  // 한국시간 기준 미국 주식/ETF 개장시간 체크
-  useEffect(() => {
-    const checkMarketStatus = () => {
-      const now = new Date();
-      const kstTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
-      const hour = kstTime.getHours();
-      const day = kstTime.getDay(); // 0=일요일, 6=토요일
-
-      // 주말(토, 일)은 폐장
-      if (day === 0 || day === 6) {
-        setIsUSMarketOpen(false);
-        return;
-      }
-      // 평일: 한국시간 22:30 ~ 05:00 (미국 동부시간 09:30 ~ 16:00)
-      setIsUSMarketOpen((hour === 22 && kstTime.getMinutes() >= 30) || hour >= 23 || hour < 5);
-    };
-
-    checkMarketStatus();
-    const interval = setInterval(checkMarketStatus, 60000); // 1분마다 시장 상태 체크
-    return () => clearInterval(interval);
-  }, []);
+  // 시장 개장/폐장 로직 제거됨
 
   // 차트 그룹별 심볼 정의
-  const chartGroups = useMemo(() => {
-    if (isUSMarketOpen) {
-      // 미국 시장 개장시간: 전체 차트 표시
-      return [
-        {
-          title: 'Cryptocurrency',
-          symbols: ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'ADAUSDT']
-        },
-        {
-          title: 'Technology Stocks',
-          symbols: ['AVGO', 'TSLA', 'AAPL', 'MSFT']
-        },
-        {
-          title: 'Growth Stocks',
-          symbols: ['AMZN', 'NVDA', 'GOOG', 'META']
-        },
-        {
-          title: 'ETFs',
-          symbols: ['SPY', 'QQQ']
-        }
-      ];
-    } else {
-      // 미국 시장 폐장시간: 코인 상위 6개만 표시
-      return [
-        {
-          title: 'Top Cryptocurrencies',
-          symbols: ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'ADAUSDT', 'SOL', 'BNB']
-        }
-      ];
+  const chartGroups = useMemo(() => ([
+    {
+      title: '핵심 시장',
+      symbols: ['BTCUSDT', 'ETHUSDT', 'GCUSD', 'SPY']
     }
-  }, [isUSMarketOpen]);
+  ]), []);
 
   // --- 데이터 중앙집중식 요청 ---
-  // 1. 모든 심볼 목록을 한 번에 계산
-  const allSymbols = useMemo(() => 
-    Array.from(new Set(chartGroups.flatMap(g => g.symbols))), 
-    [chartGroups]
-  );
+  // 1. 모든 심볼 목록을 한 번에 계산 (의존성 안정화)
+  const allSymbols = useMemo(() => {
+    const symbols = chartGroups.flatMap(g => g.symbols);
+    return Array.from(new Set(symbols));
+  }, [chartGroups]);
 
   // 2. 모든 심볼에 대한 과거 데이터를 단일 API 호출로 가져오기
-  const { data: delayData, isLoading: isDelayDataLoading } = useDelaySparklinePg(allSymbols, '15m', 1);
+  const { data: delayData, isLoading: isDelayDataLoading } = useAPI.realtime.sparkline(allSymbols, '15m', 1);
   
-  // 3. 모든 심볼에 대한 실시간 데이터를 단일 WebSocket 구독으로 가져오기
-  const { prices: wsPrices, connected: wsConnected } = useRealtimePricesWebSocket(allSymbols);
+  // 3. 모든 심볼에 대한 실시간 데이터를 직접 store에서 가져오기 (중복 구독 방지)
+  const wsPrices = useWebSocketStore((state) => state.prices)
+  const wsConnected = useWebSocketStore((state) => state.connected)
   
-  // WebSocket 연결 강제 시작
+  // WebSocket 연결 및 재연결 로직을 관리하는 useEffect (중복 제거)
   useEffect(() => {
+    const { connect, disconnect, subscribeSymbols } = useWebSocketStore.getState();
+
     if (allSymbols.length > 0) {
-      // WebSocket 스토어에서 연결 시작
-      const { connect } = useWebSocketStore.getState();
+      console.log('[MainDashboard] Initializing WebSocket connection for symbols:', allSymbols);
       connect();
+      subscribeSymbols(allSymbols);
     }
+
+    // 컴포넌트가 언마운트될 때 WebSocket 연결을 해제합니다.
+    return () => {
+      console.log('[MainDashboard] Cleaning up WebSocket connection');
+      disconnect();
+    };
+    // allSymbols가 변경될 때만 이 effect를 재실행합니다.
   }, [allSymbols]);
-  
-  // 웹소켓 데이터 로깅
+
+  // WebSocket 연결 상태 모니터링 및 자동 재연결
   useEffect(() => {
-    // console.log('[MainDashboard] === WebSocket Status ===')
-    // console.log('[MainDashboard] wsConnected:', wsConnected)
-    // console.log('[MainDashboard] wsPrices:', wsPrices)
-    
-    // if (wsConnected) {
-    //   console.log('[MainDashboard] ✅ WebSocket Connected')
-    // } else {
-    //   console.log('[MainDashboard] ❌ WebSocket Disconnected')
-    // }
-    
-    // if (wsPrices && Object.keys(wsPrices).length > 0) {
-    //   console.log('[MainDashboard] 🚀 WebSocket Data Received:', Object.keys(wsPrices))
-    // } else {
-    //   console.log('[MainDashboard] ⚠️ No WebSocket Data')
-    // }
-  }, [wsPrices, wsConnected])
+    if (!wsConnected && allSymbols.length > 0) {
+      console.log('[MainDashboard] WebSocket disconnected, attempting reconnection...');
+      const { connect, subscribeSymbols } = useWebSocketStore.getState();
+      
+      // 3초 후 재연결 시도
+      const reconnectTimer = setTimeout(() => {
+        connect();
+        setTimeout(() => {
+          subscribeSymbols(allSymbols);
+        }, 1000);
+      }, 3000);
+
+      return () => clearTimeout(reconnectTimer);
+    }
+  }, [wsConnected, allSymbols]);
+
+
+  // 웹소켓 데이터 로깅 (필요시 주석 해제)
+  // useEffect(() => {
+  //   console.log('[MainDashboard] === WebSocket Status ===')
+  //   console.log('[MainDashboard] wsConnected:', wsConnected)
+  //   console.log('[MainDashboard] wsPrices keys:', wsPrices ? Object.keys(wsPrices) : 'null')
+  //   console.log('[MainDashboard] wsPrices count:', wsPrices ? Object.keys(wsPrices).length : 0)
+  // }, [wsPrices, wsConnected])
 
   return (
     <>
       {/* 시장 상태에 따른 차트 표시 */}
       <CCard className="mb-4">
         <CCardHeader>
-          <CCardTitle className="card-title">
-            {isUSMarketOpen ? 'Real-time Price Charts (US Market Open)' : 'Top Cryptocurrencies (US Market Closed)'}
-          </CCardTitle>
+          <CCardTitle className="card-title">실시간 가격 차트</CCardTitle>
         </CCardHeader>
         <CCardBody style={{ padding: '8px' }}>
           <CRow>

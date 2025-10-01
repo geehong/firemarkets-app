@@ -12,31 +12,41 @@ const useWebSocketStore = create((set, get) => ({
   dataSource: 'websocket',
   lastUpdate: null,
   symbolSubscribers: {},
+  // 디바운싱을 위한 마지막 업데이트 시간 추적
+  lastUpdateTimes: {},
 
   // --- Actions ---
 
   // WebSocket 연결 초기화 및 이벤트 리스너 설정
   connect: () => {
-    if (get().socket) return; // 이미 연결 프로세스가 시작되었으면 중복 실행 방지
+    const currentState = get();
+    if (currentState.socket && currentState.connected) {
+      console.log('[WebSocketStore] Already connected, skipping connection attempt');
+      return;
+    }
+    
+    // 기존 소켓이 있으면 정리
+    if (currentState.socket) {
+      currentState.socket.disconnect();
+    }
 
     const url = 'https://backend.firemarkets.net';
     const newSocket = io(url, {
       transports: ['websocket', 'polling'],
       path: '/socket.io',
       reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-      timeout: 20000,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 3000,
+      timeout: 30000,
+      forceNew: true, // 새로운 연결 강제 생성
     });
 
     newSocket.on('connect', () => {
-      // console.log('[Zustand Store] ✅ WebSocket Connected:', newSocket.id);
       set({ connected: true, error: null });
       
       // 재연결 시 기존 구독 복원
       const allSymbols = Object.keys(get().symbolSubscribers);
       if (allSymbols.length > 0) {
-        // console.log('[Zustand Store] 🔄 Re-subscribing to symbols on reconnect:', allSymbols);
         newSocket.emit('subscribe_prices', { symbols: allSymbols });
       }
     });
@@ -47,21 +57,40 @@ const useWebSocketStore = create((set, get) => ({
     });
 
     newSocket.on('connect_error', (err) => {
-      // console.error('[Zustand Store] ❌ Connection Error:', err.message);
+      console.error('[Zustand Store] ❌ Connection Error:', err.message);
       set({ error: err.message, connected: false });
+      
+      // 연결 실패 시 백업 모드로 전환
+      setTimeout(() => {
+        const state = get();
+        if (!state.connected) {
+          console.log('[Zustand Store] 🔄 Switching to backup mode due to connection failure');
+          set({ backupMode: true, dataSource: 'api_fallback' });
+        }
+      }, 5000); // 5초 후 백업 모드 전환
     });
 
     newSocket.on('price_update', (data) => {
       if (data.symbol) {
-        // console.log('[Zustand Store] 📊 Price Update:', data.symbol, data.price);
+        const now = Date.now();
         const state = get();
-        const existingPrice = state.prices[data.symbol];
         
-        // 기존 가격과 동일하면 업데이트하지 않음
-        if (existingPrice && existingPrice.price === data.price) {
+        // 디바운싱: 같은 심볼에 대해 100ms 이내 중복 업데이트 방지
+        const lastUpdateTime = state.lastUpdateTimes[data.symbol] || 0;
+        if (now - lastUpdateTime < 100) {
           return;
         }
         
+        const existingPrice = state.prices[data.symbol];
+        
+        // 기존 가격과 동일하면 업데이트하지 않음 (무한 루프 방지)
+        if (existingPrice && 
+            existingPrice.price === data.price && 
+            existingPrice.change_amount === data.change_amount &&
+            existingPrice.change_percent === data.change_percent) {
+          return;
+        }
+
         set({
           prices: {
             ...state.prices,
@@ -74,24 +103,38 @@ const useWebSocketStore = create((set, get) => ({
             }
           },
           loading: false,
-          lastUpdate: Date.now(),
+          lastUpdate: now,
           backupMode: false,
-          dataSource: 'websocket'
+          dataSource: 'websocket',
+          lastUpdateTimes: {
+            ...state.lastUpdateTimes,
+            [data.symbol]: now
+          }
         });
       }
     });
 
     newSocket.on('realtime_quote', (data) => {
       if (data.ticker) {
-        // console.log('[Zustand Store] 📊 Realtime Quote:', data.ticker, data.price);
+        const now = Date.now();
         const state = get();
-        const existingPrice = state.prices[data.ticker];
         
-        // 기존 가격과 동일하면 업데이트하지 않음
-        if (existingPrice && existingPrice.price === data.price) {
+        // 디바운싱: 같은 심볼에 대해 100ms 이내 중복 업데이트 방지
+        const lastUpdateTime = state.lastUpdateTimes[data.ticker] || 0;
+        if (now - lastUpdateTime < 100) {
           return;
         }
         
+        const existingPrice = state.prices[data.ticker];
+        
+        // 기존 가격과 동일하면 업데이트하지 않음 (무한 루프 방지)
+        if (existingPrice && 
+            existingPrice.price === data.price && 
+            existingPrice.change_amount === data.change_amount &&
+            existingPrice.change_percent === data.change_percent) {
+          return;
+        }
+
         set({
           prices: {
             ...state.prices,
@@ -104,9 +147,13 @@ const useWebSocketStore = create((set, get) => ({
             }
           },
           loading: false,
-          lastUpdate: Date.now(),
+          lastUpdate: now,
           backupMode: false,
-          dataSource: 'websocket'
+          dataSource: 'websocket',
+          lastUpdateTimes: {
+            ...state.lastUpdateTimes,
+            [data.ticker]: now
+          }
         });
       }
     });
@@ -135,7 +182,6 @@ const useWebSocketStore = create((set, get) => ({
     });
 
     if (newSymbolsToSubscribe.length > 0 && connected) {
-      console.log('[Zustand Store] ➕ Subscribing to new symbols:', newSymbolsToSubscribe);
       socket.emit('subscribe_prices', { symbols: newSymbolsToSubscribe });
     }
     
@@ -179,6 +225,15 @@ const useWebSocketStore = create((set, get) => ({
     }
   },
 
+  // WebSocket 연결 해제
+  disconnect: () => {
+    const { socket } = get();
+    if (socket) {
+      socket.disconnect();
+      set({ socket: null, connected: false });
+    }
+  },
+
   // 연결 상태 초기화 (필요시)
   reset: () => {
     const { socket } = get();
@@ -194,7 +249,8 @@ const useWebSocketStore = create((set, get) => ({
       backupMode: false,
       dataSource: 'websocket',
       lastUpdate: null,
-      symbolSubscribers: {}
+      symbolSubscribers: {},
+      lastUpdateTimes: {}
     });
   }
 }));

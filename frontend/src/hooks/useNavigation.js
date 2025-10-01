@@ -16,13 +16,15 @@ export const useNavigation = () => {
 
   const loadMenuItems = async () => {
     try {
+      console.log('useNavigation - Starting to load menu items');
       setLoading(true);
       setError(null);
       const items = await navigationService.getMenuStructure();
+      console.log('useNavigation - Received items:', items);
       setMenuItems(items);
     } catch (err) {
+      console.error('useNavigation - Failed to load menu items:', err);
       setError(err.message);
-      console.error('Failed to load menu items:', err);
     } finally {
       setLoading(false);
     }

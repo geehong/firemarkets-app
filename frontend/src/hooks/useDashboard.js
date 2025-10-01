@@ -10,7 +10,7 @@ export const useDashboard = () => {
   useEffect(() => {
     const run = async () => {
       try {
-        const res = await axios.get()
+        const res = await axios.get(`${API}/dashboard`)
         setSummary(res.data)
       } finally {
         setLoading(false)

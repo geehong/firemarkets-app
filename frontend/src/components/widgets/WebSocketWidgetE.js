@@ -11,21 +11,21 @@ import {
   CBadge,
 } from '@coreui/react'
 import { CChartLine } from '@coreui/react-chartjs'
-import { useRealtimePricesWebSocket } from '../../hooks/useWebSocket'
+import useWebSocketStore from '../../store/websocketStore'
 
-// 비트코인과 이더리움만 표시
+// 비트코인과 이더리움만 표시 - 컴포넌트 외부에서 정의하여 참조 안정성 확보
 const TOP_20_CRYPTO_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'BNB', 'SOL', 'USDC', 'DOGEUSDT', 'TRX', 'ADAUSDT', 'LINK', 'AVAX', 'WBTC', 'XLM', 'BCHUSDT', 'HBAR', 'LTCUSDT', 'CRO', 'SHIB', 'TON', 'DOTUSDT']
 
 const WebSocketWidgetE = () => {
-  const {
-    prices,
-    loading,
-    connected,
-    backupMode,
-    dataSource,
-    lastUpdate,
-    requestBackupData
-  } = useRealtimePricesWebSocket(TOP_20_CRYPTO_SYMBOLS, { refetchInterval: 5000 })
+  // MainDashboard에서 이미 구독하고 있으므로 직접 store에서 데이터만 읽어옴
+  // 중복 구독을 방지하여 무한 루프 방지
+  const prices = useWebSocketStore((state) => state.prices)
+  const loading = useWebSocketStore((state) => state.loading)
+  const connected = useWebSocketStore((state) => state.connected)
+  const backupMode = useWebSocketStore((state) => state.backupMode)
+  const dataSource = useWebSocketStore((state) => state.dataSource)
+  const lastUpdate = useWebSocketStore((state) => state.lastUpdate)
+  const requestBackupData = useWebSocketStore((state) => state.requestBackupData)
 
   // 가격 변화에 따른 색상 결정
   const getPriceColor = (changePercent) => {
@@ -165,6 +165,7 @@ const WebSocketWidgetE = () => {
         {!connected && (
           <div className="text-center py-4">
             <p className="text-danger">WebSocket 연결이 끊어졌습니다.</p>
+            <p className="text-muted small">자동으로 재연결을 시도하고 있습니다...</p>
             <button className="btn btn-outline-primary btn-sm" onClick={requestBackupData}>
               백업 데이터 요청
             </button>

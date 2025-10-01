@@ -11,7 +11,6 @@ from pydantic import BaseModel
 from ....core.database import get_postgres_db
 # Tiingo consumer import removed - using direct implementation
 # scheduler_service import removed - not used in current endpoints
-from ....core.cache import cache_with_invalidation
 from ....schemas.asset import AssetsTableResponse
 from ....services.endpoint.assets_table_service import AssetsTableService
 
@@ -32,7 +31,6 @@ router = APIRouter()
 # ============================================================================
 
 @router.get("/table", response_model=AssetsTableResponse)
-@cache_with_invalidation(expire=15)  # 15초 캐시 (실시간 데이터 표시 주기에 맞춤)
 async def get_assets_table(
     type_name: Optional[str] = Query(None, description="필터링할 자산 유형 이름"),
     page: int = Query(1, ge=1, description="페이지 번호"),
@@ -114,7 +112,6 @@ async def get_assets_table(
 
 
 @router.get("/pg/quotes-price")
-@cache_with_invalidation(expire=10)  # 10초 캐시 (실시간 데이터)
 async def get_realtime_quotes_price_postgres(
     asset_identifier: str = Query(..., description="Asset ID(s) or Ticker(s) - comma separated for multiple"),
     postgres_db: Session = Depends(get_postgres_db)

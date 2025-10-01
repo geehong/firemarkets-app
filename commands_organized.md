@@ -138,6 +138,8 @@ docker-compose --profile 8001 up -d websocket_orchestrator
 ### 서비스 중지 및 재시작
 ```bash
 docker-compose down data_processor && docker-compose build data_processor && docker-compose up -d data_processor
+docker-compose down data_processor && docker-compose build data_processor && docker-compose up -d data_processor
+
 docker-compose down websocket_orchestrator && docker-compose build websocket_orchestrator && docker-compose up -d websocket_orchestrator
 docker-compose --profile processing down
 docker-compose --profile processing up -d --no-deps

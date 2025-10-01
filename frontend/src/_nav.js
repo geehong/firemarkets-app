@@ -1,22 +1,106 @@
 import React from 'react'
 import CIcon from '@coreui/icons-react'
+import * as icon from '@coreui/icons' // Import all icons
 import {
-  cilBell,
-  cilCalculator,
-  cilChartPie,
-  cilCursor,
-  cilDescription,
+  cilSpeedometer,
   cilDrop,
-  cilExternalLink,
-  cilNotes,
   cilPencil,
   cilPuzzle,
-  cilSpeedometer,
+  cilExternalLink,
+  cilCursor,
+  cilNotes,
+  cilChartPie,
   cilStar,
+  cilBell,
+  cilCalculator,
   cilBug,
+  cilDescription
 } from '@coreui/icons'
+
 import { CNavGroup, CNavItem, CNavTitle } from '@coreui/react'
 
+/**
+ * API에서 받아온 데이터를 기반으로 동적 네비게이션 아이템을 생성하는 함수
+ * @param {Array} menuItems - /api/v1/navigation/menu 응답 데이터
+ * @returns {Array} CoreUI 네비게이션 아이템 배열
+ */
+const getNavigationItems = (menuItems = []) => {
+  // menuItems가 null이나 undefined인 경우 빈 배열 반환
+  if (!menuItems || !Array.isArray(menuItems)) {
+    return [];
+  }
+
+  const getIconComponent = (iconName) => {
+    // Dynamically get icon component from the imported 'icon' object
+    return icon[iconName] || icon.cilChart; // Default icon if not found
+  };
+
+  const formatMenuItems = (items) => {
+    if (!items || !Array.isArray(items)) {
+      return [];
+    }
+    
+    return items.map((item) => {
+      const navItem = {
+        name: item.name,
+      };
+
+      // 아이콘 처리
+      if (item.icon) {
+        const IconComponent = getIconComponent(item.icon);
+        navItem.icon = <CIcon icon={IconComponent} customClassName="nav-icon" />;
+      }
+
+      // JSON 메타데이터 처리
+      if (item.metadata) {
+        const metadata = item.metadata;
+        
+        // 배지 처리
+        if (metadata.badge) {
+          navItem.badge = {
+            color: metadata.badge.color || 'info',
+            text: metadata.badge.text || metadata.badge
+          };
+        }
+        
+        // 권한 처리 (필요시)
+        if (metadata.permissions) {
+          navItem.permissions = metadata.permissions;
+        }
+        
+        // 다국어 설명 처리 (툴팁 등에 사용 가능)
+        if (metadata.description) {
+          navItem.description = metadata.description;
+          const currentLang = localStorage.getItem('language') || 'en'; // Default to English
+          navItem.tooltip = metadata.description[currentLang] || metadata.description.en || metadata.description.ko;
+        }
+      }
+
+      // 컴포넌트 타입 및 경로 처리
+      if (item.children && item.children.length > 0) {
+        navItem.component = CNavGroup;
+        navItem.items = formatMenuItems(item.children);
+        // 그룹에도 경로가 있으면 to 속성 추가
+        if (item.path) {
+          navItem.to = item.path;
+        }
+      } else if (item.path) {
+        navItem.component = CNavItem;
+        navItem.to = item.path;
+      } else {
+        // 경로가 없는 아이템 (예: 카테고리 제목)
+        navItem.component = CNavTitle;
+      }
+      
+
+      return navItem;
+    });
+  };
+
+  return formatMenuItems(menuItems);
+};
+
+// 기존 정적 메뉴 (fallback용)
 const _nav = [
   {
     component: CNavItem,
@@ -503,4 +587,4 @@ const _nav = [
   },
 ]
 
-export default _nav
+export default getNavigationItems

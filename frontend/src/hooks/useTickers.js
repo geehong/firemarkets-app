@@ -10,7 +10,7 @@ export const useTickers = () => {
   useEffect(() => {
     const run = async () => {
       try {
-        const res = await axios.get()
+        const res = await axios.get(`${API}/tickers`)
         setTickers(res.data?.items || res.data || [])
       } finally {
         setLoading(false)

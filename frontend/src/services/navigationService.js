@@ -1,24 +1,28 @@
 // frontend/src/services/navigationService.js
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+// Vite 환경에서는 import.meta.env를 사용
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
 
 class NavigationService {
   /**
-   * API에서 메뉴 구조를 가져옵니다
+   * 메뉴 구조를 가져옵니다
    */
   async getMenuStructure() {
     try {
+      console.log('navigationService - API_BASE_URL:', API_BASE_URL);
+      console.log('navigationService - Making request to:', `${API_BASE_URL}/api/v1/navigation/menu`);
       const response = await axios.get(`${API_BASE_URL}/api/v1/navigation/menu`);
+      console.log('navigationService - Response:', response.data);
       return response.data;
     } catch (error) {
-      console.error('Failed to fetch menu structure:', error);
-      throw error;
+      console.error('navigationService - Failed to fetch menu structure:', error);
+      throw new Error('메뉴 구조를 가져오는데 실패했습니다.');
     }
   }
 
   /**
-   * 동적 메뉴를 새로고침합니다 (관리자용)
+   * 동적 메뉴를 새로고침합니다
    */
   async refreshDynamicMenus() {
     try {
@@ -26,7 +30,7 @@ class NavigationService {
       return response.data;
     } catch (error) {
       console.error('Failed to refresh dynamic menus:', error);
-      throw error;
+      throw new Error('동적 메뉴 새로고침에 실패했습니다.');
     }
   }
 
@@ -39,7 +43,7 @@ class NavigationService {
       return response.data;
     } catch (error) {
       console.error('Failed to get menu status:', error);
-      throw error;
+      throw new Error('메뉴 상태를 가져오는데 실패했습니다.');
     }
   }
 }

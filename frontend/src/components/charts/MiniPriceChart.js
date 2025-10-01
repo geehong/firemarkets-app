@@ -52,6 +52,34 @@ const MiniPriceChart = ({ assetIdentifier = 'BTCUSDT', delayData, wsPrices }) =>
   const [yAxisRange, setYAxisRange] = useState({ min: null, max: null })
   const [isYAxisInitialized, setIsYAxisInitialized] = useState(false)
 
+  // wsPrices에서 필요한 가격만 추출하고, 메모이즈하여 불필요한 리렌더를 줄입니다.
+  const currentWsPrice = useMemo(() => {
+    const key = String(assetIdentifier).toUpperCase()
+    const direct = wsPrices?.[key]?.price
+    if (typeof direct !== 'undefined') return direct
+    const usdt = wsPrices?.[`${key}USDT`]?.price
+    return usdt
+  }, [wsPrices, assetIdentifier])
+
+  // 지연 데이터가 없고 WS 가격만 있을 때, 보이는 최소 라인을 구성
+  const displayedSeriesData = useMemo(() => {
+    const hasSeries = Array.isArray(seriesData) && seriesData.length > 0
+    const wsPriceNum = typeof currentWsPrice !== 'undefined' ? Number(currentWsPrice) : undefined
+    if (hasSeries) return seriesData
+    if (typeof wsPriceNum === 'number' && isFinite(wsPriceNum)) {
+      const now = Date.now()
+      return [
+        [now - 60_000, wsPriceNum],
+        [now, wsPriceNum]
+      ]
+    }
+    return []
+  }, [seriesData, currentWsPrice])
+
+  const hasHistorical = useMemo(() => Array.isArray(seriesData) && seriesData.length > 0, [seriesData])
+
+  // displayedSeriesData / hasHistorical는 상단으로 이동
+
   // temp_debug.js 방식으로 마지막 포인트 업데이트
   useEffect(() => {
     if (!seriesData || seriesData.length === 0) return;
@@ -63,9 +91,7 @@ const MiniPriceChart = ({ assetIdentifier = 'BTCUSDT', delayData, wsPrices }) =>
     const lastTs = seriesData[n - 1][0];
     const nowTs = Date.now(); // 마지막 포인트를 현재 시간으로 설정
 
-    const upId2 = String(assetIdentifier).toUpperCase()
-    const wsPriceRaw = wsPrices?.[upId2]?.price ?? wsPrices?.[`${upId2}USDT`]?.price
-    const wsPrice = typeof wsPriceRaw !== 'undefined' ? Number(wsPriceRaw) : undefined
+    const wsPrice = typeof currentWsPrice !== 'undefined' ? Number(currentWsPrice) : undefined;
     
 
     
@@ -111,9 +137,19 @@ const MiniPriceChart = ({ assetIdentifier = 'BTCUSDT', delayData, wsPrices }) =>
     
     // 연결선 시작점을 마지막 데이터 포인트로 설정
     const p1 = { x: lastTs, y: lastClose, marker: { enabled: false }, dataLabels: { enabled: false }, color: isUp ? upColor : downColor };
-    setLastPointData([p1, newLastPoint]);
+    // 값이 실제로 변할 때만 상태 업데이트 (무한 렌더 방지)
+    setLastPointData((prev) => {
+      if (Array.isArray(prev) && prev.length === 2) {
+        const prevP1 = prev[0]
+        const prevLast = prev[1]
+        const unchanged = prevP1?.x === p1.x && prevP1?.y === p1.y && prevLast?.y === newLastPoint.y && prevLast?.custom?.change === newLastPoint.custom.change
+        if (unchanged) return prev
+      }
+      return [p1, newLastPoint]
+    });
 
-  }, [wsPrices, seriesData, assetIdentifier]);
+  // 의존성 배열에서 wsPrices를 currentWsPrice로 변경하여 불필요한 재실행을 방지합니다.
+  }, [currentWsPrice, seriesData, assetIdentifier, isYAxisInitialized]);
 
   // Simple name mapping for title display
   const tickerNames = {
@@ -135,27 +171,71 @@ const MiniPriceChart = ({ assetIdentifier = 'BTCUSDT', delayData, wsPrices }) =>
   }
   const titleText = `${tickerNames[assetIdentifier] || assetIdentifier} (${assetIdentifier})`
 
-  // X축 범위는 초기에 한 번만 설정하여 좌우 이동 방지 (PgSql 방식과 동일)
+  // X축 범위: 좌측은 고정, 우측은 동적 확장
   const [xAxisRange, setXAxisRange] = useState({ min: null, max: null })
   const [isXAxisInitialized, setIsXAxisInitialized] = useState(false)
+  const dayMs = 24 * 60 * 60 * 1000
   
   useEffect(() => {
-    if (!seriesData || seriesData.length === 0 || isXAxisInitialized) return;
+    if (!seriesData || seriesData.length === 0) return;
     
     const timestamps = seriesData.map(p => p[0]);
     const minTime = Math.min(...timestamps);
     const maxTime = Math.max(...timestamps);
     
-    // 좌/우 패딩: 좌 2시간, 우 4시간 (PgSql과 동일)
-    const leftPaddingMs = 2 * 60 * 60 * 1000;  // 2h
-    const rightPaddingMs = 4 * 60 * 60 * 1000; // 4h
+    // 좌측 패딩: 데이터 범위의 10% (한 번만 설정)
+    const dataRangeMs = Math.max(0, maxTime - minTime);
+    const leftPaddingMs = dataRangeMs * 0.1;
     
-    setXAxisRange({
-      min: Math.round(minTime - leftPaddingMs),
-      max: Math.round(maxTime + rightPaddingMs)
-    });
-    setIsXAxisInitialized(true);
+    if (!isXAxisInitialized) {
+      const tentativeMin = Math.round(minTime - leftPaddingMs)
+      const minRequired = Math.round(maxTime - dayMs)
+      const finalMin = Math.min(tentativeMin, minRequired)
+      setXAxisRange({
+        min: finalMin,
+        max: null  // 우측은 동적으로 설정
+      });
+      setIsXAxisInitialized(true);
+    }
   }, [seriesData, isXAxisInitialized, assetIdentifier]);
+
+  // 우측 범위를 현재 시간 기준으로 동적 업데이트
+  useEffect(() => {
+    if (!isXAxisInitialized) return;
+    
+    const baseSeries = hasHistorical ? seriesData : displayedSeriesData
+    if (!baseSeries || baseSeries.length === 0) return;
+    
+    const timestamps = baseSeries.map(p => p[0]);
+    const maxDataTime = Math.max(...timestamps);
+    const nowTime = Date.now();
+    
+    // 히스토리가 있으면 넉넉히(4시간), 없으면 2분만 확장
+    const extra = hasHistorical ? (4 * 60 * 60 * 1000) : (2 * 60 * 1000)
+    const dynamicMax = Math.max(nowTime, maxDataTime) + extra;
+    
+    // 데이터 기반 좌측 최소값 계산 (히스토리 시 패딩 포함)
+    let minFromData = dynamicMax - dayMs
+    if (hasHistorical) {
+      const minDataTime = Math.min(...timestamps)
+      const dataRangeMs = Math.max(0, maxDataTime - minDataTime)
+      const leftPaddingMs = dataRangeMs * 0.1
+      const tentativeMin = Math.round(minDataTime - leftPaddingMs)
+      // 최소 24시간 보장: 데이터 기반 min이 24시간보다 좁으면 24시간 창으로 보정
+      minFromData = Math.min(tentativeMin, Math.round(dynamicMax - dayMs))
+    }
+    const nextMin = Math.round(minFromData)
+    const nextMax = Math.round(dynamicMax)
+    
+    setXAxisRange(prev => {
+      const diffMax = typeof prev?.max === 'number' ? Math.abs(nextMax - prev.max) : Infinity
+      const diffMin = typeof prev?.min === 'number' ? Math.abs(nextMin - prev.min) : Infinity
+      if (diffMax < 250 && diffMin < 250) return prev
+      return { min: nextMin, max: nextMax }
+    });
+  }, [wsPrices, isXAxisInitialized, seriesData, displayedSeriesData, hasHistorical]);
+
+  // displayedSeriesData/hasHistorical는 상단으로 이동
 
   const options = useMemo(() => ({
     title: { text: titleText, style: { color: '#ffffff' } },
@@ -173,11 +253,11 @@ const MiniPriceChart = ({ assetIdentifier = 'BTCUSDT', delayData, wsPrices }) =>
         gridLineWidth: 1,
         gridLineColor: '#333333',
         labels: { style: { color: '#a0a0a0' } },
-      overscroll: 14400000, 
+      overscroll: hasHistorical ? 14400000 : 0, 
       min: xAxisRange.min,
       max: xAxisRange.max,
       minPadding: 0,
-      maxPadding: 0,
+      maxPadding: hasHistorical ? 0.1 : 0.02,
       startOnTick: false,
       endOnTick: false
     },
@@ -187,8 +267,8 @@ const MiniPriceChart = ({ assetIdentifier = 'BTCUSDT', delayData, wsPrices }) =>
       labels: { style: { color: '#a0a0a0' }, formatter: function () { return typeof this.value === 'number' ? this.value.toFixed(2) : this.value } },
       min: yAxisRange.min,
       max: yAxisRange.max,
-        minPadding: 0,
-        maxPadding: 0,
+        minPadding: 0.1,  // Y축 하단 패딩 복원
+        maxPadding: 0.1,  // Y축 상단 패딩 복원
         startOnTick: false,
         endOnTick: false,
         lastVisiblePrice: {
@@ -219,7 +299,7 @@ const MiniPriceChart = ({ assetIdentifier = 'BTCUSDT', delayData, wsPrices }) =>
         {
         type: 'line',
         name: assetIdentifier,
-        data: seriesData,
+        data: displayedSeriesData,
             color: '#00d4ff',
         lineWidth: 2,
         marker: { enabled: false }
@@ -276,21 +356,9 @@ const MiniPriceChart = ({ assetIdentifier = 'BTCUSDT', delayData, wsPrices }) =>
             },
       },
     ],
-  }), [seriesData, assetIdentifier, lastPointData, xAxisRange, yAxisRange]);
+  }), [displayedSeriesData, assetIdentifier, lastPointData, xAxisRange, yAxisRange, titleText]);
 
-  if (isLoading || !seriesData || seriesData.length === 0) {
-    return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '300px',
-        width: '100%'
-      }}>
-        <div>Loading {assetIdentifier} chart...</div>
-      </div>
-    )
-  }
+  // 차트는 지연 데이터가 없어도 항상 렌더링하여 컨테이너가 비어 보이지 않도록 합니다.
 
   return (
     <>

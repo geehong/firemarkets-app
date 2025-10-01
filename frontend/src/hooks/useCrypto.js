@@ -11,7 +11,7 @@ export const useCrypto = (symbol) => {
     const run = async () => {
       if (!symbol) return setLoading(false)
       try {
-        const res = await axios.get()
+        const res = await axios.get(`${API}/crypto/${symbol}`)
         setData(res.data)
       } finally {
         setLoading(false)

@@ -3,11 +3,9 @@ import useWebSocketStore from '../store/websocketStore'
 
 // WebSocket 연결 관리 훅 (Zustand 스토어 기반)
 export const useWebSocket = () => {
-  const { socket, connected, error } = useWebSocketStore((state) => ({
-    socket: state.socket,
-    connected: state.connected,
-    error: state.error
-  }))
+  const socket = useWebSocketStore((state) => state.socket)
+  const connected = useWebSocketStore((state) => state.connected)
+  const error = useWebSocketStore((state) => state.error)
 
   return { socket, connected, error }
 }
@@ -54,10 +52,8 @@ export const useRealtimePricesWebSocket = (symbols = []) => {
 
 // 지연 가격 데이터 WebSocket 훅 (Zustand 스토어 기반)
 export const useDelaySparklineWebSocket = (symbols = [], interval = '15m') => {
-  const { socket, connected } = useWebSocketStore((state) => ({
-    socket: state.socket,
-    connected: state.connected
-  }))
+  const socket = useWebSocketStore((state) => state.socket)
+  const connected = useWebSocketStore((state) => state.connected)
 
   // 이 훅은 기존 로직을 유지하되, Zustand 스토어의 연결 상태를 사용합니다.
   // 필요에 따라 나중에 완전히 리팩토링할 수 있습니다.

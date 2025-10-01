@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS menus (
     -- 'static' 또는 'dynamic'으로 메뉴 항목의 출처를 구분
     source_type VARCHAR(20) DEFAULT 'static' NOT NULL,
     -- JSON 컬럼: 메뉴의 추가 정보 (설명, 권한, 설정 등)
-    metadata JSONB DEFAULT '{}',
+    menu_metadata JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -59,15 +59,18 @@ BEGIN
     -- Assets
     SELECT id INTO assets_menu_id FROM menus WHERE name = 'Assets' AND parent_id IS NULL;
     IF assets_menu_id IS NULL THEN
-        INSERT INTO menus (name, icon, "order", source_type, metadata) 
+        INSERT INTO menus (name, icon, "order", source_type, menu_metadata) 
         VALUES ('Assets', 'cibGoldenline', 20, 'static', '{"description": "자산 분석 및 관리", "permissions": ["user", "admin"], "badge": null}') 
         RETURNING id INTO assets_menu_id;
+    ELSE
+        -- 기존 Assets 메뉴에서 path 제거 (그룹으로만 표시)
+        UPDATE menus SET path = NULL WHERE id = assets_menu_id;
     END IF;
 
     -- OnChain
     SELECT id INTO onchain_menu_id FROM menus WHERE name = 'OnChain' AND parent_id IS NULL;
     IF onchain_menu_id IS NULL THEN
-        INSERT INTO menus (name, icon, "order", source_type, metadata) 
+        INSERT INTO menus (name, icon, "order", source_type, menu_metadata) 
         VALUES ('OnChain', 'cibBitcoin', 30, 'static', '{"description": "온체인 데이터 분석", "permissions": ["user", "admin"], "badge": "NEW"}') 
         RETURNING id INTO onchain_menu_id;
     END IF;
@@ -75,14 +78,28 @@ BEGIN
     -- Map
     SELECT id INTO map_menu_id FROM menus WHERE name = 'Map' AND parent_id IS NULL;
     IF map_menu_id IS NULL THEN
-        INSERT INTO menus (name, icon, "order", source_type, metadata) 
+        INSERT INTO menus (name, icon, "order", source_type, menu_metadata) 
         VALUES ('Map', 'cilChartPie', 40, 'static', '{"description": "지도 및 시각화", "permissions": ["user", "admin"], "badge": null}') 
         RETURNING id INTO map_menu_id;
     END IF;
 
-    -- 3. 'Assets' 하위 메뉴 동적 생성 (asset_types 테이블 기반)
-    FOR asset_type_record IN SELECT type_name FROM asset_types ORDER BY asset_type_id LOOP
-        INSERT INTO menus (name, path, parent_id, "order", source_type, metadata)
+    -- 3. 'Assets' 하위 메뉴 동적 생성
+    -- 3-1. "All Assets" 메뉴 추가 (전체 자산)
+    -- Assets 메뉴가 존재하는 경우에만 All Assets 메뉴 추가
+    IF assets_menu_id IS NOT NULL THEN
+        INSERT INTO menus (name, path, parent_id, "order", source_type, menu_metadata)
+        VALUES (
+            'All Assets',
+            '/assets',
+            assets_menu_id,
+            5,
+            'dynamic',
+            '{"description": "전체 자산 보기", "permissions": ["user", "admin"], "badge": null}'
+        );
+
+        -- 3-2. 자산 유형별 메뉴 생성 (asset_types 테이블 기반)
+        FOR asset_type_record IN SELECT type_name FROM asset_types ORDER BY asset_type_id LOOP
+        INSERT INTO menus (name, path, parent_id, "order", source_type, menu_metadata)
         VALUES (
             asset_type_record.type_name,
             '/assets?type_name=' || asset_type_record.type_name,
@@ -98,7 +115,7 @@ BEGIN
         SELECT DISTINCT category FROM onchain_metrics_info WHERE is_enabled = TRUE ORDER BY category 
     LOOP
         -- 카테고리 그룹 메뉴 생성
-        INSERT INTO menus (name, icon, parent_id, "order", source_type, metadata)
+        INSERT INTO menus (name, icon, parent_id, "order", source_type, menu_metadata)
         VALUES (
             REPLACE(INITCAP(REPLACE(onchain_category_record.category, '_', ' ')), 'Btc', 'BTC'), -- 'market_metrics' -> 'Market Metrics'
             'cibMatrix',
@@ -114,7 +131,7 @@ BEGIN
             WHERE category = onchain_category_record.category AND is_enabled = TRUE 
             ORDER BY name 
         LOOP
-            INSERT INTO menus (name, path, parent_id, "order", source_type, metadata)
+            INSERT INTO menus (name, path, parent_id, "order", source_type, menu_metadata)
             VALUES (
                 onchain_metric_record.name,
                 '/onchain/overviews?metric=' || onchain_metric_record.metric_id,
@@ -129,12 +146,12 @@ BEGIN
     -- 5. 'Map' 하위 메뉴 정적으로 생성 (필요시 동적으로 변경 가능)
     -- 이미 있는 경우 중복 방지
     IF NOT EXISTS (SELECT 1 FROM menus WHERE name = 'Performance Map' AND parent_id = map_menu_id) THEN
-        INSERT INTO menus (name, path, parent_id, "order", source_type, metadata)
+        INSERT INTO menus (name, path, parent_id, "order", source_type, menu_metadata)
         VALUES ('Performance Map', '/overviews/treemap', map_menu_id, 10, 'static', '{"description": "성과 지도 시각화", "permissions": ["user", "admin"], "badge": null}');
     END IF;
     
     IF NOT EXISTS (SELECT 1 FROM menus WHERE name = 'World Assets TreeMap' AND parent_id = map_menu_id) THEN
-        INSERT INTO menus (name, path, parent_id, "order", source_type, metadata)
+        INSERT INTO menus (name, path, parent_id, "order", source_type, menu_metadata)
         VALUES ('World Assets TreeMap', '/world-assets-treemap', map_menu_id, 20, 'static', '{"description": "전 세계 자산 트리맵", "permissions": ["user", "admin"], "badge": null}');
     END IF;
 
@@ -142,7 +159,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- 6. 초기 정적 메뉴 데이터 삽입 (중복 방지)
-INSERT INTO menus (name, path, icon, "order", source_type, metadata) 
+INSERT INTO menus (name, path, icon, "order", source_type, menu_metadata) 
 SELECT 'Dashboard', '/dashboard', 'cilSpeedometer', 10, 'static', '{"description": "대시보드 메인 페이지", "permissions": ["user", "admin"], "badge": "NEW"}'
 WHERE NOT EXISTS (SELECT 1 FROM menus WHERE name = 'Dashboard' AND path = '/dashboard');
 
