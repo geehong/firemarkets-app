@@ -56,7 +56,7 @@ const RealTimeWidgetsTypeA = ({ symbols = [] }) => {
 
   return (
     <CRow xs={{ gutter: 4 }}>
-      {(symbols.length ? symbols : Object.keys(prices)).map((sym) => {
+      {(symbols.length ? symbols : Object.keys(prices || {})).map((sym) => {
         const p = prices[sym] || {}
         const series = (spark[sym] || []).map((pt) => pt.price)
         const labels = (spark[sym] || []).map((pt) => pt.timestamp_utc)

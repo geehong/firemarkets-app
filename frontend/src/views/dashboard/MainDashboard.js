@@ -1,7 +1,6 @@
-import React, { useMemo, useEffect, lazy, Suspense } from 'react'
+import React, { lazy, Suspense, useEffect, useMemo } from 'react'
 import { CRow, CCol, CCard, CCardHeader, CCardBody, CCardTitle } from '@coreui/react'
-import { useAPI } from 'src/hooks/useAPI'
-import useWebSocketStore from 'src/store/websocketStore'
+import useWebSocketStore from '../../store/websocketStore'
 
 // 지연 로딩으로 번들 크기 감소 (TreeMap은 모듈 의존성 때문에 즉시 로드)
 import { PerformanceTreeMapToday } from 'src/components/charts/threemap'
@@ -11,31 +10,26 @@ const RealTimeWidgetsTypeA = lazy(() => import('src/components/widgets/RealTimeW
 const MiniPriceChart = lazy(() => import('src/components/charts/MiniPriceChart'))
 
 const MainDashboard = () => {
-  // 시장 개장/폐장 로직 제거됨
-
   // 차트 그룹별 심볼 정의
-  const chartGroups = useMemo(() => ([
+  const chartGroups = [
     {
       title: '핵심 시장',
       symbols: ['BTCUSDT', 'ETHUSDT', 'GCUSD', 'SPY']
     }
-  ]), []);
+  ];
 
-  // --- 데이터 중앙집중식 요청 ---
-  // 1. 모든 심볼 목록을 한 번에 계산 (의존성 안정화)
-  const allSymbols = useMemo(() => {
-    const symbols = chartGroups.flatMap(g => g.symbols);
-    return Array.from(new Set(symbols));
-  }, [chartGroups]);
+  // 모든 심볼을 하나의 배열로 추출 (정적 배열로 변경)
+  const allSymbols = useMemo(() => 
+    ['BTCUSDT', 'ETHUSDT', 'GCUSD', 'SPY'], 
+    []
+  );
 
-  // 2. 모든 심볼에 대한 과거 데이터를 단일 API 호출로 가져오기
-  const { data: delayData, isLoading: isDelayDataLoading } = useAPI.realtime.sparkline(allSymbols, '15m', 1);
-  
-  // 3. 모든 심볼에 대한 실시간 데이터를 직접 store에서 가져오기 (중복 구독 방지)
-  const wsPrices = useWebSocketStore((state) => state.prices)
-  const wsConnected = useWebSocketStore((state) => state.connected)
-  
-  // WebSocket 연결 및 재연결 로직을 관리하는 useEffect (중복 제거)
+  // WebSocket 연결 상태 가져오기
+  const connected = useWebSocketStore((state) => state.connected);
+  const loading = useWebSocketStore((state) => state.loading);
+  const error = useWebSocketStore((state) => state.error);
+
+  // WebSocket 연결 및 재연결 로직 (Test01.js와 동일)
   useEffect(() => {
     const { connect, disconnect, subscribeSymbols } = useWebSocketStore.getState();
 
@@ -50,12 +44,11 @@ const MainDashboard = () => {
       console.log('[MainDashboard] Cleaning up WebSocket connection');
       disconnect();
     };
-    // allSymbols가 변경될 때만 이 effect를 재실행합니다.
   }, [allSymbols]);
 
-  // WebSocket 연결 상태 모니터링 및 자동 재연결
+  // WebSocket 연결 상태 모니터링 및 자동 재연결 (Test01.js와 동일)
   useEffect(() => {
-    if (!wsConnected && allSymbols.length > 0) {
+    if (!connected && allSymbols.length > 0) {
       console.log('[MainDashboard] WebSocket disconnected, attempting reconnection...');
       const { connect, subscribeSymbols } = useWebSocketStore.getState();
       
@@ -69,19 +62,22 @@ const MainDashboard = () => {
 
       return () => clearTimeout(reconnectTimer);
     }
-  }, [wsConnected, allSymbols]);
-
-
-  // 웹소켓 데이터 로깅 (필요시 주석 해제)
-  // useEffect(() => {
-  //   console.log('[MainDashboard] === WebSocket Status ===')
-  //   console.log('[MainDashboard] wsConnected:', wsConnected)
-  //   console.log('[MainDashboard] wsPrices keys:', wsPrices ? Object.keys(wsPrices) : 'null')
-  //   console.log('[MainDashboard] wsPrices count:', wsPrices ? Object.keys(wsPrices).length : 0)
-  // }, [wsPrices, wsConnected])
+  }, [connected, allSymbols]);
 
   return (
     <>
+      {/* WebSocket 연결 상태 표시 */}
+      <div className="mb-3">
+        <div className="d-flex align-items-center gap-2">
+          <span className="badge bg-secondary">WebSocket 상태:</span>
+          <span className={`badge ${connected ? 'bg-success' : 'bg-danger'}`}>
+            {connected ? '연결됨' : '연결 끊김'}
+          </span>
+          {loading && <span className="badge bg-warning">로딩 중...</span>}
+          {error && <span className="badge bg-danger">에러: {error}</span>}
+        </div>
+      </div>
+
       {/* 시장 상태에 따른 차트 표시 */}
       <CCard className="mb-4">
         <CCardHeader>
@@ -99,9 +95,7 @@ const MainDashboard = () => {
                   <div style={{ height: '300px', minHeight: '300px', width: '100%' }}>
                     <Suspense fallback={<div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading {symbol} chart...</div>}>
                       <MiniPriceChart 
-                        assetIdentifier={symbol} 
-                        delayData={delayData?.[symbol]} // 개별 심볼 데이터 전달
-                        wsPrices={wsPrices} // 전체 실시간 가격 객체 전달
+                        assetIdentifier={symbol}
                       />
                     </Suspense>
                   </div>

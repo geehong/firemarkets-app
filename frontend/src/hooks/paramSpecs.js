@@ -169,7 +169,15 @@ export const paramSpecs = {
 
   realtime: {
     prices: { path: `${API_BASE}/realtime/prices`, method: 'GET', params: {} },
-    pricesPg: { path: `${API_BASE}/realtime/prices/pg`, method: 'GET', params: {} },
+    pricesPg: { 
+      path: `${API_BASE}/realtime/pg/quotes-delay-price`, 
+      method: 'GET', 
+      params: {
+        asset_identifier: { type: 'string', required: true, description: '자산 식별자' },
+        data_interval: { type: 'string', default: '15m', description: '데이터 간격' },
+        days: { type: 'number', default: 1, description: '조회할 일수' }
+      }
+    },
     sparkline: { path: `${API_BASE}/realtime/sparkline`, method: 'GET', params: {} }
   },
 

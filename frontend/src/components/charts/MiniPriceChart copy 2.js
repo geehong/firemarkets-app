@@ -27,12 +27,8 @@ const MiniPriceChart = ({
     const wsPrices = useWebSocketStore((state) => state.prices);
     
     // WebSocket 구독만 담당 (연결 관리는 뷰 레벨에서 처리)
-    // WebSocket 구독 로직 단순화
-    const connected = useWebSocketStore((state) => state.connected);
     useEffect(() => {
         const { subscribeSymbols, unsubscribeSymbols, connected } = useWebSocketStore.getState();
-        const { subscribeSymbols, unsubscribeSymbols } = useWebSocketStore.getState();
-        subscribeSymbols([assetIdentifier]);
         
         // 연결 상태 확인 후 구독
         if (connected) {
@@ -82,49 +78,39 @@ const MiniPriceChart = ({
 
     // 실시간 가격 업데이트 (원본 더미 데이터 로직)
 
-           // WebSocket 데이터 감시 및 실시간 업데이트
-           useEffect(() => {
-               if (!chart) return;
-               
-               const series = chart.series[0];
-               if (!series) return;        
-               
-               // 연결 상태와 관계없이 데이터가 있으면 사용
-               if (wsPrices[assetIdentifier]) {
-                   const { price, timestamp_utc } = wsPrices[assetIdentifier];
-                   
-                   // 데이터 유효성 검증
-                   const timestamp = new Date(timestamp_utc).getTime();
-                   const priceValue = parseFloat(price);
-                   
-                   // 유효하지 않은 데이터 필터링
-                   if (!timestamp || !isFinite(timestamp) || !priceValue || !isFinite(priceValue)) {
-                       return;
-                   }
-                   
-                   const point = [timestamp, priceValue];
-                   const lastPoint = series.data[series.data.length - 1];
-                   
-                   // 같은 시간대면 업데이트, 새로운 시간대면 추가
-                   if (lastPoint && lastPoint.x === point[0]) {
-                       lastPoint.update(point, true);
-                   } else {
-                       series.addPoint(point, true, true);
-                   }
-                   
-                   // yAxis plotLine 업데이트 (값 정규화)
-                   const isRising = point[1] >= (lastPoint?.y ?? point[1]);
-                   const lineColor = isRising ? '#18c58f' : '#ff4d4f';
-                   chart.yAxis[0].update({
-                       plotLines: [{
-                           value: Math.round(point[1] * 100) / 100, // 소수점 2자리로 제한
-                           color: lineColor,
-                           label: { text: `Current: ${point[1].toFixed(2)}`, style: { color: lineColor } },
-                           id: 'current-price-line'
-                       }]
-                   });
-               }
-           }, [chart, wsPrices, assetIdentifier]);
+    // WebSocket 데이터 감시 및 실시간 업데이트
+    useEffect(() => {
+        if (!chart) return;
+        
+        const series = chart.series[0];
+        if (!series) return;        
+        
+        // 연결 상태와 관계없이 데이터가 있으면 사용
+        if (wsPrices[assetIdentifier]) {
+            const { price, timestamp_utc } = wsPrices[assetIdentifier];
+            const point = [new Date(timestamp_utc).getTime(), parseFloat(price)];
+            const lastPoint = series.data[series.data.length - 1];
+            
+            // 같은 시간대면 업데이트, 새로운 시간대면 추가
+            if (lastPoint && lastPoint.x === point[0]) {
+                lastPoint.update(point, true);
+            } else {
+                series.addPoint(point, true, true);
+            }
+            
+            // yAxis plotLine 업데이트
+            const isRising = point[1] >= (lastPoint?.y ?? point[1]);
+            const lineColor = isRising ? '#18c58f' : '#ff4d4f';
+            chart.yAxis[0].update({
+                plotLines: [{
+                    value: point[1],
+                    color: lineColor,
+                    label: { text: `Current: ${point[1].toFixed(2)}`, style: { color: lineColor } },
+                    id: 'current-price-line'
+                }]
+            });
+        }
+    }, [chart, wsPrices, assetIdentifier]);
 
     useEffect(() => {
         if (!chartRef.current) return;
@@ -175,7 +161,7 @@ const MiniPriceChart = ({
                     count: 1,
                     text: 'All'
                 }],
-                selected: 3, // 기본값을 'All'로 설정
+                selected: 2, // 기본값을 'All'로 설정
                 inputEnabled: false,
                 buttonTheme: {
                     fill: 'none',
@@ -223,9 +209,6 @@ const MiniPriceChart = ({
                     gridLineColor: '#333'
                 }
             },
-            // 오류의 근본 원인인 네비게이터와 스크롤바를 비활성화합니다.
-            navigator: { enabled: false },
-            scrollbar: { enabled: false },
 
             series: [{
                 type: 'line',
