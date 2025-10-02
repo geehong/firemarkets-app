@@ -2,7 +2,8 @@
 import axios from 'axios';
 
 // Vite 환경에서는 import.meta.env를 사용
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
+// 기본값을 동일 오리진으로 변경하여 실기기/프로덕션에서 CORS 및 localhost 문제 방지
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 class NavigationService {
   /**

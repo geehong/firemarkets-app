@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect, useMemo } from 'react'
+import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { CRow, CCol, CCard, CCardHeader, CCardBody, CCardTitle } from '@coreui/react'
 import useWebSocketStore from '../../store/websocketStore'
 
@@ -7,67 +7,104 @@ import { PerformanceTreeMapToday } from 'src/components/charts/threemap'
 const DefaultChart = lazy(() => import('src/components/charts/defaultchart/DefaultChart'))
 const HistoryTableDefault = lazy(() => import('src/components/tables/HistoryTableDefault'))
 const RealTimeWidgetsTypeA = lazy(() => import('src/components/widgets/RealTimeWidgetsTypeA'))
-const MiniPriceChart = lazy(() => import('src/components/charts/MiniPriceChart'))
+
+// 각 심볼별 미니차트 임포트
+const MiniPriceCryptoChart = lazy(() => import('src/components/charts/minicharts/MiniPriceCryptoChart'))
+const MiniPriceCommoditiesChart = lazy(() => import('src/components/charts/minicharts/MiniPriceCommoditiesChart'))
+const MiniPriceStocksEtfChart = lazy(() => import('src/components/charts/minicharts/MiniPriceStocksEtfChart'))
+
+// chartGroups를 컴포넌트 외부로 이동시켜 렌더링 시 재생성 방지
+// 자산별 대표 2개씩만 노출 (코인, 주식, ETF, 커머디티)
+const chartGroups = [
+  {
+    title: 'Crypto (대표 2)',
+    symbols: [
+      { symbol: 'BTCUSDT', chartType: 'crypto' },
+      { symbol: 'ETHUSDT', chartType: 'crypto' }
+    ]
+  },
+  {
+    title: 'US Stocks (대표 2)',
+    symbols: [
+      { symbol: 'MSFT', chartType: 'stocks' },
+      { symbol: 'NVDA', chartType: 'stocks' }
+    ]
+  },
+  {
+    title: 'US ETFs (대표 2)',
+    symbols: [
+      { symbol: 'SPY', chartType: 'stocks' },
+      { symbol: 'QQQ', chartType: 'stocks' }
+    ]
+  },
+  {
+    title: 'Commodities (금/은)',
+    symbols: [
+      { symbol: 'GCUSD', chartType: 'commodities' },
+      { symbol: 'SIUSD', chartType: 'commodities' }
+    ]
+  }
+];
+
+// 모든 심볼을 하나의 배열로 추출 (WebSocket 구독용)
+const allSymbols = chartGroups.flatMap(group => group.symbols.map(item => item.symbol));
 
 const MainDashboard = () => {
-  // 차트 그룹별 심볼 정의
-  const chartGroups = [
-    {
-      title: '핵심 시장',
-      symbols: ['BTCUSDT', 'ETHUSDT', 'GCUSD', 'SPY']
-    }
-  ];
-
-  // 모든 심볼을 하나의 배열로 추출 (정적 배열로 변경)
-  const allSymbols = useMemo(() => 
-    ['BTCUSDT', 'ETHUSDT', 'GCUSD', 'SPY'], 
-    []
-  );
+  // 모바일 전용 UI 설정 제거: 고정 레이아웃 사용
 
   // WebSocket 연결 상태 가져오기
   const connected = useWebSocketStore((state) => state.connected);
   const loading = useWebSocketStore((state) => state.loading);
   const error = useWebSocketStore((state) => state.error);
 
-  // WebSocket 연결 및 재연결 로직 (Test01.js와 동일)
+  // 모바일 여부 감지 (뷰포트 기준)
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth <= 768 : false);
   useEffect(() => {
-    const { connect, disconnect, subscribeSymbols } = useWebSocketStore.getState();
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
+  // 초기 연결 및 구독 (Test01 스타일)
+  useEffect(() => {
+    const { connect, subscribeSymbols } = useWebSocketStore.getState();
     if (allSymbols.length > 0) {
       console.log('[MainDashboard] Initializing WebSocket connection for symbols:', allSymbols);
       connect();
+      // 일부 구현은 서버 측 큐에 보관되므로 초기에도 구독 호출
       subscribeSymbols(allSymbols);
     }
+    // 필요 시 언마운트에서 disconnect() 추가 가능
+  }, []);
 
-    // 컴포넌트가 언마운트될 때 WebSocket 연결을 해제합니다.
-    return () => {
-      console.log('[MainDashboard] Cleaning up WebSocket connection');
-      disconnect();
-    };
-  }, [allSymbols]);
+  // 연결되면 재구독 보장
+  useEffect(() => {
+    if (connected) {
+      const { subscribeSymbols } = useWebSocketStore.getState();
+      console.log('[MainDashboard] Connected. Ensuring subscription for all symbols:', allSymbols);
+      subscribeSymbols(allSymbols);
+    }
+  }, [connected]);
 
-  // WebSocket 연결 상태 모니터링 및 자동 재연결 (Test01.js와 동일)
+  // 연결 끊기면 재시도 타이머로 재연결 + 재구독 (Test01 스타일)
   useEffect(() => {
     if (!connected && allSymbols.length > 0) {
-      console.log('[MainDashboard] WebSocket disconnected, attempting reconnection...');
+      console.log('[MainDashboard] Disconnected. Scheduling reconnect...');
       const { connect, subscribeSymbols } = useWebSocketStore.getState();
-      
-      // 3초 후 재연결 시도
       const reconnectTimer = setTimeout(() => {
         connect();
         setTimeout(() => {
           subscribeSymbols(allSymbols);
         }, 1000);
       }, 3000);
-
       return () => clearTimeout(reconnectTimer);
     }
-  }, [connected, allSymbols]);
+  }, [connected]);
 
   return (
     <>
       {/* WebSocket 연결 상태 표시 */}
-      <div className="mb-3">
+      {/* <div className="mb-3">
         <div className="d-flex align-items-center gap-2">
           <span className="badge bg-secondary">WebSocket 상태:</span>
           <span className={`badge ${connected ? 'bg-success' : 'bg-danger'}`}>
@@ -76,44 +113,68 @@ const MainDashboard = () => {
           {loading && <span className="badge bg-warning">로딩 중...</span>}
           {error && <span className="badge bg-danger">에러: {error}</span>}
         </div>
-      </div>
+      </div> */}
+
 
       {/* 시장 상태에 따른 차트 표시 */}
-      <CCard className="mb-4">
-        <CCardHeader>
-          <CCardTitle className="card-title">실시간 가격 차트</CCardTitle>
-        </CCardHeader>
-        <CCardBody style={{ padding: '8px' }}>
-          <CRow>
-            {chartGroups.flatMap((group, groupIndex) => 
-              group.symbols.map((symbol, index) => (
-                <CCol 
-                  key={`${group.title}-${symbol}-${index}`} 
-                  xs={12} sm={12} md={6} lg={6} xl={6} 
-                  className="mb-3"
-                >
-                  <div style={{ height: '300px', minHeight: '300px', width: '100%' }}>
-                    <Suspense fallback={<div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading {symbol} chart...</div>}>
-                      <MiniPriceChart 
-                        assetIdentifier={symbol}
-                      />
-                    </Suspense>
+      <div className="card mb-4">
+      <div className="card-body">
+        {(() => {
+          const flattened = chartGroups.flatMap(group => group.symbols.map((item, index) => ({ ...item, title: group.title, key: `${group.title}-${item.symbol}-${index}`})));
+          const symbolsToRender = flattened; // 모바일에서도 전체 표시
+          const gridTemplateColumns = isMobile ? '1fr' : 'repeat(2, 1fr)';
+          return (
+            <div style={{ display: 'grid', gridTemplateColumns, gap: '16px' }}>
+              {symbolsToRender.map(({ symbol, chartType, key }) => {
+                const ChartComponent = (() => {
+                  switch (chartType) {
+                    case 'crypto':
+                      return MiniPriceCryptoChart;
+                    case 'commodities':
+                      return MiniPriceCommoditiesChart;
+                    case 'stocks':
+                      return MiniPriceStocksEtfChart;
+                    default:
+                      return MiniPriceCryptoChart;
+                  }
+                })();
+                return (
+                  <div key={key}>
+                    <CCard>
+                      <CCardBody className="p-0">
+                        <div style={{ 
+                          height: '300px',
+                          minHeight: '300px',
+                          width: '100%',
+                          position: 'relative',
+                          overflow: 'hidden'
+                        }}>
+                          <Suspense fallback={<div className="d-flex align-items-center justify-content-center h-100" style={{ height: '300px' }}>Loading {symbol} chart...</div>}>
+                            <ChartComponent 
+                              assetIdentifier={symbol}
+                              containerId={`mini-chart-${symbol}`}
+                            />
+                          </Suspense>
+                        </div>
+                      </CCardBody>
+                    </CCard>
                   </div>
-                </CCol>
-              ))
-            )}
-          </CRow>
-        </CCardBody>
-      </CCard>
+                );
+              })}
+            </div>
+          );
+        })()}
+      </div>
+      </div>
 
       {/* Real-time Widgets */}
-      <Suspense fallback={<div style={{ height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading Real-time Widgets...</div>}>
+      {/* <Suspense fallback={<div style={{ height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading Real-time Widgets...</div>}>
         <RealTimeWidgetsTypeA />
-      </Suspense>
+      </Suspense> */}
 
       {/* Performance TreeMap */}
       <div className="card mb-4">
-        <div className="card-body">
+        <div className="card-body p-0">
           <PerformanceTreeMapToday />
         </div>
       </div>

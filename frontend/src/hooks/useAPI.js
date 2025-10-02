@@ -1,4 +1,38 @@
 /**
+ * useAPI.js
+ * 
+ * 필요성:
+ * - 프로젝트 전체에서 사용되는 다양한 API 훅들을 체계적으로 관리
+ * - 각 컴포넌트에서 개별적으로 API 훅을 import하는 번거로움 해결
+ * - API 훅들의 일관된 네이밍과 구조 제공
+ * - 새로운 API 훅 추가시 중앙 집중식 관리
+ * 
+ * 목적:
+ * - 모든 API 훅을 카테고리별로 그룹화하여 통합 관리
+ * - 확장 가능한 구조로 필요할 때마다 새로운 카테고리 추가
+ * - 기존 코드 호환성 유지하면서 새로운 구조 제공
+ * - API 훅들의 재사용성과 유지보수성 향상
+ * 
+ * 구조:
+ * - assets: 자산 관련 훅들 (crypto, etf, ohlcv 등)
+ * - realtime: 실시간 데이터 훅들 (prices, sparkline, treeMap 등)
+ * - dashboard: 대시보드 관련 훅들
+ * - admin: 관리자 관련 훅들
+ * - 기타: navigation, onchain, scheduler 등
+ * 
+ * 사용법:
+ * - useAPI.assets.crypto() - 암호화폐 데이터
+ * - useAPI.realtime.prices() - 실시간 가격 데이터
+ * - useAPI.dashboard.summary() - 대시보드 요약 데이터
+ * 
+ * 장점:
+ * - 중앙 집중식 API 훅 관리
+ * - 카테고리별 명확한 분류
+ * - 기존 코드 호환성 유지
+ * - 새로운 API 훅 추가 용이
+ */
+
+/**
  * 통합 API 훅 - 모든 API 훅을 카테고리별로 그룹화
  * 확장 가능한 구조로 필요할 때마다 새로운 카테고리 추가 가능
  */

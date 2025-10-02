@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import Highcharts from 'highcharts/highstock';
-import useWebSocketStore from '../../store/websocketStore';
-import { useAPI } from '../../hooks/useAPI';
+import useWebSocketStore from '../../../store/websocketStore';
+import { useAPI } from '../../../hooks/useAPI';
 
 // Import and initialize Highcharts modules
 import 'highcharts/modules/price-indicator';
@@ -27,12 +27,8 @@ const MiniPriceChart = ({
     const wsPrices = useWebSocketStore((state) => state.prices);
     
     // WebSocket 구독만 담당 (연결 관리는 뷰 레벨에서 처리)
-    // WebSocket 구독 로직 단순화
-    const connected = useWebSocketStore((state) => state.connected);
     useEffect(() => {
         const { subscribeSymbols, unsubscribeSymbols, connected } = useWebSocketStore.getState();
-        const { subscribeSymbols, unsubscribeSymbols } = useWebSocketStore.getState();
-        subscribeSymbols([assetIdentifier]);
         
         // 연결 상태 확인 후 구독
         if (connected) {
@@ -58,27 +54,47 @@ const MiniPriceChart = ({
         }
     }, [connected, assetIdentifier]);
     
-     // API 데이터를 Highcharts 형식으로 변환하고 정렬
-     const chartData = useMemo(() => {
-         if (!apiResponse?.quotes || apiResponse.quotes.length === 0) {
-             return [];
-         }
-         
-         const convertedData = apiResponse.quotes
-             .map(quote => {
-                 const timestamp = new Date(quote.timestamp_utc).getTime();
-                 // 유효하지 않은 타임스탬프(NaN, 0 등) 필터링
-                 if (!timestamp || !isFinite(timestamp)) {
-                     return null;
-                 }
-                 return [timestamp, parseFloat(quote.price)];
-             })
-             .filter(point => point !== null)
-             .sort((a, b) => a[0] - b[0]); // 시간순으로 정렬
-         
+    // API 데이터를 Highcharts 형식으로 변환하고 정렬
+    const chartData = useMemo(() => {
+        if (!apiResponse?.quotes || apiResponse.quotes.length === 0) {
+            return [];
+        }
+        
+        const convertedData = apiResponse.quotes
+            .map(quote => {
+                const timestamp = new Date(quote.timestamp_utc).getTime();
+                // 유효하지 않은 타임스탬프(NaN, 0 등) 필터링
+                if (!timestamp || !isFinite(timestamp)) {
+                    return null;
+                }
+                return [timestamp, parseFloat(quote.price)];
+            })
+            .filter(point => point !== null)
+            .sort((a, b) => a[0] - b[0]); // 시간순으로 정렬
+        
+        return convertedData;
+    }, [apiResponse, assetIdentifier]);
 
-         return convertedData;
-     }, [apiResponse, assetIdentifier]);
+    // xAxis 범위 계산 (한 곳에서만 관리)
+    const xAxisRange = useMemo(() => {
+        if (chartData.length === 0) {
+            return { min: null, max: null };
+        }
+        
+        const timestamps = chartData.map(point => point[0]);
+        const minTime = Math.min(...timestamps);
+        const maxTime = Math.max(...timestamps);
+        
+        // 좌측 패딩: 5% 여유, 우측 패딩: 4시간 추가
+        const timeSpan = maxTime - minTime;
+        const leftPadding = timeSpan * 0.05;
+        const rightPadding = 4 * 60 * 60 * 1000; // 4시간 (밀리초)
+        
+        return {
+            min: minTime - leftPadding,
+            max: maxTime + rightPadding
+        };
+    }, [chartData]);
 
     // 실시간 가격 업데이트 (원본 더미 데이터 로직)
 
@@ -86,6 +102,8 @@ const MiniPriceChart = ({
            useEffect(() => {
                if (!chart) return;
                
+               // 안전한 series 접근
+               if (!chart.series || !Array.isArray(chart.series) || chart.series.length === 0) return;
                const series = chart.series[0];
                if (!series) return;        
                
@@ -105,11 +123,18 @@ const MiniPriceChart = ({
                    const point = [timestamp, priceValue];
                    const lastPoint = series.data[series.data.length - 1];
                    
-                   // 같은 시간대면 업데이트, 새로운 시간대면 추가
-                   if (lastPoint && lastPoint.x === point[0]) {
-                       lastPoint.update(point, true);
+                   // temp_debug.js 방식: 시간을 1분씩 증가시키며 좌측 이동
+                   const currentTime = Date.now();
+                   const timeDiff = currentTime - point[0];
+                   
+                   // 1분 이상 차이나면 새 포인트 추가 (좌측 이동)
+                   if (timeDiff >= 60 * 1000) {
+                       const newTime = point[0] + (60 * 1000); // 1분 추가
+                       const newPoint = [newTime, point[1]]; // 같은 가격으로 새 포인트
+                       series.addPoint(newPoint, true, false); // 자동 리드롤로 좌측 이동
                    } else {
-                       series.addPoint(point, true, true);
+                       // 같은 시간대면 업데이트
+                       lastPoint.update(point, true);
                    }
                    
                    // yAxis plotLine 업데이트 (값 정규화)
@@ -142,6 +167,9 @@ const MiniPriceChart = ({
 
             xAxis: {
                 type: 'datetime',
+                // xAxisRange 상태 사용 (우측 4시간 패딩 포함)
+                min: xAxisRange.min,
+                max: xAxisRange.max,
                 gridLineColor: '#404040',
                 labels: {
                     style: {
@@ -158,74 +186,12 @@ const MiniPriceChart = ({
             },
 
             rangeSelector: {
-                buttons: [{
-                    type: 'hour',
-                    count: 1,
-                    text: '1h'
-                }, {
-                    type: 'minute',
-                    count: 15,
-                    text: '15m'
-                }, {
-                    type: 'hour',
-                    count: 1,
-                    text: '1h'
-                }, {
-                    type: 'all',
-                    count: 1,
-                    text: 'All'
-                }],
-                selected: 3, // 기본값을 'All'로 설정
-                inputEnabled: false,
-                buttonTheme: {
-                    fill: 'none',
-                    stroke: 'none',
-                    'stroke-width': 0,
-                    style: {
-                        color: '#A0A0A0'
-                    },
-                    states: {
-                        hover: {
-                            fill: '#404040',
-                            style: {
-                                color: 'white'
-                            }
-                        },
-                        select: {
-                            fill: '#00d4ff',
-                            style: {
-                                color: 'white'
-                            }
-                        }
-                    }
-                },
-                inputStyle: {
-                    backgroundColor: '#333',
-                    color: 'silver'
-                },
-                labelStyle: {
-                    color: 'silver'
-                }
+                enabled: false
             },
 
             navigator: {
-                adaptToUpdatedData: false,
-                series: {
-                    color: '#00d4ff',
-                    lineColor: '#00d4ff'
-                },
-                outlineColor: '#404040',
-                handles: {
-                    backgroundColor: '#333',
-                    borderColor: '#888'
-                },
-                xAxis: {
-                    gridLineColor: '#333'
-                }
+                enabled: false
             },
-            // 오류의 근본 원인인 네비게이터와 스크롤바를 비활성화합니다.
-            navigator: { enabled: false },
-            scrollbar: { enabled: false },
 
             series: [{
                 type: 'line',
@@ -284,19 +250,37 @@ const MiniPriceChart = ({
         try {
             newChart = Highcharts.stockChart(chartRef.current, options);
             setChart(newChart);
+            
+            // temp_debug.js와 동일: 100ms마다 좌측 이동
+            const intervalId = setInterval(() => {
+                if (newChart && newChart.series && newChart.series[0]) {
+                    const series = newChart.series[0];
+                    const data = series.options.data;
+                    if (data && data.length > 0) {
+                        // 마지막 포인트의 시간을 1분 앞으로 이동 (temp_debug.js와 동일)
+                        const lastPoint = data[data.length - 1];
+                        const newTime = lastPoint[0] + (60 * 1000); // 1분 추가
+                        const newPoint = [newTime, lastPoint[1]]; // 같은 가격으로 새 포인트
+                        series.addPoint(newPoint, true, false,true); // 자동 리드롤로 좌측 이동
+                    }
+                }
+            }, 60000); // 100ms마다 실행 (temp_debug.js와 동일)
+            
+            // 정리 함수에 interval 제거
+            return () => {
+                clearInterval(intervalId);
+                if (newChart) {
+                    newChart.destroy();
+                    setChart(null);
+                }
+            };
+            
         } catch (error) {
             console.error(`[MiniPriceChart - ${assetIdentifier}] Chart creation error:`, error);
             console.error(`[MiniPriceChart - ${assetIdentifier}] Chart data:`, chartData);
             return;
         }
 
-        // Cleanup function
-        return () => {
-            if (newChart) {
-                newChart.destroy();
-                setChart(null);
-            }
-        };
     }, [assetIdentifier, chartData, isLoading]); // API 데이터와 로딩 상태에 따라 차트 재렌더링
 
 

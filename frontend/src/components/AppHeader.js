@@ -47,7 +47,8 @@ const AppHeader = () => {
       <CContainer className="border-bottom px-4" fluid>
         <CHeaderToggler
           onClick={() => dispatch({ type: 'set', sidebarShow: !sidebarShow })}
-          style={{ marginInlineStart: '-14px' }}
+          style={{ marginInlineStart: '-14px', padding: '12px', touchAction: 'manipulation', zIndex: 2100 }}
+          aria-label="Toggle navigation"
         >
           <CIcon icon={cilMenu} size="lg" />
         </CHeaderToggler>

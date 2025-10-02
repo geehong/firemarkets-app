@@ -26,8 +26,7 @@ export const useRealtimePricesPg = (params = {}) => {
       const response = await axios.get('/api/v1/realtime/pg/quotes-delay-price', {
         params: {
           asset_identifier: params.asset_identifier,
-          data_interval: params.data_interval || '15m',
-          days: params.days || 1
+          limit: params.limit || 500
         }
       })
       setData(response.data)
@@ -36,7 +35,7 @@ export const useRealtimePricesPg = (params = {}) => {
     } finally {
       setLoading(false)
     }
-  }, [params.asset_identifier, params.data_interval, params.days])
+  }, [params.asset_identifier, params.limit])
 
   useEffect(() => {
     fetchData()

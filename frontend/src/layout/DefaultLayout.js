@@ -34,8 +34,21 @@ const DefaultLayout = () => {
     // 에러가 있어도 기본 레이아웃은 표시
   }
 
-  // 동적 메뉴 아이템 생성
-  const dynamicNavItems = getNavigationItems(menuItems || [])
+  // 동적 메뉴 아이템 생성 + 비어있을 경우 정적 테스트 메뉴 추가
+  let dynamicNavItems = getNavigationItems(menuItems || [])
+  if (!dynamicNavItems || dynamicNavItems.length === 0) {
+    dynamicNavItems = [
+      {
+        component: 'CNavTitle',
+        name: 'Fallback',
+      },
+      {
+        component: 'CNavItem',
+        name: 'Test Menu',
+        to: '/dashboard',
+      },
+    ]
+  }
   console.log('DefaultLayout - dynamicNavItems:', dynamicNavItems)
 
   return (

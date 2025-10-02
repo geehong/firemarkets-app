@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 
 import {
@@ -21,16 +21,34 @@ const AppSidebar = ({ items }) => { // items 프롭을 받음
   const unfoldable = useSelector((state) => state.sidebarUnfoldable)
   const sidebarShow = useSelector((state) => state.sidebarShow)
 
+  // 모바일에서는 사이드바를 overlaid 모드로 표시 (실기기 호환성 개선)
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth <= 992 : false)
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 992)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  // 모바일 전환 시 사이드바 자동 닫힘 보장
+  useEffect(() => {
+    if (isMobile && sidebarShow) {
+      dispatch({ type: 'set', sidebarShow: false })
+    }
+  }, [isMobile])
+
   return (
     <CSidebar
       className="border-end"
       colorScheme="dark"
       position="fixed"
+      overlaid={isMobile}
+      style={{ zIndex: 2000 }}
       unfoldable={unfoldable}
       visible={sidebarShow}
       onVisibleChange={(visible) => {
         dispatch({ type: 'set', sidebarShow: visible })
       }}
+      onHide={() => dispatch({ type: 'set', sidebarShow: false })}
     >
       <CSidebarHeader className="border-bottom">
         <CSidebarBrand to="/">

@@ -90,10 +90,10 @@ class WebSocketConfig:
     # 자산 타입별 Fallback 순서 (1순위 실패 시 다음 순위)
     ASSET_TYPE_FALLBACK = {
         AssetType.CRYPTO: ['binance', 'coinbase', 'finnhub', 'tiingo'],  # 바이낸스 -> 코인베이스 -> 핀허브 -> 팅고
-        AssetType.STOCK: ['finnhub', 'alpaca', 'tiingo'],    # 핀허브 -> 알파카 -> 팅고
+        AssetType.STOCK: ['finnhub', 'tiingo', 'alpaca'],    # 핀허브 -> 팅고 -> 알파카
         AssetType.FOREX: ['finnhub', 'swissquote'],          # 핀허브 -> 스위스쿼트
         AssetType.COMMODITY: ['swissquote', 'finnhub'],      # 스위스쿼트 -> 핀허브
-        AssetType.ETF: ['alpaca', 'finnhub', 'tiingo']       # 알파카 -> 핀허브 -> 팅고
+        AssetType.ETF: ['alpaca', 'tiingo', 'finnhub']       # 알파카 -> 팅고 -> 핀허브
     }
     
     @classmethod

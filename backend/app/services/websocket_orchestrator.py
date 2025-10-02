@@ -12,7 +12,7 @@ from app.services.websocket.base_consumer import BaseWSConsumer, AssetType
 from app.services.asset_manager import AssetManager, Asset
 from app.core.websocket_config import WebSocketConfig
 from app.services.websocket.finnhub_consumer import FinnhubWSConsumer
-#from app.services.websocket.tiingo_consumer import TiingoWSConsumer
+from app.services.websocket.tiingo_consumer import TiingoWSConsumer
 from app.services.websocket.alpaca_consumer import AlpacaWSConsumer
 from app.services.websocket.binance_consumer import BinanceWSConsumer
 from app.services.websocket.coinbase_consumer import CoinbaseWSConsumer
@@ -75,7 +75,7 @@ class WebSocketOrchestrator:
         logger.info("Registering consumer classes")
         self.consumer_classes = {
             'finnhub': FinnhubWSConsumer,
-            #'tiingo': TiingoWSConsumer,
+            'tiingo': TiingoWSConsumer,
             'alpaca': AlpacaWSConsumer,
             'binance': BinanceWSConsumer,
             'coinbase': CoinbaseWSConsumer,
@@ -508,6 +508,10 @@ class WebSocketOrchestrator:
             logger.debug(f"Assignment details: {assignment}")
             
             if assignment.assigned_tickers:
+                # 이미 실행 중이면 중복 시작 방지
+                if getattr(assignment.consumer, 'is_running', False):
+                    logger.info(f"⏭️ Skipping start for {provider_name}: already running")
+                    continue
                 logger.info(f"🔧 Creating task for {provider_name} with {len(assignment.assigned_tickers)} tickers")
                 logger.debug(f"Assigned tickers: {assignment.assigned_tickers}")
                 

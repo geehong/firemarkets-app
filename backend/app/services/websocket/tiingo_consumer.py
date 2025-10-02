@@ -25,6 +25,7 @@ class TiingoWSConsumer(BaseWSConsumer):
         self.api_key = GLOBAL_APP_CONFIGS.get('TIINGO_API_KEY') or os.getenv('TIINGO_API_KEY')
         self.ws_url = "wss://api.tiingo.com/iex"
         self._ws: Optional[websockets.WebSocketClientProtocol] = None
+        self._recv_task: Optional[asyncio.Task] = None
         # Redis
         self._redis = None
         self._redis_url = self._build_redis_url()
@@ -97,7 +98,7 @@ class TiingoWSConsumer(BaseWSConsumer):
             return False
     
     async def run(self):
-        """메인 실행 루프 - 메시지 필터링 모드"""
+        """메인 실행 루프 - 단일 recv 루프 보장"""
         backoff = 1
         self.is_running = True
         logger.info(f"🚀 {self.client_name} started with {len(self.subscribed_tickers)} tickers")
@@ -118,6 +119,7 @@ class TiingoWSConsumer(BaseWSConsumer):
                     backoff = 1
                 # 수신 루프
                 try:
+                    # 단일 recv 루프에서만 수신하도록 보장
                     raw = await asyncio.wait_for(self._ws.recv(), timeout=30)
                 except asyncio.TimeoutError:
                     # Heartbeat: 구독 재전송으로 연결 유지

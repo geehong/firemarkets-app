@@ -9,7 +9,7 @@ import time
 import datetime
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional, List
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 
 import redis.asyncio as redis
 from sqlalchemy.orm import Session
@@ -189,10 +189,10 @@ class DataProcessor:
         # Redis Queue Manager (for batch queue + DLQ)
         self.queue_manager = RedisQueueManager(config_manager=config_manager) if config_manager else None
     
-    async def _refresh_prev_close_cache(self):
+    def _refresh_prev_close_cache(self):
         """메모리에 전일 종가 캐시를 갱신합니다."""
         logger.info("🔄 전일 종가 캐시 갱신 시작...")
-        async with self.get_db_session() as db:
+        with self.get_db_session() as db:
             try:
                 from sqlalchemy import text
                 # 각 자산별 가장 최근의 일봉 데이터(전일 종가)를 가져오는 쿼리
@@ -208,7 +208,7 @@ class DataProcessor:
                     FROM latest_ohlcv
                     WHERE rn = 1;
                 """)
-                result = await db.execute(query)
+                result = db.execute(query)
                 rows = result.fetchall()
                 
                 self.prev_close_cache = {row[0]: float(row[1]) for row in rows if row[1] is not None}
@@ -483,8 +483,8 @@ class DataProcessor:
             logger.warning(f"주기 판단 실패: {e}")
             return "1d"  # 실패 시에도 기본값으로 1d 반환
 
-    @asynccontextmanager
-    async def get_db_session(self):
+    @contextmanager
+    def get_db_session(self):
         """데이터베이스 세션 컨텍스트 매니저"""
         from ..core.database import get_postgres_db
         db = next(get_postgres_db())

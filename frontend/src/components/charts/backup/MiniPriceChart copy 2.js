@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import Highcharts from 'highcharts/highstock';
-import useWebSocketStore from '../../store/websocketStore';
-import { useAPI } from '../../hooks/useAPI';
+import useWebSocketStore from '../../../store/websocketStore';
+import { useAPI } from '../../../hooks/useAPI';
 
 // Import and initialize Highcharts modules
 import 'highcharts/modules/price-indicator';
