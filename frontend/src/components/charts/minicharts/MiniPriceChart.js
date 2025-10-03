@@ -282,15 +282,15 @@ const MiniPriceChart = ({
         const formatTwo = (v) => isFiniteNumber(v) ? v.toFixed(2) : '0.00';
         const safeCurrentPrice = isFiniteNumber(currentPrice) ? currentPrice : 0;
 
-        let priceChangePercent = 0;
-        let priceChangeAmount = 0;
-        if (previousPrice && isFiniteNumber(previousPrice.price) && previousPrice.price !== 0 && isFiniteNumber(safeCurrentPrice)) {
-            priceChangeAmount = safeCurrentPrice - previousPrice.price;
-            priceChangePercent = (priceChangeAmount / previousPrice.price) * 100;
-        }
+        // let priceChangePercent = 0;
+        // let priceChangeAmount = 0;
+        // if (previousPrice && isFiniteNumber(previousPrice.price) && previousPrice.price !== 0 && isFiniteNumber(safeCurrentPrice)) {
+        //     priceChangeAmount = safeCurrentPrice - previousPrice.price;
+        //     priceChangePercent = (priceChangeAmount / previousPrice.price) * 100;
+        // }
 
-        // 가격 표시 형식: $가격 (%, +- 변동가격)
-        const priceLabel = `$${formatTwo(safeCurrentPrice)} (${priceChangePercent >= 0 ? '+' : ''}${formatTwo(priceChangePercent)}%, ${priceChangeAmount >= 0 ? '+' : ''}${formatTwo(priceChangeAmount)})`;
+        // 가격 표시 형식: $가격만 표시 (%, +- 변동가격 제거)
+        const priceLabel = `$${formatTwo(safeCurrentPrice)}`;
         
         // plotLine 클래스 결정
         let plotLineClass = 'neutral';

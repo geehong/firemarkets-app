@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useMemo } from 'react'
+import React, { useEffect, useRef, useMemo, useState } from 'react'
 import Highcharts from 'highcharts'
 import HighchartsReact from 'highcharts-react-official'
 import { usePerformanceTreeMapDataFromTreeMap } from '../../../hooks/useTreeMapData'
+import useWebSocketStore from '../../../store/websocketStore'
 
 // Highcharts 모듈들을 최소한으로 로드
 import 'highcharts/modules/treemap'
@@ -34,9 +35,15 @@ Highcharts.setOptions({
 
 const PerformanceTreeMapToday = () => {
   const chartRef = useRef(null)
+  const [autoRefresh, setAutoRefresh] = useState(true)
+  const [refreshInterval, setRefreshInterval] = useState(30000) // 30초
+  const intervalRef = useRef(null)
 
   // usePerformanceTreeMapDataFromTreeMap 훅 사용
   const { data, loading, error, refreshData } = usePerformanceTreeMapDataFromTreeMap()
+  
+  // WebSocket 스토어 사용
+  const { socket, isConnected } = useWebSocketStore()
 
 
   // TreeMap 데이터 구조 생성
@@ -182,6 +189,66 @@ const PerformanceTreeMapToday = () => {
     const dd = String(latest.getDate()).padStart(2, '0')
     return `${yyyy}-${mm}-${dd}`
   }, [data])
+
+  // 자동 새로고침 설정
+  useEffect(() => {
+    if (autoRefresh && refreshInterval > 0) {
+      intervalRef.current = setInterval(() => {
+        console.log('[PerformanceTreeMap] Auto-refreshing data...')
+        refreshData()
+      }, refreshInterval)
+    } else {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+  }, [autoRefresh, refreshInterval, refreshData])
+
+  // WebSocket 연결 상태 모니터링
+  useEffect(() => {
+    if (socket && isConnected) {
+      console.log('[PerformanceTreeMap] WebSocket connected, subscribing to real-time updates')
+      
+      // 실시간 가격 업데이트 구독
+      const handleRealtimeUpdate = (updateData) => {
+        console.log('[PerformanceTreeMap] Received real-time update:', updateData)
+        // 실시간 데이터가 오면 자동 새로고침
+        if (autoRefresh) {
+          refreshData()
+        }
+      }
+
+      // WebSocket 이벤트 리스너 등록
+      socket.on('price_update', handleRealtimeUpdate)
+      socket.on('market_update', handleRealtimeUpdate)
+
+      return () => {
+        if (socket) {
+          socket.off('price_update', handleRealtimeUpdate)
+          socket.off('market_update', handleRealtimeUpdate)
+        }
+      }
+    }
+  }, [socket, isConnected, autoRefresh, refreshData])
+
+  // 수동 새로고침 핸들러
+  const handleManualRefresh = () => {
+    console.log('[PerformanceTreeMap] Manual refresh triggered')
+    refreshData()
+  }
+
+  // 자동 새로고침 토글
+  const toggleAutoRefresh = () => {
+    setAutoRefresh(!autoRefresh)
+  }
 
   // Plugin for relative font size
   useEffect(() => {
@@ -329,7 +396,7 @@ const PerformanceTreeMapToday = () => {
         },
       ],
       title: {
-        text: `Today's Asset Performance TreeMap (Daily Change : ${updatedDateLabel || 'N/A'} Updated)`,
+        text: `Today's Asset Performance TreeMap (Daily Change : ${updatedDateLabel || 'N/A'} Updated) ${autoRefresh ? '🔄' : '⏸️'} ${isConnected ? '🔗' : '🔌'}`,
         align: 'left',
         style: {
           color: 'white',
@@ -337,16 +404,23 @@ const PerformanceTreeMapToday = () => {
         },
         useHTML: true,
         events: {
+          click: function() {
+            // 제목 클릭 시 자동 새로고침 토글
+            toggleAutoRefresh()
+          },
           mouseOver: function() {
             // 툴팁 표시 (서브타이틀 내용 포함)
             this.renderer.label(
               `<div style="background: rgba(37, 41, 49, 0.95); border: 1px solid #00d4ff; border-radius: 5px; padding: 10px; color: white; font-size: 12px; max-width: 350px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
                 <div style="font-weight: bold; color: #00d4ff; margin-bottom: 8px;">Chart Information</div>
                 <div style="margin-bottom: 6px;"><b>Color shows daily change:</b> Red (loss) → Gray (neutral) → Green (gain)</div>
-                <div style="margin-bottom: 6px;"><b>Data source:</b> /api/v1/treemap/live</div>
+                <div style="margin-bottom: 6px;"><b>Data source:</b> /api/v1/treemap/live (treemap_live_view)</div>
+                <div style="margin-bottom: 6px;"><b>Real-time updates:</b> ${autoRefresh ? 'Enabled' : 'Disabled'} (${refreshInterval/1000}s interval)</div>
+                <div style="margin-bottom: 6px;"><b>WebSocket:</b> ${isConnected ? 'Connected' : 'Disconnected'}</div>
                 <div style="margin-bottom: 6px;"><b>Interaction:</b> Click to drill down</div>
                 <div style="margin-bottom: 6px;"><b>Size adjustment:</b> Commodities (70%), Crypto (130%)</div>
                 <div style="margin-bottom: 6px;"><b>Assets:</b> Stocks, ETFs, Cryptocurrencies</div>
+                <div style="margin-bottom: 6px;"><b>Click title:</b> Toggle auto-refresh</div>
               </div>`,
               this.chart.plotLeft + 10,
               this.chart.plotTop + 10,
@@ -466,7 +540,7 @@ const PerformanceTreeMapToday = () => {
         },
       },
     }),
-    [treemapData],
+    [treemapData, autoRefresh, refreshInterval, isConnected, updatedDateLabel, toggleAutoRefresh],
   )
 
   if (loading) {
@@ -482,7 +556,13 @@ const PerformanceTreeMapToday = () => {
           backgroundColor: '#252931'
         }}
       >
-        <div className="text-white">Loading today's asset performance data...</div>
+        <div className="text-white">
+          <div>Loading today's asset performance data...</div>
+          <div style={{ fontSize: '12px', marginTop: '10px', opacity: 0.7 }}>
+            {autoRefresh ? '🔄 Auto-refresh enabled' : '⏸️ Auto-refresh disabled'} | 
+            {isConnected ? ' 🔗 WebSocket connected' : ' 🔌 WebSocket disconnected'}
+          </div>
+        </div>
       </div>
     )
   }
@@ -500,7 +580,27 @@ const PerformanceTreeMapToday = () => {
           backgroundColor: '#252931'
         }}
       >
-        <div className="text-red-500">Error loading today's market caps data: {error}</div>
+        <div className="text-red-500">
+          <div>Error loading today's market caps data: {error}</div>
+          <div style={{ fontSize: '12px', marginTop: '10px', opacity: 0.7 }}>
+            {autoRefresh ? '🔄 Auto-refresh enabled' : '⏸️ Auto-refresh disabled'} | 
+            {isConnected ? ' 🔗 WebSocket connected' : ' 🔌 WebSocket disconnected'}
+          </div>
+          <button 
+            onClick={handleManualRefresh}
+            style={{ 
+              marginTop: '10px', 
+              padding: '5px 10px', 
+              backgroundColor: '#00d4ff', 
+              color: 'white', 
+              border: 'none', 
+              borderRadius: '3px',
+              cursor: 'pointer'
+            }}
+          >
+            Retry
+          </button>
+        </div>
       </div>
     )
   }
@@ -522,7 +622,25 @@ const PerformanceTreeMapToday = () => {
           <p>No performance data available for today</p>
           <p>Data length: {data?.length || 0}</p>
           <p>Transform data length: {treemapData?.length || 0}</p>
-          <p>Using today's data from /api/v1/assets/market-caps/today</p>
+          <p>Using today's data from /api/v1/treemap/live (treemap_live_view)</p>
+          <div style={{ fontSize: '12px', marginTop: '10px', opacity: 0.7 }}>
+            {autoRefresh ? '🔄 Auto-refresh enabled' : '⏸️ Auto-refresh disabled'} | 
+            {isConnected ? ' 🔗 WebSocket connected' : ' 🔌 WebSocket disconnected'}
+          </div>
+          <button 
+            onClick={handleManualRefresh}
+            style={{ 
+              marginTop: '10px', 
+              padding: '5px 10px', 
+              backgroundColor: '#00d4ff', 
+              color: 'white', 
+              border: 'none', 
+              borderRadius: '3px',
+              cursor: 'pointer'
+            }}
+          >
+            Refresh Data
+          </button>
         </div>
       </div>
     )

@@ -26,8 +26,12 @@ class RedisQueueManager:
         port = int(self.config_manager._get_config("REDIS_PORT", 6379, int))
         db = int(self.config_manager._get_config("REDIS_DB", 0, int))
         password = self.config_manager._get_config("REDIS_PASSWORD", None, str)
+        # Redis 비밀번호가 빈 문자열이면 None으로 설정
+        if password == "":
+            password = None
         
-        url = f"redis://{host}:{port}/{db}" if not password else f"redis://:{password}@{host}:{port}/{db}"
+        # Redis 연결을 비밀번호 없이 시도
+        url = f"redis://{host}:{port}/{db}"
         self.redis_client = await redis.from_url(url)
         await self.redis_client.ping()
         logger.info(f"RedisQueueManager connected to {host}:{port} db={db}")

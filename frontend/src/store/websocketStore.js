@@ -2,6 +2,25 @@ import { create } from 'zustand'
 import io from 'socket.io-client'
 
 const useWebSocketStore = create((set, get) => ({
+  // 심볼 정규화: 백엔드가 기대하는 룸 키에 맞춤 (예: SOL -> SOLUSDT, SOL-USD -> SOLUSD)
+  _normalizeSymbols: (symbols) => {
+    if (!Array.isArray(symbols)) return [];
+    return symbols.map((raw) => {
+      if (!raw) return raw;
+      const s = String(raw).toUpperCase();
+      // 이미 USDT로 끝나면 그대로 유지
+      if (s.endsWith('USDT')) return s;
+      // 코인베이스 형태 SOL-USD -> SOLUSD
+      if (s.includes('-USD')) return s.replace('-USD', 'USD');
+      // 명시적 USD 현물 페어는 그대로 두되, 코인 심볼 단일 토큰은 USDT로 보정
+      const isSingleToken = /^[A-Z]{2,10}$/.test(s);
+      const knownStocksEtfs = ['AAPL','MSFT','NVDA','GOOG','AMZN','META','NFLX','AVGO','SPY','QQQ','DIA','IWM'];
+      if (knownStocksEtfs.includes(s)) return s;
+      // 단일 토큰이면서 주식/ETF가 아니면 크립토로 간주하여 USDT 부착
+      if (isSingleToken) return `${s}USDT`;
+      return s;
+    });
+  },
   // --- State ---
   socket: null,
   connected: false,
@@ -47,7 +66,8 @@ const useWebSocketStore = create((set, get) => ({
       // 재연결 시 기존 구독 복원
       const allSymbols = Object.keys(get().symbolSubscribers);
       if (allSymbols.length > 0) {
-        newSocket.emit('subscribe_prices', { symbols: allSymbols });
+        const normalized = get()._normalizeSymbols(allSymbols);
+        newSocket.emit('subscribe_prices', { symbols: normalized });
       }
     });
 
@@ -182,7 +202,8 @@ const useWebSocketStore = create((set, get) => ({
     });
 
     if (newSymbolsToSubscribe.length > 0 && connected) {
-      socket.emit('subscribe_prices', { symbols: newSymbolsToSubscribe });
+      const normalized = get()._normalizeSymbols(newSymbolsToSubscribe);
+      socket.emit('subscribe_prices', { symbols: normalized });
     }
     
     set({ symbolSubscribers: updatedSubscribers });
@@ -206,7 +227,8 @@ const useWebSocketStore = create((set, get) => ({
 
     if (symbolsToUnsubscribe.length > 0 && connected) {
       // console.log('[Zustand Store] ➖ Unsubscribing from symbols:', symbolsToUnsubscribe);
-      socket.emit('unsubscribe_prices', { symbols: symbolsToUnsubscribe });
+      const normalized = get()._normalizeSymbols(symbolsToUnsubscribe);
+      socket.emit('unsubscribe_prices', { symbols: normalized });
     }
     
     set({ symbolSubscribers: updatedSubscribers });

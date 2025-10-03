@@ -3,6 +3,8 @@ WebSocket Consumer 로깅 설정 및 유틸리티
 """
 import logging
 import os
+from logging.handlers import RotatingFileHandler
+import os
 from datetime import datetime
 from typing import Dict, Any
 import json
@@ -14,24 +16,31 @@ class WebSocketLogger:
         self.consumer_name = consumer_name
         self.logger = logging.getLogger(f"websocket.{consumer_name}")
         
-        # 로그 디렉토리 생성
-        log_dir = "/app/logs/websocket"
-        os.makedirs(log_dir, exist_ok=True)
-        
-        # 파일 핸들러 설정
-        file_handler = logging.FileHandler(f"{log_dir}/{consumer_name}.log")
-        file_handler.setLevel(logging.DEBUG)
-        
-        # 포맷터 설정
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
-        file_handler.setFormatter(formatter)
-        
-        # 핸들러 추가
-        if not self.logger.handlers:
-            self.logger.addHandler(file_handler)
-            self.logger.setLevel(logging.DEBUG)
+        # 파일 로깅 비활성화 옵션 (환경변수)
+        disable_file_logs = os.getenv("DISABLE_WEBSOCKET_FILE_LOGS", os.getenv("DISABLE_FILE_LOGS", "false")).lower() == "true"
+
+        if not disable_file_logs:
+            # 로그 디렉토리 생성
+            log_dir = "/app/logs/websocket"
+            os.makedirs(log_dir, exist_ok=True)
+            
+            # 로테이팅 파일 핸들러 설정
+            file_handler = RotatingFileHandler(
+                f"{log_dir}/{consumer_name}.log", maxBytes=10 * 1024 * 1024, backupCount=3
+            )
+            file_handler.setLevel(logging.INFO)
+            
+            # 포맷터 설정
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            )
+            file_handler.setFormatter(formatter)
+            
+            # 핸들러 추가
+            if not self.logger.handlers:
+                self.logger.addHandler(file_handler)
+        # 콘솔 기본 레벨
+        self.logger.setLevel(logging.INFO)
     
     def connection_attempt(self, url: str):
         """연결 시도 로그"""
@@ -107,24 +116,29 @@ class WebSocketOrchestratorLogger:
     def __init__(self):
         self.logger = logging.getLogger("websocket.orchestrator")
         
-        # 로그 디렉토리 생성
-        log_dir = "/app/logs/websocket"
-        os.makedirs(log_dir, exist_ok=True)
-        
-        # 파일 핸들러 설정
-        file_handler = logging.FileHandler(f"{log_dir}/orchestrator.log")
-        file_handler.setLevel(logging.INFO)
-        
-        # 포맷터 설정
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
-        file_handler.setFormatter(formatter)
-        
-        # 핸들러 추가
-        if not self.logger.handlers:
-            self.logger.addHandler(file_handler)
-            self.logger.setLevel(logging.INFO)
+        disable_file_logs = os.getenv("DISABLE_WEBSOCKET_FILE_LOGS", os.getenv("DISABLE_FILE_LOGS", "false")).lower() == "true"
+
+        if not disable_file_logs:
+            # 로그 디렉토리 생성
+            log_dir = "/app/logs/websocket"
+            os.makedirs(log_dir, exist_ok=True)
+            
+            # 로테이팅 파일 핸들러 설정
+            file_handler = RotatingFileHandler(
+                f"{log_dir}/orchestrator.log", maxBytes=10 * 1024 * 1024, backupCount=3
+            )
+            file_handler.setLevel(logging.INFO)
+            
+            # 포맷터 설정
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            )
+            file_handler.setFormatter(formatter)
+            
+            # 핸들러 추가
+            if not self.logger.handlers:
+                self.logger.addHandler(file_handler)
+        self.logger.setLevel(logging.INFO)
     
     def rebalancing_start(self, total_tickers: int):
         """리밸런싱 시작 로그"""

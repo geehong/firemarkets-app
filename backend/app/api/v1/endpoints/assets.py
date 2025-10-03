@@ -1341,41 +1341,36 @@ SELECT
     a.ticker,
     a.name,
     at.type_name AS asset_type,
-
-    war.market_cap_usd AS market_cap,
-
-    COALESCE(rq.change_percent,
-             ohlcv_daily.change_percent,
-             war.daily_change_percent) AS price_change_percentage_24h,
-
-    COALESCE(rq.price,
-             ohlcv_daily.close_price,
-             war.price_usd) AS current_price,
-
+    COALESCE(war.market_cap_usd, ohlcv_daily.market_cap_usd, ohlcv_intraday.market_cap_usd) AS market_cap,
+    COALESCE(sp.logo_image_url, cd.logo_url) AS logo_url,
+    COALESCE(
+        CASE WHEN war.last_updated > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' THEN war.price_usd END,
+        CASE WHEN rq.timestamp_utc > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' THEN rq.price END,
+        war.price_usd,
+        rq.price,
+        ohlcv_daily.close_price,
+        ohlcv_intraday.close_price
+    ) AS current_price,
+    COALESCE(
+        CASE WHEN war.last_updated > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' THEN war.daily_change_percent END,
+        CASE WHEN rq.timestamp_utc > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' THEN rq.change_percent END,
+        war.daily_change_percent,
+        rq.change_percent,
+        ohlcv_daily.change_percent,
+        ohlcv_intraday.change_percent
+    ) AS price_change_percentage_24h,
     CASE
-        WHEN rq.timestamp_utc IS NOT NULL AND rq.timestamp_utc > (NOW() AT TIME ZONE 'UTC') - INTERVAL '5 minutes' THEN 'REALTIME'
+        WHEN war.last_updated IS NOT NULL AND war.last_updated > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' THEN 'WORLD_ASSETS'
+        WHEN rq.timestamp_utc IS NOT NULL AND rq.timestamp_utc > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' THEN 'REALTIME'
+        WHEN ohlcv_daily.timestamp_utc IS NOT NULL AND ohlcv_daily.timestamp_utc > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' THEN 'DAILY_DATA'
+        WHEN ohlcv_intraday.timestamp_utc IS NOT NULL AND ohlcv_intraday.timestamp_utc > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' THEN 'INTRADAY_DATA'
         WHEN at.type_name = 'Crypto' THEN 'STATIC_24H'
         ELSE 'STATIC_CLOSED'
     END AS market_status,
-
     rq.timestamp_utc AS realtime_updated_at,
     ohlcv_daily.timestamp_utc AS daily_data_updated_at
-
 FROM assets a
-JOIN asset_types at ON a.asset_type_id = at.asset_type_id
-
-JOIN LATERAL (
-    SELECT o.timestamp_utc, o.close_price, o.change_percent
-    FROM ohlcv_day_data o
-    WHERE o.asset_id = a.asset_id
-    ORDER BY o.timestamp_utc DESC
-    LIMIT 1
-) ohlcv_daily ON true
-
-LEFT JOIN stock_profiles sp ON sp.asset_id = a.asset_id
-LEFT JOIN crypto_data cd ON cd.asset_id = a.asset_id
-LEFT JOIN world_assets_ranking war ON war.asset_id = a.asset_id
-
+JOIN asset_types at ON a.asset_type_id = at.asset_id
 LEFT JOIN LATERAL (
     SELECT r.timestamp_utc, r.price, r.change_percent
     FROM realtime_quotes r
@@ -1383,14 +1378,30 @@ LEFT JOIN LATERAL (
     ORDER BY r.timestamp_utc DESC
     LIMIT 1
 ) rq ON true
-
-WHERE
-    a.is_active = true
-    AND war.market_cap_usd IS NOT NULL
-    AND (
-        ohlcv_daily.timestamp_utc >= date_trunc('day', (NOW() AT TIME ZONE 'UTC') - INTERVAL '3 days')
-        OR war.market_cap_usd IS NOT NULL
-    );
+LEFT JOIN LATERAL (
+    SELECT w.market_cap_usd, w.price_usd, w.daily_change_percent, w.last_updated
+    FROM world_assets_ranking w
+    WHERE w.asset_id = a.asset_id
+    ORDER BY w.ranking_date DESC, w.last_updated DESC NULLS LAST
+    LIMIT 1
+) war ON true
+LEFT JOIN LATERAL (
+    SELECT o.timestamp_utc, o.close_price, o.change_percent, o.market_cap_usd
+    FROM ohlcv_day_data o
+    WHERE o.asset_id = a.asset_id
+    ORDER BY o.timestamp_utc DESC
+    LIMIT 1
+) ohlcv_daily ON true
+LEFT JOIN LATERAL (
+    SELECT o.timestamp_utc, o.close_price, o.change_percent, o.market_cap_usd
+    FROM ohlcv_intraday_data o
+    WHERE o.asset_id = a.asset_id
+    ORDER BY o.timestamp_utc DESC
+    LIMIT 1
+) ohlcv_intraday ON true
+LEFT JOIN stock_profiles sp ON sp.asset_id = a.asset_id
+LEFT JOIN crypto_data cd ON cd.asset_id = a.asset_id
+WHERE a.is_active = true AND (war.market_cap_usd IS NOT NULL OR ohlcv_daily.close_price IS NOT NULL OR ohlcv_intraday.close_price IS NOT NULL OR rq.price IS NOT NULL);
 """
 
 

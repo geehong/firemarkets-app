@@ -3,6 +3,8 @@ WebSocket Orchestrator 실행 스크립트
 """
 import asyncio
 import logging
+import os
+from logging.handlers import RotatingFileHandler
 import signal
 import sys
 from pathlib import Path
@@ -14,13 +16,16 @@ sys.path.insert(0, str(project_root))
 from app.services.websocket_orchestrator import WebSocketOrchestrator
 
 # 로깅 설정
+handlers = [logging.StreamHandler()]
+if os.getenv("DISABLE_FILE_LOGS", "false").lower() != "true":
+    handlers.append(
+        RotatingFileHandler('websocket_orchestrator.log', maxBytes=10 * 1024 * 1024, backupCount=3)
+    )
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('websocket_orchestrator.log')
-    ]
+    handlers=handlers
 )
 
 logger = logging.getLogger(__name__)

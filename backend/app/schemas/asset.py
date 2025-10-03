@@ -461,7 +461,7 @@ class TreemapLiveItem(BaseModel):
     ticker: str
     name: str
     asset_type: str
-    market_cap: float
+    market_cap: Optional[float] = None
     logo_url: Optional[str] = None
     price_change_percentage_24h: Optional[float] = None
     current_price: Optional[float] = None

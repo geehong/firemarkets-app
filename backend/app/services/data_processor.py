@@ -41,6 +41,9 @@ class DataProcessor:
         self.config_manager = config_manager # config_manager is now passed from run_data_processor
         self.redis_queue_manager = redis_queue_manager
         
+        # 초기 설정 로드
+        self._load_initial_configs()
+        
         # 처리 통계 (먼저 초기화)
         self.stats = {
             "realtime_processed": 0,
@@ -59,6 +62,9 @@ class DataProcessor:
         self.redis_port = GLOBAL_APP_CONFIGS.get("REDIS_PORT", 6379)
         self.redis_db = GLOBAL_APP_CONFIGS.get("REDIS_DB", 0)
         self.redis_password = GLOBAL_APP_CONFIGS.get("REDIS_PASSWORD")
+        # Redis 비밀번호가 빈 문자열이면 None으로 설정
+        if self.redis_password == "":
+            self.redis_password = None
         
         # 처리 설정 (DB 설정 우선, 기본값 fallback)
         self.batch_size = int(GLOBAL_APP_CONFIGS.get("REALTIME_BATCH_SIZE", 1000))
@@ -77,6 +83,12 @@ class DataProcessor:
         self.processing_interval = float(GLOBAL_APP_CONFIGS.get("REALTIME_PROCESSING_INTERVAL_SECONDS", 0.1)) # 1초 -> 0.1초 (100ms)
         self.time_window_minutes = int(GLOBAL_APP_CONFIGS.get("WEBSOCKET_TIME_WINDOW_MINUTES", 15))
         self.stream_block_ms = int(GLOBAL_APP_CONFIGS.get("REALTIME_STREAM_BLOCK_MS", 50)) # 100ms -> 50ms
+        
+        # 현재 설정값 로그 출력
+        logger.info(f"⚙️ DataProcessor 설정 로드 완료 - 실시간 처리 간격: {self.processing_interval}초, 시간 윈도우: {self.time_window_minutes}분, 스트림 블록: {self.stream_block_ms}ms")
+        
+        # Redis Queue Manager (for batch queue + DLQ)
+        self.queue_manager = self.redis_queue_manager
         
         # 가격 범위 검증 설정
         self.price_ranges = self._initialize_price_ranges()
@@ -110,6 +122,17 @@ class DataProcessor:
         self.source_health_timeout = 30  # 30초 이상 데이터 없으면 비활성으로 간주 (5초 → 30초로 증가)
         self.batch_queue = "batch_data_queue"
         logger.info("DataProcessor 인스턴스 생성 완료")
+    
+    def _load_initial_configs(self):
+        """초기 설정을 로드합니다."""
+        try:
+            # GLOBAL_APP_CONFIGS 로드
+            from ..core.config import load_and_set_global_configs
+            load_and_set_global_configs()
+            logger.info("✅ 초기 설정 로드 완료")
+        except Exception as e:
+            logger.error(f"❌ 초기 설정 로드 실패: {e}")
+            # 기본값으로 계속 진행
     
     def get_current_source(self):
         """현재 활성 데이터 소스 반환"""
@@ -185,14 +208,13 @@ class DataProcessor:
             self.mark_source_success("api_fallback")
         return results
     
-
-        # Redis Queue Manager (for batch queue + DLQ)
-        self.queue_manager = RedisQueueManager(config_manager=config_manager) if config_manager else None
-    
     def _refresh_prev_close_cache(self):
         """메모리에 전일 종가 캐시를 갱신합니다."""
         logger.info("🔄 전일 종가 캐시 갱신 시작...")
-        with self.get_db_session() as db:
+        # 동기 컨텍스트 매니저를 직접 사용
+        from ..core.database import get_postgres_db
+        db = next(get_postgres_db())
+        try:
             try:
                 from sqlalchemy import text
                 # 각 자산별 가장 최근의 일봉 데이터(전일 종가)를 가져오는 쿼리
@@ -216,6 +238,8 @@ class DataProcessor:
                 logger.info(f"✅ 전일 종가 캐시 갱신 완료: {len(self.prev_close_cache)}개 자산")
             except Exception as e:
                 logger.error(f"❌ 전일 종가 캐시 갱신 실패: {e}")
+        finally:
+            db.close()
 
     def _update_source_health(self, source_name: str):
         """소스별 마지막 데이터 수신 시간 업데이트"""
@@ -255,9 +279,8 @@ class DataProcessor:
                 await self.redis_client.ping()
                 return True
                 
+            # Redis 연결을 비밀번호 없이 시도
             redis_url = f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
-            if self.redis_password:
-                redis_url = f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
             
             self.redis_client = await redis.from_url(redis_url)
             await self.redis_client.ping()
@@ -483,9 +506,9 @@ class DataProcessor:
             logger.warning(f"주기 판단 실패: {e}")
             return "1d"  # 실패 시에도 기본값으로 1d 반환
 
-    @contextmanager
-    def get_db_session(self):
-        """데이터베이스 세션 컨텍스트 매니저"""
+    @asynccontextmanager
+    async def get_db_session(self):
+        """데이터베이스 세션 비동기 컨텍스트 매니저"""
         from ..core.database import get_postgres_db
         db = next(get_postgres_db())
         try:

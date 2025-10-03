@@ -1,32 +1,7 @@
 # market-analyzer/docker-compose.yml (서버 환경용으로 수정된 버전)
 
 services:
-  db:
-    image: mysql:8.0
-    container_name: fire_markets_db
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${DB_DATABASE}
-      MYSQL_USER: ${DB_USERNAME}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
-      TZ: Asia/Seoul
-    ports:
-      - "3306:3306"  # 외부 접근을 위한 포트 바인딩 추가
-    volumes:
-      - db_data:/var/lib/mysql
-      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - app_network
-      - shared-network
-    healthcheck:
-      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${DB_USERNAME}", "-p${DB_PASSWORD}" ]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-      start_period: 30s
-
-  # PostgreSQL 서비스 추가
+  # PostgreSQL 서비스
   db_postgres:
     image: postgres:15-alpine
     container_name: fire_markets_db_postgres
@@ -41,6 +16,11 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./docker/init_postgres.sql:/docker-entrypoint-initdb.d/init.sql
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
     networks:
       - app_network
       - shared-network
@@ -67,6 +47,11 @@ services:
     networks:
       - app_network
       - shared-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
 
   redis:
     image: redis:7-alpine
@@ -80,6 +65,11 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
 
   backend:
     build:
@@ -92,7 +82,6 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: mysql+mysqlconnector://${DB_USERNAME}:${DB_PASSWORD}@db:3306/${DB_DATABASE}
       POSTGRES_DATABASE_URL: postgresql+psycopg2://${DB_USERNAME_PG}:${DB_PASSWORD_PG}@db_postgres:5432/${DB_DATABASE_PG}
       SECRET_KEY: ${SECRET_KEY}
       ALPHA_VANTAGE_API_KEY_1: ${ALPHA_VANTAGE_API_KEY_1}
@@ -112,8 +101,6 @@ services:
       RELOAD: "false"
       TZ: Asia/Seoul
     depends_on:
-      db:
-        condition: service_healthy
       db_postgres:
         condition: service_healthy
       redis:
@@ -126,10 +113,17 @@ services:
       start_period: 30s
     volumes:
       - ./.env:/app/.env:ro
+    tmpfs:
+      - /app/logs
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     networks:
       - app_network
       - shared-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
 
   # --- 독립 스케줄러 서비스 추가 ---
   scheduler:
@@ -142,7 +136,6 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: mysql+mysqlconnector://${DB_USERNAME}:${DB_PASSWORD}@db:3306/${DB_DATABASE}
       POSTGRES_DATABASE_URL: postgresql+psycopg2://${DB_USERNAME_PG}:${DB_PASSWORD_PG}@db_postgres:5432/${DB_DATABASE_PG}
       SECRET_KEY: ${SECRET_KEY}
       ALPHA_VANTAGE_API_KEY_1: ${ALPHA_VANTAGE_API_KEY_1}
@@ -160,18 +153,23 @@ services:
       FINNHUB_SECRET_KEY: ${FINNHUB_SECRET_KEY}
       TZ: Asia/Seoul
     depends_on:
-      db:
-        condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
       - ./.env:/app/.env:ro
+    tmpfs:
+      - /app/logs
     command: ["python", "-m", "app.services.run_scheduler"]
     healthcheck:
       disable: true
     networks:
       - app_network
       - shared-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
 
 
   # --- 데이터 프로세서 (Processing 프로필) ---
@@ -185,22 +183,29 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: mysql+mysqlconnector://${DB_USERNAME}:${DB_PASSWORD}@db:3306/${DB_DATABASE}
       POSTGRES_DATABASE_URL: postgresql+psycopg2://${DB_USERNAME_PG}:${DB_PASSWORD_PG}@db_postgres:5432/${DB_DATABASE_PG}
       TZ: Asia/Seoul
+      DISABLE_FILE_LOGS: "true"
+      DISABLE_WEBSOCKET_FILE_LOGS: "true"
+      REALTIME_PROCESSING_INTERVAL_SECONDS: "10"
     depends_on:
-      db:
-        condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
       - ./.env:/app/.env:ro
+    tmpfs:
+      - /app/logs
     command: ["python", "-m", "app.services.run_data_processor"]
     healthcheck:
       disable: true
     networks:
       - app_network
       - shared-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
 
   # --- WebSocket 오케스트레이터 (Processing 프로필) ---
   websocket_orchestrator:
@@ -213,9 +218,10 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: mysql+mysqlconnector://${DB_USERNAME}:${DB_PASSWORD}@db:3306/${DB_DATABASE}
       POSTGRES_DATABASE_URL: postgresql+psycopg2://${DB_USERNAME_PG}:${DB_PASSWORD_PG}@db_postgres:5432/${DB_DATABASE_PG}
       TZ: Asia/Seoul
+      DISABLE_FILE_LOGS: "true"
+      DISABLE_WEBSOCKET_FILE_LOGS: "true"
       # WebSocket API Keys
       FINNHUB_API_KEY: ${FINNHUB_API_KEY}
       FINNHUB_SECRET_KEY: ${FINNHUB_SECRET_KEY}
@@ -223,18 +229,23 @@ services:
       ALPACA_API_KEY: ${ALPACA_API_KEY}
       ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY}
     depends_on:
-      db:
-        condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
       - ./.env:/app/.env:ro
+    tmpfs:
+      - /app/logs
     command: ["sh", "-c", "cd /app && python -m app.services.run_websocket_orchestrator"]
     healthcheck:
       disable: true
     networks:
       - app_network
       - shared-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
 
   # --- (신규) WebSocket 브로드캐스터 ---
   websocket_broadcaster:
@@ -251,6 +262,8 @@ services:
       POSTGRES_DATABASE_URL: postgresql+psycopg2://${DB_USERNAME_PG}:${DB_PASSWORD_PG}@db_postgres:5432/${DB_DATABASE_PG}
       PYTHONPATH: /app
       TZ: Asia/Seoul
+      BROADCASTER_VERBOSE: "false"
+      DISABLE_FILE_LOGS: "true"
     depends_on:
       backend:
         condition: service_healthy # 백엔드가 healthy 상태가 될 때까지 대기
@@ -258,12 +271,19 @@ services:
         condition: service_healthy
     volumes:
       - ./.env:/app/.env:ro
+    tmpfs:
+      - /app/logs
     command: ["sh", "-c", "cd /app && python -m app.services.run_websocket_broadcaster"]
     healthcheck:
       disable: true
     networks:
       - app_network
       - shared-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
 
   frontend:
     build:
@@ -285,22 +305,12 @@ services:
     networks:
       - app_network
       - shared-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
 
-  phpmyadmin:
-    image: phpmyadmin/phpmyadmin
-    container_name: fire_markets_phpmyadmin
-    restart: unless-stopped
-    environment:
-      PMA_HOST: db
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-    depends_on:
-      db:
-        condition: service_healthy
-    volumes:
-      - ./phpmyadmin/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini
-    networks:
-      - app_network
-      - shared-network
 
 
   portainer:
@@ -315,6 +325,11 @@ services:
       - portainer_data:/data
     networks:
       - shared-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
 
   nginx-proxy-manager:
     image: jc21/nginx-proxy-manager:latest
@@ -329,13 +344,17 @@ services:
       - npm_letsencrypt:/etc/letsencrypt
     networks:
       - shared-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
 
 
  
 
 volumes:
-  db_data:
-  pg_data:  # PostgreSQL 데이터 볼륨 추가
+  pg_data:  # PostgreSQL 데이터 볼륨
   portainer_data:
   npm_data:
   npm_letsencrypt:

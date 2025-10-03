@@ -8,6 +8,7 @@ WebSocket Broadcaster Service
 import asyncio
 import json
 import logging
+import os
 import signal
 import sys
 import time
@@ -26,26 +27,23 @@ sys.path.insert(0, str(project_root))
 from app.core.config import GLOBAL_APP_CONFIGS, load_and_set_global_configs
 from app.utils.helpers import safe_float
 
-# 로깅 설정
-logging.basicConfig(
-    level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-# Force DEBUG to stdout
+# 로깅 설정 (환경변수로 상세 로그 제어)
+verbose = os.getenv("BROADCASTER_VERBOSE", "false").lower() == "true"
+log_level = logging.DEBUG if verbose else logging.INFO
+
+logging.basicConfig(level=log_level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+
 import sys
 _sh = logging.StreamHandler(sys.stdout)
-_sh.setLevel(logging.DEBUG)
+_sh.setLevel(log_level)
 _sh.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
-logging.getLogger().addHandler(_sh)
+root_logger = logging.getLogger()
+root_logger.handlers = []
+root_logger.addHandler(_sh)
+root_logger.setLevel(log_level)
+
 logger = logging.getLogger("WebSocketBroadcaster")
-logger.setLevel(logging.DEBUG)
-# Ensure root handlers also emit DEBUG
-_root = logging.getLogger()
-_root.setLevel(logging.DEBUG)
-for _h in _root.handlers:
-    try:
-        _h.setLevel(logging.DEBUG)
-    except Exception:
-        pass
+logger.setLevel(log_level)
 
 # 전역 설정 로드
 try:
@@ -55,7 +53,7 @@ except Exception as e:
     logger.error(f"❌ Failed to load global configurations: {e}")
 
 # Socket.IO 클라이언트 설정 (백엔드 서버에 연결)
-sio_client = socketio.AsyncClient(logger=True, engineio_logger=True)
+sio_client = socketio.AsyncClient(logger=verbose, engineio_logger=verbose)
 
 # --- Broadcaster 전용 상태 및 캐시 관리 ---
 prev_close_cache: Dict[int, float] = {}
@@ -88,7 +86,7 @@ async def disconnect():
 async def _refresh_asset_cache():
     """DB에서 Ticker -> Asset ID 맵을 가져와 캐시합니다."""
     global ticker_to_asset_id_cache, last_asset_cache_refresh
-    logger.info("🔄 Ticker-AssetID 캐시 갱신 시작...")
+    logger.debug("🔄 Ticker-AssetID 캐시 갱신 시작...")
     from app.core.database import get_async_session_local
     from app.models.asset import Asset
     from sqlalchemy.future import select
@@ -106,7 +104,7 @@ async def _refresh_asset_cache():
 async def _refresh_prev_close_cache():
     """DB에서 전일 종가 데이터를 가져와 캐시합니다."""
     global prev_close_cache, last_cache_refresh
-    logger.info("🔄 전일 종가 캐시 갱신 시작...")
+    logger.debug("🔄 전일 종가 캐시 갱신 시작...")
     from app.core.database import get_async_session_local
     from sqlalchemy import text
 
