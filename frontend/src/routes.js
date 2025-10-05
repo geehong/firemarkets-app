@@ -54,6 +54,7 @@ const Widgets = React.lazy(() => import('./views/widgets/Widgets'))
 
 // Test
 const Test01 = React.lazy(() => import('./views/test/Test01'))
+const Test02 = React.lazy(() => import('./views/test/Test02'))
 
 // Assets
 const AssetsListView = React.lazy(() => import('./views/lists/AssetsListView'))
@@ -106,6 +107,7 @@ const routes = [
   { path: '/notifications/toasts', name: 'Toasts', element: Toasts },
   { path: '/widgets', name: 'Widgets', element: Widgets },
   { path: '/test/test01', name: 'Test01 - WebSocket 실시간 데이터', element: Test01 },
+  { path: '/test/test02', name: 'Test02 - 정적 미니차트', element: Test02 },
   { path: '/assets', name: 'Assets', element: AssetsListView },
   { path: '/overviews/:assetId', name: 'Asset Overview', element: AssetsOverviews },
 ]

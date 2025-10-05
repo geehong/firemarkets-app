@@ -358,7 +358,7 @@ class BinanceWSConsumer(BaseWSConsumer):
                 'provider': 'binance',
                 'type': str(data.get('type', 'trade'))
             }
-            await r.xadd(stream_key, entry)
+            await r.xadd(stream_key, entry, maxlen=100000, approximate=True)
         except Exception as e:
             logger.error(f"❌ {self.client_name} redis store error: {e}")
     

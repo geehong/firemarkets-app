@@ -543,8 +543,13 @@ const _nav = [
     items: [
       {
         component: CNavItem,
-        name: 'Test01 - WebSocket 실시간 데이터',
+        name: 'Test01',
         to: '/test/test01',
+      },
+      {
+        component: CNavItem,
+        name: 'Test2',
+        to: '/test/test02',
       },
     ],
   },

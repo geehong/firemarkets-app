@@ -7,25 +7,21 @@ import './MiniPriceChart.css'
 // 그래프 표시 전용: 구독/실시간 업데이트/현재가 라인 제거
 const MiniPriceChartTest = ({
   containerId = 'mini-chart-test',
-    assetIdentifier = 'BTCUSDT',
-  chartType = 'crypto',
-    useWebSocket = true,
-  apiInterval = null,
-  marketHours = null
+  assetIdentifier = 'BTCUSDT'
 }) => {
   const chartRef = useRef(null)
   const [chart, setChart] = useState(null)
   const wsPrice = useWebSocketStore((state) => state.prices[assetIdentifier])
 
   // API 데이터 로드 (지연 데이터 기반 시계열)
-    const { data: apiResponse, loading: isLoading, error } = useAPI.realtime.pricesPg({
-        asset_identifier: assetIdentifier,
+  const { data: apiResponse, loading: isLoading, error } = useAPI.realtime.pricesPg({
+    asset_identifier: assetIdentifier,
     data_interval: '15m',
     limit: 500
   })
 
   // 시계열 데이터로 변환 (정렬 포함)
-    const chartData = useMemo(() => {
+  const chartData = useMemo(() => {
     if (!apiResponse?.quotes || apiResponse.quotes.length === 0) return []
     return apiResponse.quotes
       .map((q) => {
@@ -86,20 +82,20 @@ const MiniPriceChartTest = ({
     }
     const lineColor = isRising === null ? '#999999' : (isRising ? '#18c58f' : '#ff4d4f')
 
-        const options = {
+    const options = {
       title: { text: `${assetIdentifier} Price`, align: 'left', verticalAlign: 'top', style: { fontSize: '14px', fontWeight: 'bold' } },
-            xAxis: {
-                type: 'datetime',
-                min: xAxisRange.min,
-                max: xAxisRange.max,
-                gridLineColor: '#e6e6e6',
+      xAxis: {
+        type: 'datetime',
+        min: xAxisRange.min,
+        max: xAxisRange.max,
+        gridLineColor: '#e6e6e6',
         labels: { enabled: true, style: { color: '#666666' } },
-                lineColor: '#cccccc',
+        lineColor: '#cccccc',
         tickColor: '#cccccc'
       },
-            yAxis: {
-                opposite: true,
-                gridLineColor: '#e6e6e6',
+      yAxis: {
+        opposite: true,
+        gridLineColor: '#e6e6e6',
         labels: { enabled: true, style: { color: '#666666' }, align: 'left', x: 15 },
         title: { text: 'Price (USD)', style: { color: '#666666' } },
         plotLines: [
@@ -121,7 +117,7 @@ const MiniPriceChartTest = ({
                 value: Math.round(prevClosePrice * 100) / 100,
                 color: '#999999',
                 dashStyle: 'ShortDash',
-                    width: 0.5,
+                width: 0.5,
                 zIndex: 9,
                 label: { text: `Prev Close $${formatTwo(prevClosePrice)}`, style: { color: '#777777' } }
               }]
@@ -166,14 +162,13 @@ const MiniPriceChartTest = ({
     }
   }, [assetIdentifier, chartData, isLoading, xAxisRange])
 
-  // 단순 구독: 마지막 포인트 마커/가격만 업데이트 (useWebSocket=true인 경우에만)
+  // 단순 구독: 마지막 포인트 마커/가격만 업데이트
   useEffect(() => {
-    if (!useWebSocket) return
     const { connect, subscribeSymbols, unsubscribeSymbols } = useWebSocketStore.getState()
     connect()
     subscribeSymbols([assetIdentifier])
     return () => unsubscribeSymbols([assetIdentifier])
-  }, [assetIdentifier, useWebSocket])
+  }, [assetIdentifier])
 
   // WebSocket 가격으로 마커 갱신
   useEffect(() => {
@@ -250,15 +245,15 @@ const MiniPriceChartTest = ({
     markerSeries.setData([[ts, val]], true, false, false)
   }, [chart, wsPrice])
 
-    return (
-        <div className="mini-price-chart-container">
-            <div 
-                ref={chartRef} 
-                id={containerId}
-                className={`mini-price-chart ${isLoading ? 'loading' : ''} ${error ? 'error' : ''}`}
-                style={{ height: '300px' }}
-            />
-        </div>
+  return (
+    <div className="mini-price-chart-container">
+      <div
+        ref={chartRef}
+        id={containerId}
+        className={`mini-price-chart ${isLoading ? 'loading' : ''} ${error ? 'error' : ''}`}
+        style={{ height: '300px' }}
+      />
+    </div>
   )
 }
 

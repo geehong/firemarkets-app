@@ -57,6 +57,11 @@ services:
     image: redis:7-alpine
     container_name: fire_markets_redis
     restart: unless-stopped
+    command: >
+      redis-server
+      --maxmemory 1gb
+      --maxmemory-policy allkeys-lru
+      --appendonly no
     networks:
       - app_network
       - shared-network

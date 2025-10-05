@@ -1,386 +1,552 @@
-import React, { useMemo, useEffect, useState, useRef } from 'react'
-import Highcharts from 'highcharts/highstock'
-import HighchartsReact from 'highcharts-react-official'
+import React, { useEffect, useRef, useState, useMemo } from 'react';
+import Highcharts from 'highcharts/highstock';
+import useWebSocketStore from '../../../store/websocketStore';
+import { useAPI } from '../../../hooks/useAPI';
+import { usePeriodicAPI } from '../../../hooks/usePeriodicAPI';
+import './MiniPriceChart.css';
 
-const MiniPriceChart = ({ assetIdentifier = 'BTCUSDT', delayData, wsPrices }) => {
-  // isLoading 상태는 이제 MainDashboard에서 관리되어야 하지만,
-  // 여기서는 delayData 유무로 로딩 상태를 판단합니다.
-  const isLoading = !delayData;
+// Import and initialize Highcharts modules
+import 'highcharts/modules/price-indicator';
+import 'highcharts/modules/accessibility';
+import 'highcharts/themes/adaptive';
 
-  // Map quotes -> [timestampMs, close(price)]
-  const seriesData = useMemo(() => {
-    const quotes = delayData || []
-    if (!Array.isArray(quotes) || quotes.length === 0) return []
-
-    // Deduplicate by timestamp: prefer coinbase > binance > others
-    const sourcePriority = { coinbase: 1, binance: 2 }
-    const bestByTs = new Map()
-
-    for (const q of quotes) {
-      const t = q?.timestamp_utc || q?.timestamp
-      const ts = t ? new Date(t).getTime() : undefined
-      const priceNum = typeof q?.price !== 'undefined' ? Number(q.price) : undefined
-      if (!ts || !isFinite(ts) || typeof priceNum !== 'number' || !isFinite(priceNum)) continue
-
-      const prev = bestByTs.get(ts)
-      if (!prev) {
-        bestByTs.set(ts, q)
-        continue
-      }
-      const prevRank = sourcePriority[prev?.data_source] ?? 999
-      const curRank = sourcePriority[q?.data_source] ?? 999
-      if (curRank < prevRank) {
-        bestByTs.set(ts, q)
-      }
-    }
-
-    const points = Array.from(bestByTs.entries())
-      .map(([ts, q]) => [Number(ts), Number(q.price)])
-      .sort((a, b) => a[0] - b[0])
-    return points
-  }, [delayData, assetIdentifier])
-
-  // API 요청 로그 (지연 데이터만)
-  useEffect(() => {
-    console.log(`[MiniPriceChart] ${assetIdentifier} API 요청 상태:`, {
-      delayData: delayData ? Object.keys(delayData) : 'No delay data'
-    })
-  }, [assetIdentifier, delayData])
-
-  const chartRef = useRef(null)
-  const [lastPointData, setLastPointData] = useState([])
-  const [yAxisRange, setYAxisRange] = useState({ min: null, max: null })
-  const [isYAxisInitialized, setIsYAxisInitialized] = useState(false)
-
-  // wsPrices에서 필요한 가격만 추출하고, 메모이즈하여 불필요한 리렌더를 줄입니다.
-  const currentWsPrice = useMemo(() => {
-    const key = String(assetIdentifier).toUpperCase()
-    const direct = wsPrices?.[key]?.price
-    if (typeof direct !== 'undefined') return direct
-    const usdt = wsPrices?.[`${key}USDT`]?.price
-    return usdt
-  }, [wsPrices, assetIdentifier])
-
-  // 지연 데이터가 없고 WS 가격만 있을 때, 보이는 최소 라인을 구성
-  const displayedSeriesData = useMemo(() => {
-    const hasSeries = Array.isArray(seriesData) && seriesData.length > 0
-    const wsPriceNum = typeof currentWsPrice !== 'undefined' ? Number(currentWsPrice) : undefined
-    if (hasSeries) return seriesData
-    if (typeof wsPriceNum === 'number' && isFinite(wsPriceNum)) {
-      const now = Date.now()
-      return [
-        [now - 60_000, wsPriceNum],
-        [now, wsPriceNum]
-      ]
-    }
-    return []
-  }, [seriesData, currentWsPrice])
-
-  const hasHistorical = useMemo(() => Array.isArray(seriesData) && seriesData.length > 0, [seriesData])
-
-  // displayedSeriesData / hasHistorical는 상단으로 이동
-
-  // temp_debug.js 방식으로 마지막 포인트 업데이트
-  useEffect(() => {
-    if (!seriesData || seriesData.length === 0) return;
-
-    const n = seriesData.length;
-    const lastClose = seriesData[n - 1][1];
-    const prevTs = n > 1 ? seriesData[n - 2][0] : seriesData[n - 1][0];
-    const prevY = n > 1 ? seriesData[n - 2][1] : seriesData[n - 1][1];
-    const lastTs = seriesData[n - 1][0];
-    const nowTs = Date.now(); // 마지막 포인트를 현재 시간으로 설정
-
-    const wsPrice = typeof currentWsPrice !== 'undefined' ? Number(currentWsPrice) : undefined;
+const MiniPriceChart = ({ 
+    containerId = 'container',
+    assetIdentifier = 'BTCUSDT',
+    // 자산별 커스터마이징 옵션
+    chartType = 'crypto', // 'crypto', 'commodities', 'stocks'
+    useWebSocket = true,
+    apiInterval = null, // API 호출 간격 (밀리초)
+    marketHours = null, // 시장 개장시간 체크 함수
+}) => {
+    // 디버그 토글 (콘솔에서 window.__DEBUG_MINI_CHARTS__ = true 설정)
+    const DEBUG = typeof window !== 'undefined' && window.__DEBUG_MINI_CHARTS__ === true;
+    const chartRef = useRef(null);
+    const [chart, setChart] = useState(null);
+    const lastWebSocketPriceRef = useRef(null); // 이전 WebSocket 가격 저장 (객체: {price, timestamp})
+    const lastApiPriceRef = useRef(null); // 이전 API 가격 저장 (객체: {price, timestamp})
+    const [apiPrice, setApiPrice] = useState(null); // API 직접 호출 가격
+    const [apiTimestamp, setApiTimestamp] = useState(null); // API 타임스탬프
+    const [isMarketOpen, setIsMarketOpen] = useState(false); // 시장 개장 상태
+    // 모바일 전용 UI 설정 제거: 데스크탑 고정 스타일 사용
+    const lastApiCloseRef = useRef(null); // stocks 폐장시 참조할 마지막 API 종가
+    const lastRealtimeUpdateAtRef = useRef(0); // 실시간 업데이트 스로틀용
     
-
+    // 성능 계측용 카운터 (5초 샘플링 로그)
+    const renderCountRef = useRef(0);
+    const effectRunCountRef = useRef(0);
+    const redrawCountRef = useRef(0);
+    const wsTickCountRef = useRef(0);
+    renderCountRef.current += 1;
     
-    // 우선순위: WebSocket > 마지막 가격
-    const next = (typeof wsPrice === 'number' && isFinite(wsPrice))
-      ? wsPrice
-      : lastClose
+    // useAPI 훅 사용 (정규화된 데이터 포함)
+    const { data: apiResponse, loading: isLoading, error } = useAPI.realtime.pricesPg({
+        asset_identifier: assetIdentifier,
+        data_interval: '15m', // 이 파라미터는 현재 API에서 사용되지 않습니다.
+        limit: 500 // 가져올 데이터 포인트 수를 늘립니다.
+    });
 
-    const change = next - prevY
-    const changePercent = prevY !== 0 ? (change / prevY) * 100 : 0
-    const isUp = change >= 0
-    const upColor = '#18c58f'
-    const downColor = '#ff4d4f'
-
-    // 가중치 적용: 움직임을 30% 더 크게 (1.3배)
-    const weightedChange = change * 1.3
-    const weightedNext = prevY + weightedChange
-
-    // --- Y축 범위 초기 설정 (한 번만) ---
-    if (!isYAxisInitialized) {
-      // 초기 데이터 기준으로 Y축 범위 설정 (PgSql 방식과 동일)
-      const prices = seriesData.map(p => p[1]);
-      const minPrice = Math.min(...prices);
-      const maxPrice = Math.max(...prices);
-      const priceRange = maxPrice - minPrice;
-      const padding = priceRange * 0.1; // 10% 패딩 (PgSql과 동일)
-      
-      setYAxisRange({
-        min: parseFloat((minPrice - padding).toFixed(4)),
-        max: parseFloat((maxPrice + padding).toFixed(4))
-      });
-      setIsYAxisInitialized(true);
-    }
-
-    // React 상태를 업데이트하여 차트 리렌더링을 유도
-    const newLastPoint = {
-      x: nowTs, // X축을 현재 시간으로 업데이트
-      y: weightedNext, // 가중치가 적용된 가격 사용 (30% 증폭)
-      color: isUp ? upColor : downColor,
-      marker: { enabled: true, fillColor: isUp ? upColor : downColor, lineColor: '#ffffff', lineWidth: 2, radius: 5 },
-      custom: { prevY, change: weightedChange, changePercent: changePercent * 1.3, isUp }
+    // 주기적 API 호출 (commodities 타입용, GCUSD/XAGUSD만 지원, delay-price 사용)
+    const shouldPollCommodities = chartType === 'commodities' && ['GCUSD', 'SIUSD'].includes(assetIdentifier) && !!apiInterval;
+    const fetchLatestPrice = async () => {
+        if (!shouldPollCommodities) return null;
+        try {
+            const url = `https://firemarkets.net/api/v1/realtime/pg/quotes-delay-price?asset_identifier=${assetIdentifier}&limit=1`;
+            const response = await fetch(url);
+            if (!response.ok) return null; // 404 등은 조용히 무시
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.warn(`[MiniPriceChart - ${assetIdentifier}] periodic fetch skipped:`, error?.message || error);
+            return null;
+        }
     };
-    
-    // 연결선 시작점을 마지막 데이터 포인트로 설정
-    const p1 = { x: lastTs, y: lastClose, marker: { enabled: false }, dataLabels: { enabled: false }, color: isUp ? upColor : downColor };
-    // 값이 실제로 변할 때만 상태 업데이트 (무한 렌더 방지)
-    setLastPointData((prev) => {
-      if (Array.isArray(prev) && prev.length === 2) {
-        const prevP1 = prev[0]
-        const prevLast = prev[1]
-        const unchanged = prevP1?.x === p1.x && prevP1?.y === p1.y && prevLast?.y === newLastPoint.y && prevLast?.custom?.change === newLastPoint.custom.change
-        if (unchanged) return prev
-      }
-      return [p1, newLastPoint]
-    });
 
-  // 의존성 배열에서 wsPrices를 currentWsPrice로 변경하여 불필요한 재실행을 방지합니다.
-  }, [currentWsPrice, seriesData, assetIdentifier, isYAxisInitialized]);
+    const { data: periodicData, loading: periodicLoading, error: periodicError } = usePeriodicAPI(
+        fetchLatestPrice,
+        shouldPollCommodities ? apiInterval : 0
+    );
+    
+    // WebSocket 데이터 가져오기
+    const wsPrices = useWebSocketStore((state) => state.prices);
+    // WebSocket 수신 계측
+    useEffect(() => {
+        if (!DEBUG) return;
+        if (wsPrices && wsPrices[assetIdentifier]) {
+            wsTickCountRef.current += 1;
+        }
+    }, [wsPrices, assetIdentifier, DEBUG]);
+    
+    // WebSocket 구독 관리 (자산별 커스터마이징)
+    const connected = useWebSocketStore((state) => state.connected);
+    
+    useEffect(() => {
+        if (!useWebSocket) return;
+        
+        const { subscribeSymbols, unsubscribeSymbols } = useWebSocketStore.getState();
+        
+        // 시장 개장시간 체크 (stocks 타입인 경우)
+        if (chartType === 'stocks' && marketHours) {
+            const shouldSubscribe = marketHours() && connected;
+            if (shouldSubscribe) {
+                console.log(`[MiniPriceChart - ${assetIdentifier}] 시장 개장, WebSocket 구독 시작`);
+                subscribeSymbols([assetIdentifier]);
+            } else {
+                console.log(`[MiniPriceChart - ${assetIdentifier}] 시장 폐장 또는 연결 안됨, WebSocket 구독 해제`);
+                unsubscribeSymbols([assetIdentifier]);
+            }
+        } else if (connected) {
+            // crypto, commodities 타입인 경우
+            console.log(`[MiniPriceChart - ${assetIdentifier}] 구독 시작`);
+            subscribeSymbols([assetIdentifier]);
+        }
+        
+        return () => {
+            console.log(`[MiniPriceChart - ${assetIdentifier}] 구독 해제`);
+            unsubscribeSymbols([assetIdentifier]);
+        };
+    }, [assetIdentifier, connected, chartType, useWebSocket, marketHours]);
+    
+    // API 데이터를 Highcharts 형식으로 변환하고 정렬
+    const chartData = useMemo(() => {
+        if (!apiResponse?.quotes || apiResponse.quotes.length === 0) {
+            return [];
+        }
+        
+        const convertedData = apiResponse.quotes
+            .map(quote => {
+                const timestamp = new Date(quote.timestamp_utc).getTime();
+                // 유효하지 않은 타임스탬프(NaN, 0 등) 필터링
+                if (!timestamp || !isFinite(timestamp)) {
+                    return null;
+                }
+                return [timestamp, parseFloat(quote.price)];
+            })
+            .filter(point => point !== null)
+            .sort((a, b) => a[0] - b[0]); // 시간순으로 정렬
+        
+        return convertedData;
+    }, [apiResponse, assetIdentifier]);
 
-  // Simple name mapping for title display
-  const tickerNames = {
-    BTCUSDT: 'Bitcoin',
-    ETHUSDT: 'Ethereum',
-    XRPUSDT: 'Ripple',
-    ADAUSDT: 'Cardano',
-    AVGO: 'Broadcom Inc.',
-    TSLA: 'Tesla Inc.',
-    GCUSD: 'Gold Spot',
-    AAPL: 'Apple Inc.',
-    MSFT: 'Microsoft Corporation',
-    AMZN: 'Amazon.com, Inc.',
-    NVDA: 'NVIDIA Corporation',
-    GOOG: 'Alphabet Inc.',
-    META: 'Meta Platforms Inc.',
-    SPY: 'SPDR S&P 500 ETF Trust',
-    QQQ: 'Invesco QQQ Trust',
-  }
-  const titleText = `${tickerNames[assetIdentifier] || assetIdentifier} (${assetIdentifier})`
+    // stocks 폐장시 사용할 마지막 API 종가를 별도 ref로 관리하여 실시간 effect 의존성에서 chartData를 제거
+    useEffect(() => {
+        if (Array.isArray(chartData) && chartData.length > 0) {
+            const lastPoint = chartData[chartData.length - 1];
+            lastApiCloseRef.current = { timestamp: lastPoint[0], price: lastPoint[1] };
+        }
+    }, [chartData]);
 
-  // X축 범위: 좌측은 고정, 우측은 동적 확장
-  const [xAxisRange, setXAxisRange] = useState({ min: null, max: null })
-  const [isXAxisInitialized, setIsXAxisInitialized] = useState(false)
-  const dayMs = 24 * 60 * 60 * 1000
-  
-  useEffect(() => {
-    if (!seriesData || seriesData.length === 0) return;
-    
-    const timestamps = seriesData.map(p => p[0]);
-    const minTime = Math.min(...timestamps);
-    const maxTime = Math.max(...timestamps);
-    
-    // 좌측 패딩: 데이터 범위의 10% (한 번만 설정)
-    const dataRangeMs = Math.max(0, maxTime - minTime);
-    const leftPaddingMs = dataRangeMs * 0.1;
-    
-    if (!isXAxisInitialized) {
-      const tentativeMin = Math.round(minTime - leftPaddingMs)
-      const minRequired = Math.round(maxTime - dayMs)
-      const finalMin = Math.min(tentativeMin, minRequired)
-      setXAxisRange({
-        min: finalMin,
-        max: null  // 우측은 동적으로 설정
-      });
-      setIsXAxisInitialized(true);
-    }
-  }, [seriesData, isXAxisInitialized, assetIdentifier]);
+    // xAxis 범위 계산 (한 곳에서만 관리)
+    const xAxisRange = useMemo(() => {
+        if (chartData.length === 0) {
+            return { min: null, max: null };
+        }
+        
+        const timestamps = chartData.map(point => point[0]);
+        const minTime = Math.min(...timestamps);
+        const maxTime = Math.max(...timestamps);
+        
+        // 좌측 패딩: 5% 여유, 우측 패딩: 4시간 추가
+        const timeSpan = maxTime - minTime;
+        const leftPadding = timeSpan * 0.05;
+        const rightPadding = 4 * 60 * 60 * 1000; // 4시간 (밀리초)
+        
+        return {
+            min: minTime - leftPadding,
+            max: maxTime + rightPadding
+        };
+    }, [chartData]);
 
-  // 우측 범위를 현재 시간 기준으로 동적 업데이트
-  useEffect(() => {
-    if (!isXAxisInitialized) return;
-    
-    const baseSeries = hasHistorical ? seriesData : displayedSeriesData
-    if (!baseSeries || baseSeries.length === 0) return;
-    
-    const timestamps = baseSeries.map(p => p[0]);
-    const maxDataTime = Math.max(...timestamps);
-    const nowTime = Date.now();
-    
-    // 히스토리가 있으면 넉넉히(4시간), 없으면 2분만 확장
-    const extra = hasHistorical ? (4 * 60 * 60 * 1000) : (2 * 60 * 1000)
-    const dynamicMax = Math.max(nowTime, maxDataTime) + extra;
-    
-    // 데이터 기반 좌측 최소값 계산 (히스토리 시 패딩 포함)
-    let minFromData = dynamicMax - dayMs
-    if (hasHistorical) {
-      const minDataTime = Math.min(...timestamps)
-      const dataRangeMs = Math.max(0, maxDataTime - minDataTime)
-      const leftPaddingMs = dataRangeMs * 0.1
-      const tentativeMin = Math.round(minDataTime - leftPaddingMs)
-      // 최소 24시간 보장: 데이터 기반 min이 24시간보다 좁으면 24시간 창으로 보정
-      minFromData = Math.min(tentativeMin, Math.round(dynamicMax - dayMs))
-    }
-    const nextMin = Math.round(minFromData)
-    const nextMax = Math.round(dynamicMax)
-    
-    setXAxisRange(prev => {
-      const diffMax = typeof prev?.max === 'number' ? Math.abs(nextMax - prev.max) : Infinity
-      const diffMin = typeof prev?.min === 'number' ? Math.abs(nextMin - prev.min) : Infinity
-      if (diffMax < 250 && diffMin < 250) return prev
-      return { min: nextMin, max: nextMax }
-    });
-  }, [wsPrices, isXAxisInitialized, seriesData, displayedSeriesData, hasHistorical]);
-
-  // displayedSeriesData/hasHistorical는 상단으로 이동
-
-  const options = useMemo(() => ({
-    title: { text: titleText, style: { color: '#ffffff' } },
-    chart: { height: 300, backgroundColor: '#1a1a1a', style: { fontFamily: 'Inter, sans-serif' }, animation: false },
-    accessibility: { enabled: false },
-    rangeSelector: {
-      enabled: false,
-        inputEnabled: false,
-    },
-    navigator: { enabled: false, height: 0 },
-    scrollbar: { enabled: false },
-    // Add right padding so the last point and its label have space
-    xAxis: {
-        type: 'datetime',
-        gridLineWidth: 1,
-        gridLineColor: '#333333',
-        labels: { style: { color: '#a0a0a0' } },
-      overscroll: hasHistorical ? 14400000 : 0, 
-      min: xAxisRange.min,
-      max: xAxisRange.max,
-      minPadding: 0,
-      maxPadding: hasHistorical ? 0.1 : 0.02,
-      startOnTick: false,
-      endOnTick: false
-    },
-    yAxis: {
-      title: { text: 'Close', style: { color: '#a0a0a0' } },
-      gridLineColor: '#333333',
-      labels: { style: { color: '#a0a0a0' }, formatter: function () { return typeof this.value === 'number' ? this.value.toFixed(2) : this.value } },
-      min: yAxisRange.min,
-      max: yAxisRange.max,
-        minPadding: 0.1,  // Y축 하단 패딩 복원
-        maxPadding: 0.1,  // Y축 상단 패딩 복원
-        startOnTick: false,
-        endOnTick: false,
-        lastVisiblePrice: {
-            enabled: true,
-            label: {
-                enabled: true,
-                style: { color: '#000000', fontWeight: 'bold' },
-                backgroundColor: '#00d4ff',
-                borderColor: '#ffffff',
-                borderWidth: 1,
-                borderRadius: 2,
-                padding: 2
+    // 주기적 API 데이터 처리 (commodities 타입인 경우)
+    useEffect(() => {
+        if (!shouldPollCommodities) return;
+        if (periodicData) {
+            const ts = periodicData?.timestamp_utc || periodicData?.timestamp || null;
+            const price = periodicData?.price;
+            const timestamp = ts ? new Date(ts).getTime() : null;
+            const priceValue = parseFloat(price);
+            if (timestamp && isFinite(timestamp) && priceValue && isFinite(priceValue)) {
+                setApiPrice(priceValue);
+                setApiTimestamp(timestamp);
             }
         }
-    },
-    // tooltip: { enabled: false },
-    plotOptions: {
-        series: {
-            animation: false,
-        dataLabels: {
-          defer: false
+    }, [shouldPollCommodities, periodicData]);
+
+    // 시장 상태 체크 (stocks 타입인 경우) - 동작 유지, UI 반응형 제거와 무관
+    useEffect(() => {
+        if (chartType === 'stocks' && marketHours) {
+            const checkMarketStatus = () => {
+                const isOpen = marketHours();
+                setIsMarketOpen(isOpen);
+                console.log(`[MiniPriceChart - ${assetIdentifier}] 시장상태: ${isOpen ? '개장' : '폐장'}`);
+            };
+            checkMarketStatus();
+            const intervalId = setInterval(checkMarketStatus, 60 * 1000);
+            return () => clearInterval(intervalId);
         }
-      },
-      spline: { animation: false },
-      line: { animation: false }
-    },
-    series: [
-        {
-        type: 'line',
-        name: assetIdentifier,
-        data: displayedSeriesData,
-            color: '#00d4ff',
-        lineWidth: 2,
-        marker: { enabled: false }
-        },
-      // Highlight the last point with a visible marker and label (realtime price),
-      // and draw a short connecting segment to the previous point
-        {
-            id: 'last-point',
-            type: 'spline',
-        name: 'Last',
-        data: lastPointData,
-            color: '#00d4ff',
-            lineWidth: 1,
-            className: 'highcharts-last-point-marker',
-            marker: {
-                enabled: true,
-                symbol: 'circle',
-                radius: 5,
-          fillColor: '#00d4ff',
-                lineColor: '#ffffff',
-          lineWidth: 2,
-            },
-            dataLabels: {
-                enabled: true,
+    }, [chartType, marketHours, assetIdentifier]);
+
+    // 실시간 가격 업데이트 (통합 로직)
+    useEffect(() => {
+        if (!chart) return;
+        
+        // 안전한 series 접근
+        if (!chart.series || !Array.isArray(chart.series) || chart.series.length === 0) return;
+        const series = chart.series[0];
+        if (!series) return;
+        
+        if (DEBUG) effectRunCountRef.current += 1;
+
+        // 간단 스로틀: 120ms 이내 재호출은 건너뜀 (고빈도 틱 보호)
+        const nowTs = Date.now();
+        if (nowTs - (lastRealtimeUpdateAtRef.current || 0) < 120) {
+            return;
+        }
+
+        let point, currentPrice, previousPrice, isRising;
+        
+        // 데이터 소스 결정
+        if (chartType === 'crypto' && wsPrices[assetIdentifier]) {
+            // Crypto: WebSocket 사용
+            const { price, timestamp_utc } = wsPrices[assetIdentifier];
+            const timestamp = new Date(timestamp_utc).getTime();
+            const priceValue = parseFloat(price);
+            
+            if (!timestamp || !isFinite(timestamp) || !priceValue || !isFinite(priceValue)) {
+                return;
+            }
+            
+            point = [timestamp, priceValue];
+            currentPrice = point[1];
+            previousPrice = lastWebSocketPriceRef.current;
+            lastWebSocketPriceRef.current = {price: currentPrice, timestamp: timestamp};
+            
+        } else if (chartType === 'commodities' && apiPrice && apiTimestamp) {
+            // Commodities: API 직접 호출
+            point = [apiTimestamp, apiPrice];
+            currentPrice = point[1];
+            previousPrice = lastApiPriceRef.current;
+            lastApiPriceRef.current = {price: currentPrice, timestamp: apiTimestamp};
+            
+        } else if (chartType === 'stocks') {
+            if (isMarketOpen && wsPrices[assetIdentifier]) {
+                // Stocks: 시장 개장시 WebSocket
+                const { price, timestamp_utc } = wsPrices[assetIdentifier];
+                const timestamp = new Date(timestamp_utc).getTime();
+                const priceValue = parseFloat(price);
+                
+                if (!timestamp || !isFinite(timestamp) || !priceValue || !isFinite(priceValue)) {
+                    return;
+                }
+                
+                point = [timestamp, priceValue];
+                currentPrice = point[1];
+                previousPrice = lastWebSocketPriceRef.current;
+                lastWebSocketPriceRef.current = {price: currentPrice, timestamp: timestamp};
+                
+            } else if (!isMarketOpen && lastApiCloseRef.current) {
+                // Stocks: 시장 폐장시 API 마지막 포인트
+                point = [Date.now(), lastApiCloseRef.current.price];
+                currentPrice = point[1];
+                previousPrice = lastApiPriceRef.current;
+                lastApiPriceRef.current = {price: currentPrice, timestamp: Date.now()};
+            } else {
+                return;
+            }
+        } else {
+            return;
+        }
+        
+        const lastPointObject = series.data && series.data.length > 0 ? series.data[series.data.length - 1] : null;
+
+        // 1분 이상 차이나면 새 포인트 추가 (좌측 이동)
+        const currentTime = Date.now();
+        const timeDiff = currentTime - point[0];
+
+        if (timeDiff >= 60 * 1000) {
+            const newTime = point[0] + (60 * 1000); // 1분 추가
+            const newPoint = [newTime, point[1]]; // 같은 가격으로 새 포인트
+            series.addPoint(newPoint, true, false, true); // 자동 리드롤로 좌측 이동
+        } else {
+            // 같은 시간대면 업데이트, 아니면 새 포인트 추가
+            if (!lastPointObject) {
+                series.addPoint(point, true, false, true);
+            } else {
+                const isSameBucket = Math.abs(point[0] - lastPointObject.x) < 1000; // 1초 이내면 동일 버킷으로 간주
+                if (isSameBucket) {
+                    // y 값만 업데이트
+                    lastPointObject.update(point[1], true);
+                } else {
+                    series.addPoint(point, true, false, true);
+                }
+            }
+        }
+        
+        // 가격 변화 감지 (1초 전 가격과 현재 가격 비교)
+        let priceChange = 0; // 가격 변화량
+        
+        // 시장 폐장시에는 회색(변화 없음)으로 표시
+        if (chartType === 'stocks' && !isMarketOpen) {
+            isRising = null; // 시장 폐장시 변화 없음 (회색)
+        } else if (!previousPrice) {
+            isRising = false; // 첫 번째 데이터는 하락으로 처리
+        } else {
+            // 1초 전 가격과 현재 가격 비교
+            const timeDiff = currentTime - (previousPrice.timestamp || 0);
+            if (timeDiff >= 1000) { // 1초 이상 차이날 때만 비교
+                priceChange = currentPrice - previousPrice.price;
+                if (priceChange > 0) {
+                    isRising = true; // 상승
+                } else if (priceChange < 0) {
+                    isRising = false; // 하락
+                } else {
+                    isRising = null; // 변화 없음 (회색)
+                }
+            } else {
+                isRising = null; // 1초 미만 차이면 변화 없음 (회색)으로 처리
+            }
+        }
+        
+        // 컬러 결정: 상승(초록), 하락(빨강), 변화없음(회색)
+        const lineColor = isRising === null ? '#999999' : (isRising ? '#18c58f' : '#ff4d4f');
+        
+        // 가격 변동률과 변동가격 계산 (1초 전 가격 기준) - 안전 처리
+        const isFiniteNumber = (v) => typeof v === 'number' && isFinite(v);
+        const formatTwo = (v) => isFiniteNumber(v) ? v.toFixed(2) : '0.00';
+        const safeCurrentPrice = isFiniteNumber(currentPrice) ? currentPrice : 0;
+
+        // let priceChangePercent = 0;
+        // let priceChangeAmount = 0;
+        // if (previousPrice && isFiniteNumber(previousPrice.price) && previousPrice.price !== 0 && isFiniteNumber(safeCurrentPrice)) {
+        //     priceChangeAmount = safeCurrentPrice - previousPrice.price;
+        //     priceChangePercent = (priceChangeAmount / previousPrice.price) * 100;
+        // }
+
+        // 가격 표시 형식: $가격만 표시 (%, +- 변동가격 제거)
+        const priceLabel = `$${formatTwo(safeCurrentPrice)}`;
+        
+        // plotLine 클래스 결정
+        let plotLineClass = 'neutral';
+        if (isRising === true) plotLineClass = 'rising';
+        else if (isRising === false) plotLineClass = 'falling';
+
+        // 유효하지 않은 값이면 yAxis 업데이트를 건너뜀
+        if (!isFiniteNumber(point[1])) {
+            return;
+        }
+
+        // plotLine 업데이트 최적화: 변경사항이 있을 때만 업데이트
+        const roundedValue = Math.round(point[1] * 100) / 100;
+        const currentPlotLine = chart.yAxis[0].plotLinesAndBands && chart.yAxis[0].plotLinesAndBands[0];
+        const needsUpdate = !currentPlotLine ||
+            currentPlotLine.options.value !== roundedValue ||
+            currentPlotLine.options.color !== lineColor ||
+            (currentPlotLine.options.label && currentPlotLine.options.label.text) !== priceLabel;
+
+        if (needsUpdate) {
+            chart.yAxis[0].update({
+                plotLines: [{
+                    value: roundedValue,
+                    color: lineColor,
+                    zIndex: 10,
+                    className: `highcharts-plot-line ${plotLineClass}`,
+                    label: { 
+                        text: priceLabel, 
+                        align: 'center', 
+                        style: { 
+                            color: lineColor, 
+                            fontWeight: '900',
+                            zIndex: 11
+                        } 
+                    },
+                    id: 'current-price-line'
+                }]
+            });
+        }
+
+        lastRealtimeUpdateAtRef.current = nowTs;
+    }, [chart, wsPrices, assetIdentifier, chartType, isMarketOpen, apiPrice, apiTimestamp]);
+
+    useEffect(() => {
+        if (!chartRef.current) return;
+        if (isLoading || chartData.length === 0) {
+            return;
+        }
+
+        const options = {
+            title: {
+                text: `${assetIdentifier} Price Chart`,
                 align: 'left',
-                x: -150,
-                y: 40,
-                useHTML: true,
-                defer: false,
-                allowOverlap: true,
-                overflow: 'allow',
-                crop: false,
-                formatter: function () {
-                  const y = typeof this.y === 'number' ? this.y : null
-                  const c = this.point?.custom
-                  if (y == null || !c) return y
-                  const fmt = (v) => (typeof v === 'number' ? v.toLocaleString(undefined, { maximumFractionDigits: 4 }) : v)
-                  const priceStr = fmt(y)
-                  const chgAmt = c.change
-                  const chgPct = c.changePercent
-                  const signAmt = chgAmt >= 0 ? '+' : '-'
-                  const signPct = chgPct >= 0 ? '+' : ''
-                  const pctStr = `${signPct}${(Math.abs(chgPct)).toFixed(2)}%`
-                  const amtStr = `${signAmt}${fmt(Math.abs(chgAmt))}`
-                  const color = c.isUp ? '#18c58f' : '#ff4d4f'
-                  return `<span style="color:${color}">${priceStr} (${pctStr}, ${amtStr})</span>`
-                },
-                backgroundColor: 'transparent',
-                borderColor: 'transparent',
-                borderWidth: 0,
-                borderRadius: 0,
-                padding: 4,
-                style: { color: '#e6f7ff', fontWeight: 'bold', fontSize: '12px', textOutline: 'none' },
+                verticalAlign: 'top',
+                style: {
+                    color: '#333333',
+                    fontSize: '16px',
+                    fontWeight: 'bold'
+                }
             },
-      },
-    ],
-  }), [displayedSeriesData, assetIdentifier, lastPointData, xAxisRange, yAxisRange, titleText]);
 
-  // 차트는 지연 데이터가 없어도 항상 렌더링하여 컨테이너가 비어 보이지 않도록 합니다.
+            xAxis: {
+                type: 'datetime',
+                // xAxisRange 상태 사용 (우측 4시간 패딩 포함)
+                min: xAxisRange.min,
+                max: xAxisRange.max,
+                gridLineColor: '#e6e6e6',
+                labels: {
+                    enabled: true,
+                    style: {
+                        color: '#666666'
+                    }
+                },
+                lineColor: '#cccccc',
+                tickColor: '#cccccc',
+                title: {
+                    style: {
+                        color: '#666666'
+                    }
+                }
+            },
 
-  return (
-    <>
-      <style>{`
-        @keyframes glowing {
-          0% { filter: drop-shadow(0 0 3px #00d4ff); }
-          50% { filter: drop-shadow(0 0 10px #00d4ff) drop-shadow(0 0 10px #00d4ff); }
-          100% { filter: drop-shadow(0 0 3px #00d4ff); }
+            rangeSelector: {
+                enabled: false
+            },
+
+            navigator: {
+                enabled: false
+            },
+
+            exporting: {
+                enabled: false
+            },
+
+            series: [{
+                type: 'line',
+                name: 'Price',
+                color: '#006064', //00d4ff
+                lineWidth: 2,
+                marker: {
+                    enabled: false  // 포인트 마커 삭제
+                },
+                data: chartData
+            }],
+
+            yAxis: {
+                opposite: true,
+                gridLineColor: '#e6e6e6',
+                labels: {
+                    enabled: true,
+                    style: {
+                        color: '#666666'
+                    },
+                    align: 'left',
+                    x: 15
+                },
+                title: {
+                    text: 'Price (USD)',
+                    style: { color: '#666666' }
+                },
+                plotLines: [{
+                    value: chartData[chartData.length - 1][1], // 마지막 가격
+                    color: '#18c58f', // 기본 상승 색상
+                    dashStyle: 'solid',
+                    width: 0.5,
+                    zIndex: 10, // 높은 z-index로 선 위에 표시
+                    className: 'highcharts-plot-line neutral',
+                    label: {
+                        text: `$${chartData[chartData.length - 1][1].toFixed(2)} (0.00%, +0.00)`,
+                        align: 'right',
+                        x: -50,
+                        style: {
+                            color: '#18c58f',
+                            fontWeight: '900',
+                            zIndex: 11 // 라벨도 높은 z-index
+                        }
+                    },
+                    id: 'current-price-line'
+                }]
+            },
+
+            chart: {
+                backgroundColor: 'transparent',
+                style: {
+                    fontFamily: 'Inter, sans-serif'
+                }
+                // 실시간 업데이트를 위해 load 이벤트 제거
+            }
+        };
+
+        // Create the chart with error handling
+        let newChart;
+        try {
+            newChart = Highcharts.stockChart(chartRef.current, options);
+            setChart(newChart);
+            if (DEBUG && newChart) {
+                Highcharts.addEvent(newChart, 'redraw', () => {
+                    redrawCountRef.current += 1;
+                });
+            }
+            
+            // 타임라인 전진 시뮬레이션은 디버그 모드에서만 활성화
+            let intervalId = null;
+            if (DEBUG) {
+                intervalId = setInterval(() => {
+                    if (newChart && newChart.series && newChart.series[0]) {
+                        const series = newChart.series[0];
+                        const data = series.options.data;
+                        if (data && data.length > 0) {
+                            const lastPoint = data[data.length - 1];
+                            const newTime = lastPoint[0] + (60 * 1000);
+                            const newPoint = [newTime, lastPoint[1]];
+                            series.addPoint(newPoint, true, false, true);
+                        }
+                    }
+                }, 60000);
+            }
+            
+            // 정리 함수에 interval 제거
+            return () => {
+                if (intervalId) clearInterval(intervalId);
+                if (newChart) {
+                    newChart.destroy();
+                    setChart(null);
+                }
+            };
+            
+        } catch (error) {
+            console.error(`[MiniPriceChart - ${assetIdentifier}] Chart creation error:`, error);
+            console.error(`[MiniPriceChart - ${assetIdentifier}] Chart data:`, chartData);
+            return;
         }
-        .highcharts-last-point-marker .highcharts-point {
-          animation: glowing 1.5s infinite;
-          transition: transform 0.5s ease-out;
-        }
-      `}</style>
-      <HighchartsReact
-        highcharts={Highcharts}
-        constructorType={'stockChart'}
-        options={options}
-        ref={chartRef}
-      />
-    </>
-  )
-}
 
-export default MiniPriceChart
+    }, [assetIdentifier, chartData, isLoading]);
+
+    // 5초마다 샘플링 요약 로그 출력
+    useEffect(() => {
+        if (!DEBUG) return;
+        const id = setInterval(() => {
+            console.log('[MiniPriceChart:metrics]', assetIdentifier, {
+                renders: renderCountRef.current,
+                effectRuns: effectRunCountRef.current,
+                redraws: redrawCountRef.current,
+                wsTicks: wsTickCountRef.current,
+            });
+            renderCountRef.current = 0;
+            effectRunCountRef.current = 0;
+            redrawCountRef.current = 0;
+            wsTickCountRef.current = 0;
+        }, 5000);
+        return () => clearInterval(id);
+    }, [assetIdentifier, DEBUG]);
+
+    return (
+        <div className="mini-price-chart-container">
+            <div 
+                ref={chartRef} 
+                id={containerId}
+                className={`mini-price-chart ${isLoading ? 'loading' : ''} ${error ? 'error' : ''}`}
+                style={{ height: '300px' }}
+            />
+        </div>
+    );
+};
+
+export default MiniPriceChart;

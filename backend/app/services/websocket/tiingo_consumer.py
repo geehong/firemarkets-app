@@ -226,7 +226,7 @@ class TiingoWSConsumer(BaseWSConsumer):
                 'raw_timestamp': str(data.get('timestamp', '')),
                 'provider': 'tiingo',
             }
-            await r.xadd(stream_key, entry)
+            await r.xadd(stream_key, entry, maxlen=100000, approximate=True)
         except Exception as e:
             logger.error(f"❌ {self.client_name} redis store error: {e}")
 

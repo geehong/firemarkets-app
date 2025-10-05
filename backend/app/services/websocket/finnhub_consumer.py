@@ -401,7 +401,7 @@ class FinnhubWSConsumer(BaseWSConsumer):
                 self._redis = None
                 r = await self._get_redis()
             
-            await r.xadd(stream_key, entry)
+            await r.xadd(stream_key, entry, maxlen=100000, approximate=True)
             logger.debug(f"✅ {self.client_name} stored to redis: {data.get('symbol')} = {data.get('price')}")
             
         except Exception as e:

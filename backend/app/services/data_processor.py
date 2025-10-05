@@ -526,7 +526,7 @@ class DataProcessor:
 
         # 주기적으로 전일 종가 캐시 갱신
         if not self.last_cache_refresh or (datetime.now(timezone.utc) - self.last_cache_refresh) > self.cache_refresh_interval:
-            await self._refresh_prev_close_cache()
+            self._refresh_prev_close_cache()
         
         
         # WebSocket 전송 테스트 (스트림 처리 시작 시)
@@ -555,21 +555,14 @@ class DataProcessor:
                     )
                     logger.info(f"✅ Created consumer group {group_name} on {stream_name}")
                     
-                    # Stream TTL 설정 (최대 1000개 메시지 유지)
-                    await self.redis_client.xtrim(stream_name, maxlen=1000, approximate=True)
-                    logger.debug(f"🧹 Stream TTL 설정: {stream_name} (최대 1000개 메시지)")
+                    # 생산자 측에서 MAXLEN을 적용하므로 소비자 측 트림은 제거
                     
                 except Exception as e:
                     if "BUSYGROUP" not in str(e):
                         logger.warning(f"⚠️ xgroup_create skip {stream_name}: {e}")
                     else:
                         logger.debug(f"ℹ️ Consumer group {group_name} already exists on {stream_name}")
-                        # 기존 스트림에도 TTL 적용
-                        try:
-                            await self.redis_client.xtrim(stream_name, maxlen=1000, approximate=True)
-                            logger.debug(f"🧹 기존 Stream TTL 설정: {stream_name}")
-                        except Exception as trim_e:
-                            logger.warning(f"⚠️ Stream TTL 설정 실패 {stream_name}: {trim_e}")
+                        # 생산자 측에서 MAXLEN을 적용하므로 소비자 측 트림은 제거
             
             logger.debug("📖 Consumer Group으로 데이터 읽기 시작")
             # Consumer Group으로 데이터 읽기 (각 스트림별로 개별 처리)
@@ -818,15 +811,7 @@ class DataProcessor:
                         logger.warning(f"❌ ACK 실패 {stream_name}:{message_id}: {e}")
                 logger.info(f"✅ ACK 완료: {ack_count}/{len(ack_items)}개 메시지")
             
-            # 주기적 Stream TTL 정리 (1000개 메시지 초과 시)
-            for stream_name in self.realtime_streams.keys():
-                try:
-                    current_length = await self.redis_client.xlen(stream_name)
-                    if current_length > 1000:
-                        await self.redis_client.xtrim(stream_name, maxlen=1000, approximate=True)
-                        logger.debug(f"🧹 Stream TTL 정리: {stream_name} ({current_length} -> 1000개)")
-                except Exception as e:
-                    logger.warning(f"⚠️ Stream TTL 정리 실패 {stream_name}: {e}")
+            # 주기적 Stream TTL 정리는 생산자 MAXLEN 적용으로 불필요
                     
         except Exception as e:
             import traceback
@@ -975,7 +960,7 @@ class DataProcessor:
         # 2. 캐시에 없으면 DB 조회 (폴백) - 이 경우는 거의 발생하지 않아야 함
         logger.warning(f"캐시 미스: asset_id={asset_id}. DB에서 prev_close 조회 시도.")
         # 캐시를 즉시 갱신하여 다음 요청부터는 캐시를 사용하도록 함
-        await self._refresh_prev_close_cache()
+        self._refresh_prev_close_cache()
         # 갱신된 캐시에서 다시 조회
         prev_close = self.prev_close_cache.get(asset_id)
         if prev_close is not None:
@@ -1017,52 +1002,94 @@ class DataProcessor:
                     logger.warning("🚨 검증을 통과한 레코드가 없습니다.")
                     return False
                 
+                # ----- 벌크 UPSERT로 리팩터링 -----
+                from sqlalchemy.dialects.postgresql import insert
+                from sqlalchemy import func
+                # 환경설정: 배치 크기
+                import os, time as _time
+                BULK_UPSERT_ENABLED = os.getenv("BULK_UPSERT_ENABLED", "true").lower() == "true"
+                BATCH_SIZE = int(os.getenv("BULK_BATCH_SIZE", "1000"))
+
                 success_count = 0
-                for i, record_data in enumerate(validated_records):
+                if not BULK_UPSERT_ENABLED:
+                    logger.info("ℹ️ BULK_UPSERT_ENABLED=false: 기존 로직 유지가 설정되어 있습니다.")
+                    BATCH_SIZE = 1
+
+                # 지연 테이블 모델 임포트
+                from ..models.asset import RealtimeQuoteTimeDelay as PGRealtimeQuoteTimeDelay
+
+                # 유틸: 숫자값 정규화(오버플로 방지)
+                def _sanitize_number(val, min_abs=0.0, max_abs=1e9, digits=8):
                     try:
-                        logger.debug(f"🔍 레코드 {i+1}/{len(validated_records)} 처리 시작")
-                        logger.debug(f"📋 레코드 데이터: asset_id={record_data.get('asset_id')}, data_source={record_data.get('data_source')}, price={record_data.get('price')}")
-                        
-                        # PostgreSQL 실시간 테이블 저장 (UPSERT)
-                        logger.debug("🔄 PostgreSQL 실시간 테이블 처리 시작")
-                        from sqlalchemy.dialects.postgresql import insert
-                        from sqlalchemy import func
-                        
-                        pg_data = record_data.copy()
-                        logger.debug(f"📋 PostgreSQL 데이터 준비: {pg_data}")
-                        
-                        stmt = insert(RealtimeQuote).values(**pg_data)
-                        stmt = stmt.on_conflict_do_update(
-                            index_elements=['asset_id'],  # asset_id로 유니크 제약
+                        if val is None:
+                            return None
+                        f = float(val)
+                        if not (f == f) or f == float('inf') or f == float('-inf'):
+                            return None
+                        if abs(f) < min_abs:
+                            f = 0.0
+                        if abs(f) > max_abs:
+                            return None
+                        return round(f, digits)
+                    except Exception:
+                        return None
+
+                # 배치 단위로 분할 처리
+                for start_idx in range(0, len(validated_records), BATCH_SIZE):
+                    batch = validated_records[start_idx:start_idx + BATCH_SIZE]
+                    if not batch:
+                        continue
+
+                    # 실시간 테이블용 데이터(중복 asset_id는 마지막 레코드로 덮어쓰기)
+                    dedup_rt = {}
+                    for rec in batch:
+                        r = rec.copy()
+                        r['price'] = _sanitize_number(r.get('price'))
+                        r['volume'] = _sanitize_number(r.get('volume'))
+                        r['change_amount'] = _sanitize_number(r.get('change_amount'))
+                        r['change_percent'] = _sanitize_number(r.get('change_percent'))
+                        if r['price'] is None:
+                            continue
+                        dedup_rt[r['asset_id']] = r
+                    realtime_rows = list(dedup_rt.values())
+
+                    # 지연 테이블용 데이터 (timestamp 윈도우 적용 + 중복 키 제거)
+                    delay_dedup = {}
+                    for rec in batch:
+                        d = rec.copy()
+                        tw = self._get_time_window(rec['timestamp_utc'])
+                        d['timestamp_utc'] = tw
+                        d['data_interval'] = f"{self.time_window_minutes}m"
+                        d['price'] = _sanitize_number(d.get('price'))
+                        d['volume'] = _sanitize_number(d.get('volume'))
+                        d['change_amount'] = _sanitize_number(d.get('change_amount'))
+                        d['change_percent'] = _sanitize_number(d.get('change_percent'))
+                        if d['price'] is None:
+                            continue
+                        key = (d['asset_id'], d['timestamp_utc'], d['data_source'])
+                        delay_dedup[key] = d
+                    delay_rows = list(delay_dedup.values())
+
+                    start_ts = _time.time()
+                    try:
+                        # 실시간 테이블 벌크 UPSERT
+                        realtime_stmt = insert(RealtimeQuote).values(realtime_rows)
+                        realtime_stmt = realtime_stmt.on_conflict_do_update(
+                            index_elements=['asset_id'],
                             set_={
-                                'timestamp_utc': stmt.excluded.timestamp_utc,
-                                'price': stmt.excluded.price,
-                                'volume': stmt.excluded.volume,
-                                'change_amount': stmt.excluded.change_amount,
-                                'change_percent': stmt.excluded.change_percent,
-                                'data_source': stmt.excluded.data_source,
+                                'timestamp_utc': realtime_stmt.excluded.timestamp_utc,
+                                'price': realtime_stmt.excluded.price,
+                                'volume': realtime_stmt.excluded.volume,
+                                'change_amount': realtime_stmt.excluded.change_amount,
+                                'change_percent': realtime_stmt.excluded.change_percent,
+                                'data_source': realtime_stmt.excluded.data_source,
                                 'updated_at': func.now()
                             }
                         )
-                        logger.debug("🔄 PostgreSQL INSERT/UPSERT 실행 중...")
-                        postgres_db.execute(stmt)
-                        logger.debug(f"✅ PostgreSQL 실시간 레코드 저장/업데이트 완료")
-                        
-                        # WebSocket 브로드캐스트는 배치 저장 단계에서 처리됨
-                        
-                        # PostgreSQL 시간 윈도우 지연 테이블 저장 (UPSERT)
-                        logger.debug("🔄 PostgreSQL 지연 테이블 처리 시작")
-                        time_window = self._get_time_window(record_data['timestamp_utc'])
-                        delay_record_data = record_data.copy()
-                        delay_record_data['timestamp_utc'] = time_window
-                        delay_record_data['data_interval'] = f'{self.time_window_minutes}m'
-                        logger.debug(f"📊 시간 윈도우 계산: {time_window} (원본: {record_data['timestamp_utc']})")
-                        from ..models.asset import RealtimeQuoteTimeDelay as PGRealtimeQuoteTimeDelay
-                        
-                        pg_delay_data = delay_record_data.copy()
-                        logger.debug(f"📋 PostgreSQL 지연 데이터 준비: {pg_delay_data}")
-                        
-                        delay_stmt = insert(PGRealtimeQuoteTimeDelay).values(**pg_delay_data)
+                        postgres_db.execute(realtime_stmt)
+
+                        # 지연 테이블 벌크 UPSERT
+                        delay_stmt = insert(PGRealtimeQuoteTimeDelay).values(delay_rows)
                         delay_stmt = delay_stmt.on_conflict_do_update(
                             index_elements=['asset_id', 'timestamp_utc', 'data_source'],
                             set_={
@@ -1073,30 +1100,56 @@ class DataProcessor:
                                 'updated_at': func.now()
                             }
                         )
-                        logger.debug("🔄 PostgreSQL 지연 INSERT/UPSERT 실행 중...")
                         postgres_db.execute(delay_stmt)
-                        logger.debug(f"✅ PostgreSQL 지연 레코드 저장/업데이트 완료")
-                        
-                        logger.debug(f"📊 {self.time_window_minutes}분 지연 레코드 처리: {time_window}")
-                        
-                        # 각 레코드마다 개별적으로 커밋하여 race condition 방지
-                        logger.debug("🔄 PostgreSQL 커밋 실행 중...")
+
                         postgres_db.commit()
-                        logger.debug("✅ PostgreSQL 커밋 완료")
-                        
-                        
-                        success_count += 1
-                        logger.debug(f"✅ 레코드 {i+1} PostgreSQL 저장 성공")
-                        
+                        batch_dur = _time.time() - start_ts
+                        success_count += len(batch)
+                        logger.info(f"✅ Bulk upsert 완료 size={len(batch)} took={batch_dur:.3f}s rps={len(batch)/batch_dur if batch_dur>0 else float('inf'):.1f}")
                     except Exception as e:
                         import traceback
-                        logger.error(f"❌ 레코드 {i+1} 저장 실패: {e}")
+                        logger.error(f"❌ Bulk upsert 실패(size={len(batch)}): {e}")
                         logger.error(f"🔍 오류 상세: {traceback.format_exc()}")
-                        logger.error(f"📋 실패한 레코드 데이터: {record_data}")
-                        logger.debug("🔄 PostgreSQL 롤백 실행 중...")
                         postgres_db.rollback()
-                        logger.debug("✅ PostgreSQL 롤백 완료")
-                        continue
+                        # 배치 실패 시 개별 재시도(간단한 폴백)
+                        for i, record_data in enumerate(batch):
+                            try:
+                                single_stmt = insert(RealtimeQuote).values(**record_data)
+                                single_stmt = single_stmt.on_conflict_do_update(
+                                    index_elements=['asset_id'],
+                                    set_={
+                                        'timestamp_utc': single_stmt.excluded.timestamp_utc,
+                                        'price': single_stmt.excluded.price,
+                                        'volume': single_stmt.excluded.volume,
+                                        'change_amount': single_stmt.excluded.change_amount,
+                                        'change_percent': single_stmt.excluded.change_percent,
+                                        'data_source': single_stmt.excluded.data_source,
+                                        'updated_at': func.now()
+                                    }
+                                )
+                                postgres_db.execute(single_stmt)
+
+                                tw = self._get_time_window(record_data['timestamp_utc'])
+                                delay_data = record_data.copy()
+                                delay_data['timestamp_utc'] = tw
+                                delay_data['data_interval'] = f"{self.time_window_minutes}m"
+                                single_delay = insert(PGRealtimeQuoteTimeDelay).values(**delay_data)
+                                single_delay = single_delay.on_conflict_do_update(
+                                    index_elements=['asset_id', 'timestamp_utc', 'data_source'],
+                                    set_={
+                                        'price': single_delay.excluded.price,
+                                        'volume': single_delay.excluded.volume,
+                                        'change_amount': single_delay.excluded.change_amount,
+                                        'change_percent': single_delay.excluded.change_percent,
+                                        'updated_at': func.now()
+                                    }
+                                )
+                                postgres_db.execute(single_delay)
+                                postgres_db.commit()
+                                success_count += 1
+                            except Exception as se:
+                                logger.error(f"❌ 폴백 단건 저장 실패: {se}")
+                                postgres_db.rollback()
                         
             finally:
                 logger.debug("🔗 PostgreSQL 데이터베이스 세션 종료 중...")
@@ -2450,11 +2503,19 @@ class DataProcessor:
                 logger.debug("🔄 실시간 스트림 처리 시작")
                 try:
                     logger.debug("🔄 asyncio.gather 호출 전")
-                    realtime_count, batch_count = await asyncio.gather(
+                    gather_result = await asyncio.gather(
                         self._process_realtime_streams(),
                         self._process_batch_queue(),
                         return_exceptions=True
                     )
+                    # Ensure tuple unpack with defaults and numeric types
+                    realtime_count = 0
+                    batch_count = 0
+                    if isinstance(gather_result, (list, tuple)):
+                        if len(gather_result) > 0 and not isinstance(gather_result[0], Exception):
+                            realtime_count = int(gather_result[0] or 0)
+                        if len(gather_result) > 1 and not isinstance(gather_result[1], Exception):
+                            batch_count = int(gather_result[1] or 0)
                     logger.debug(f"🔄 실시간 스트림 처리 완료: {realtime_count}")
                 except Exception as e:
                     import traceback

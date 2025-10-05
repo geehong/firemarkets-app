@@ -14,39 +14,20 @@ const MiniPriceCommoditiesChart = lazy(() => import('src/components/charts/minic
 const MiniPriceStocksEtfChart = lazy(() => import('src/components/charts/minicharts/MiniPriceStocksEtfChart'))
 
 // chartGroups를 컴포넌트 외부로 이동시켜 렌더링 시 재생성 방지
-// 자산별 대표 2개씩만 노출 (코인, 주식, ETF, 커머디티)
+// 선택 심볼만 노출: BTC, NVDA, SPY, GOLD
 const chartGroups = [
   {
-    title: 'Crypto (대표 2)',
+    title: 'Selected',
     symbols: [
-      { symbol: 'BTCUSDT', chartType: 'crypto' },
-      { symbol: 'ETHUSDT', chartType: 'crypto' }
-    ]
-  },
-  {
-    title: 'US Stocks (대표 2)',
-    symbols: [
-      { symbol: 'MSFT', chartType: 'stocks' },
-      { symbol: 'NVDA', chartType: 'stocks' }
-    ]
-  },
-  {
-    title: 'US ETFs (대표 2)',
-    symbols: [
-      { symbol: 'SPY', chartType: 'stocks' },
-      { symbol: 'QQQ', chartType: 'stocks' }
-    ]
-  },
-  {
-    title: 'Commodities (금/은)',
-    symbols: [
-      { symbol: 'GCUSD', chartType: 'commodities' },
-      { symbol: 'SIUSD', chartType: 'commodities' }
+      // { symbol: 'BTCUSDT', chartType: 'crypto' },
+      // { symbol: 'NVDA', chartType: 'stocks' },
+      // { symbol: 'SPY', chartType: 'stocks' },
+      // { symbol: 'GCUSD', chartType: 'commodities' }
     ]
   }
 ];
 
-// 모든 심볼을 하나의 배열로 추출 (WebSocket 구독용)
+// 모든 심볼을 하나의 배열로 추출 (연결용 참조)
 const allSymbols = chartGroups.flatMap(group => group.symbols.map(item => item.symbol));
 
 const MainDashboard = () => {
@@ -65,37 +46,22 @@ const MainDashboard = () => {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // 초기 연결 및 구독 (Test01 스타일)
+  // 초기 연결만 수행 (구독은 하위 미니차트가 자체적으로 처리)
   useEffect(() => {
-    const { connect, subscribeSymbols } = useWebSocketStore.getState();
+    const { connect } = useWebSocketStore.getState();
     if (allSymbols.length > 0) {
       console.log('[MainDashboard] Initializing WebSocket connection for symbols:', allSymbols);
       connect();
-      // 일부 구현은 서버 측 큐에 보관되므로 초기에도 구독 호출
-      subscribeSymbols(allSymbols);
     }
-    // 필요 시 언마운트에서 disconnect() 추가 가능
   }, []);
 
-  // 연결되면 재구독 보장
-  useEffect(() => {
-    if (connected) {
-      const { subscribeSymbols } = useWebSocketStore.getState();
-      console.log('[MainDashboard] Connected. Ensuring subscription for all symbols:', allSymbols);
-      subscribeSymbols(allSymbols);
-    }
-  }, [connected]);
-
-  // 연결 끊기면 재시도 타이머로 재연결 + 재구독 (Test01 스타일)
+  // 연결 끊기면 재시도 타이머로 재연결 (구독은 하위가 처리)
   useEffect(() => {
     if (!connected && allSymbols.length > 0) {
       console.log('[MainDashboard] Disconnected. Scheduling reconnect...');
-      const { connect, subscribeSymbols } = useWebSocketStore.getState();
+      const { connect } = useWebSocketStore.getState();
       const reconnectTimer = setTimeout(() => {
         connect();
-        setTimeout(() => {
-          subscribeSymbols(allSymbols);
-        }, 1000);
       }, 3000);
       return () => clearTimeout(reconnectTimer);
     }
