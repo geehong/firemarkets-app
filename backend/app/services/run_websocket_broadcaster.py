@@ -142,10 +142,17 @@ async def listen_to_redis_and_broadcast():
     """Redis Stream을 구독하고 처리된 데이터를 백엔드로 전송하는 메인 로직"""
     redis_host = GLOBAL_APP_CONFIGS.get("REDIS_HOST", "redis")
     redis_port = GLOBAL_APP_CONFIGS.get("REDIS_PORT", 6379)
+    redis_db = GLOBAL_APP_CONFIGS.get("REDIS_DB", 0)
     redis_password = GLOBAL_APP_CONFIGS.get("REDIS_PASSWORD")
-    redis_url = f"redis://{redis_host}:{redis_port}"
+    # DB 인덱스를 포함하여 URL 구성 (producer들과 동일한 DB 사용 보장)
+    try:
+        redis_db_int = int(redis_db) if redis_db is not None else 0
+    except Exception:
+        redis_db_int = 0
+
+    redis_url = f"redis://{redis_host}:{redis_port}/{redis_db_int}"
     if redis_password:
-        redis_url = f"redis://:{redis_password}@{redis_host}:{redis_port}"
+        redis_url = f"redis://:{redis_password}@{redis_host}:{redis_port}/{redis_db_int}"
 
     logger.info(f"🔗 Redis Stream 리스너 시작: {redis_url}")
 
