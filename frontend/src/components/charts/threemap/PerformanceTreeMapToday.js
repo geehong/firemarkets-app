@@ -36,14 +36,14 @@ Highcharts.setOptions({
 const PerformanceTreeMapToday = () => {
   const chartRef = useRef(null)
   const [autoRefresh, setAutoRefresh] = useState(true)
-  const [refreshInterval, setRefreshInterval] = useState(30000) // 30초
+  const [refreshInterval, setRefreshInterval] = useState(900000) // 15분
   const intervalRef = useRef(null)
 
   // usePerformanceTreeMapDataFromTreeMap 훅 사용
   const { data, loading, error, refreshData } = usePerformanceTreeMapDataFromTreeMap()
   
-  // WebSocket 스토어 사용
-  const { socket, isConnected } = useWebSocketStore()
+  // WebSocket 연결 상태만 구독 (전체 스토어 구독으로 인한 과도한 리렌더 방지)
+  const isConnected = useWebSocketStore((state) => state.connected)
 
 
   // TreeMap 데이터 구조 생성
@@ -212,32 +212,7 @@ const PerformanceTreeMapToday = () => {
     }
   }, [autoRefresh, refreshInterval, refreshData])
 
-  // WebSocket 연결 상태 모니터링
-  useEffect(() => {
-    if (socket && isConnected) {
-      console.log('[PerformanceTreeMap] WebSocket connected, subscribing to real-time updates')
-      
-      // 실시간 가격 업데이트 구독
-      const handleRealtimeUpdate = (updateData) => {
-        console.log('[PerformanceTreeMap] Received real-time update:', updateData)
-        // 실시간 데이터가 오면 자동 새로고침
-        if (autoRefresh) {
-          refreshData()
-        }
-      }
-
-      // WebSocket 이벤트 리스너 등록
-      socket.on('price_update', handleRealtimeUpdate)
-      socket.on('market_update', handleRealtimeUpdate)
-
-      return () => {
-        if (socket) {
-          socket.off('price_update', handleRealtimeUpdate)
-          socket.off('market_update', handleRealtimeUpdate)
-        }
-      }
-    }
-  }, [socket, isConnected, autoRefresh, refreshData])
+  // 실시간 이벤트 리스너 제거: 미니차트와 동시 사용 시 과도한 새로고침 유발 → 주기 리프레시만 사용
 
   // 수동 새로고침 핸들러
   const handleManualRefresh = () => {

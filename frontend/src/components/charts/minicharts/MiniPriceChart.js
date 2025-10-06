@@ -15,6 +15,13 @@ const MiniPriceChartTest = ({
 }) => {
   const chartRef = useRef(null)
   const [chart, setChart] = useState(null)
+  const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth <= 768 : false))
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
   const wsPrice = useWebSocketStore((state) => state.prices[assetIdentifier])
 
   // API 데이터 로드 (지연 데이터 기반 시계열)
@@ -56,6 +63,16 @@ const MiniPriceChartTest = ({
 
   const isFiniteNumber = (v) => typeof v === 'number' && isFinite(v)
   const formatTwo = (v) => (isFiniteNumber(v) ? v.toFixed(2) : '0.00')
+  const formatCompact = (v) => {
+    const n = Number(v)
+    const abs = Math.abs(n)
+    if (!isFiniteNumber(n)) return ''
+    if (abs >= 1e12) return (n / 1e12).toFixed(2) + 'T'
+    if (abs >= 1e9) return (n / 1e9).toFixed(2) + 'B'
+    if (abs >= 1e6) return (n / 1e6).toFixed(2) + 'M'
+    if (abs >= 1e3) return (n / 1e3).toFixed(2) + 'K'
+    return n.toFixed(2)
+  }
 
   // x축 범위 (우측 패딩만 유지)
   const xAxisRange = useMemo(() => {
@@ -86,22 +103,37 @@ const MiniPriceChartTest = ({
     }
     const lineColor = isRising === null ? '#999999' : (isRising ? '#18c58f' : '#ff4d4f')
 
-        const options = {
-      title: { text: `${assetIdentifier} Price`, align: 'left', verticalAlign: 'top', style: { fontSize: '14px', fontWeight: 'bold' } },
-            xAxis: {
-                type: 'datetime',
-                min: xAxisRange.min,
-                max: xAxisRange.max,
-                gridLineColor: '#e6e6e6',
-        labels: { enabled: true, style: { color: '#666666' } },
-                lineColor: '#cccccc',
-        tickColor: '#cccccc'
+    const options = {
+      // 차트 중앙에 심볼 표시 (다크 모드 스타일)
+      title: { text: `${assetIdentifier}`, align: 'center', verticalAlign: 'middle', style: { fontSize: '14px', fontWeight: 'bold', color: '#ffffff' } },
+      xAxis: {
+        type: 'datetime',
+        min: xAxisRange.min,
+        max: xAxisRange.max,
+        gridLineColor: 'rgba(255,255,255,0.06)',
+        gridLineWidth: 0.5,
+        labels: { enabled: true, style: { color: '#cccccc' } },
+        lineColor: 'rgba(255,255,255,0.12)',
+        tickColor: 'rgba(255,255,255,0.15)',
+        minPadding: 0,
+        maxPadding: 0,
+        softMax: xAxisRange.max,
+        softMin: xAxisRange.min,
       },
             yAxis: {
                 opposite: true,
-                gridLineColor: '#e6e6e6',
-        labels: { enabled: true, style: { color: '#666666' }, align: 'left', x: 15 },
-        title: { text: 'Price (USD)', style: { color: '#666666' } },
+                gridLineColor: 'rgba(255,255,255,0.06)',
+        gridLineWidth: 0.5,
+        labels: { 
+          enabled: true, 
+          style: { color: '#cccccc' }, 
+          align: 'left', 
+          x: 15,
+          formatter: function () {
+            return formatCompact(this.value)
+          }
+        },
+        title: { text: null, style: { color: '#cccccc' } },
         plotLines: [
           // 현재가 라인 (전일 종가 대비 색상)
           ...(isFiniteNumber(lastPrice)
@@ -114,26 +146,18 @@ const MiniPriceChartTest = ({
                 // 현재가 텍스트 라벨은 마커 라벨로만 표시하여 중복 제거
               }]
             : []),
-          // 전일 종가 기준선 (회색 점선)
-          ...(isFiniteNumber(prevClosePrice)
-            ? [{
-                id: 'prev-close-line',
-                value: Math.round(prevClosePrice * 100) / 100,
-                color: '#999999',
-                dashStyle: 'ShortDash',
-                    width: 0.5,
-                zIndex: 9,
-                label: { text: `Prev Close $${formatTwo(prevClosePrice)}`, style: { color: '#777777' } }
-              }]
-            : [])
+          // 전일 종가 기준선은 표시하지 않음
         ]
       },
       rangeSelector: { enabled: false },
       navigator: { enabled: false },
+      scrollbar: { enabled: false },
+      credits: { enabled: false },
       exporting: { enabled: false },
-      chart: { backgroundColor: 'transparent', animation: false },
+      accessibility: { enabled: false },
+      chart: { backgroundColor: '#1a1a1a', animation: false },
       series: [
-        { type: 'line', name: 'Price', color: '#006064', lineWidth: 2, marker: { enabled: false }, data: chartData },
+        { type: 'line', name: 'Price', color: '#00d4ff', lineWidth: 2, marker: { enabled: false }, data: chartData },
         { type: 'scatter', name: 'Last', data: last ? [[last[0], last[1]]] : [], color: lineColor,
           marker: { enabled: true, radius: 3, symbol: 'circle' },
           dataLabels: { enabled: true, formatter: function() {
@@ -146,7 +170,7 @@ const MiniPriceChartTest = ({
               return `$${val.toFixed(2)} (${sign}${Math.abs(pct).toFixed(2)}%, ${sign}$${Math.abs(diff).toFixed(2)})`
             }
             return `$${val.toFixed(2)}`
-          }, style: { fontWeight: '900', color: lineColor } }
+          }, style: { fontWeight: '900', color: lineColor, fontSize: '14px' } }
         }
       ]
     }
@@ -175,7 +199,7 @@ const MiniPriceChartTest = ({
     return () => unsubscribeSymbols([assetIdentifier])
   }, [assetIdentifier, useWebSocket])
 
-  // WebSocket 가격으로 마커 갱신
+  // WebSocket 가격으로 라인 및 마커 갱신, x축 우측 패딩 유지
   useEffect(() => {
     if (!chart) return
     if (!wsPrice) return
@@ -183,8 +207,9 @@ const MiniPriceChartTest = ({
     const ts = new Date(timestamp_utc).getTime()
     const val = parseFloat(price)
     if (!isFinite(ts) || !isFinite(val)) return
+    const lineSeries = chart.series && chart.series[0]
     const markerSeries = chart.series && chart.series[1]
-    if (!markerSeries) return
+    if (!lineSeries || !markerSeries) return
     // 전일 종가 대비 상승/하락/보합 판단 및 컬러 결정
     let isRising = null
     if (isFiniteNumber(val) && isFiniteNumber(prevClosePrice)) {
@@ -197,7 +222,7 @@ const MiniPriceChartTest = ({
 
     // yAxis plotLines 업데이트 (현재가/전일종가)
     const yAxis = chart.yAxis && chart.yAxis[0]
-    if (yAxis) {
+      if (yAxis) {
       const plotLines = []
       if (isFiniteNumber(val)) {
         plotLines.push({
@@ -209,24 +234,35 @@ const MiniPriceChartTest = ({
           // 현재가 텍스트 라벨은 마커 라벨로만 표시하여 중복 제거
         })
       }
-      if (isFiniteNumber(prevClosePrice)) {
-        plotLines.push({
-          id: 'prev-close-line',
-          value: Math.round(prevClosePrice * 100) / 100,
-          color: '#999999',
-          dashStyle: 'ShortDash',
-          width: 0.5,
-          zIndex: 9,
-          label: {
-            formatter: function () {
-              // y축 기준선에는 가격만 간단히 표기
-              return `Prev Close $${formatTwo(prevClosePrice)}`
-            },
-            style: { color: '#777777' }
-          }
-        })
-      }
+      // prev-close plot line 제거
       yAxis.update({ plotLines }, false)
+    }
+
+    // 메인 라인 시리즈 업데이트: 마지막 포인트와 이어지도록 동작
+    const lastPointObject = lineSeries.data && lineSeries.data.length > 0 ? lineSeries.data[lineSeries.data.length - 1] : null
+    if (!lastPointObject) {
+      lineSeries.addPoint([ts, val], false, false, false)
+    } else {
+      // 동일 버킷 판정: 1분(60000ms) 이내면 업데이트, 초과 시 새 포인트 추가
+      const isSameBucket = Math.abs(ts - lastPointObject.x) < (60 * 1000)
+      if (isSameBucket) {
+        // x, y 모두 업데이트하여 라인 끝과 마커가 동일 시각으로 정렬되도록 함
+        lastPointObject.update([ts, val], false)
+      } else {
+        lineSeries.addPoint([ts, val], false, false, false)
+      }
+    }
+
+    // x축 우측 패딩 4시간 유지: 현재 시각을 기준으로 max를 앞으로 밀기
+    const xAxis = chart.xAxis && chart.xAxis[0]
+    if (xAxis) {
+      const rightPadMs = 4 * 60 * 60 * 1000
+      const extremes = xAxis.getExtremes()
+      const newMax = ts + rightPadMs
+      const newMin = extremes && isFinite(extremes.min) ? extremes.min : undefined
+      if (!extremes || !isFinite(extremes.max) || newMax > extremes.max) {
+        xAxis.setExtremes(newMin, newMax, false, false)
+      }
     }
 
     // 마커 및 라벨 컬러 반영 후 데이터 갱신
@@ -244,10 +280,12 @@ const MiniPriceChartTest = ({
           }
           return `$${val.toFixed(2)}`
         },
-        style: { color: lineColor, fontWeight: '900' }
+        style: { color: lineColor, fontWeight: '900', fontSize: '12px' }
       }
     }, false)
-    markerSeries.setData([[ts, val]], true, false, false)
+    markerSeries.setData([[ts, val]], false, false, false)
+
+    chart.redraw()
   }, [chart, wsPrice])
 
     return (
@@ -256,7 +294,7 @@ const MiniPriceChartTest = ({
                 ref={chartRef} 
                 id={containerId}
                 className={`mini-price-chart ${isLoading ? 'loading' : ''} ${error ? 'error' : ''}`}
-                style={{ height: '300px' }}
+                style={{ height: isMobile ? '200px' : '300px' }}
             />
         </div>
   )

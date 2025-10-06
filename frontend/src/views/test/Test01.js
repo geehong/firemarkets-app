@@ -4,11 +4,11 @@ import WebSocketWidgetE from '../../components/widgets/WebSocketWidgetE'
 import useWebSocketStore from '../../store/websocketStore'
 
 const Test01 = () => {
-  // WebSocketWidgetE에서 사용하는 심볼들 정의
+  // WebSocketWidgetE에서 사용하는 심볼들 정의 (정규화된 형태)
   const symbols = useMemo(() => [
-    'BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'BNB', 'SOL', 'USDC', 'DOGEUSDT', 'TRX', 
-    'ADAUSDT', 'LINK', 'AVAX', 'WBTC', 'XLM', 'BCHUSDT', 'HBAR', 'LTCUSDT', 
-    'CRO', 'SHIB', 'TON', 'DOTUSDT'
+    'BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'BNBUSDT', 'SOLUSDT', 'USDCUSDT', 'DOGEUSDT', 'TRXUSDT', 
+    'ADAUSDT', 'LINKUSDT', 'AVAXUSDT', 'WBTCUSDT', 'XLMUSDT', 'BCHUSDT', 'HBARUSDT', 'LTCUSDT', 
+    'CROUSDT', 'SHIBUSDT', 'TONUSDT', 'DOTUSDT'
   ], [])
 
   // WebSocket 연결 상태 가져오기

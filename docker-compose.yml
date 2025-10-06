@@ -233,6 +233,13 @@ services:
       TIINGO_API_KEY: ${TIINGO_API_KEY}
       ALPACA_API_KEY: ${ALPACA_API_KEY}
       ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY}
+      COINBASE_API_KEY: ${COINBASE_API_KEY}
+      COINBASE_SECRET_KEY: ${COINBASE_SECRET_KEY}
+      # WebSocket Consumer 활성화 설정
+      WEBSOCKET_COINBASE_ENABLED: "1"
+      WEBSOCKET_BINANCE_ENABLED: "1"
+      WEBSOCKET_TIINGO_ENABLED: "0"
+      WEBSOCKET_FINNHUB_ENABLED: "1"
     depends_on:
       redis:
         condition: service_healthy
@@ -267,7 +274,7 @@ services:
       POSTGRES_DATABASE_URL: postgresql+psycopg2://${DB_USERNAME_PG}:${DB_PASSWORD_PG}@db_postgres:5432/${DB_DATABASE_PG}
       PYTHONPATH: /app
       TZ: Asia/Seoul
-      BROADCASTER_VERBOSE: "false"
+      BROADCASTER_VERBOSE: "true"
       DISABLE_FILE_LOGS: "true"
     depends_on:
       backend:
@@ -278,7 +285,7 @@ services:
       - ./.env:/app/.env:ro
     tmpfs:
       - /app/logs
-    command: ["sh", "-c", "cd /app && python -m app.services.run_websocket_broadcaster"]
+    command: ["python", "-m", "app.services.run_websocket_broadcaster"]
     healthcheck:
       disable: true
     networks:

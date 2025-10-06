@@ -34,7 +34,7 @@ class Asset:
             2: AssetType.STOCK,      # 주식
             3: AssetType.COMMODITY,  # 금
             4: AssetType.FOREX,      # 외환
-            5: AssetType.STOCK,      # ETF
+            5: AssetType.ETF,        # ETF
             6: AssetType.STOCK,      # 인덱스
             7: AssetType.STOCK,      # 채권
             8: AssetType.CRYPTO,     # 암호화폐
@@ -90,6 +90,11 @@ class AssetManager:
                 assets: List[Asset] = []
                 for row in rows:
                     ticker, name, asset_type_id, data_source, exchange, currency, is_active, has_financials, has_etf_info = row
+                    # ETF는 안전하게 has_etf_info를 True로 보정 (테이블 누락 대비)
+                    inferred_has_etf_info = bool(has_etf_info)
+                    if asset_type_id == 5 and not inferred_has_etf_info:
+                        inferred_has_etf_info = True
+
                     assets.append(Asset(
                         ticker=ticker,
                         name=name,
@@ -99,7 +104,7 @@ class AssetManager:
                         currency=currency,
                         is_active=bool(is_active),
                         has_financials=bool(has_financials),
-                        has_etf_info=bool(has_etf_info)
+                        has_etf_info=inferred_has_etf_info
                     ))
 
                 # 캐시 저장

@@ -8,21 +8,40 @@ const useWebSocketStore = create((set, get) => ({
     return symbols.map((raw) => {
       if (!raw) return raw;
       const s = String(raw).toUpperCase();
+      
       // 이미 USDT로 끝나면 그대로 유지
       if (s.endsWith('USDT')) return s;
+      
       // 코인베이스 형태 SOL-USD -> SOLUSD
       if (s.includes('-USD')) return s.replace('-USD', 'USD');
+      
       // 명시적 USD 현물 페어는 그대로 두되, 코인 심볼 단일 토큰은 USDT로 보정
       const isSingleToken = /^[A-Z]{2,10}$/.test(s);
       const knownStocksEtfs = ['AAPL','MSFT','NVDA','GOOG','AMZN','META','NFLX','AVGO','SPY','QQQ','DIA','IWM'];
+      
+      // 주식/ETF는 그대로 유지
       if (knownStocksEtfs.includes(s)) return s;
+      
+      // 크립토 심볼 목록 (USDT 페어가 일반적인 것들)
+      const cryptoSymbols = [
+        'BTC', 'ETH', 'XRP', 'BNB', 'SOL', 'USDC', 'DOGE', 'TRX', 'ADA', 'LINK', 
+        'AVAX', 'WBTC', 'XLM', 'BCH', 'HBAR', 'LTC', 'CRO', 'SHIB', 'TON', 'DOT',
+        'MATIC', 'UNI', 'ATOM', 'FTM', 'NEAR', 'ALGO', 'VET', 'ICP', 'FIL', 'THETA',
+        'MANA', 'SAND', 'AXS', 'CHZ', 'ENJ', 'BAT', 'ZIL', 'IOTA', 'NEO', 'QTUM'
+      ];
+      
+      // 크립토 심볼이면 USDT 붙이기
+      if (cryptoSymbols.includes(s)) return `${s}USDT`;
+      
       // 단일 토큰이면서 주식/ETF가 아니면 크립토로 간주하여 USDT 부착
       if (isSingleToken) return `${s}USDT`;
+      
       return s;
     });
   },
   // --- State ---
   socket: null,
+  connecting: false,
   connected: false,
   prices: {},
   loading: true,
@@ -43,25 +62,38 @@ const useWebSocketStore = create((set, get) => ({
       console.log('[WebSocketStore] Already connected, skipping connection attempt');
       return;
     }
+    if (currentState.connecting) {
+      console.log('[WebSocketStore] Connection in progress, skipping');
+      return;
+    }
     
     // 기존 소켓이 있으면 정리
     if (currentState.socket) {
       currentState.socket.disconnect();
     }
 
-    const url = 'https://backend.firemarkets.net';
-    const newSocket = io(url, {
+    // Choose WS endpoint: use explicit backend in production domain, else same-origin (dev/proxy)
+    let wsUrl
+    try {
+      const host = typeof window !== 'undefined' ? window.location.hostname : ''
+      if (host && host.endsWith('firemarkets.net')) {
+        wsUrl = 'https://backend.firemarkets.net'
+      }
+    } catch (_) {}
+
+    const newSocket = io(wsUrl, {
       transports: ['websocket', 'polling'],
       path: '/socket.io',
       reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 3000,
-      timeout: 30000,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000,
+      timeout: 45000,
       forceNew: true, // 새로운 연결 강제 생성
     });
+    set({ connecting: true });
 
     newSocket.on('connect', () => {
-      set({ connected: true, error: null });
+      set({ connected: true, connecting: false, error: null });
       
       // 재연결 시 기존 구독 복원
       const allSymbols = Object.keys(get().symbolSubscribers);
@@ -73,12 +105,12 @@ const useWebSocketStore = create((set, get) => ({
 
     newSocket.on('disconnect', (reason) => {
       // console.log('[Zustand Store] ❌ WebSocket Disconnected:', reason);
-      set({ connected: false });
+      set({ connected: false, connecting: false });
     });
 
     newSocket.on('connect_error', (err) => {
       console.error('[Zustand Store] ❌ Connection Error:', err.message);
-      set({ error: err.message, connected: false });
+      set({ error: err.message, connected: false, connecting: false });
       
       // 연결 실패 시 백업 모드로 전환
       setTimeout(() => {
@@ -149,9 +181,7 @@ const useWebSocketStore = create((set, get) => ({
         
         // 기존 가격과 동일하면 업데이트하지 않음 (무한 루프 방지)
         if (existingPrice && 
-            existingPrice.price === data.price && 
-            existingPrice.change_amount === data.change_amount &&
-            existingPrice.change_percent === data.change_percent) {
+            existingPrice.price === data.price) {
           return;
         }
 
@@ -160,8 +190,6 @@ const useWebSocketStore = create((set, get) => ({
             ...state.prices,
             [data.ticker]: {
               price: data.price,
-              change_amount: data.change_amount,
-              change_percent: data.change_percent,
               timestamp_utc: data.timestamp_utc,
               data_source: data.data_source
             }

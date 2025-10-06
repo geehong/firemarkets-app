@@ -75,7 +75,6 @@ class WebSocketOrchestrator:
         logger.info("Registering consumer classes")
         self.consumer_classes = {
             'finnhub': FinnhubWSConsumer,
-            'tiingo': TiingoWSConsumer,
             'alpaca': AlpacaWSConsumer,
             'binance': BinanceWSConsumer,
             'coinbase': CoinbaseWSConsumer,
@@ -83,6 +82,11 @@ class WebSocketOrchestrator:
             # DISABLED: TwelveData WebSocket Consumer
             # 'twelvedata': TwelveDataWSConsumer
         }
+        # Conditionally register tiingo only if explicitly enabled
+        if GLOBAL_APP_CONFIGS.get('WEBSOCKET_TIINGO_ENABLED', '0') == '1':
+            self.consumer_classes['tiingo'] = TiingoWSConsumer
+        else:
+            logger.info("tiingo consumer registration skipped (WEBSOCKET_TIINGO_ENABLED!=1)")
         logger.info(f"Consumer classes registered: {list(self.consumer_classes.keys())}")
         logger.info("WebSocket Orchestrator initialization completed")
     
@@ -275,6 +279,23 @@ class WebSocketOrchestrator:
             logger.warning(f"⚠️ No active consumers available for {asset_type.value}")
             return
         
+        # Strong type guards: restrict providers per asset type
+        # STOCK: only ['finnhub', 'alpaca'] (tiingo excluded due to bandwidth)
+        # ETF: only ['alpaca'] (finnhub unsupported; tiingo excluded due to bandwidth)
+        def _filter_by_type(consumers_list):
+            if asset_type == AssetType.STOCK:
+                allowed = { 'finnhub', 'alpaca' }
+            elif asset_type == AssetType.ETF:
+                allowed = { 'alpaca' }
+            else:
+                return consumers_list
+            filtered = [(n, c, cfg) for (n, c, cfg) in consumers_list if n in allowed]
+            if not filtered:
+                logger.warning(f"⚠️ No allowed providers remaining for {asset_type.value} after type-guard filter")
+            return filtered or consumers_list
+
+        available_consumers = _filter_by_type(available_consumers)
+
         # Provider-specific filtering
         # STOCK: do not drop ETFs here; we will route via provider filters
         tickers = [asset.ticker for asset in assets]
@@ -325,7 +346,7 @@ class WebSocketOrchestrator:
                 if non_etf_tickers:
                     await self._assign_tickers_fallback_order_with_filters(
                         non_etf_tickers,
-                        available_consumers,
+                        _filter_by_type(available_consumers),
                         asset_type,
                         provider_filters={
                             'alpaca': (lambda t: False),  # Alpaca는 ETF만
@@ -336,7 +357,7 @@ class WebSocketOrchestrator:
                 # Alpaca가 없거나 주식 외 타입: 기본 필터만 적용하여 배정
                 await self._assign_tickers_fallback_order_with_filters(
                     tickers,
-                    available_consumers,
+                    _filter_by_type(available_consumers),
                     asset_type,
                     provider_filters={
                         'finnhub': (lambda t: finnhub_filter(t) if asset_type == AssetType.STOCK else True)
@@ -386,6 +407,19 @@ class WebSocketOrchestrator:
     
     async def _assign_tickers_fallback_order(self, tickers: List[str], available_consumers: List, asset_type: AssetType):
         """기존 Fallback 순서 기반 할당"""
+        # Enforce type-guarded providers per asset_type
+        def _filter_by_type(consumers_list):
+            if asset_type == AssetType.STOCK:
+                allowed = { 'finnhub', 'alpaca' }  # tiingo excluded
+            elif asset_type == AssetType.ETF:
+                allowed = { 'alpaca' }  # finnhub unsupported; tiingo excluded
+            else:
+                return consumers_list
+            filtered = [(n, c, cfg) for (n, c, cfg) in consumers_list if n in allowed]
+            return filtered or consumers_list
+
+        available_consumers = _filter_by_type(available_consumers)
+
         for ticker in tickers:
             assigned = False
             

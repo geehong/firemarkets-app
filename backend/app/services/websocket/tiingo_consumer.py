@@ -23,7 +23,11 @@ class TiingoWSConsumer(BaseWSConsumer):
     def __init__(self, config: ConsumerConfig):
         super().__init__(config)
         self.api_key = GLOBAL_APP_CONFIGS.get('TIINGO_API_KEY') or os.getenv('TIINGO_API_KEY')
-        self.ws_url = "wss://api.tiingo.com/iex"
+        # Prefer token in query to reduce auth race conditions
+        self.ws_url = (
+            f"wss://api.tiingo.com/iex?token={self.api_key}" if self.api_key else "wss://api.tiingo.com/iex"
+        )
+        self._cooldown_until: float = 0.0
         self._ws: Optional[websockets.WebSocketClientProtocol] = None
         self._recv_task: Optional[asyncio.Task] = None
         # Redis
@@ -50,7 +54,13 @@ class TiingoWSConsumer(BaseWSConsumer):
             if not self.api_key:
                 logger.error("❌ tiingo api_key not set")
                 return False
-            self._ws = await websockets.connect(self.ws_url, ping_interval=20, ping_timeout=20)
+            # Disable periodic pings to avoid certain providers closing with 1005
+            self._ws = await websockets.connect(
+                self.ws_url,
+                ping_interval=None,
+                close_timeout=10,
+                max_size=2**20,
+            )
             self.is_connected = True
             self.connection_errors = 0
             logger.info(f"✅ {self.client_name} connected")
@@ -110,6 +120,11 @@ class TiingoWSConsumer(BaseWSConsumer):
         
         while self.is_running:
             try:
+                # Respect cooldown after quota/bandwidth errors
+                now = time.time()
+                if now < self._cooldown_until:
+                    await asyncio.sleep(min(60, self._cooldown_until - now))
+                    continue
                 if not self._ws:
                     ok = await self.connect()
                     if not ok:
@@ -162,7 +177,18 @@ class TiingoWSConsumer(BaseWSConsumer):
         if mtype == "H":
             return
         if mtype in ("I", "E"):
-            logger.info(f"{self.client_name} info: {msg}")
+            # Log Tiingo info/error payloads for troubleshooting (e.g., auth/token issues)
+            level = logger.warning if mtype == "E" else logger.info
+            level(f"{self.client_name} {mtype}: {msg}")
+            # If bandwidth/quota exceeded, back off for 10 minutes
+            try:
+                if mtype == "E":
+                    code = int(((msg or {}).get("response") or {}).get("code") or 0)
+                    if code == 403:
+                        self._cooldown_until = time.time() + 600  # 10 minutes
+                        await self.disconnect()
+            except Exception:
+                pass
             return
         
         # 저장 주기 체크 (데이터 메시지만)

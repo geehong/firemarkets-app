@@ -29,7 +29,7 @@ class WebSocketConfig:
             health_check_interval=60
         ),
         'tiingo': ProviderConfig(
-            max_subscriptions=20,
+            max_subscriptions=5,
             supported_asset_types=[AssetType.STOCK, AssetType.CRYPTO],
             rate_limit_per_minute=100,
             priority=1,  # 동일 우선순위로 분산 배정
@@ -89,7 +89,7 @@ class WebSocketConfig:
     
     # 자산 타입별 Fallback 순서 (1순위 실패 시 다음 순위)
     ASSET_TYPE_FALLBACK = {
-        AssetType.CRYPTO: ['binance', 'coinbase', 'finnhub', 'tiingo'],  # 바이낸스 -> 코인베이스 -> 핀허브 -> 팅고
+        AssetType.CRYPTO: ['coinbase', 'binance', 'finnhub', 'tiingo'],  # 코인베이스 -> 바이낸스 -> 핀허브 -> 팅고 (CRO를 Coinbase에 우선 할당)
         AssetType.STOCK: ['finnhub', 'tiingo', 'alpaca'],    # 핀허브 -> 팅고 -> 알파카
         AssetType.FOREX: ['finnhub', 'swissquote'],          # 핀허브 -> 스위스쿼트
         AssetType.COMMODITY: ['swissquote', 'finnhub'],      # 스위스쿼트 -> 핀허브

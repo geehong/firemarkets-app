@@ -56,9 +56,6 @@ except Exception as e:
 sio_client = socketio.AsyncClient(logger=verbose, engineio_logger=verbose)
 
 # --- Broadcaster 전용 상태 및 캐시 관리 ---
-prev_close_cache: Dict[int, float] = {}
-last_cache_refresh: Optional[datetime] = None
-cache_refresh_interval = timedelta(minutes=60)
 
 ticker_to_asset_id_cache: Dict[str, int] = {}
 last_asset_cache_refresh: Optional[datetime] = None
@@ -101,42 +98,7 @@ async def _refresh_asset_cache():
         except Exception as e:
             logger.error(f"❌ Ticker-AssetID 캐시 갱신 실패: {e}")
 
-async def _refresh_prev_close_cache():
-    """DB에서 전일 종가 데이터를 가져와 캐시합니다."""
-    global prev_close_cache, last_cache_refresh
-    logger.debug("🔄 전일 종가 캐시 갱신 시작...")
-    from app.core.database import get_async_session_local
-    from sqlalchemy import text
 
-    session_local = get_async_session_local()
-    async with session_local() as session:
-        try:
-            query = text("""
-                WITH latest_ohlcv AS (
-                    SELECT asset_id, close_price, ROW_NUMBER() OVER(PARTITION BY asset_id ORDER BY timestamp_utc DESC) as rn
-                    FROM ohlcv_day_data
-                )
-                SELECT asset_id, close_price FROM latest_ohlcv WHERE rn = 1;
-            """)
-            result = await session.execute(query)
-            rows = result.fetchall()
-            prev_close_cache = {row[0]: float(row[1]) for row in rows if row[1] is not None}
-            last_cache_refresh = datetime.now(timezone.utc)
-            logger.info(f"✅ 전일 종가 캐시 갱신 완료: {len(prev_close_cache)}개 자산")
-        except Exception as e:
-            logger.error(f"❌ 전일 종가 캐시 갱신 실패: {e}")
-
-async def _calculate_change(asset_id: int, current_price: float) -> tuple:
-    """캐시를 사용하여 가격 변동률을 계산합니다."""
-    prev_close = prev_close_cache.get(asset_id)
-    if prev_close is not None:
-        try:
-            change_amount = current_price - prev_close
-            change_percent = (change_amount / prev_close) * 100.0 if prev_close != 0 else 0.0
-            return change_amount, change_percent
-        except (TypeError, ValueError):
-            return None, None
-    return None, None
 
 async def listen_to_redis_and_broadcast():
     """Redis Stream을 구독하고 처리된 데이터를 백엔드로 전송하는 메인 로직"""
@@ -166,6 +128,15 @@ async def listen_to_redis_and_broadcast():
             for stream_name, group_name in realtime_streams.items():
                 logger.debug(f"[Broadcaster] Ensure group '{group_name}' on stream '{stream_name}'")
                 try:
+                    # 먼저 스트림이 존재하는지 확인
+                    stream_exists = await redis_client.exists(stream_name)
+                    if not stream_exists:
+                        logger.info(f"📝 스트림 '{stream_name}'이 존재하지 않음. 빈 스트림 생성 중...")
+                        # 빈 스트림 생성 (더미 데이터로)
+                        await redis_client.xadd(stream_name, {"init": "stream_created"}, maxlen=1, approximate=True)
+                        logger.info(f"✅ 빈 스트림 '{stream_name}' 생성 완료")
+                    
+                    # Consumer Group 생성
                     await redis_client.xgroup_create(name=stream_name, groupname=group_name, id="0", mkstream=True)
                     logger.info(f"✅ Consumer Group 생성: {group_name} on {stream_name}")
                 except exceptions.ResponseError as e:
@@ -181,15 +152,18 @@ async def listen_to_redis_and_broadcast():
                 if not last_asset_cache_refresh or (now - last_asset_cache_refresh) > asset_cache_refresh_interval:
                     logger.debug("[Broadcaster] Refreshing asset cache...")
                     await _refresh_asset_cache()
-                if not last_cache_refresh or (now - last_cache_refresh) > cache_refresh_interval:
-                    logger.debug("[Broadcaster] Refreshing prev_close cache...")
-                    await _refresh_prev_close_cache()
 
                 # 각 스트림을 순회하며 데이터 읽기
                 all_messages = []
                 for stream_name, group_name in realtime_streams.items():
                     try:
-                        logger.debug(f"[Broadcaster] XREADGROUP from '{stream_name}' as '{group_name}'...")
+                        # 스트림 존재 여부 확인
+                        stream_exists = await redis_client.exists(stream_name)
+                        if not stream_exists:
+                            logger.debug(f"📭 스트림 '{stream_name}'이 존재하지 않음, 건너뜀")
+                            continue
+                            
+                        logger.info(f"[Broadcaster] XREADGROUP from '{stream_name}' as '{group_name}'...")
                         # 각 스트림에서 개별적으로 데이터 읽기
                         stream_data = await redis_client.xreadgroup(
                             groupname=group_name,
@@ -198,12 +172,26 @@ async def listen_to_redis_and_broadcast():
                             count=100,
                             block=10  # 짧은 블로킹 시간
                         )
-                        logger.debug(f"[Broadcaster] XREADGROUP result for '{stream_name}': {len(stream_data) if stream_data else 0} batches")
+                        logger.info(f"[Broadcaster] XREADGROUP result for '{stream_name}': {len(stream_data) if stream_data else 0} batches")
+                        if stream_data:
+                            for stream_name_bytes, messages in stream_data:
+                                logger.info(f"[Broadcaster] Processing {len(messages)} messages from {stream_name_bytes}")
+                                for message_id, message_data in messages:
+                                    symbol = message_data.get(b'symbol', b'').decode('utf-8').upper()
+                                    logger.info(f"[Broadcaster] Processing symbol: {symbol}")
                         if stream_data:
                             # (stream_name, messages) 튜플을 리스트에 추가
                             all_messages.extend(stream_data)
                     except exceptions.ResponseError as e:
-                        logger.error(f"스트림 '{stream_name}' 읽기 오류: {e}", exc_info=True)
+                        if "NOGROUP" in str(e):
+                            logger.warning(f"⚠️ Consumer Group '{group_name}'가 스트림 '{stream_name}'에 존재하지 않음. 재생성 시도...")
+                            try:
+                                await redis_client.xgroup_create(name=stream_name, groupname=group_name, id="0", mkstream=True)
+                                logger.info(f"✅ Consumer Group '{group_name}' 재생성 완료")
+                            except Exception as recreate_error:
+                                logger.error(f"❌ Consumer Group 재생성 실패: {recreate_error}")
+                        else:
+                            logger.error(f"스트림 '{stream_name}' 읽기 오류: {e}", exc_info=True)
                         continue
 
                 for stream_name_bytes, messages in all_messages:
@@ -220,11 +208,15 @@ async def listen_to_redis_and_broadcast():
                             if not symbol or price is None:
                                 continue
 
-                            asset_id = ticker_to_asset_id_cache.get(symbol)
+                            # USDT 접미사 제거하여 데이터베이스에서 검색
+                            symbol_for_db = symbol.replace('USDT', '') if symbol.endswith('USDT') else symbol
+                            asset_id = ticker_to_asset_id_cache.get(symbol_for_db)
                             if not asset_id:
+                                logger.warning(f"⚠️ Asset ID not found for symbol: {symbol} (searched as: {symbol_for_db})")
+                                logger.warning(f"📋 Available symbols in cache: {list(ticker_to_asset_id_cache.keys())[:10]}...")
                                 continue
-
-                            change_amount, change_percent = await _calculate_change(asset_id, price)
+                            else:
+                                logger.debug(f"✅ Found asset_id {asset_id} for symbol: {symbol} (searched as: {symbol_for_db})")
 
                             quote_data = {
                                 "asset_id": asset_id,
@@ -232,8 +224,6 @@ async def listen_to_redis_and_broadcast():
                                 "timestamp_utc": datetime.now(timezone.utc).isoformat(),
                                 "price": price,
                                 "volume": volume,
-                                "change_amount": change_amount,
-                                "change_percent": change_percent,
                                 "data_source": provider
                             }
 

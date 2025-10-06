@@ -13,9 +13,14 @@
 /* 모바일 환경 (768px 이하) */
 @media (max-width: 768px) {
   .mini-price-chart {
-    height: 250px;
+    height: 200px;
     border-radius: 4px;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+
+  /* 모바일에서 Y축 타이틀(Price (USD)) 숨김 */
+  .mini-price-chart .highcharts-yaxis-title {
+    display: none !important;
   }
 }
 
@@ -99,8 +104,9 @@
 
 /* 그리드 라인 스타일 */
 .mini-price-chart .highcharts-grid-line {
-  stroke: #e6e6e6;
-  stroke-width: 1px;
+  stroke: #3a3a3a; /* slightly brighter dark gray */
+  stroke-opacity: 0.6; /* more visible */
+  stroke-width: 0.75px;
 }
 
 /* 차트 라인 스타일 */

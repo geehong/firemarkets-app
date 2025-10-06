@@ -52,10 +52,6 @@ class DataProcessor:
             "last_processed": None
         }
 
-        # 전일 종가 캐시 (성능 최적화)
-        self.prev_close_cache: Dict[int, float] = {}
-        self.last_cache_refresh: Optional[datetime] = None
-        self.cache_refresh_interval = timedelta(minutes=60) # 1시간마다 캐시 갱신
         
         # Redis 설정
         self.redis_host = GLOBAL_APP_CONFIGS.get("REDIS_HOST", "redis")
@@ -108,7 +104,7 @@ class DataProcessor:
             "coinbase:realtime": "coinbase_processor_group",
             "twelvedata:realtime": "twelvedata_processor_group",
             "swissquote:realtime": "swissquote_processor_group",
-            # "tiingo:realtime": "tiingo_processor_group",  # 대역폭 한도로 비활성화
+            # "tiingo:realtime": "tiingo_processor_group",  # 비활성화
         }
         
         # 암호화폐 소스 우선순위 정의 (1=최고 우선순위)
@@ -208,38 +204,6 @@ class DataProcessor:
             self.mark_source_success("api_fallback")
         return results
     
-    def _refresh_prev_close_cache(self):
-        """메모리에 전일 종가 캐시를 갱신합니다."""
-        logger.info("🔄 전일 종가 캐시 갱신 시작...")
-        # 동기 컨텍스트 매니저를 직접 사용
-        from ..core.database import get_postgres_db
-        db = next(get_postgres_db())
-        try:
-            try:
-                from sqlalchemy import text
-                # 각 자산별 가장 최근의 일봉 데이터(전일 종가)를 가져오는 쿼리
-                query = text("""
-                    WITH latest_ohlcv AS (
-                        SELECT
-                            asset_id,
-                            close_price,
-                            ROW_NUMBER() OVER(PARTITION BY asset_id ORDER BY timestamp_utc DESC) as rn
-                        FROM ohlcv_day_data
-                    )
-                    SELECT asset_id, close_price
-                    FROM latest_ohlcv
-                    WHERE rn = 1;
-                """)
-                result = db.execute(query)
-                rows = result.fetchall()
-                
-                self.prev_close_cache = {row[0]: float(row[1]) for row in rows if row[1] is not None}
-                self.last_cache_refresh = datetime.now(timezone.utc)
-                logger.info(f"✅ 전일 종가 캐시 갱신 완료: {len(self.prev_close_cache)}개 자산")
-            except Exception as e:
-                logger.error(f"❌ 전일 종가 캐시 갱신 실패: {e}")
-        finally:
-            db.close()
 
     def _update_source_health(self, source_name: str):
         """소스별 마지막 데이터 수신 시간 업데이트"""
@@ -524,9 +488,6 @@ class DataProcessor:
         """실시간 스트림 데이터 처리 - Consumer Group 사용"""
         logger.debug("🚀 _process_realtime_streams 시작")
 
-        # 주기적으로 전일 종가 캐시 갱신
-        if not self.last_cache_refresh or (datetime.now(timezone.utc) - self.last_cache_refresh) > self.cache_refresh_interval:
-            self._refresh_prev_close_cache()
         
         
         # WebSocket 전송 테스트 (스트림 처리 시작 시)
@@ -757,9 +718,6 @@ class DataProcessor:
                         timestamp_utc = self._parse_timestamp(raw_timestamp, provider) if raw_timestamp else datetime.utcnow()
                         logger.debug(f"⏰ 타임스탬프: {timestamp_utc}")
                         
-                        # Change 계산 (prev_close 조회)
-                        change_amount, change_percent = await self._calculate_change(asset_id, price)
-                        logger.debug(f"📈 Change 계산 - amount: {change_amount}, percent: {change_percent}")
 
                         # --- 즉시 발행 로직 (Streaming) ---
                         websocket_data = {
@@ -768,8 +726,6 @@ class DataProcessor:
                             "timestamp_utc": timestamp_utc,
                             "price": price,
                             "volume": volume,
-                            "change_amount": change_amount,
-                            "change_percent": change_percent,
                             "data_source": provider[:32]  # 32자 제한
                         }
                         
@@ -944,32 +900,6 @@ class DataProcessor:
             logger.error(f"배치 태스크 처리 실패: {e}")
             return False
 
-    async def _calculate_change(self, asset_id: int, current_price: float) -> tuple:
-        """Change 계산 - prev_close 조회 우선순위"""
-        # 1. 메모리 캐시에서 조회 (가장 빠름)
-        prev_close = self.prev_close_cache.get(asset_id)
-        
-        if prev_close is not None:
-            try:
-                change_amount = current_price - prev_close
-                change_percent = (change_amount / prev_close) * 100.0 if prev_close != 0 else 0.0
-                return change_amount, change_percent
-            except (TypeError, ValueError):
-                return None, None
-
-        # 2. 캐시에 없으면 DB 조회 (폴백) - 이 경우는 거의 발생하지 않아야 함
-        logger.warning(f"캐시 미스: asset_id={asset_id}. DB에서 prev_close 조회 시도.")
-        # 캐시를 즉시 갱신하여 다음 요청부터는 캐시를 사용하도록 함
-        self._refresh_prev_close_cache()
-        # 갱신된 캐시에서 다시 조회
-        prev_close = self.prev_close_cache.get(asset_id)
-        if prev_close is not None:
-            change_amount = current_price - prev_close
-            change_percent = (change_amount / prev_close) * 100.0 if prev_close != 0 else 0.0
-            return change_amount, change_percent
-
-        # 3. 최종적으로 없으면 null 반환
-        return None, None
 
     async def _bulk_save_realtime_quotes(self, records: List[Dict[str, Any]]) -> bool:
         """실시간 인용 데이터 일괄 저장 - PostgreSQL"""

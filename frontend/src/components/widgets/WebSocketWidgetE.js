@@ -14,7 +14,7 @@ import { CChartLine } from '@coreui/react-chartjs'
 import useWebSocketStore from '../../store/websocketStore'
 
 // 비트코인과 이더리움만 표시 - 컴포넌트 외부에서 정의하여 참조 안정성 확보
-const TOP_20_CRYPTO_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'BNB', 'SOL', 'USDC', 'DOGEUSDT', 'TRX', 'ADAUSDT', 'LINK', 'AVAX', 'WBTC', 'XLM', 'BCHUSDT', 'HBAR', 'LTCUSDT', 'CRO', 'SHIB', 'TON', 'DOTUSDT']
+const TOP_20_CRYPTO_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'BNBUSDT', 'SOLUSDT', 'USDCUSDT', 'DOGEUSDT', 'TRXUSDT', 'ADAUSDT', 'LINKUSDT', 'AVAXUSDT', 'WBTCUSDT', 'XLMUSDT', 'BCHUSDT', 'HBARUSDT', 'LTCUSDT', 'CROUSDT', 'SHIBUSDT', 'TONUSDT', 'DOTUSDT']
 
 const WebSocketWidgetE = () => {
   // MainDashboard에서 이미 구독하고 있으므로 직접 store에서 데이터만 읽어옴
@@ -27,17 +27,13 @@ const WebSocketWidgetE = () => {
   const lastUpdate = useWebSocketStore((state) => state.lastUpdate)
   const requestBackupData = useWebSocketStore((state) => state.requestBackupData)
 
-  // 가격 변화에 따른 색상 결정
-  const getPriceColor = (changePercent) => {
-    if (changePercent > 0) return 'success'
-    if (changePercent < 0) return 'danger'
+  // 가격 변화에 따른 색상 결정 (기본값으로 변경)
+  const getPriceColor = () => {
     return 'secondary'
   }
 
-  // 가격 변화 아이콘
-  const getPriceIcon = (changePercent) => {
-    if (changePercent > 0) return 'cil-arrow-top'
-    if (changePercent < 0) return 'cil-arrow-bottom'
+  // 가격 변화 아이콘 (기본값으로 변경)
+  const getPriceIcon = () => {
     return 'cil-minus'
   }
 
@@ -105,8 +101,6 @@ const WebSocketWidgetE = () => {
               const coin = prices[symbol] || {}
               const name = symbol.replace('USDT', '')
               const price = coin.price || 0
-              const changePercent = coin.change_percent || 0
-              const changeAmount = coin.change_amount || 0
               
               return (
                 <CCol key={symbol} xs={6}>
@@ -121,7 +115,7 @@ const WebSocketWidgetE = () => {
                           datasets: [
                             {
                               backgroundColor: 'transparent',
-                              borderColor: changePercent > 0 ? '#28a745' : changePercent < 0 ? '#dc3545' : '#6c757d',
+                              borderColor: '#6c757d',
                               borderWidth: 2,
                               data: [41, 78, 51, 66, 74, 42, 89, 97, 87, 84, 78, 88, 67, 45, 47],
                             },
@@ -154,7 +148,7 @@ const WebSocketWidgetE = () => {
                       />
                     }
                     title={name}
-                    value={`${price.toLocaleString()} (${changePercent > 0 ? '+' : ''}${changePercent.toFixed(2)}% ${changeAmount > 0 ? '+' : ''}${changeAmount.toLocaleString()})`}
+                    value={`${price.toLocaleString()}`}
                   />
                 </CCol>
               )

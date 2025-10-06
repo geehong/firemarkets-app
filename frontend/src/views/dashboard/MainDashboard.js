@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import React, { lazy, Suspense, useEffect, useState } from 'react'
 import { CRow, CCol, CCard, CCardHeader, CCardBody, CCardTitle } from '@coreui/react'
 import useWebSocketStore from '../../store/websocketStore'
 
@@ -8,27 +8,10 @@ const DefaultChart = lazy(() => import('src/components/charts/defaultchart/Defau
 const HistoryTableDefault = lazy(() => import('src/components/tables/HistoryTableDefault'))
 const RealTimeWidgetsTypeA = lazy(() => import('src/components/widgets/RealTimeWidgetsTypeA'))
 
-// 각 심볼별 미니차트 임포트
-const MiniPriceCryptoChart = lazy(() => import('src/components/charts/minicharts/MiniPriceCryptoChart'))
-const MiniPriceCommoditiesChart = lazy(() => import('src/components/charts/minicharts/MiniPriceCommoditiesChart'))
-const MiniPriceStocksEtfChart = lazy(() => import('src/components/charts/minicharts/MiniPriceStocksEtfChart'))
+// 미니차트 매니저
+const MiniPriceChartManage = lazy(() => import('src/components/charts/minicharts/MiniPriceChartManage'))
 
-// chartGroups를 컴포넌트 외부로 이동시켜 렌더링 시 재생성 방지
-// 선택 심볼만 노출: BTC, NVDA, SPY, GOLD
-const chartGroups = [
-  {
-    title: 'Selected',
-    symbols: [
-      // { symbol: 'BTCUSDT', chartType: 'crypto' },
-      // { symbol: 'NVDA', chartType: 'stocks' },
-      // { symbol: 'SPY', chartType: 'stocks' },
-      // { symbol: 'GCUSD', chartType: 'commodities' }
-    ]
-  }
-];
-
-// 모든 심볼을 하나의 배열로 추출 (연결용 참조)
-const allSymbols = chartGroups.flatMap(group => group.symbols.map(item => item.symbol));
+// MainDashboard에서는 매니저가 모든 심볼 관리 및 구독을 처리하므로 별도 심볼 정의 불필요
 
 const MainDashboard = () => {
   // 모바일 전용 UI 설정 제거: 고정 레이아웃 사용
@@ -46,26 +29,7 @@ const MainDashboard = () => {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // 초기 연결만 수행 (구독은 하위 미니차트가 자체적으로 처리)
-  useEffect(() => {
-    const { connect } = useWebSocketStore.getState();
-    if (allSymbols.length > 0) {
-      console.log('[MainDashboard] Initializing WebSocket connection for symbols:', allSymbols);
-      connect();
-    }
-  }, []);
-
-  // 연결 끊기면 재시도 타이머로 재연결 (구독은 하위가 처리)
-  useEffect(() => {
-    if (!connected && allSymbols.length > 0) {
-      console.log('[MainDashboard] Disconnected. Scheduling reconnect...');
-      const { connect } = useWebSocketStore.getState();
-      const reconnectTimer = setTimeout(() => {
-        connect();
-      }, 3000);
-      return () => clearTimeout(reconnectTimer);
-    }
-  }, [connected]);
+  // MainDashboard는 연결/구독을 직접 다루지 않음 (매니저가 담당)
 
   return (
     <>
@@ -84,53 +48,11 @@ const MainDashboard = () => {
 
       {/* 시장 상태에 따른 차트 표시 */}
       <div className="card mb-4">
-      <div className="card-body">
-        {(() => {
-          const flattened = chartGroups.flatMap(group => group.symbols.map((item, index) => ({ ...item, title: group.title, key: `${group.title}-${item.symbol}-${index}`})));
-          const symbolsToRender = flattened; // 모바일에서도 전체 표시
-          const gridTemplateColumns = isMobile ? '1fr' : 'repeat(2, 1fr)';
-          return (
-            <div style={{ display: 'grid', gridTemplateColumns, gap: '16px' }}>
-              {symbolsToRender.map(({ symbol, chartType, key }) => {
-                const ChartComponent = (() => {
-                  switch (chartType) {
-                    case 'crypto':
-                      return MiniPriceCryptoChart;
-                    case 'commodities':
-                      return MiniPriceCommoditiesChart;
-                    case 'stocks':
-                      return MiniPriceStocksEtfChart;
-                    default:
-                      return MiniPriceCryptoChart;
-                  }
-                })();
-                return (
-                  <div key={key}>
-                    <CCard>
-                      <CCardBody className="p-0">
-                        <div style={{ 
-                          height: '300px',
-                          minHeight: '300px',
-                          width: '100%',
-                          position: 'relative',
-                          overflow: 'hidden'
-                        }}>
-                          <Suspense fallback={<div className="d-flex align-items-center justify-content-center h-100" style={{ height: '300px' }}>Loading {symbol} chart...</div>}>
-                            <ChartComponent 
-                              assetIdentifier={symbol}
-                              containerId={`mini-chart-${symbol}`}
-                            />
-                          </Suspense>
-                        </div>
-                      </CCardBody>
-                    </CCard>
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })()}
-      </div>
+        <div className="card-body">
+          <Suspense fallback={<div style={{ height: '300px' }} className="d-flex align-items-center justify-content-center">Loading mini charts...</div>}>
+            <MiniPriceChartManage showTopLeaders />
+          </Suspense>
+        </div>
       </div>
 
       {/* Real-time Widgets */}

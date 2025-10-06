@@ -23,15 +23,22 @@ export const useRealtimePricesPg = (params = {}) => {
     setLoading(true)
     setError(null)
     try {
+      // API는 USDT 페어를 제공하지 않을 수 있으므로 우선적으로 정규화된 심볼로 요청
+      const raw = String(params.asset_identifier || '')
+      const normalizedForApi = raw.endsWith('USDT') ? raw.replace(/USDT$/, '') : raw.replace('-USD', '')
+      const apiSymbol = normalizedForApi || raw
+
       const response = await axios.get('/api/v1/realtime/pg/quotes-delay-price', {
         params: {
-          asset_identifier: params.asset_identifier,
+          asset_identifier: apiSymbol,
           limit: params.limit || 500
         }
       })
       setData(response.data)
     } catch (err) {
-      setError(err)
+      if (err?.response?.status !== 404) {
+        setError(err)
+      }
     } finally {
       setLoading(false)
     }

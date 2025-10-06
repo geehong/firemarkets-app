@@ -105,10 +105,10 @@ def get_metric_definition(metric_id: str, db: Session) -> OnchainMetricsInfo:
         raise HTTPException(status_code=404, detail=f"Metric '{metric_id}' not found")
     return metric_def
 
-def get_metric_data_range(metric_def: OnchainMetricsInfo, db: Session) -> Any:
+def get_metric_data_range(metric_def: OnchainMetricsInfo, db: Session, ticker: Optional[str] = None) -> Any:
     """메트릭의 데이터 범위를 조회합니다."""
     # 비트코인 자산 ID 조회 (BTC 또는 BTCUSDT 지원)
-    bitcoin_asset = get_bitcoin_asset(db)
+    bitcoin_asset = get_bitcoin_asset(db, ticker)
     if not bitcoin_asset:
         return None
     
@@ -240,14 +240,20 @@ def handle_metric_operation(operation: Callable, metric_id: str, *args, **kwargs
         logger.error(f"Error in metric operation for {metric_id}: {e}")
         return {"success": False, "message": f"Operation failed for {metric_id}: {str(e)}"}
 
-def get_bitcoin_asset(db: Session) -> Optional[Asset]:
+def get_bitcoin_asset(db: Session, ticker: Optional[str] = None) -> Optional[Asset]:
     """비트코인 자산을 조회합니다."""
-    return db.query(Asset).filter(
-        Asset.ticker.in_(['BTC', 'BTCUSDT'])
-    ).first()
+    # 사용자가 티커를 명시한 경우 우선 사용
+    if ticker:
+        return db.query(Asset).filter(Asset.ticker == ticker).first()
+    # 데이터는 주로 BTCUSDT(asset_id 고정)에 적재되므로 우선적으로 BTCUSDT를 조회
+    asset = db.query(Asset).filter(Asset.ticker == 'BTCUSDT').first()
+    if asset:
+        return asset
+    # 백업으로 BTC를 조회
+    return db.query(Asset).filter(Asset.ticker == 'BTC').first()
 
 @router.get("/onchain/metrics", response_model=List[OnchainMetricInfo])
-async def get_onchain_metrics(db: Session = Depends(get_postgres_db)):
+async def get_onchain_metrics(ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"), db: Session = Depends(get_postgres_db)):
     """모든 온체인 메트릭 정보를 조회합니다."""
     try:
         # 데이터베이스에서 메트릭 정보 조회
@@ -257,7 +263,7 @@ async def get_onchain_metrics(db: Session = Depends(get_postgres_db)):
         
         metrics_info = []
         for metric in metrics:
-            data_range = get_metric_data_range(metric, db)
+            data_range = get_metric_data_range(metric, db, ticker)
             is_enabled = metric.is_enabled
             
             # 데이터 범위 문자열 생성
@@ -285,10 +291,10 @@ async def get_onchain_metrics(db: Session = Depends(get_postgres_db)):
         raise HTTPException(status_code=500, detail=f"Failed to get onchain metrics: {str(e)}")
 
 @router.get("/onchain/metrics/{metric_id}/data-range", response_model=MetricDataRange)
-async def get_metric_data_range_endpoint(metric_id: str, db: Session = Depends(get_postgres_db)):
+async def get_metric_data_range_endpoint(metric_id: str, ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"), db: Session = Depends(get_postgres_db)):
     """특정 메트릭의 데이터 범위를 조회합니다."""
     metric_def = get_metric_definition(metric_id, db)
-    data_range = get_metric_data_range(metric_def, db)
+    data_range = get_metric_data_range(metric_def, db, ticker)
     
     return MetricDataRange(
         metric_id=metric_id,
@@ -308,6 +314,7 @@ async def get_metric_categories(db: Session = Depends(get_postgres_db)):
 @router.get("/onchain/metrics/{metric_id}/data", response_model=MetricDataResponse)
 async def get_metric_data(
     metric_id: str,
+    ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"),
     start_date: Optional[date] = Query(None, description="시작 날짜 (YYYY-MM-DD)"),
     end_date: Optional[date] = Query(None, description="종료 날짜 (YYYY-MM-DD)"),
     limit: int = Query(1000, ge=1, le=10000, description="데이터 개수 제한"),
@@ -318,7 +325,7 @@ async def get_metric_data(
     metric_def = get_metric_definition(metric_id, db)
     
     # 비트코인 자산 ID 조회 (BTC 또는 BTCUSDT 지원)
-    bitcoin_asset = get_bitcoin_asset(db)
+    bitcoin_asset = get_bitcoin_asset(db, ticker)
     if not bitcoin_asset:
         raise HTTPException(status_code=404, detail="Bitcoin asset not found (BTC or BTCUSDT)")
     
@@ -377,6 +384,7 @@ async def get_metric_data(
 @router.get("/onchain/metrics/{metric_id}/latest", response_model=MetricDataResponse)
 async def get_latest_metric_data(
     metric_id: str,
+    ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"),
     days: int = Query(30, ge=1, le=365, description="최근 N일 데이터"),
     db: Session = Depends(get_postgres_db)
 ):
@@ -384,11 +392,12 @@ async def get_latest_metric_data(
     end_date = date.today()
     start_date = end_date - timedelta(days=days)
     
-    return await get_metric_data(metric_id, start_date, end_date, 1000, "json", db)
+    return await get_metric_data(metric_id, ticker, start_date, end_date, 1000, "json", db)
 
 @router.get("/onchain/metrics/{metric_id}/stats", response_model=MetricStatsResponse)
 async def get_metric_stats(
     metric_id: str,
+    ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"),
     period: str = Query("1m", regex="^(1w|1m|3m|6m|1y|all)$", description="분석 기간"),
     include: str = Query("min,max,avg,median,volatility", description="포함할 통계"),
     db: Session = Depends(get_postgres_db)
@@ -397,7 +406,7 @@ async def get_metric_stats(
     start_date, end_date = get_period_dates(period)
     
     # 데이터 조회
-    data_response = await get_metric_data(metric_id, start_date, end_date, 10000, "json", db)
+    data_response = await get_metric_data(metric_id, ticker, start_date, end_date, 10000, "json", db)
     values = [point.value for point in data_response.data if point.value is not None]
     
     if not values:
@@ -425,6 +434,7 @@ async def get_metric_stats(
 @router.get("/onchain/metrics/dashboard", response_model=DashboardSummary)
 async def get_dashboard_summary(
     include: str = Query("latest,stats,trends", description="포함할 정보"),
+    ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"),
     refresh: Optional[int] = Query(None, ge=1, description="자동 새로고침 간격 (초)"),
     db: Session = Depends(get_postgres_db)
 ):
@@ -436,7 +446,7 @@ async def get_dashboard_summary(
     latest_updates = []
     for metric in OnchainMetricsInfo.query.filter(OnchainMetricsInfo.status == 'active').all()[:5]:  # 상위 5개만
         try:
-            latest_data = await get_latest_metric_data(metric.metric_id, 1, db)
+            latest_data = await get_latest_metric_data(metric.metric_id, ticker, 1, db)
             if latest_data.data:
                 latest_updates.append({
                     "metric_id": metric.metric_id,
@@ -550,12 +560,13 @@ async def run_all_metrics(
 @router.get("/onchain/metrics/{metric_id}/status", response_model=OnchainMetricStatusResponse)
 async def get_metric_status(
     metric_id: str,
+    ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"),
     db: Session = Depends(get_postgres_db)
 ):
     """특정 메트릭의 상태를 조회합니다."""
     try:
         metric_def = get_metric_definition(metric_id, db)
-        data_range = get_metric_data_range(metric_def, db)
+        data_range = get_metric_data_range(metric_def, db, ticker)
         is_enabled = is_metric_enabled(metric_id, db)
         
         return {

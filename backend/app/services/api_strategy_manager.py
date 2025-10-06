@@ -64,13 +64,13 @@ class ApiStrategyManager:
         # 4-1. FMP 전용 주식 프로필 클라이언트 (주말 수집용)
         # 주말에만 실행하여 API 제한을 우회
         self.stock_profiles_fmp_clients = [
-            #FMPClient(),          # FMP만 사용 (상세한 데이터)
+            FMPClient(),          # FMP만 사용 (상세한 데이터)
         ]
         
         # 5. 주식 재무용 클라이언트 (재무 데이터)
         self.stock_financials_clients = [
             #AlphaVantageClient(), # 주석처리
-            #FMPClient(),
+            FMPClient(),
             #TiingoClient(),      
             #PolygonClient(),
             #TwelveDataClient(),
@@ -78,7 +78,7 @@ class ApiStrategyManager:
         
         # 6. 주식 추정치용 클라이언트 (애널리스트 추정치)
         self.stock_analyst_estimates_clients = [
-            #FMPClient(),
+            FMPClient(),
             #AlphaVantageClient(),
             #TiingoClient(),
            # PolygonClient(),
@@ -97,7 +97,7 @@ class ApiStrategyManager:
         self.etf_clients = [
             #AlphaVantageClient(), # 주석처리
             FMPClient(),
-            TiingoClient(),
+            #TiingoClient(),     # 대역폭 보호를 위해 비활성화
             PolygonClient(),
             TwelveDataClient(),
         ]
