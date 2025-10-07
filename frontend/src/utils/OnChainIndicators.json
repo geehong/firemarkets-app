@@ -1,0 +1,263 @@
+{
+    "Market Cycle Indicators": [
+      {
+        "name": "mvrv_z_score",
+        "description": {
+          "title": {
+            "ko": "MVRV Z-Score: 비트코인의 과열 및 침체 신호를 포착하는 지표",
+            "en": "MVRV Z-Score: An Indicator for Spotting Bitcoin's Overheating and Stagnation Signals"
+          },
+          "introduction": {
+            "ko": "MVRV Z-Score는 비트코인의 시장 가치가 실현 가치에 비해 얼마나 벗어나 있는지를 측정하여, 현재 시장이 과열되었는지 아니면 침체되었는지를 판단하는 데 사용되는 지표입니다. 간단히 말해, 비트코인의 현재 가격이 '공정한' 가치에 비해 고평가되었는지 또는 저평가되었는지를 알려주는 유용한 도구라고 할 수 있습니다. 이 지표는 시장의 극단적인 상황, 즉 역사적인 고점과 저점을 식별하는 데 특히 효과적입니다.",
+            "en": "The MVRV Z-Score is an indicator used to determine if the market is overheated or stagnant by measuring how much Bitcoin's market value deviates from its realized value. In simple terms, it's a useful tool that shows whether Bitcoin's current price is overvalued or undervalued compared to its 'fair' value. This metric is particularly effective at identifying extreme market conditions, namely historical tops and bottoms."
+          },
+          "sections": [
+            {
+              "heading": {
+                "ko": "MVRV Z-Score의 구성 요소",
+                "en": "Components of the MVRV Z-Score"
+              },
+              "content": {
+                "ko": "MVRV Z-Score를 이해하기 위해서는 두 가지 핵심 개념을 알아야 합니다.",
+                "en": "To understand the MVRV Z-Score, you need to know two key concepts."
+              },
+              "points": [
+                {
+                  "term": {
+                    "ko": "시장 가치 (Market Value, MV)",
+                    "en": "Market Value (MV)"
+                  },
+                  "definition": {
+                    "ko": "이는 흔히 말하는 '시가 총액'과 같습니다. 비트코인의 현재 가격에 유통되고 있는 총량을 곱하여 계산됩니다. 이는 시장 참여자들의 현재 심리와 투기적 요소를 반영합니다.",
+                    "en": "This is the same as the commonly referred to 'market capitalization'. It is calculated by multiplying the current price of Bitcoin by the total circulating supply. It reflects the current sentiment of market participants and speculative factors."
+                  }
+                },
+                {
+                  "term": {
+                    "ko": "실현 가치 (Realized Value, RV)",
+                    "en": "Realized Value (RV)"
+                  },
+                  "definition": {
+                    "ko": "이는 각 비트코인이 마지막으로 거래되었을 때의 가격을 기준으로 계산된 가치의 총합입니다. 즉, 모든 비트코인 보유자들의 평균 매수 단가와 유사한 개념으로 볼 수 있습니다. 이는 투기적 요소를 제외하고 실제 자본이 유입된 가치를 나타냅니다.",
+                    "en": "This is the sum of the value calculated based on the price at which each Bitcoin was last traded. In other words, it can be seen as a concept similar to the average purchase price of all Bitcoin holders. It represents the value of actual capital inflow, excluding speculative factors."
+                  }
+                }
+              ]
+            },
+            {
+              "heading": {
+                "ko": "계산 방법과 해석",
+                "en": "Calculation and Interpretation"
+              },
+              "content": {
+                "ko": "MVRV Z-Score는 시장 가치와 실현 가치의 차이를 시장 가치의 표준편차로 나누어 계산합니다.",
+                "en": "The MVRV Z-Score is calculated by dividing the difference between the market value and the realized value by the standard deviation of the market value."
+              },
+              "formula": "MVRV Z-Score = (Market Value - Realized Value) / Standard Deviation of Market Value",
+              "interpretations": [
+                {
+                  "term": {
+                    "ko": "높은 값 (주로 붉은색 구간으로 표시)",
+                    "en": "High Value (Usually indicated by a red zone)"
+                  },
+                  "explanation": {
+                    "ko": "Z-Score가 높다는 것은 현재 시장 가치가 실현 가치보다 월등히 높다는 의미입니다. 이는 시장이 과열되어 있고, 가격이 고평가되었을 가능성이 크다는 신호로 해석될 수 있습니다. 역사적으로 이 구간은 시장의 정점 부근이었습니다.",
+                    "en": "A high Z-Score means that the current market value is significantly higher than the realized value. This can be interpreted as a signal that the market is overheated and the price is likely overvalued. Historically, this zone has been near market tops."
+                  }
+                },
+                {
+                  "term": {
+                    "ko": "낮은 값 (주로 녹색 구간으로 표시)",
+                    "en": "Low Value (Usually indicated by a green zone)"
+                  },
+                  "explanation": {
+                    "ko": "Z-Score가 낮다는 것은 시장 가치가 실현 가치보다 낮거나 비슷한 수준이라는 의미입니다. 이는 시장이 침체되어 있으며, 가격이 저평가되었을 가능성이 크다는 신호로, 매수 기회로 고려될 수 있습니다. 역사적으로 이 구간은 시장의 저점 부근이었습니다.",
+                    "en": "A low Z-Score means that the market value is lower than or similar to the realized value. This is a signal that the market is stagnant and the price is likely undervalued, which can be considered a buying opportunity. Historically, this zone has been near market bottoms."
+                  }
+                }
+              ]
+            }
+          ],
+          "conclusion": {
+            "ko": "결론적으로, MVRV Z-Score는 투자자들이 현재 시장의 위치를 객관적으로 파악하고, 잠재적인 시장의 전환점을 예측하는 데 도움을 주는 강력한 분석 도구입니다. 하지만 다른 모든 지표와 마찬가지로, 이것 하나만으로 투자를 결정하기보다는 다양한 분석과 함께 활용하는 것이 바람직합니다.",
+            "en": "In conclusion, the MVRV Z-Score is a powerful analytical tool that helps investors objectively understand the current market position and predict potential market turning points. However, like all other indicators, it is advisable to use it in conjunction with various analyses rather than making investment decisions based on this one metric alone."
+          }
+        }
+      },
+      {
+        "name": "nupl",
+        "description": {
+ }
+      },
+      {
+        "name": "market_cap_thermo_cap_ratio",
+        "description": {
+ }
+      },
+      {
+        "name": "reserve_risk",
+        "description": {
+}
+      },
+      {
+        "name": "puell_multiple",
+        "description": {
+ }
+      },
+      {
+        "name": "realized_price",
+        "description": {
+}
+      }
+    ],
+    "Holder Behavior": [
+      {
+        "name": "sopr",
+        "description": {
+          "en": "Spent Output Profit Ratio - Indicates whether holders are selling at a profit or loss.",
+          "ko": "소비된 출력물 수익 비율(SOPR) - 보유자들이 이익을 보고 파는지 손해를 보고 파는지 나타냅니다."
+        }
+      },
+      {
+        "name": "asopr",
+        "description": {
+          "en": "Adjusted SOPR - A variation of SOPR that filters out transactions with a lifespan of less than 1 hour.",
+          "ko": "조정된 SOPR - 1시간 미만의 생애주기를 가진 트랜잭션을 필터링한 SOPR의 변형입니다."
+        }
+      },
+      {
+        "name": "sth_sopr",
+        "description": {
+          "en": "Short-Term Holder SOPR - SOPR specifically for coins held for less than 155 days.",
+          "ko": "단기 보유자 SOPR - 155일 미만으로 보유된 코인에 대한 SOPR입니다."
+        }
+      },
+      {
+        "name": "lth_sopr",
+        "description": {
+          "en": "Long-Term Holder SOPR - SOPR specifically for coins held for more than 155 days.",
+          "ko": "장기 보유자 SOPR - 155일 이상 보유된 코인에 대한 SOPR입니다."
+        }
+      },
+      {
+        "name": "lth_nupl",
+        "description": {
+          "en": "Long-Term Holder NUPL - Net unrealized profit/loss for long-term holders.",
+          "ko": "장기 보유자 NUPL - 장기 보유자의 순 미실현 손익입니다."
+        }
+      },
+      {
+        "name": "sth_nupl",
+        "description": {
+          "en": "Short-Term Holder NUPL - Net unrealized profit/loss for short-term holders.",
+          "ko": "단기 보유자 NUPL - 단기 보유자의 순 미실현 손익입니다."
+        }
+      },
+      {
+        "name": "lth_mvrv",
+        "description": {
+          "en": "Long-Term Holder MVRV - MVRV ratio for coins held by long-term holders.",
+          "ko": "장기 보유자 MVRV - 장기 보유자가 보유한 코인에 대한 MVRV 비율입니다."
+        }
+      },
+      {
+        "name": "sth_mvrv",
+        "description": {
+          "en": "Short-Term Holder MVRV - MVRV ratio for coins held by short-term holders.",
+          "ko": "단기 보유자 MVRV - 단기 보유자가 보유한 코인에 대한 MVRV 비율입니다."
+        }
+      }
+    ],
+    "Network Health": [
+      {
+        "name": "hash_rate",
+        "description": {
+          "en": "Hash Rate - The total combined computational power being used to mine and process transactions.",
+          "ko": "해시레이트 - 트랜잭션을 채굴하고 처리하는 데 사용되는 총 연산 능력입니다."
+        }
+      },
+      {
+        "name": "difficulty_ribbon",
+        "description": {
+          "en": "Difficulty Ribbon - Moving averages of mining difficulty to signal potential miner capitulation and good buying opportunities.",
+          "ko": "난이도 리본 - 채굴 난이도의 이동 평균으로, 채굴자 항복 가능성과 좋은 매수 기회를 신호합니다."
+        }
+      }
+    ],
+    "Derivatives Market": [
+      {
+        "name": "futures_open_interest",
+        "description": {
+          "en": "Futures Open Interest - The total number of outstanding futures contracts that have not been settled.",
+          "ko": "선물 미결제 약정 - 아직 결제되지 않은 총 미결제 선물 계약 수입니다."
+        }
+      },
+      {
+        "name": "futures_volume",
+        "description": {
+          "en": "Futures Volume - The total value of futures contracts traded over a period.",
+          "ko": "선물 거래량 - 일정 기간 동안 거래된 선물 계약의 총 가치입니다."
+        }
+      },
+      {
+        "name": "futures_funding_rate",
+        "description": {
+          "en": "Futures Funding Rate - Periodic payments exchanged between traders to keep the perpetual futures price close to the spot price.",
+          "ko": "선물 펀딩 비율 - 무기한 선물 가격을 현물 가격에 가깝게 유지하기 위해 거래자 간에 교환되는 주기적인 지급금입니다."
+        }
+      },
+      {
+        "name": "options_volume",
+        "description": {
+          "en": "Options Volume - The total number of options contracts traded over a period.",
+          "ko": "옵션 거래량 - 일정 기간 동안 거래된 총 옵션 계약 수입니다."
+        }
+      },
+      {
+        "name": "options_open_interest_by_strike_price",
+        "description": {
+          "en": "Options Open Interest by Strike Price - Shows the open interest for options at different strike prices.",
+          "ko": "행사가별 옵션 미결제 약정 - 다른 행사가에서 옵션의 미결제 약정을 보여줍니다."
+        }
+      }
+    ],
+    "Institutional Activity": [
+      {
+        "name": "cme_futures_open_interest",
+        "description": {
+          "en": "CME Futures Open Interest - Open interest specifically on the Chicago Mercantile Exchange (CME).",
+          "ko": "CME 선물 미결제 약정 - 시카고상업거래소(CME)에서의 미결제 약정입니다."
+        }
+      },
+      {
+        "name": "cme_futures_volume",
+        "description": {
+          "en": "CME Futures Volume - Trading volume of Bitcoin futures on the CME.",
+          "ko": "CME 선물 거래량 - CME에서의 비트코인 선물 거래량입니다."
+        }
+      },
+      {
+        "name": "cme_futures_premium",
+        "description": {
+          "en": "CME Futures Premium - The difference between the CME Bitcoin futures price and the spot price.",
+          "ko": "CME 선물 프리미엄 - CME 비트코인 선물 가격과 현물 가격의 차이입니다."
+        }
+      },
+      {
+        "name": "gbtc_premium",
+        "description": {
+          "en": "Grayscale Bitcoin Trust (GBTC) Premium - The difference between the market price of GBTC shares and the net asset value (NAV) of its Bitcoin holdings.",
+          "ko": "그레이스케일 비트코인 신탁(GBTC) 프리미엄 - GBTC 주식의 시장 가격과 보유 비트코인의 순자산가치(NAV) 간의 차이입니다."
+        }
+      },
+      {
+        "name": "coinbase_premium",
+        "description": {
+          "en": "Coinbase Premium Index - The percentage difference between the BTC price on Coinbase Pro (USD) and Binance (USDT).",
+          "ko": "코인베이스 프리미엄 지수 - 코인베이스 프로(USD)와 바이낸스(USDT)의 비트코인 가격 간의 백분율 차이입니다."
+        }
+      }
+    ]
+  }
+  
+  
