@@ -1,26 +1,29 @@
-import { useState, useEffect, useCallback } from 'react'
-import axios from 'axios'
+import { useState, useEffect } from 'react';
+import axios from 'axios';
 
-const API = '/api/v1'
+/**
+ * Admin 패널 데이터를 가져오는 훅
+ */
+export const useAdmin = (params = {}) => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-export const useAdmin = () => {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const response = await axios.get('/api/v1/admin', { params });
+        setData(response.data);
+      } catch (err) {
+        setError(err);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await axios.get(`${API}/admin`)
-      setData(res.data)
-    } catch (e) {
-      setError(e)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+    fetchData();
+  }, [JSON.stringify(params)]);
 
-  useEffect(() => { fetchData() }, [fetchData])
-  return { data, loading, error, refetch: fetchData }
-}
+  return { data, loading, error };
+};

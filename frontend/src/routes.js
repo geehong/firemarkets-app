@@ -51,6 +51,9 @@ const Modals = React.lazy(() => import('./views/notifications/modals/Modals'))
 const Toasts = React.lazy(() => import('./views/notifications/toasts/Toasts'))
 
 const Widgets = React.lazy(() => import('./views/widgets/Widgets'))
+// Admin
+const AdminLogin = React.lazy(() => import('./components/auth/Login'))
+const AdminManage = React.lazy(() => import('./views/admins/AdminManage'))
 
 // Test
 const Test01 = React.lazy(() => import('./views/test/Test01'))
@@ -59,6 +62,13 @@ const Test02 = React.lazy(() => import('./views/test/Test02'))
 // Assets
 const AssetsListView = React.lazy(() => import('./views/lists/AssetsListView'))
 const AssetsOverviews = React.lazy(() => import('./views/overviews/AssetsOverviews'))
+const OnchainDataOverviews = React.lazy(() => import('./views/overviews/OnchainDataOverviews'))
+
+// Halving 관련 컴포넌트들
+const HalvingBullChart = React.lazy(() => import('./views/overviews/OnchainDataOverviews'))
+const HalvingSpiral = React.lazy(() => import('./views/halving/HalvingSpiral'))
+const HalvingProgress = React.lazy(() => import('./views/halving/HalvingProgress'))
+const HalvingSeasons = React.lazy(() => import('./views/halving/HalvingSeasons'))
 
 const routes = [
   { path: '/', exact: true, name: 'Home' },
@@ -106,10 +116,19 @@ const routes = [
   { path: '/notifications/modals', name: 'Modals', element: Modals },
   { path: '/notifications/toasts', name: 'Toasts', element: Toasts },
   { path: '/widgets', name: 'Widgets', element: Widgets },
+  { path: '/admin/login', name: 'Admin Login', element: AdminLogin },
+  { path: '/admin/manage', name: 'Admin Manage', element: AdminManage },
   { path: '/test/test01', name: 'Test01 - WebSocket 실시간 데이터', element: Test01 },
   { path: '/test/test02', name: 'Test02 - 정적 미니차트', element: Test02 },
   { path: '/assets', name: 'Assets', element: AssetsListView },
   { path: '/overviews/:assetId', name: 'Asset Overview', element: AssetsOverviews },
+  { path: '/onchain/overviews', name: 'Onchain Data Overview', element: OnchainDataOverviews },
+  
+  // Halving 관련 라우트들
+  { path: '/onchain/halving/halving-bull-chart', name: 'Halving Bull Chart', element: HalvingBullChart },
+  { path: '/onchain/halving/halving-spiral', name: 'Halving Spiral', element: HalvingSpiral },
+  { path: '/onchain/halving/halving-progress', name: 'Halving Progress', element: HalvingProgress },
+  { path: '/onchain/halving/halving-seasons', name: 'Halving Seasons', element: HalvingSeasons },
 ]
 
 export default routes

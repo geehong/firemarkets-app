@@ -27,6 +27,7 @@ import {
 
 import { AppBreadcrumb } from './index'
 import { AppHeaderDropdown } from './header/index'
+import './AppBreadcrumb.css'
 
 const AppHeader = () => {
   const headerRef = useRef()
@@ -132,11 +133,81 @@ const AppHeader = () => {
           <AppHeaderDropdown />
         </CHeaderNav>
       </CContainer>
-      <CContainer className="px-4" fluid>
-        <AppBreadcrumb />
-      </CContainer>
+      <BreadcrumbHideOnScroll>
+        <CContainer className="px-4" fluid>
+          <AppBreadcrumb />
+        </CContainer>
+      </BreadcrumbHideOnScroll>
     </CHeader>
   )
 }
 
 export default AppHeader
+
+// Lightweight scroll-hide wrapper using IntersectionObserver + CSS
+const BreadcrumbHideOnScroll = ({ children }) => {
+  const containerRef = useRef(null)
+  const [hidden, setHidden] = React.useState(false)
+  const idleTimerRef = useRef(null)
+  const sentinelRef = useRef(null)
+
+  useEffect(() => {
+    // create or reuse sentinel right below header
+    let sentinel = sentinelRef.current
+    if (!sentinel) {
+      sentinel = document.createElement('div')
+      sentinelRef.current = sentinel
+      sentinel.setAttribute('data-breadcrumb-sentinel', 'true')
+      sentinel.style.position = 'absolute'
+      sentinel.style.top = '0px'
+      sentinel.style.left = '0px'
+      sentinel.style.width = '1px'
+      sentinel.style.height = '1px'
+      sentinel.style.pointerEvents = 'none'
+      document.body.appendChild(sentinel)
+    }
+
+    const placeSentinel = () => {
+      const headerEl = document.querySelector('header.c-header') || document.querySelector('header')
+      if (headerEl) {
+        const rect = headerEl.getBoundingClientRect()
+        const docY = window.scrollY || 0
+        sentinel.style.top = `${rect.height + docY}px`
+      }
+    }
+    placeSentinel()
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0]
+        // when sentinel leaves viewport (scroll down), hide; when enters (scroll up), show
+        setHidden(!entry.isIntersecting)
+        // reset idle timer: hide after 12s idle
+        if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+        idleTimerRef.current = setTimeout(() => setHidden(true), 12000)
+      },
+      { root: null, threshold: 0, rootMargin: '0px 0px 0px 0px' }
+    )
+    io.observe(sentinel)
+
+    const onResize = () => placeSentinel()
+    window.addEventListener('resize', onResize)
+
+    return () => {
+      window.removeEventListener('resize', onResize)
+      try { io.disconnect() } catch {}
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+      // keep sentinel for reuse
+    }
+  }, [])
+
+  return (
+    <div
+      ref={containerRef}
+      className={`breadcrumb-hide-container ${hidden ? 'unpinned' : 'pinned'}`}
+      style={{ zIndex: 2 }}
+    >
+      {children}
+    </div>
+  )
+}

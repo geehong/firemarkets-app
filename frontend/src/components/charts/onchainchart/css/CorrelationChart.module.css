@@ -1,0 +1,248 @@
+/* CorrelationChart.module.css */
+
+/* 컨트롤 버튼 컨테이너 */
+.controlsContainer {
+  margin-bottom: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* 버튼 그룹 */
+.buttonGroup {
+  display: flex;
+  gap: 0.25rem;
+}
+
+/* 차트 컨트롤 버튼 기본 스타일 */
+.chartButton {
+  margin: 0;
+  padding: 4px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+/* 활성화된 차트 버튼 */
+.chartButtonActive {
+  background-color: var(--bs-primary) !important;
+  opacity: 1 !important;
+  box-shadow: 2px 2px 4px rgba(0,0,0,0.2) !important;
+}
+
+/* 비활성화된 차트 버튼 */
+.chartButtonInactive {
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* 플래그 버튼 활성화 */
+.flagButtonActive {
+  background-color: var(--bs-info) !important;
+  opacity: 1 !important;
+}
+
+/* 플래그 버튼 비활성화 */
+.flagButtonInactive {
+  background-color: transparent !important;
+}
+
+/* 로그 스케일 버튼 활성화 */
+.logButtonActive {
+  background-color: var(--bs-success) !important;
+  opacity: 1 !important;
+}
+
+/* 로그 스케일 버튼 활성화된 상태의 아이콘 색상 */
+.logButtonActive .chartIcon {
+  filter: brightness(0) invert(1); /* 흰색으로 변경 */
+}
+
+/* 로그 스케일 버튼 비활성화 */
+.logButtonInactive {
+  background-color: transparent !important;
+}
+
+/* 로그 스케일 버튼 비활성화된 상태의 아이콘 색상 */
+.logButtonInactive .chartIcon {
+  filter: none; /* 원본 색상 유지 */
+}
+
+/* Linear 아이콘은 항상 원본 색상 유지 */
+.chartIcon[src*="Linear.svg"] {
+  filter: none !important;
+}
+
+/* Area, Line, Spline 아이콘도 원본 색상 유지 */
+.chartIcon[src*="Area.svg"],
+.chartIcon[src*="Line.svg"],
+.chartIcon[src*="Spline.svg"] {
+  filter: none !important;
+}
+
+/* 아이콘 스타일 */
+.chartIcon {
+  width: 24px;
+  height: 24px;
+  transition: filter 0.2s ease;
+}
+
+/* 활성화된 버튼의 아이콘 색상 */
+.chartButtonActive .chartIcon {
+  filter: brightness(0) invert(1); /* 흰색으로 변경 */
+}
+
+/* 비활성화된 버튼의 아이콘 색상 */
+.chartButtonInactive .chartIcon {
+  filter: none; /* 원본 색상 유지 */
+}
+
+.areaIcon {
+  width: 24px;
+  height: 26px;
+}
+
+/* SVG 아이콘 스타일 */
+.svgIcon {
+  width: 24px;
+  height: 24px;
+  fill: none;
+}
+
+.svgIconActive {
+  stroke: white;
+}
+
+.svgIconInactive {
+  stroke: var(--bs-primary);
+}
+
+/* 플래그 컨테이너 */
+.flagContainer {
+  position: relative;
+  width: 24px;
+  height: 24px;
+}
+
+/* 플래그 아이콘 비활성화 */
+.flagIconInactive {
+  width: 24px;
+  height: 24px;
+}
+
+/* X 표시 선 */
+.xLine {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 18px;
+  height: 2px;
+  background-color: red;
+}
+
+.xLine1 {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.xLine2 {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+/* 상관관계 표시 컨테이너 */
+.correlationContainer {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* 상관관계 강도별 색상 */
+.correlationStrong {
+  border: 2px solid #2196f3;
+}
+
+.correlationModerate {
+  border: 2px solid #ff9800;
+}
+
+.correlationWeak {
+  border: 2px solid #ffc107;
+}
+
+.correlationNone {
+  border: 2px solid #f44336;
+}
+
+/* 상관관계 인디케이터 */
+.correlationIndicator {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.correlationIndicatorStrong {
+  background-color: #2196f3;
+}
+
+.correlationIndicatorModerate {
+  background-color: #ff9800;
+}
+
+.correlationIndicatorWeak {
+  background-color: #ffc107;
+}
+
+.correlationIndicatorNone {
+  background-color: #f44336;
+}
+
+/* 상관관계 텍스트 색상 */
+.correlationTextStrong {
+  color: #1976d2;
+}
+
+.correlationTextModerate {
+  color: #e65100;
+}
+
+.correlationTextWeak {
+  color: #f57f17;
+}
+
+.correlationTextNone {
+  color: #c62828;
+}
+
+/* 호버 효과 */
+.chartButton:hover {
+  transform: translateY(-1px);
+}
+
+.chartButtonInactive:hover {
+  box-shadow: 3px 3px 6px rgba(0,0,0,0.25);
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+  .controlsContainer {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  
+  .buttonGroup {
+    justify-content: center;
+  }
+  
+  /* 모바일에서 모드 버튼 그룹의 우측 정렬 제거 */
+  .buttonGroup:last-child {
+    margin-left: 0 !important;
+  }
+}

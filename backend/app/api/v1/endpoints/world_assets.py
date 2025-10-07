@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/world-assets/collection-status", response_model=CollectionStatus)
+@router.get("/collection-status", response_model=CollectionStatus)
 async def get_world_assets_collection_status(db: Session = Depends(get_postgres_db)):
     """
     World Assets 수집 상태 조회
@@ -68,7 +68,7 @@ async def get_world_assets_collection_status(db: Session = Depends(get_postgres_
         raise HTTPException(status_code=500, detail=f"수집 상태 조회 중 오류 발생: {str(e)}")
 
 
-@router.post("/world-assets/collect-data", response_model=ReloadResponse)
+@router.post("/collect-data", response_model=ReloadResponse)
 async def collect_world_assets_data(db: Session = Depends(get_postgres_db)):
     """
     World Assets 데이터 수집 실행
@@ -103,7 +103,7 @@ async def collect_world_assets_data(db: Session = Depends(get_postgres_db)):
         raise HTTPException(status_code=500, detail=f"World Assets 데이터 수집 중 오류 발생: {str(e)}")
 
 
-@router.get("/world-assets/top-assets-by-category")
+@router.get("/top-assets-by-category")
 async def get_top_assets_by_category(
     db: Session = Depends(get_postgres_db),
     limit: int = 30
@@ -244,7 +244,7 @@ async def get_top_assets_by_category(
         raise HTTPException(status_code=500, detail=f"Failed to get top assets by category: {str(e)}")
 
 
-@router.get("/world-assets/performance-treemap", response_model=PerformanceTreemapResponse)
+@router.get("/performance-treemap", response_model=PerformanceTreemapResponse)
 async def get_performance_treemap_data(
     db: Session = Depends(get_postgres_db),
     performance_period: str = Query("1d", description="성과 계산 기간 (1d, 1w, 1m, 3m, 6m, 1y, 2y, 3y, 5y, 10y)"),
@@ -464,7 +464,7 @@ async def get_performance_treemap_data(
         raise HTTPException(status_code=500, detail=f"성과 트리맵 데이터 조회 중 오류 발생: {str(e)}")
 
 
-@router.get("/world-assets/missing-mappings")
+@router.get("/missing-mappings")
 async def get_missing_asset_mappings(
     db: Session = Depends(get_postgres_db),
     ranking_date: str = None
@@ -486,7 +486,7 @@ async def get_missing_asset_mappings(
         raise HTTPException(status_code=500, detail=f"매핑 정보 조회 중 오류 발생: {str(e)}")
 
 
-@router.post("/world-assets/update-mappings")
+@router.post("/update-mappings")
 async def update_asset_mappings_endpoint(
     db: Session = Depends(get_postgres_db),
     ranking_date: str = None

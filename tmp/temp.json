@@ -9,10 +9,17 @@
                 "ohlcv_intraday_clients",
                 "crypto_ohlcv_clients",
                 "onchain_clients",
-                "commodity_ohlcv_clients",
-                "world_assets_clients"
+                "commodity_ohlcv_clients"
             ],
             "day_of_week": "tue,wed,thu,fri,sat"
+        },
+        {
+            "hour": "20-23,0-6",
+            "minute": 0,
+            "collectors": [
+                "world_assets_clients"
+            ],
+            "day_of_week": "mon,tue,wed,thu,fri,sat,sun"
         },
         {
             "hour": 10,
@@ -49,8 +56,8 @@
             "day_of_week": "sat,sun"
         },
         {
-            "hour": 11,
-            "minute": 28,
+            "hour": 13,
+            "minute": 38,
             "collectors": [
                 "stock_profiles_clients"
             ],

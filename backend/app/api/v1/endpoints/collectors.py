@@ -10,7 +10,7 @@ from ....collectors import OHLCVCollector, StockCollector, ETFCollector, WorldAs
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/collectors")
+router = APIRouter()
 
 class CollectorResponse(BaseModel):
     success: bool

@@ -1,11 +1,11 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import Highcharts from 'highcharts/highstock';
 import HighchartsReact from 'highcharts-react-official';
-import { useIntegratedMetrics } from '../../hooks/useIntegratedMetrics';
+import { useIntegratedMetrics } from '../../../hooks/useIntegratedMetrics';
 import { CCard, CCardBody, CCardHeader } from '@coreui/react';
-import CardTools from '../common/CardTools';
-import ChartControls from '../common/ChartControls';
-import { getColorMode } from '../../constants/colorModes';
+import CardTools from '../../common/CardTools';
+import ChartControls from '../../common/ChartControls';
+import { getColorMode } from '../../../constants/colorModes';
 import styles from './css/CorrelationChart.module.css';
 
 // Load Highcharts modules in correct order
@@ -83,15 +83,34 @@ const CorrelationChart = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 통합 메트릭 데이터 가져오기
-  const { data: integratedData, isLoading, error: apiError } = useIntegratedMetrics(
-    assetId,
-    ['price', metricId],
-    { 
-      limit: 10000,
-      compute: 'correlation'
-    }
-  );
+  // 통합 메트릭 데이터 가져오기 - metrics.py의 통합 API 사용
+  const [integratedData, setIntegratedData] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [apiError, setApiError] = useState(null);
+
+  useEffect(() => {
+    const fetchIntegratedData = async () => {
+      try {
+        setIsLoading(true);
+        setApiError(null);
+        
+        const response = await fetch(`/api/v1/metrics/${assetId}?metrics=price,${metricId}&limit=10000&compute=correlation`);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        setIntegratedData(data);
+      } catch (error) {
+        console.error('Error fetching integrated data:', error);
+        setApiError(error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchIntegratedData();
+  }, [assetId, metricId]);
 
   useEffect(() => {
     if (integratedData && integratedData.series) {
@@ -745,4 +764,4 @@ const CorrelationChart = ({
   );
 };
 
-export default CorrelationChart; 
+export default CorrelationChart;

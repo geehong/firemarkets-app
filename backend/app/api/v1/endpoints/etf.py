@@ -11,7 +11,7 @@ from ....schemas.common import ETFInfoListResponse
 router = APIRouter()
 
 # TODO: ETF 관련 API 엔드포인트 구현
-@router.get("/etf/info", response_model=ETFInfoListResponse)
+@router.get("/info", response_model=ETFInfoListResponse)
 def get_etf_info(db: Session = Depends(get_postgres_db)):
     """ETF 정보 조회"""
     return {"message": "ETF endpoints not implemented yet"}

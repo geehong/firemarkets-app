@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-@router.post("/admin/optimize-database")
+@router.post("/optimize-database")
 def run_database_optimization(db: Session = Depends(get_postgres_db)):
     """데이터베이스 최적화 실행 (관리자 전용)"""
     try:
@@ -23,7 +23,7 @@ def run_database_optimization(db: Session = Depends(get_postgres_db)):
         logger.error(f"Database optimization failed: {e}")
         raise HTTPException(status_code=500, detail=f"Database optimization failed: {str(e)}")
 
-@router.get("/admin/database-stats")
+@router.get("/database-stats")
 def get_database_stats(db: Session = Depends(get_postgres_db)):
     """데이터베이스 통계 조회 (관리자 전용)"""
     try:

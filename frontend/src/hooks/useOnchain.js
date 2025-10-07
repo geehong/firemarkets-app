@@ -12,8 +12,10 @@ export const useOnchain = (metric, timeRange = '1y') => {
     setLoading(true)
     setError(null)
     try {
-      const params = { metric, time_range: timeRange }
-      const res = await axios.get(`${API}/onchain`, { params })
+      // Corrected endpoint for onchain metrics data
+      const res = await axios.get(`${API}/onchain/metrics/${metric}/data`, {
+        params: { time_range: timeRange }
+      })
       setData(res.data)
     } catch (e) {
       setError(e)

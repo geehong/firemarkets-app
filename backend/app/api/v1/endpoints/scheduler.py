@@ -89,7 +89,7 @@ def get_scheduler_status() -> SchedulerStatus:
         logger.error(f"Error getting scheduler status: {e}")
         return SchedulerStatus()
 
-@router.get("/scheduler/status", response_model=SchedulerStatus)
+@router.get("/status", response_model=SchedulerStatus)
 def get_scheduler_status_endpoint(db: Session = Depends(get_postgres_db)):
     """스케줄러 상태를 조회합니다."""
     try:
@@ -167,7 +167,7 @@ def get_scheduler_status_endpoint(db: Session = Depends(get_postgres_db)):
         logger.error(f"Error getting scheduler status: {e}")
         return SchedulerStatus()
 
-@router.get("/scheduler/status/{period}", response_model=SchedulerStatus)
+@router.get("/status/{period}", response_model=SchedulerStatus)
 def get_scheduler_status_by_period(period: str, db: Session = Depends(get_postgres_db)):
     """기간별 스케줄러 상태를 조회합니다."""
     try:
@@ -261,11 +261,11 @@ def get_scheduler_status_by_period(period: str, db: Session = Depends(get_postgr
 # - /scheduler/collect-all-now - Manual data collection
 # - /scheduler/jobs - View scheduled jobs
 
-# @router.post("/scheduler/trigger", response_model=SchedulerActionResponse) - DEPRECATED
+# @router.post("/trigger", response_model=SchedulerActionResponse) - DEPRECATED
 # 이 엔드포인트는 레거시 코드입니다. 
-# 대신 /scheduler/collect-all-now를 사용하세요.
+# 대신 /collect-all-now를 사용하세요.
 
-@router.post("/scheduler/collect-all-now", response_model=Dict[str, Any])
+@router.post("/collect-all-now", response_model=Dict[str, Any])
 def collect_all_now_manually():
     """관리자 수동 실행: 스케줄과 상관없이 모든 데이터 수집을 즉시 실행 (실시간 웹소켓 제외)"""
     start_time = datetime.now()
@@ -336,7 +336,7 @@ def collect_all_now_manually():
         
         raise HTTPException(status_code=500, detail=f"Failed to run manual collections: {str(e)}")
 
-@router.post("/scheduler/enable-test-mode", response_model=SchedulerActionResponse)
+@router.post("/enable-test-mode", response_model=SchedulerActionResponse)
 def enable_test_mode(db: Session = Depends(get_postgres_db)):
     """테스트 모드를 활성화합니다 (짧은 간격으로 스케줄 실행)"""
     try:
@@ -376,7 +376,7 @@ def enable_test_mode(db: Session = Depends(get_postgres_db)):
         logger.error(f"Failed to enable test mode: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to enable test mode: {str(e)}")
 
-@router.post("/scheduler/disable-test-mode", response_model=SchedulerActionResponse)
+@router.post("/disable-test-mode", response_model=SchedulerActionResponse)
 def disable_test_mode(db: Session = Depends(get_postgres_db)):
     """테스트 모드를 비활성화합니다 (일반 24시간 간격으로 복원)"""
     try:
@@ -416,7 +416,7 @@ def disable_test_mode(db: Session = Depends(get_postgres_db)):
         logger.error(f"Failed to disable test mode: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to disable test mode: {str(e)}")
 
-@router.post("/scheduler/fix-running-jobs", response_model=SchedulerActionResponse)
+@router.post("/fix-running-jobs", response_model=SchedulerActionResponse)
 def fix_running_jobs(db: Session = Depends(get_postgres_db)):
     """실행 중인 작업들을 강제로 완료 처리합니다."""
     try:
@@ -451,7 +451,7 @@ def fix_running_jobs(db: Session = Depends(get_postgres_db)):
         logger.error(f"Failed to fix running jobs: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fix running jobs: {str(e)}")
 
-@router.get("/scheduler/jobs", response_model=SchedulerJobsResponse)
+@router.get("/jobs", response_model=SchedulerJobsResponse)
 def get_scheduler_jobs_detail():
     """스케줄러에 등록된 작업들의 상세 정보를 조회합니다."""
     try:
@@ -466,7 +466,7 @@ def get_scheduler_jobs_detail():
         logger.error(f"Failed to get scheduler jobs detail: {e}")
         raise HTTPException(status_code=500, detail="Failed to get scheduler jobs detail")
 
-@router.get("/scheduler/jobs/history", response_model=List[SchedulerLogResponse])
+@router.get("/jobs/history", response_model=List[SchedulerLogResponse])
 def get_scheduler_jobs_history(db: Session = Depends(get_postgres_db)):
     """스케줄러 작업 히스토리를 조회합니다."""
     try:

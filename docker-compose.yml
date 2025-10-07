@@ -11,8 +11,7 @@ services:
       POSTGRES_USER: ${DB_USERNAME_PG}
       POSTGRES_PASSWORD: ${DB_PASSWORD_PG}
       TZ: Asia/Seoul
-    ports:
-      - "5433:5432"  # 포트 충돌 방지
+    # 외부 포트 매핑 제거로 외부 접속 차단 (내부 네트워크에서만 접근)
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./docker/init_postgres.sql:/docker-entrypoint-initdb.d/init.sql

@@ -153,7 +153,7 @@ def calculate_correlation(price_data: List[Dict], metric_data: List[Dict]) -> Di
             "data_points": 0
         }
 
-@router.get("/metrics/{asset_identifier}")
+@router.get("/{asset_identifier}")
 async def get_integrated_metrics(
     asset_identifier: str = Path(..., description="Asset ID (integer) or Ticker (string)"),
     metrics: str = Query(..., description="쉼표로 구분된 메트릭 목록 (예: price,mvrvZscore,sopr)"),

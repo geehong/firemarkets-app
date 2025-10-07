@@ -60,19 +60,14 @@ VALUES (
   '{"description": {"en": "Institutional activity indicators", "ko": "기관 활동 지표"}, "permissions": ["user", "admin"]}'::jsonb
 );
 
--- 3. Get category menu IDs for reference
--- Market Cycle Indicators (id will be the last inserted for this category)
--- Holder Behavior (id will be the last inserted for this category)
--- etc.
-
--- 4. Create individual metric menus with full JSON content
+-- 3. Create individual metric menus with full JSON content from OnChainIndicators.json
 
 -- MVRV Z-Score (Market Cycle Indicators)
 INSERT INTO menus (name, path, parent_id, "order", source_type, menu_metadata)
 SELECT 
   'MVRV Z-Score',
   '/onchain/overviews?metric=mvrv_z_score',
-  id,
+  (SELECT id FROM menus WHERE name = 'Market Cycle Indicators' AND source_type = 'dynamic'),
   10,
   'dynamic',
   '{
@@ -145,15 +140,14 @@ SELECT
       ]
     },
     "permissions": ["user", "admin"]
-  }'::jsonb
-FROM menus WHERE name = 'Market Cycle Indicators' AND source_type = 'dynamic';
+  }'::jsonb;
 
 -- NUPL (Market Cycle Indicators)
 INSERT INTO menus (name, path, parent_id, "order", source_type, menu_metadata)
 SELECT 
   'NUPL',
   '/onchain/overviews?metric=nupl',
-  id,
+  (SELECT id FROM menus WHERE name = 'Market Cycle Indicators' AND source_type = 'dynamic'),
   20,
   'dynamic',
   '{
@@ -198,15 +192,14 @@ SELECT
       ]
     },
     "permissions": ["user", "admin"]
-  }'::jsonb
-FROM menus WHERE name = 'Market Cycle Indicators' AND source_type = 'dynamic';
+  }'::jsonb;
 
 -- Realized Cap (Market Cycle Indicators)
 INSERT INTO menus (name, path, parent_id, "order", source_type, menu_metadata)
 SELECT 
   'Realized Cap',
   '/onchain/overviews?metric=realized_cap',
-  id,
+  (SELECT id FROM menus WHERE name = 'Market Cycle Indicators' AND source_type = 'dynamic'),
   30,
   'dynamic',
   '{
@@ -233,15 +226,14 @@ SELECT
       ]
     },
     "permissions": ["user", "admin"]
-  }'::jsonb
-FROM menus WHERE name = 'Market Cycle Indicators' AND source_type = 'dynamic';
+  }'::jsonb;
 
 -- Thermo Cap (Market Cycle Indicators)
 INSERT INTO menus (name, path, parent_id, "order", source_type, menu_metadata)
 SELECT 
   'Thermo Cap',
   '/onchain/overviews?metric=thermo_cap',
-  id,
+  (SELECT id FROM menus WHERE name = 'Market Cycle Indicators' AND source_type = 'dynamic'),
   40,
   'dynamic',
   '{
@@ -268,15 +260,14 @@ SELECT
       ]
     },
     "permissions": ["user", "admin"]
-  }'::jsonb
-FROM menus WHERE name = 'Market Cycle Indicators' AND source_type = 'dynamic';
+  }'::jsonb;
 
 -- Realized Price (Market Cycle Indicators)
 INSERT INTO menus (name, path, parent_id, "order", source_type, menu_metadata)
 SELECT 
   'Realized Price',
   '/onchain/overviews?metric=realized_price',
-  id,
+  (SELECT id FROM menus WHERE name = 'Market Cycle Indicators' AND source_type = 'dynamic'),
   50,
   'dynamic',
   '{
@@ -321,15 +312,14 @@ SELECT
       ]
     },
     "permissions": ["user", "admin"]
-  }'::jsonb
-FROM menus WHERE name = 'Market Cycle Indicators' AND source_type = 'dynamic';
+  }'::jsonb;
 
 -- True Market Mean (Market Cycle Indicators)
 INSERT INTO menus (name, path, parent_id, "order", source_type, menu_metadata)
 SELECT 
   'True Market Mean',
   '/onchain/overviews?metric=true_market_mean',
-  id,
+  (SELECT id FROM menus WHERE name = 'Market Cycle Indicators' AND source_type = 'dynamic'),
   60,
   'dynamic',
   '{
@@ -356,15 +346,14 @@ SELECT
       ]
     },
     "permissions": ["user", "admin"]
-  }'::jsonb
-FROM menus WHERE name = 'Market Cycle Indicators' AND source_type = 'dynamic';
+  }'::jsonb;
 
 -- AVIV (Market Cycle Indicators)
 INSERT INTO menus (name, path, parent_id, "order", source_type, menu_metadata)
 SELECT 
   'AVIV',
   '/onchain/overviews?metric=aviv',
-  id,
+  (SELECT id FROM menus WHERE name = 'Market Cycle Indicators' AND source_type = 'dynamic'),
   70,
   'dynamic',
   '{
@@ -409,15 +398,14 @@ SELECT
       ]
     },
     "permissions": ["user", "admin"]
-  }'::jsonb
-FROM menus WHERE name = 'Market Cycle Indicators' AND source_type = 'dynamic';
+  }'::jsonb;
 
 -- SOPR (Holder Behavior)
 INSERT INTO menus (name, path, parent_id, "order", source_type, menu_metadata)
 SELECT 
   'SOPR',
   '/onchain/overviews?metric=sopr',
-  id,
+  (SELECT id FROM menus WHERE name = 'Holder Behavior' AND source_type = 'dynamic'),
   10,
   'dynamic',
   '{
@@ -462,11 +450,369 @@ SELECT
       ]
     },
     "permissions": ["user", "admin"]
-  }'::jsonb
-FROM menus WHERE name = 'Holder Behavior' AND source_type = 'dynamic';
+  }'::jsonb;
 
--- Continue with remaining indicators...
--- (Due to length constraints, I'll create the remaining indicators in a separate script)
+-- CDD 90DMA (Holder Behavior)
+INSERT INTO menus (name, path, parent_id, "order", source_type, menu_metadata)
+SELECT 
+  'CDD 90DMA',
+  '/onchain/overviews?metric=cdd_90dma',
+  (SELECT id FROM menus WHERE name = 'Holder Behavior' AND source_type = 'dynamic'),
+  20,
+  'dynamic',
+  '{
+    "description": {
+      "title": {
+        "ko": "코인 소멸 일수 (CDD-90DMA): 장기 보유자의 활동 추적",
+        "en": "Coin Days Destroyed (CDD-90DMA): Tracking the Activity of Long-Term Holders"
+      },
+      "introduction": {
+        "ko": "CDD는 거래되는 코인의 양에 보유 기간을 곱한 값으로, 오래된 코인의 움직임에 더 큰 가중치를 둡니다. 90일 이동 평균은 이 데이터의 추세를 보여줍니다. 장기 보유자(스마트 머니)의 행동을 파악하는 데 사용됩니다.",
+        "en": "CDD multiplies the amount of coins in a transaction by their holding period, giving more weight to the movement of older coins. The 90-day moving average shows the trend of this data. It is used to understand the behavior of long-term holders (smart money)."
+      },
+      "sections": [
+        {
+          "heading": {
+            "ko": "해석",
+            "en": "Interpretation"
+          },
+          "interpretations": [
+            {
+              "term": {
+                "ko": "높은 값",
+                "en": "High Value"
+              },
+              "explanation": {
+                "ko": "장기 보유자들이 코인을 대량으로 이동시키거나 판매하고 있음을 의미하며, 종종 시장 고점 부근에서 나타납니다.",
+                "en": "Indicates that long-term holders are moving or selling a large volume of their coins, often seen near market tops."
+              }
+            },
+            {
+              "term": {
+                "ko": "낮은 값",
+                "en": "Low Value"
+              },
+              "explanation": {
+                "ko": "장기 보유자들이 코인을 축적하고 있음을 의미하며, 약세장이나 축적 기간 동안 나타납니다.",
+                "en": "Signifies that long-term holders are accumulating coins, which occurs during bear markets or accumulation phases."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "permissions": ["user", "admin"]
+  }'::jsonb;
+
+-- HODL Waves Supply (Holder Behavior)
+INSERT INTO menus (name, path, parent_id, "order", source_type, menu_metadata)
+SELECT 
+  'HODL Waves Supply',
+  '/onchain/overviews?metric=hodl_waves_supply',
+  (SELECT id FROM menus WHERE name = 'Holder Behavior' AND source_type = 'dynamic'),
+  30,
+  'dynamic',
+  '{
+    "description": {
+      "title": {
+        "ko": "HODL 웨이브: 비트코인 공급량의 연령 분포 시각화",
+        "en": "HODL Waves: Visualizing the Age Distribution of Bitcoin''s Supply"
+      },
+      "introduction": {
+        "ko": "HODL 웨이브는 유통되는 비트코인 공급량을 보유 기간별로 구분하여 시각화한 차트입니다. 이를 통해 시장 참여자들의 보유 행태와 세대 교체를 거시적으로 파악할 수 있습니다.",
+        "en": "HODL Waves is a chart that visualizes the distribution of the circulating Bitcoin supply by holding period. It provides a macroscopic view of the holding behavior of market participants and generational shifts."
+      },
+      "sections": [
+        {
+          "heading": {
+            "ko": "해석",
+            "en": "Interpretation"
+          },
+          "interpretations": [
+            {
+              "term": {
+                "ko": "따뜻한 색(단기 보유자) 확장",
+                "en": "Expansion of Warm Colors (Short-Term Holders)"
+              },
+              "explanation": {
+                "ko": "오래된 코인들이 새로운 보유자에게 이동하고 있음을 의미하며, 강세장 후반부나 시장 고점에서 나타납니다.",
+                "en": "Indicates that older coins are moving to new holders, which occurs in the later stages of a bull market or at market tops."
+              }
+            },
+            {
+              "term": {
+                "ko": "차가운 색(장기 보유자) 확장",
+                "en": "Expansion of Cool Colors (Long-Term Holders)"
+              },
+              "explanation": {
+                "ko": "코인들이 움직이지 않고 성숙해가고 있음을 의미하며, 약세장 동안의 축적을 나타냅니다. 이는 다음 강세장의 잠재적 에너지를 축적하는 과정입니다.",
+                "en": "Signifies that coins are not moving and are maturing, indicating accumulation during a bear market. This process builds potential energy for the next bull run."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "permissions": ["user", "admin"]
+  }'::jsonb;
+
+-- NRPL BTC (Holder Behavior)
+INSERT INTO menus (name, path, parent_id, "order", source_type, menu_metadata)
+SELECT 
+  'NRPL BTC',
+  '/onchain/overviews?metric=nrpl_btc',
+  (SELECT id FROM menus WHERE name = 'Holder Behavior' AND source_type = 'dynamic'),
+  40,
+  'dynamic',
+  '{
+    "description": {
+      "title": {
+        "ko": "순 실현 손익 (NRPL): 시장의 일일 수익성 측정",
+        "en": "Net Realized Profit/Loss (NRPL): Measuring the Market''s Daily Profitability"
+      },
+      "introduction": {
+        "ko": "NRPL은 특정일에 온체인 상에서 이동한 모든 코인들의 순 이익 또는 손실(USD 기준)을 계산합니다. 이는 시장 참여자들이 집단적으로 이익을 실현하고 있는지, 아니면 손실을 감수하고 있는지를 보여주는 일일 감정 지표입니다.",
+        "en": "NRPL calculates the net profit or loss (in USD) of all coins that moved on-chain on a given day. It is a daily sentiment indicator showing whether market participants are collectively realizing profits or taking losses."
+      },
+      "sections": [
+        {
+          "heading": {
+            "ko": "해석",
+            "en": "Interpretation"
+          },
+          "interpretations": [
+            {
+              "term": {
+                "ko": "양수 값 (이익)",
+                "en": "Positive Value (Profit)"
+              },
+              "explanation": {
+                "ko": "시장이 전반적으로 이익을 실현하고 있으며, 강세장에서 주로 나타납니다.",
+                "en": "The market is realizing profits on aggregate, primarily seen in bull markets."
+              }
+            },
+            {
+              "term": {
+                "ko": "음수 값 (손실)",
+                "en": "Negative Value (Loss)"
+              },
+              "explanation": {
+                "ko": "시장이 손실을 실현하고 있으며, 공포, 투매, 항복을 나타냅니다. 극심한 음수 값은 종종 시장 바닥을 형성합니다.",
+                "en": "The market is realizing losses, indicating fear, panic selling, and capitulation. Extreme negative values often form market bottoms."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "permissions": ["user", "admin"]
+  }'::jsonb;
+
+-- Hash Rate (Network Health & Miner Indicators)
+INSERT INTO menus (name, path, parent_id, "order", source_type, menu_metadata)
+SELECT 
+  'Hash Rate',
+  '/onchain/overviews?metric=hashrate',
+  (SELECT id FROM menus WHERE name = 'Network Health & Miner Indicators' AND source_type = 'dynamic'),
+  10,
+  'dynamic',
+  '{
+    "description": {
+      "title": {
+        "ko": "해시레이트: 비트코인 네트워크의 건강과 보안",
+        "en": "Hash Rate: The Health and Security of the Bitcoin Network"
+      },
+      "introduction": {
+        "ko": "해시레이트는 비트코인 네트워크에서 채굴자들이 사용하는 총 연산 능력을 나타냅니다. 높은 해시레이트는 네트워크가 강력하고 안전하며, 공격하기 어렵다는 것을 의미합니다. 이는 네트워크 건강의 가장 기본적인 지표입니다.",
+        "en": "Hash Rate represents the total computational power used by miners on the Bitcoin network. A high hash rate means the network is strong, secure, and difficult to attack. It is the most fundamental indicator of network health."
+      },
+      "sections": [
+        {
+          "heading": {
+            "ko": "해석",
+            "en": "Interpretation"
+          },
+          "content": {
+            "ko": "일반적으로 해시레이트의 장기적인 상승은 네트워크에 대한 채굴자들의 신뢰와 투자가 증가하고 있음을 나타내는 긍정적인 신호입니다. 급격한 하락은 채굴자들이 운영을 중단하고 있음을 의미할 수 있으며, 이는 종종 가격 하락과 관련이 있습니다.",
+            "en": "Generally, a long-term rise in the hash rate is a positive sign, indicating increasing miner confidence and investment in the network. A sharp drop can mean miners are shutting down operations, which is often associated with a price decline."
+          }
+        }
+      ]
+    },
+    "permissions": ["user", "admin"]
+  }'::jsonb;
+
+-- Difficulty (Network Health & Miner Indicators)
+INSERT INTO menus (name, path, parent_id, "order", source_type, menu_metadata)
+SELECT 
+  'Difficulty',
+  '/onchain/overviews?metric=difficulty',
+  (SELECT id FROM menus WHERE name = 'Network Health & Miner Indicators' AND source_type = 'dynamic'),
+  20,
+  'dynamic',
+  '{
+    "description": {
+      "title": {
+        "ko": "채굴 난이도: 비트코인의 안정적인 공급 조절 장치",
+        "en": "Mining Difficulty: Bitcoin''s Stable Supply Adjustment Mechanism"
+      },
+      "introduction": {
+        "ko": "채굴 난이도는 새로운 블록을 찾는 것이 얼마나 어려운지를 나타내는 척도입니다. 약 2주(2016 블록)마다 조정되어 블록 생성 시간을 평균 10분으로 유지합니다. 이는 해시레이트 변화에 따라 자동으로 조절됩니다.",
+        "en": "Mining difficulty is a measure of how hard it is to find a new block. It adjusts approximately every two weeks (2016 blocks) to maintain an average block creation time of 10 minutes. It automatically adjusts in response to changes in the hash rate."
+      },
+      "sections": [
+        {
+          "heading": {
+            "ko": "해석",
+            "en": "Interpretation"
+          },
+          "content": {
+            "ko": "난이도 상승은 더 많은 채굴자들이 네트워크에 참여하고 있음을 의미하며, 이는 네트워크의 건강함을 나타냅니다. 난이도 하락은 채굴자들이 네트워크를 떠나고 있음을 의미하며, 약세장의 신호일 수 있습니다. ''난이도 리본''과 같은 지표는 난이도 이동 평균을 사용하여 채굴자 항복과 매수 기회를 식별합니다.",
+            "en": "A rising difficulty means more miners are joining the network, indicating its health. A falling difficulty means miners are leaving the network and can be a bearish signal. Indicators like the ''Difficulty Ribbon'' use moving averages of difficulty to identify miner capitulation and buying opportunities."
+          }
+        }
+      ]
+    },
+    "permissions": ["user", "admin"]
+  }'::jsonb;
+
+-- Miner Reserves (Network Health & Miner Indicators)
+INSERT INTO menus (name, path, parent_id, "order", source_type, menu_metadata)
+SELECT 
+  'Miner Reserves',
+  '/onchain/overviews?metric=miner_reserves',
+  (SELECT id FROM menus WHERE name = 'Network Health & Miner Indicators' AND source_type = 'dynamic'),
+  30,
+  'dynamic',
+  '{
+    "description": {
+      "title": {
+        "ko": "채굴자 보유량: 주요 공급자의 매도 압력 측정",
+        "en": "Miner Reserves: Gauging Selling Pressure from Key Suppliers"
+      },
+      "introduction": {
+        "ko": "채굴자 보유량은 알려진 모든 채굴자 지갑에 보관된 비트코인의 총량을 추적합니다. 채굴자들은 지속적으로 새로운 코인을 공급하는 주체이므로, 이들의 보유량 변화는 시장의 주요 매도 압력을 예측하는 데 중요한 단서가 됩니다.",
+        "en": "Miner Reserves track the total amount of Bitcoin held in all known miner wallets. Since miners are the constant source of new coin supply, changes in their reserves provide crucial clues for predicting major selling pressure in the market."
+      },
+      "sections": [
+        {
+          "heading": {
+            "ko": "해석",
+            "en": "Interpretation"
+          },
+          "interpretations": [
+            {
+              "term": {
+                "ko": "보유량 증가",
+                "en": "Increasing Reserves"
+              },
+              "explanation": {
+                "ko": "채굴자들이 채굴한 코인을 즉시 팔지 않고 축적하고 있음을 의미하며, 이는 미래 가격 상승을 기대하는 긍정적인 신호입니다.",
+                "en": "Indicates that miners are accumulating the coins they''ve mined instead of selling immediately, a positive sign suggesting they anticipate future price increases."
+              }
+            },
+            {
+              "term": {
+                "ko": "보유량 감소",
+                "en": "Decreasing Reserves"
+              },
+              "explanation": {
+                "ko": "채굴자들이 시장에 코인을 판매하고 있음을 의미하며, 이는 매도 압력을 증가시켜 가격에 하방 압력으로 작용할 수 있습니다.",
+                "en": "Means that miners are selling their coins on the market, which increases selling pressure and can exert downward pressure on the price."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "permissions": ["user", "admin"]
+  }'::jsonb;
+
+-- Open Interest Futures (Derivatives Market)
+INSERT INTO menus (name, path, parent_id, "order", source_type, menu_metadata)
+SELECT 
+  'Open Interest Futures',
+  '/onchain/overviews?metric=open_interest_futures',
+  (SELECT id FROM menus WHERE name = 'Derivatives Market' AND source_type = 'dynamic'),
+  10,
+  'dynamic',
+  '{
+    "description": {
+      "title": {
+        "ko": "선물 미결제 약정: 시장의 레버리지와 변동성 측정",
+        "en": "Futures Open Interest: Measuring Market Leverage and Volatility"
+      },
+      "introduction": {
+        "ko": "선물 미결제 약정은 아직 청산되지 않은 모든 선물 계약의 총 가치입니다. 이는 파생상품 시장에 유입된 자본의 양을 나타내며, 레버리지 수준과 잠재적 변동성을 가늠하는 척도로 사용됩니다.",
+        "en": "Futures Open Interest is the total value of all futures contracts that have not yet been settled. It represents the amount of capital flowing into the derivatives market and is used as a gauge of leverage levels and potential volatility."
+      },
+      "sections": [
+        {
+          "heading": {
+            "ko": "해석",
+            "en": "Interpretation"
+          },
+          "content": {
+            "ko": "미결제 약정의 증가는 새로운 자본이 시장에 유입되고 있음을 의미하며, 종종 현재의 가격 추세를 강화합니다. 반면, 가격 변동과 함께 미결제 약정이 급격히 감소하는 것은 대규모 청산(롱 스퀴즈 또는 숏 스퀴즈)을 의미할 수 있습니다. 높은 미결제 약정은 시장이 과도한 레버리지 상태에 있어 변동성이 커질 수 있음을 시사합니다.",
+            "en": "An increase in open interest means new capital is entering the market, often reinforcing the current price trend. Conversely, a sharp decrease in open interest accompanied by price volatility can indicate a large-scale liquidation (a long or short squeeze). High open interest suggests the market is over-leveraged and could become highly volatile."
+          }
+        }
+      ]
+    },
+    "permissions": ["user", "admin"]
+  }'::jsonb;
+
+-- ETF BTC Total (Institutional Activity)
+INSERT INTO menus (name, path, parent_id, "order", source_type, menu_metadata)
+SELECT 
+  'ETF BTC Total',
+  '/onchain/overviews?metric=etf_btc_total',
+  (SELECT id FROM menus WHERE name = 'Institutional Activity' AND source_type = 'dynamic'),
+  10,
+  'dynamic',
+  '{
+    "description": {
+      "title": {
+        "ko": "ETF 총 비트코인 보유량: 기관 투자 수요의 바로미터",
+        "en": "Total Bitcoin Holdings in ETFs: A Barometer for Institutional Demand"
+      },
+      "introduction": {
+        "ko": "이 지표는 전 세계 모든 현물 비트코인 ETF가 보유하고 있는 비트코인의 총량을 추적합니다. 이는 전통 금융 시장의 자본이 비트코인으로 유입되는 가장 직접적인 통로 중 하나로, 기관 투자자들의 수요와 심리를 반영합니다.",
+        "en": "This metric tracks the total amount of Bitcoin held by all spot Bitcoin ETFs worldwide. It is one of the most direct channels for capital from traditional financial markets to flow into Bitcoin, reflecting the demand and sentiment of institutional investors."
+      },
+      "sections": [
+        {
+          "heading": {
+            "ko": "해석",
+            "en": "Interpretation"
+          },
+          "interpretations": [
+            {
+              "term": {
+                "ko": "순유입 / 보유량 증가",
+                "en": "Net Inflows / Increasing Holdings"
+              },
+              "explanation": {
+                "ko": "기관 투자자들의 강력한 매수 수요를 나타내며, 시장에 긍정적인 신호로 작용합니다.",
+                "en": "Indicates strong buying demand from institutional investors, acting as a positive signal for the market."
+              }
+            },
+            {
+              "term": {
+                "ko": "순유출 / 보유량 감소",
+                "en": "Net Outflows / Decreasing Holdings"
+              },
+              "explanation": {
+                "ko": "기관 투자자들의 관심이 감소하거나 차익 실현이 발생하고 있음을 나타내며, 시장에 부정적인 신호로 작용할 수 있습니다.",
+                "en": "Suggests waning interest or profit-taking from institutional investors, which can act as a negative signal for the market."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "permissions": ["user", "admin"]
+  }'::jsonb;
 
 -- Verify the updates
 SELECT id, name, path, parent_id, menu_metadata 

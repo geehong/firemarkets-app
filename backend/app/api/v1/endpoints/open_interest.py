@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-@router.get("/open-interest/analysis", response_model=OpenInterestAnalysisResponse)
+@router.get("/analysis", response_model=OpenInterestAnalysisResponse)
 async def get_open_interest_analysis(
     start_date: Optional[date] = Query(None, description="시작 날짜 (YYYY-MM-DD)"),
     end_date: Optional[date] = Query(None, description="종료 날짜 (YYYY-MM-DD)"),
@@ -80,7 +80,7 @@ async def get_open_interest_analysis(
         logger.error(f"Error in get_open_interest_analysis: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-@router.get("/open-interest/exchanges", response_model=ExchangeAnalysisResponse)
+@router.get("/exchanges", response_model=ExchangeAnalysisResponse)
 async def get_exchange_analysis(
     exchange: Optional[str] = Query(None, description="특정 거래소"),
     period: str = Query("1m", regex="^(1w|1m|3m|6m|1y|all)$", description="분석 기간"),
@@ -162,7 +162,7 @@ async def get_exchange_analysis(
         logger.error(f"Error in get_exchange_analysis: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-@router.get("/open-interest/leverage", response_model=LeverageAnalysisResponse)
+@router.get("/leverage", response_model=LeverageAnalysisResponse)
 async def get_leverage_analysis(
     period: str = Query("1m", regex="^(1w|1m|3m|6m|1y|all)$", description="분석 기간"),
     include_market_cap: bool = Query(True, description="시가총액 포함 여부"),
@@ -253,7 +253,7 @@ async def get_leverage_analysis(
         logger.error(f"Error in get_leverage_analysis: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-@router.get("/open-interest/stats", response_model=OpenInterestStatsResponse)
+@router.get("/stats", response_model=OpenInterestStatsResponse)
 async def get_open_interest_stats(
     period: str = Query("1m", regex="^(1w|1m|3m|6m|1y|all)$", description="분석 기간"),
     db: Session = Depends(get_postgres_db)
@@ -337,7 +337,7 @@ async def get_open_interest_stats(
         logger.error(f"Error in get_open_interest_stats: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-@router.get("/open-interest/latest", response_model=OpenInterestAnalysisResponse)
+@router.get("/latest", response_model=OpenInterestAnalysisResponse)
 async def get_latest_open_interest(
     days: int = Query(7, ge=1, le=30, description="최근 N일 데이터"),
     db: Session = Depends(get_postgres_db)

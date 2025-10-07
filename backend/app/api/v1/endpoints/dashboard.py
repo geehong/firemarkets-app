@@ -48,7 +48,7 @@ class PaginatedAssetResponse(BaseModel):
 router = APIRouter()
 
 # --- API 엔드포인트 정의 ---
-@router.get("/dashboard/summary", response_model=MarketSummaryResponse)
+@router.get("/summary", response_model=MarketSummaryResponse)
 def get_dashboard_summary(db: Session = Depends(get_postgres_db)):
     """대시보드 시장 요약 데이터를 반환합니다."""
     return MarketSummaryResponse(
@@ -58,7 +58,7 @@ def get_dashboard_summary(db: Session = Depends(get_postgres_db)):
         top_losers_count=3
     )
 
-@router.get("/dashboard/top-assets", response_model=PaginatedAssetResponse)
+@router.get("/top-assets", response_model=PaginatedAssetResponse)
 def get_dashboard_top_assets(
     limit: int = Query(5, ge=1, description="표시할 상위 자산 개수"),
     db: Session = Depends(get_postgres_db)

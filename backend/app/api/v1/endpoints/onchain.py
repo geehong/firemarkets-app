@@ -252,7 +252,7 @@ def get_bitcoin_asset(db: Session, ticker: Optional[str] = None) -> Optional[Ass
     # 백업으로 BTC를 조회
     return db.query(Asset).filter(Asset.ticker == 'BTC').first()
 
-@router.get("/onchain/metrics", response_model=List[OnchainMetricInfo])
+@router.get("/metrics", response_model=List[OnchainMetricInfo])
 async def get_onchain_metrics(ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"), db: Session = Depends(get_postgres_db)):
     """모든 온체인 메트릭 정보를 조회합니다."""
     try:
@@ -290,7 +290,7 @@ async def get_onchain_metrics(ticker: Optional[str] = Query(None, description="B
         logger.error(f"Error getting onchain metrics: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get onchain metrics: {str(e)}")
 
-@router.get("/onchain/metrics/{metric_id}/data-range", response_model=MetricDataRange)
+@router.get("/metrics/{metric_id}/data-range", response_model=MetricDataRange)
 async def get_metric_data_range_endpoint(metric_id: str, ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"), db: Session = Depends(get_postgres_db)):
     """특정 메트릭의 데이터 범위를 조회합니다."""
     metric_def = get_metric_definition(metric_id, db)
@@ -303,7 +303,7 @@ async def get_metric_data_range_endpoint(metric_id: str, ticker: Optional[str] =
         data_count=data_range.count if data_range else 0
     )
 
-@router.get("/onchain/metrics/categories", response_model=OnchainMetricCategoryResponse)
+@router.get("/metrics/categories", response_model=OnchainMetricCategoryResponse)
 async def get_metric_categories(db: Session = Depends(get_postgres_db)):
     """온체인 메트릭 카테고리 목록을 조회합니다."""
     categories = db.query(OnchainMetricsInfo.category).distinct().all()
@@ -311,7 +311,7 @@ async def get_metric_categories(db: Session = Depends(get_postgres_db)):
 
 # --- 데이터 조회 API들 ---
 
-@router.get("/onchain/metrics/{metric_id}/data", response_model=MetricDataResponse)
+@router.get("/metrics/{metric_id}/data", response_model=MetricDataResponse)
 async def get_metric_data(
     metric_id: str,
     ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"),
@@ -381,7 +381,7 @@ async def get_metric_data(
         metadata=metadata
     )
 
-@router.get("/onchain/metrics/{metric_id}/latest", response_model=MetricDataResponse)
+@router.get("/metrics/{metric_id}/latest", response_model=MetricDataResponse)
 async def get_latest_metric_data(
     metric_id: str,
     ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"),
@@ -394,7 +394,7 @@ async def get_latest_metric_data(
     
     return await get_metric_data(metric_id, ticker, start_date, end_date, 1000, "json", db)
 
-@router.get("/onchain/metrics/{metric_id}/stats", response_model=MetricStatsResponse)
+@router.get("/metrics/{metric_id}/stats", response_model=MetricStatsResponse)
 async def get_metric_stats(
     metric_id: str,
     ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"),
@@ -431,7 +431,7 @@ async def get_metric_stats(
         period=period
     )
 
-@router.get("/onchain/metrics/dashboard", response_model=DashboardSummary)
+@router.get("/metrics/dashboard", response_model=DashboardSummary)
 async def get_dashboard_summary(
     include: str = Query("latest,stats,trends", description="포함할 정보"),
     ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"),
@@ -469,7 +469,7 @@ async def get_dashboard_summary(
 
 # --- 메트릭 제어 API들 ---
 
-@router.post("/onchain/metrics/{metric_id}/run", response_model=OnchainMetricRunResponse)
+@router.post("/metrics/{metric_id}/run", response_model=OnchainMetricRunResponse)
 async def run_metric(
     metric_id: str,
     request: MetricRunRequest,
@@ -499,7 +499,7 @@ async def run_metric(
         logger.error(f"Failed to run metric {metric_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to run metric: {str(e)}")
 
-@router.post("/onchain/metrics/run-all", response_model=OnchainMetricRunResponse)
+@router.post("/metrics/run-all", response_model=OnchainMetricRunResponse)
 async def run_all_metrics(
     collection_type: str = Query("recent", description="Collection type: recent or all"),
     force_update: bool = Query(False, description="Force update existing data"),
@@ -557,7 +557,7 @@ async def run_all_metrics(
         logger.error(f"Failed to run all metrics: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to run all metrics: {str(e)}")
 
-@router.get("/onchain/metrics/{metric_id}/status", response_model=OnchainMetricStatusResponse)
+@router.get("/metrics/{metric_id}/status", response_model=OnchainMetricStatusResponse)
 async def get_metric_status(
     metric_id: str,
     ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"),

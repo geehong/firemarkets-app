@@ -1,31 +1,29 @@
-import { useState, useEffect, useCallback } from 'react'
-import axios from 'axios'
+import { useState, useEffect } from 'react';
+import axios from 'axios';
 
 /**
- * useCollectors
- * 지원 파라미터는 `useAPI.specs.collectors.data.params` 참고
+ * Collectors 데이터를 가져오는 훅
  */
+export const useCollectors = (params = {}) => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-const API = '/api/v1'
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const response = await axios.get('/api/v1/collectors', { params });
+        setData(response.data);
+      } catch (err) {
+        setError(err);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-export const useCollectors = () => {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+    fetchData();
+  }, [JSON.stringify(params)]);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await axios.get(`${API}/collectors`)
-      setData(res.data)
-    } catch (e) {
-      setError(e)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { fetchData() }, [fetchData])
-  return { data, loading, error, refetch: fetchData }
-}
+  return { data, loading, error };
+};

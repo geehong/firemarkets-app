@@ -187,7 +187,7 @@ def get_all_assets_pg(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get assets (pg): {str(e)}")
 
-@router.get("/assets/market-caps", response_model=MarketCapsResponse)
+@router.get("/market-caps", response_model=MarketCapsResponse)
 def get_assets_market_caps(
     type_name: Optional[str] = Query(None, description="필터링할 자산 유형 이름"),
     has_ohlcv_data: bool = Query(True, description="OHLCV 데이터가 있는 자산만 필터링합니다."),
@@ -550,7 +550,7 @@ def get_assets_market_caps(
         logger.error(f"Error fetching market caps: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get market caps: {str(e)}")
 
-@router.get("/assets/{asset_identifier}", response_model=AssetDetailResponse)
+@router.get("/{asset_identifier}", response_model=AssetDetailResponse)
 def get_asset_detail(
     asset_identifier: str = Path(..., description="Asset ID (integer) or Ticker (string)"),
     db: Session = Depends(get_postgres_db)

@@ -44,7 +44,7 @@ router = APIRouter()
 
 
 
-@router.get("/configurations/grouped/{config_key}", response_model=GroupedConfigurationResponse)
+@router.get("/grouped/{config_key}", response_model=GroupedConfigurationResponse)
 def get_grouped_configuration(
     config_key: str,
     db: Session = Depends(get_postgres_db)
@@ -104,7 +104,7 @@ def get_grouped_configuration(
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON configuration")
 
-@router.put("/configurations/grouped/{config_key}", response_model=GroupedConfigurationResponse)
+@router.put("/grouped/{config_key}", response_model=GroupedConfigurationResponse)
 def update_grouped_configuration(
     config_key: str,
     update_data: GroupedConfigurationUpdate,
@@ -161,7 +161,7 @@ def update_grouped_configuration(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update configuration: {str(e)}")
 
-@router.get("/configurations/grouped", response_model=List[GroupedConfigurationResponse])
+@router.get("/grouped", response_model=List[GroupedConfigurationResponse])
 def get_all_grouped_configurations(db: Session = Depends(get_postgres_db)):
     """모든 그룹화된 JSON 설정을 조회합니다."""
     import json

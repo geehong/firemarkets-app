@@ -2,10 +2,14 @@ import React, { useState, useRef, useEffect } from 'react';
 import Highcharts from 'highcharts/highstock';
 import HighchartsReact from 'highcharts-react-official';
 import { CCard, CCardBody, CCardHeader } from '@coreui/react';
-import { useFourthHalvingStartPrice, useHalvingDataClosePrice } from '../../../hooks/useIntegratedMetrics';
+import CardTools from '../../common/CardTools';
+import '../../common/CardTools.css';
+import { useAPI } from '../../../hooks/useAPI';
+import ChartControls from '../../common/ChartControls';
 import { getColorMode } from '../../../constants/colorModes';
 
 // Load Highcharts modules in correct order
+import 'highcharts/modules/stock';
 import 'highcharts/modules/exporting';
 import 'highcharts/modules/accessibility';
 import 'highcharts/modules/drag-panes';
@@ -43,14 +47,64 @@ const HalvingChart = ({
   const [showSettings, setShowSettings] = useState(false); // 설정 패널 표시 상태
   const chartRef = useRef(null);
 
-  // 4차 반감기 시작가격 가져오기
-  const { data: defaultStartPrice = 0, isLoading: isLoadingStartPrice } = useFourthHalvingStartPrice();
+  // 4차 반감기 시작가격 기본값 (필요 시 입력값 사용)
+  const isLoadingStartPrice = false;
+  const defaultStartPrice = 0;
 
-  // 반감기 데이터 가져오기 (close_price만 사용)
+  // 반감기 데이터 - 전용 API 사용으로 과도한/잘못된 쿼리 방지
   const periodsToLoad = singlePeriod ? [singlePeriod] : [1, 2, 3, 4];
-  const halvingQueries = periodsToLoad.map(period => 
-    useHalvingDataClosePrice(period, startPrice, { enabled: startPrice > 0 })
-  );
+  const [halvingDataMap, setHalvingDataMap] = useState({});
+  const lastFetchKeyRef = useRef(0);
+
+  useEffect(() => {
+    if (!startPrice || startPrice <= 0) return; // 시작가격 없으면 대기
+
+    const fetchKey = ++lastFetchKeyRef.current;
+    const controller = new AbortController();
+    const run = async () => {
+      try {
+        // 초기 로딩 상태 세팅
+        setHalvingDataMap(prev => {
+          const draft = { ...prev };
+          periodsToLoad.forEach(p => { draft[p] = { isLoading: true, error: null, data: null }; });
+          return draft;
+        });
+
+        // 순차 로드(폭주 방지). 필요 시 2개씩 배치도 가능
+        for (const period of periodsToLoad) {
+          const qs = new URLSearchParams();
+          qs.set('include_ohlcv', 'false');
+          qs.set('normalize_to_price', String(startPrice));
+          const url = `/api/v1/crypto/bitcoin/halving-data/${period}?${qs.toString()}`;
+          const res = await fetch(url, { signal: controller.signal });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const json = await res.json();
+          if (lastFetchKeyRef.current !== fetchKey) return; // 최신 요청만 반영
+          const data = {
+            close_price_data: Array.isArray(json?.close_price_data) ? json.close_price_data : [],
+            metadata: json?.metadata || {}
+          };
+          setHalvingDataMap(prev => ({ ...prev, [period]: { isLoading: false, error: null, data } }));
+        }
+      } catch (e) {
+        if (controller.signal.aborted) return;
+        setHalvingDataMap(prev => {
+          const draft = { ...prev };
+          periodsToLoad.forEach(p => { draft[p] = { isLoading: false, error: e, data: null }; });
+          return draft;
+        });
+      }
+    };
+    run();
+    return () => controller.abort();
+  }, [startPrice, singlePeriod]);
+
+  // 기존 렌더링과 호환되는 쿼리 배열 뷰
+  const halvingQueries = periodsToLoad.map(period => ({
+    isLoading: !!halvingDataMap[period]?.isLoading,
+    error: halvingDataMap[period]?.error,
+    data: halvingDataMap[period]?.data,
+  }));
   
   // 디버깅을 위한 로그
   // console.log('Halving queries:', halvingQueries);
@@ -673,10 +727,50 @@ const HalvingChart = ({
     <CCard className="mb-4">
       <CCardHeader className="d-flex justify-content-between align-items-center">
         <h5 className="mb-0">{title}</h5>
+        <CardTools />
       </CCardHeader>
       <CCardBody>
         {/* Chart Controls */}
-        {/* ChartControls 제거됨: 종속성 미존재로 임시 비활성화 */}
+        <div className="row justify-content-center mb-3">
+          <div className="col-md-8">
+            <ChartControls
+              chartType={lineSplineMode}
+              onChartTypeChange={handleLineSplineToggle}
+              isAreaMode={isAreaMode}
+              onAreaModeToggle={handleAreaModeToggle}
+              showFlags={showFlags}
+              onFlagsToggle={() => setShowFlags(!showFlags)}
+              useLogScale={useLogScale}
+              onLogScaleToggle={handleLogScaleToggle}
+              colorMode={colorMode}
+              onColorModeChange={setColorMode}
+              showFlagsButton={false} // Halving 차트에서는 플래그 버튼 숨김
+              isHalvingChart={true}
+              halvingStates={{
+                showHalving1,
+                showHalving2,
+                showHalving3,
+                showHalving4
+              }}
+              onHalvingToggle={(id) => {
+                const setters = {
+                  1: setShowHalving1,
+                  2: setShowHalving2,
+                  3: setShowHalving3,
+                  4: setShowHalving4
+                };
+                const states = {
+                  1: showHalving1,
+                  2: showHalving2,
+                  3: showHalving3,
+                  4: showHalving4
+                };
+                setters[id](!states[id]);
+              }}
+              halvingColors={getHalvingColors()}
+            />
+          </div>
+        </div>
 
         {/* 차트 */}
         <div style={{ height: `${height}px` }}>
@@ -862,4 +956,4 @@ const HalvingChart = ({
   );
 };
 
-export default HalvingChart; 
+export default HalvingChart;

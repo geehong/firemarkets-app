@@ -145,7 +145,18 @@ class SchedulerService:
                     trigger = CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute, timezone=self.scheduler.timezone)
 
                     for name in collectors:
-                        job_id = f"{name}_cron_job"
+                        # Ensure each scheduled time gets a unique job id so multiple times don't overwrite
+                        # the same logical job (replace_existing=True would otherwise replace prior times).
+                        # Example id: world_assets_clients_2200_cron_job
+                        try:
+                            hour_str = f"{int(hour):02d}" if hour is not None else "xx"
+                            minute_str = f"{int(minute):02d}" if minute is not None else "yy"
+                        except Exception:
+                            # If hour/minute are wildcards (e.g., "*"), keep them as-is but sanitized
+                            hour_str = str(hour).replace(":", "_").replace(" ", "_") if hour is not None else "xx"
+                            minute_str = str(minute).replace(":", "_").replace(" ", "_") if minute is not None else "yy"
+
+                        job_id = f"{name}_{hour_str}{minute_str}_cron_job"
                         # Map collector name group to actual collector classes present in JOB_MAPPING
                         # We schedule via wrapper to call each enabled collector in that logical group
                         def _make_group_runner(group_name: str):

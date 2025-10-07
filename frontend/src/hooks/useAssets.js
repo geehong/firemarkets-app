@@ -23,7 +23,7 @@ export const useAssets = (page = 1, limit = 20, filters = {}) => {
         has_ohlcv_data: filters.has_ohlcv_data || false,
         limit: limit
       }
-      const res = await axios.get(`${API}/assets`, { params })
+      const res = await axios.get(`${API}/assets/assets`, { params })
       setData(res.data)
     } catch (e) {
       setError(e)

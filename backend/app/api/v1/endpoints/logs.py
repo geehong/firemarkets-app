@@ -52,7 +52,7 @@ class LogSummary(BaseModel):
     avg_response_time: Optional[float]
     recent_errors: List[Dict[str, Any]]
 
-@router.get("/logs/scheduler", response_model=List[SchedulerLogResponse])
+@router.get("/scheduler", response_model=List[SchedulerLogResponse])
 def get_scheduler_logs(
     limit: int = Query(20, ge=1, le=100, description="Number of logs to return"),
     status: Optional[str] = Query(None, description="Filter by status"),
@@ -77,7 +77,7 @@ def get_scheduler_logs(
         logger.error(f"Failed to get scheduler logs: {e}")
         raise HTTPException(status_code=500, detail="Failed to get scheduler logs")
 
-@router.get("/logs/api", response_model=List[ApiCallLogResponse])
+@router.get("/api", response_model=List[ApiCallLogResponse])
 def get_api_logs(
     limit: int = Query(20, ge=1, le=100, description="Number of logs to return"),
     endpoint: Optional[str] = Query(None, description="Filter by endpoint"),
@@ -105,7 +105,7 @@ def get_api_logs(
         logger.error(f"Failed to get API logs: {e}")
         raise HTTPException(status_code=500, detail="Failed to get API logs")
 
-@router.get("/logs/scheduler/summary", response_model=LogSummary)
+@router.get("/scheduler/summary", response_model=LogSummary)
 def get_scheduler_logs_summary(
     days: int = Query(7, ge=1, le=30, description="Number of days to analyze"),
     db: Session = Depends(get_postgres_db)
@@ -151,7 +151,7 @@ def get_scheduler_logs_summary(
         logger.error(f"Failed to get scheduler logs summary: {e}")
         raise HTTPException(status_code=500, detail="Failed to get scheduler logs summary")
 
-@router.get("/logs/api/summary", response_model=LogSummary)
+@router.get("/api/summary", response_model=LogSummary)
 def get_api_logs_summary(
     days: int = Query(7, ge=1, le=30, description="Number of days to analyze"),
     db: Session = Depends(get_postgres_db)
@@ -200,7 +200,7 @@ def get_api_logs_summary(
         logger.error(f"Failed to get API logs summary: {e}")
         raise HTTPException(status_code=500, detail="Failed to get API logs summary")
 
-@router.delete("/logs/scheduler", response_model=LogDeleteResponse)
+@router.delete("/scheduler", response_model=LogDeleteResponse)
 def clear_scheduler_logs(
     days: int = Query(30, ge=1, description="Delete logs older than N days"),
     db: Session = Depends(get_postgres_db)
@@ -222,7 +222,7 @@ def clear_scheduler_logs(
         logger.error(f"Failed to clear scheduler logs: {e}")
         raise HTTPException(status_code=500, detail="Failed to clear scheduler logs")
 
-@router.delete("/logs/api", response_model=LogDeleteResponse)
+@router.delete("/api", response_model=LogDeleteResponse)
 def clear_api_logs(
     days: int = Query(30, ge=1, description="Delete logs older than N days"),
     db: Session = Depends(get_postgres_db)

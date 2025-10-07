@@ -1,27 +1,29 @@
-import { useState, useEffect, useCallback } from 'react'
-import axios from 'axios'
+import { useState, useEffect } from 'react';
+import axios from 'axios';
 
-const API = '/api/v1'
+/**
+ * 로그 데이터를 가져오는 훅
+ */
+export const useLogs = (params = {}) => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-export const useLogs = (page = 1, limit = 50, filters = {}) => {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const response = await axios.get('/api/v1/logs', { params });
+        setData(response.data);
+      } catch (err) {
+        setError(err);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const params = { page, limit, ...filters }
-      const res = await axios.get(`${API}/logs`, { params })
-      setData(res.data)
-    } catch (e) {
-      setError(e)
-    } finally {
-      setLoading(false)
-    }
-  }, [page, limit, filters])
+    fetchData();
+  }, [JSON.stringify(params)]);
 
-  useEffect(() => { fetchData() }, [fetchData])
-  return { data, loading, error, refetch: fetchData }
-}
+  return { data, loading, error };
+};

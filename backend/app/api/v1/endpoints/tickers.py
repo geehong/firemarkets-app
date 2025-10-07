@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 from ....models import Asset
 
-router = APIRouter(prefix="/tickers", tags=["tickers"])
+router = APIRouter(tags=["tickers"])
 
 # 수집 작업 상태를 저장할 전역 딕셔너리
 collection_tasks = {}

@@ -67,13 +67,7 @@ import { useCollectors } from './useCollectors'
 // Admin 관련 훅들
 import { useAdmin } from './useAdmin'
 import { useLogs } from './useLogs'
-import { useMetrics } from './useMetrics'
 
-// Open Interest 관련 훅들
-import { useOpenInterest } from './useOpenInterest'
-
-// Configurations 관련 훅들
-import { useConfigurations } from './useConfigurations'
 import { paramSpecs } from './paramSpecs'
 
 /**
@@ -134,18 +128,7 @@ export const useAPI = {
   // 관리자 관련 훅들
   admin: {
     panel: useAdmin,
-    logs: useLogs,
-    metrics: useMetrics
-  },
-
-  // 오픈 인터레스트 관련 훅들
-  openInterest: {
-    data: useOpenInterest
-  },
-
-  // 설정 관련 훅들
-  configurations: {
-    settings: useConfigurations
+    logs: useLogs
   },
 
   // 자산 개요 관련 훅들
@@ -187,8 +170,5 @@ export {
   useScheduler,
   useCollectors,
   useAdmin,
-  useLogs,
-  useMetrics,
-  useOpenInterest,
-  useConfigurations
+  useLogs
 }

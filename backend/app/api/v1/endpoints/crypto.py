@@ -19,7 +19,7 @@ from ....schemas.common import ReloadResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/crypto")
+router = APIRouter()
 
 # Pydantic models
 class OHLCVPoint(BaseModel):
