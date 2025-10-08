@@ -26,21 +26,25 @@ const AssetOverview = () => {
   }, [])
 
   // useAPI를 통한 데이터 fetching (assetId는 ticker로 사용)
-  // 개별 자산 상세 정보는 임시로 기본값 사용 (실제 API가 구현되면 교체)
-  const asset = { 
+  // 자산 목록에서 해당 자산 정보를 찾아서 타입 확인
+  const { data: assetsList } = useAPI.assets.list()
+  const asset = assetsList?.data?.find(a => a.ticker === assetId) || { 
     ticker: assetId, 
     name: assetId, 
-    type_name: 'stock' 
+    type_name: 'Stocks' // 기본값을 Stocks로 설정
   }
-  const assetLoading = false
-  const assetError = null
   
   const { data: ohlcvData, loading: ohlcvLoading, error: ohlcvError } = useAPI.assets.ohlcv(assetId, '1d', null, null, 1000)
-  const { data: cryptoData, loading: cryptoLoading, error: cryptoError } = useAPI.assetsoverviews.crypto(assetId)
+  
+  // 자산 타입에 따라 적절한 API 호출
+  const shouldFetchCrypto = asset?.type_name === 'Crypto'
+  const { data: cryptoData, loading: cryptoLoading, error: cryptoError } = useAPI.assetsoverviews.crypto(
+    shouldFetchCrypto ? assetId : null
+  )
 
   // 로딩 상태
-  const isLoading = ohlcvLoading || cryptoLoading
-  const hasError = ohlcvError || cryptoError
+  const isLoading = ohlcvLoading || (shouldFetchCrypto && cryptoLoading)
+  const hasError = ohlcvError || (shouldFetchCrypto && cryptoError)
 
   // 에러 처리
   if (hasError) {

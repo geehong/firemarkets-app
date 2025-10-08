@@ -142,87 +142,93 @@ class SchedulerService:
                     hour = schedule.get("hour")
                     minute = schedule.get("minute")
 
-                    trigger = CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute, timezone=self.scheduler.timezone)
+                    # Handle array of hours and minutes - create separate jobs for each combination
+                    hours_to_schedule = hour if isinstance(hour, list) else [hour]
+                    minutes_to_schedule = minute if isinstance(minute, list) else [minute]
+                    
+                    for current_hour in hours_to_schedule:
+                        for current_minute in minutes_to_schedule:
+                            trigger = CronTrigger(day_of_week=day_of_week, hour=current_hour, minute=current_minute, timezone=self.scheduler.timezone)
 
-                    for name in collectors:
-                        # Ensure each scheduled time gets a unique job id so multiple times don't overwrite
-                        # the same logical job (replace_existing=True would otherwise replace prior times).
-                        # Example id: world_assets_clients_2200_cron_job
-                        try:
-                            hour_str = f"{int(hour):02d}" if hour is not None else "xx"
-                            minute_str = f"{int(minute):02d}" if minute is not None else "yy"
-                        except Exception:
-                            # If hour/minute are wildcards (e.g., "*"), keep them as-is but sanitized
-                            hour_str = str(hour).replace(":", "_").replace(" ", "_") if hour is not None else "xx"
-                            minute_str = str(minute).replace(":", "_").replace(" ", "_") if minute is not None else "yy"
-
-                        job_id = f"{name}_{hour_str}{minute_str}_cron_job"
-                        # Map collector name group to actual collector classes present in JOB_MAPPING
-                        # We schedule via wrapper to call each enabled collector in that logical group
-                        def _make_group_runner(group_name: str):
-                            def _run_group():
-                                loop = asyncio.new_event_loop()
-                                asyncio.set_event_loop(loop)
-                                db: Session = SessionLocal()
+                            for name in collectors:
+                                # Ensure each scheduled time gets a unique job id so multiple times don't overwrite
+                                # the same logical job (replace_existing=True would otherwise replace prior times).
+                                # Example id: world_assets_clients_2200_cron_job
                                 try:
-                                    # ApiStrategyManager must be per-event-loop to avoid cross-loop issues
-                                    api_manager = ApiStrategyManager(config_manager=self.config_manager)
-                                    tasks = []
-                                    # Determine which collectors to run from group name
-                                    mapping = {
-                                        "ohlcv_day_clients": ["OHLCV"],
-                                        "ohlcv_intraday_clients": ["OHLCV"],
-                                        "crypto_ohlcv_clients": ["OHLCV"],
-                                        "commodity_ohlcv_clients": ["OHLCV"],
-                                        "stock_profiles_clients": ["StockProfile"],
-                                        "crypto_clients": ["CryptoInfo"],
-                                        "onchain_clients": ["Onchain"],
-                                        "stock_financials_clients": [],
-                                        "stock_analyst_estimates_clients": [],
-                                        "etf_clients": ["ETFInfo"],
-                                        "world_assets_clients": ["WorldAssets"],
-                                    }
-                                    job_names = mapping.get(group_name, [])
-                                    for job_name in job_names:
-                                        meta = self.JOB_MAPPING.get(job_name)
-                                        if not meta:
-                                            continue
-                                        is_enabled_method = getattr(self.config_manager, meta["config_key"])
-                                        if not is_enabled_method():
-                                            continue
-                                        collector_class = meta["class"]
-                                        collector_instance = collector_class(
-                                            db=db,
-                                            config_manager=self.config_manager,
-                                            api_manager=api_manager,
-                                            redis_queue_manager=self.redis_queue_manager,
-                                        )
-                                        tasks.append(collector_instance.collect_with_settings())
-                                    if tasks:
-                                        loop.run_until_complete(asyncio.gather(*tasks))
-                                except Exception as e:
-                                    self.logger.error(f"Group runner error for {group_name}: {e}", exc_info=True)
-                                    # Ensure transaction is rolled back on error
-                                    try:
-                                        db.rollback()
-                                    except Exception as rollback_error:
-                                        self.logger.error(f"Failed to rollback transaction: {rollback_error}")
-                                finally:
-                                    try:
-                                        db.close()
-                                    except Exception as close_error:
-                                        self.logger.error(f"Failed to close database session: {close_error}")
-                                    loop.close()
-                            return _run_group
+                                    hour_str = f"{int(current_hour):02d}" if current_hour is not None else "xx"
+                                    minute_str = f"{int(current_minute):02d}" if current_minute is not None else "yy"
+                                except Exception:
+                                    # If hour/minute are wildcards (e.g., "*"), keep them as-is but sanitized
+                                    hour_str = str(current_hour).replace(":", "_").replace(" ", "_") if current_hour is not None else "xx"
+                                    minute_str = str(current_minute).replace(":", "_").replace(" ", "_") if current_minute is not None else "yy"
 
-                        self.scheduler.add_job(
-                            _make_group_runner(name),
-                            trigger,
-                            id=job_id,
-                            replace_existing=True,
-                            misfire_grace_time=3600,
-                        )
-                        self.logger.info(f"✅ Scheduled cron job: '{job_id}' ({day_of_week} {hour:02d}:{minute:02d} {self.scheduler.timezone})")
+                                job_id = f"{name}_{hour_str}{minute_str}_cron_job"
+                                # Map collector name group to actual collector classes present in JOB_MAPPING
+                                # We schedule via wrapper to call each enabled collector in that logical group
+                                def _make_group_runner(group_name: str):
+                                    def _run_group():
+                                        loop = asyncio.new_event_loop()
+                                        asyncio.set_event_loop(loop)
+                                        db: Session = SessionLocal()
+                                        try:
+                                            # ApiStrategyManager must be per-event-loop to avoid cross-loop issues
+                                            api_manager = ApiStrategyManager(config_manager=self.config_manager)
+                                            tasks = []
+                                            # Determine which collectors to run from group name
+                                            mapping = {
+                                                "ohlcv_day_clients": ["OHLCV"],
+                                                "ohlcv_intraday_clients": ["OHLCV"],
+                                                "crypto_ohlcv_clients": ["OHLCV"],
+                                                "commodity_ohlcv_clients": ["OHLCV"],
+                                                "stock_profiles_clients": ["StockProfile"],
+                                                "crypto_clients": ["CryptoInfo"],
+                                                "onchain_clients": ["Onchain"],
+                                                "stock_financials_clients": [],
+                                                "stock_analyst_estimates_clients": [],
+                                                "etf_clients": ["ETFInfo"],
+                                                "world_assets_clients": ["WorldAssets"],
+                                            }
+                                            job_names = mapping.get(group_name, [])
+                                            for job_name in job_names:
+                                                meta = self.JOB_MAPPING.get(job_name)
+                                                if not meta:
+                                                    continue
+                                                is_enabled_method = getattr(self.config_manager, meta["config_key"])
+                                                if not is_enabled_method():
+                                                    continue
+                                                collector_class = meta["class"]
+                                                collector_instance = collector_class(
+                                                    db=db,
+                                                    config_manager=self.config_manager,
+                                                    api_manager=api_manager,
+                                                    redis_queue_manager=self.redis_queue_manager,
+                                                )
+                                                tasks.append(collector_instance.collect_with_settings())
+                                            if tasks:
+                                                loop.run_until_complete(asyncio.gather(*tasks))
+                                        except Exception as e:
+                                            self.logger.error(f"Group runner error for {group_name}: {e}", exc_info=True)
+                                            # Ensure transaction is rolled back on error
+                                            try:
+                                                db.rollback()
+                                            except Exception as rollback_error:
+                                                self.logger.error(f"Failed to rollback transaction: {rollback_error}")
+                                        finally:
+                                            try:
+                                                db.close()
+                                            except Exception as close_error:
+                                                self.logger.error(f"Failed to close database session: {close_error}")
+                                            loop.close()
+                                    return _run_group
+
+                                self.scheduler.add_job(
+                                    _make_group_runner(name),
+                                    trigger,
+                                    id=job_id,
+                                    replace_existing=True,
+                                    misfire_grace_time=3600,
+                                )
+                                self.logger.info(f"✅ Scheduled cron job: '{job_id}' ({day_of_week} {current_hour:02d}:{current_minute:02d} {self.scheduler.timezone})")
 
                 # Always add heartbeat
                 self.scheduler.add_job(self._update_heartbeat, 'interval', minutes=1, id='scheduler_heartbeat', replace_existing=True)

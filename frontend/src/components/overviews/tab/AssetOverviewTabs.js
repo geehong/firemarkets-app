@@ -5,6 +5,9 @@ import ProfileTab from './ProfileTab'
 import MarketDataTab from './MarketDataTab'
 import FinancialsTab from './FinancialsTab'
 import EstimatesTab from './EstimatesTab'
+import CommodityInfoTab from './CommodityInfoTab'
+import CryptoInfoTab from './CryptoInfoTab'
+import ETFInfoTab from './ETFInfoTab'
 import HistoryTableAgGrid from '../../tables/HistoryTable'
 
 /**
@@ -28,23 +31,26 @@ const AssetOverviewTabs = ({ assetId, asset, ohlcvData, cryptoData }) => {
       
       case 'ETFs':
         return [
-          { key: 1, label: 'Profile', component: 'ProfileTab' },
-          { key: 2, label: 'Market Data', component: 'MarketDataTab' },
-          { key: 3, label: 'History Data', component: 'HistoryTableAgGrid' },
+          { key: 1, label: 'ETF Info', component: 'ETFInfoTab' },
+          { key: 2, label: 'Profile', component: 'ProfileTab' },
+          { key: 3, label: 'Market Data', component: 'MarketDataTab' },
+          { key: 4, label: 'History Data', component: 'HistoryTableAgGrid' },
         ]
       
       case 'Crypto':
         return [
-          { key: 1, label: 'Profile', component: 'ProfileTab' },
-          { key: 2, label: 'Market Data', component: 'MarketDataTab' },
-          { key: 3, label: 'History Data', component: 'HistoryTableAgGrid' },
+          { key: 1, label: 'Crypto Info', component: 'CryptoInfoTab' },
+          { key: 2, label: 'Profile', component: 'ProfileTab' },
+          { key: 3, label: 'Market Data', component: 'MarketDataTab' },
+          { key: 4, label: 'History Data', component: 'HistoryTableAgGrid' },
         ]
       
       case 'Commodities':
         return [
-          { key: 1, label: 'Profile', component: 'ProfileTab' },
-          { key: 2, label: 'Market Data', component: 'MarketDataTab' },
-          { key: 3, label: 'History Data', component: 'HistoryTableAgGrid' },
+          { key: 1, label: 'Commodity Info', component: 'CommodityInfoTab' },
+          { key: 2, label: 'Profile', component: 'ProfileTab' },
+          { key: 3, label: 'Market Data', component: 'MarketDataTab' },
+          { key: 4, label: 'History Data', component: 'HistoryTableAgGrid' },
         ]
       
       default:
@@ -74,6 +80,15 @@ const AssetOverviewTabs = ({ assetId, asset, ohlcvData, cryptoData }) => {
       
       case 'EstimatesTab':
         return <EstimatesTab {...commonProps} />
+      
+      case 'CommodityInfoTab':
+        return <CommodityInfoTab commodityData={cryptoData} />
+      
+      case 'CryptoInfoTab':
+        return <CryptoInfoTab cryptoData={cryptoData} asset={asset} />
+      
+      case 'ETFInfoTab':
+        return <ETFInfoTab etfData={cryptoData} />
       
       case 'MarketDataTab':
         return (

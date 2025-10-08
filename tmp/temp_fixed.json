@@ -1,0 +1,76 @@
+{
+    "timezone": "Asia/Seoul",
+    "schedules": [
+        {
+            "hour": 6,
+            "minute": 0,
+            "collectors": [
+                "ohlcv_day_clients",
+                "ohlcv_intraday_clients",
+                "crypto_ohlcv_clients",
+                "onchain_clients",
+                "commodity_ohlcv_clients"
+            ],
+            "day_of_week": "tue,wed,thu,fri,sat"
+        },
+        {
+            "hour": [20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 9],
+            "minute": 20,
+            "collectors": [
+                "world_assets_clients"
+            ],
+            "day_of_week": "mon,tue,wed,thu,fri,sat,sun"
+        },
+        {
+            "hour": 10,
+            "minute": 1,
+            "collectors": [
+                "stock_financials_clients",
+                "stock_analyst_estimates_clients"
+            ],
+            "day_of_week": "sun"
+        },
+        {
+            "hour": 6,
+            "minute": 0,
+            "collectors": [
+                "crypto_clients",
+                "etf_clients"
+            ],
+            "day_of_week": "mon"
+        },
+        {
+            "hour": 8,
+            "minute": 0,
+            "collectors": [
+                "stock_profiles_clients"
+            ],
+            "day_of_week": "tue,wed,thu,fri,sat"
+        },
+        {
+            "hour": 8,
+            "minute": 0,
+            "collectors": [
+                "stock_profiles_fmp_clients"
+            ],
+            "day_of_week": "sat,sun"
+        },
+        {
+            "hour": 13,
+            "minute": 38,
+            "collectors": [
+                "stock_profiles_clients"
+            ],
+            "day_of_week": "tue"
+        }
+    ],
+    "client_overrides": {
+        "stock_profiles_clients": [
+            "FinnhubClient",
+            "PolygonClient",
+            "TwelveDataClient"
+        ],
+        "stock_financials_clients": [],
+        "stock_analyst_estimates_clients": []
+    }
+}
