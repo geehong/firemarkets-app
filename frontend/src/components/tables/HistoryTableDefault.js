@@ -23,7 +23,7 @@ ModuleRegistry.registerModules([AllCommunityModule])
  * @param {boolean} props.autoGenerateColumns - 데이터 기반 컬럼 자동 생성 (기본값: true)
  * @param {string} props.dataType - 데이터 타입 ('ohlcv', 'onchain', 'assets', 'custom')
  */
-const HistoryTableAgGrid = ({
+const HistoryTableDefault = ({
   data = [],
   columnDefs: customColumnDefs,
   gridOptions: customGridOptions,
@@ -416,7 +416,7 @@ const HistoryTableAgGrid = ({
 
   // 로딩 상태 표시
   if (loading) {
-    console.log('🔍 HistoryTableAgGrid: Showing loading state');
+    console.log('🔍 HistoryTableDefault: Showing loading state');
     return (
       <div style={{ 
         display: 'flex', 
@@ -434,7 +434,7 @@ const HistoryTableAgGrid = ({
 
   // 에러 상태 표시
   if (error) {
-    console.log('🔍 HistoryTableAgGrid: Showing error state:', error.message);
+    console.log('🔍 HistoryTableDefault: Showing error state:', error.message);
     return (
       <div style={{ 
         padding: '20px',
@@ -478,5 +478,5 @@ const HistoryTableAgGrid = ({
   )
 }
 
-export default HistoryTableAgGrid
+export default HistoryTableDefault
 

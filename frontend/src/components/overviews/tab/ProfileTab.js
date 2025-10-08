@@ -7,7 +7,7 @@ import { cilMinus, cilPlus } from '@coreui/icons'
  * 자산 프로필 탭 컴포넌트 (주식/ETF/Crypto 공통)
  * 모든 자산 유형에 대한 통합 프로필 정보 표시
  */
-const ProfileTab = ({ asset, ohlcvData, cryptoData }) => {
+const ProfileTab = ({ asset, ohlcvData, cryptoData, stockData, etfData, overviewData }) => {
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false)
 
   // OHLCV 데이터에서 필요한 값들을 계산하는 함수
@@ -54,13 +54,13 @@ const ProfileTab = ({ asset, ohlcvData, cryptoData }) => {
   const getAssetDescription = () => {
     switch (asset?.type_name) {
       case 'Stocks':
-        return cryptoData?.description || 'Detailed company information will be displayed here.'
+        return overviewData?.description || overviewData?.description_en || 'Detailed company information will be displayed here.'
       case 'ETFs':
-        return cryptoData?.description || 'Detailed ETF product description will be displayed here.'
+        return overviewData?.description || 'Detailed ETF product description will be displayed here.'
       case 'Crypto':
-        return cryptoData?.description || 'Detailed cryptocurrency information will be displayed here.'
+        return overviewData?.crypto_description || 'Detailed cryptocurrency information will be displayed here.'
       case 'Commodities':
-        return cryptoData?.description || 'Detailed commodity information will be displayed here.'
+        return overviewData?.description || 'Detailed commodity information will be displayed here.'
       default:
         return 'Detailed asset information will be displayed here.'
     }
@@ -71,38 +71,38 @@ const ProfileTab = ({ asset, ohlcvData, cryptoData }) => {
     switch (asset?.type_name) {
       case 'Stocks':
         return {
-          ceo: cryptoData?.ceo || 'N/A',
-          employees: cryptoData?.employees_count || 'N/A',
-          ipoDate: cryptoData?.ipo_date || 'N/A',
-          country: cryptoData?.country || 'N/A',
-          city: cryptoData?.city || 'N/A',
-          address: cryptoData?.address || 'N/A',
-          phone: cryptoData?.phone || 'N/A',
-          website: cryptoData?.website || 'N/A',
+          ceo: overviewData?.ceo || 'N/A',
+          employees: overviewData?.employees_count || 'N/A',
+          ipoDate: overviewData?.ipo_date || 'N/A',
+          country: overviewData?.country || 'N/A',
+          city: overviewData?.city || 'N/A',
+          address: overviewData?.address || 'N/A',
+          phone: overviewData?.phone || 'N/A',
+          website: overviewData?.website || 'N/A',
         }
       
       case 'ETFs':
         return {
           ceo: 'N/A',
           employees: 'N/A',
-          ipoDate: cryptoData?.inception_date || 'N/A',
-          country: cryptoData?.country || 'N/A',
-          city: cryptoData?.city || 'N/A',
-          address: cryptoData?.address || 'N/A',
-          phone: cryptoData?.phone || 'N/A',
-          website: cryptoData?.website || 'N/A',
+          ipoDate: overviewData?.inception_date || 'N/A',
+          country: overviewData?.country || 'N/A',
+          city: overviewData?.city || 'N/A',
+          address: overviewData?.address || 'N/A',
+          phone: overviewData?.phone || 'N/A',
+          website: overviewData?.website || 'N/A',
         }
       
       case 'Crypto':
         return {
           ceo: 'N/A',
           employees: 'N/A',
-          ipoDate: cryptoData?.launch_date || 'N/A',
-          country: cryptoData?.country || 'N/A',
+          ipoDate: overviewData?.date_added || 'N/A',
+          country: overviewData?.country || 'N/A',
           city: 'N/A',
           address: 'N/A',
           phone: 'N/A',
-          website: cryptoData?.website || 'N/A',
+          website: overviewData?.website_url || 'N/A',
         }
       
       default:
@@ -121,32 +121,17 @@ const ProfileTab = ({ asset, ohlcvData, cryptoData }) => {
 
   // 주식 정보 가져오기
   const getStockInfo = () => {
-    if (asset?.type_name === 'Stocks' && cryptoData) {
-      // cryptoData가 {data: [...]} 구조인 경우 data 배열 사용
-      const financialsArray = cryptoData.data || cryptoData
-      const financialData = Array.isArray(financialsArray) ? financialsArray[0] : financialsArray
-
-      if (!financialData)
-        return {
-          marketCap: 'N/A',
-          prevClose: ohlcvMetrics.prevClose ? ohlcvMetrics.prevClose.toFixed(2) : 'N/A',
-          prevVolume: ohlcvMetrics.prevVolume ? `${(ohlcvMetrics.prevVolume / 1000000).toFixed(3)}M` : 'N/A',
-          week52High: ohlcvMetrics.week52High ? ohlcvMetrics.week52High.toFixed(2) : 'N/A',
-          week52Low: ohlcvMetrics.week52Low ? ohlcvMetrics.week52Low.toFixed(2) : 'N/A',
-          day50Avg: ohlcvMetrics.day50Avg ? ohlcvMetrics.day50Avg.toFixed(2) : 'N/A',
-          day200Avg: ohlcvMetrics.day200Avg ? ohlcvMetrics.day200Avg.toFixed(2) : 'N/A',
-        }
-
+    if (asset?.type_name === 'Stocks' && stockData) {
       return {
-        marketCap: financialData.market_cap
-          ? `${(financialData.market_cap / 1000000000).toFixed(2)}B`
+        marketCap: stockData.market_cap
+          ? `${(stockData.market_cap / 1000000000).toFixed(2)}B`
           : 'N/A',
         prevClose: ohlcvMetrics.prevClose ? ohlcvMetrics.prevClose.toFixed(2) : 'N/A',
         prevVolume: ohlcvMetrics.prevVolume ? `${(ohlcvMetrics.prevVolume / 1000000).toFixed(3)}M` : 'N/A',
-        week52High: ohlcvMetrics.week52High ? ohlcvMetrics.week52High.toFixed(2) : 'N/A',
-        week52Low: ohlcvMetrics.week52Low ? ohlcvMetrics.week52Low.toFixed(2) : 'N/A',
-        day50Avg: ohlcvMetrics.day50Avg ? ohlcvMetrics.day50Avg.toFixed(2) : 'N/A',
-        day200Avg: ohlcvMetrics.day200Avg ? ohlcvMetrics.day200Avg.toFixed(2) : 'N/A',
+        week52High: stockData.week_52_high ? stockData.week_52_high.toFixed(2) : 'N/A',
+        week52Low: stockData.week_52_low ? stockData.week_52_low.toFixed(2) : 'N/A',
+        day50Avg: stockData.day_50_avg ? stockData.day_50_avg.toFixed(2) : 'N/A',
+        day200Avg: stockData.day_200_avg ? stockData.day_200_avg.toFixed(2) : 'N/A',
       }
     }
     return {
@@ -162,39 +147,24 @@ const ProfileTab = ({ asset, ohlcvData, cryptoData }) => {
 
   // 지표 정보 가져오기
   const getIndicators = () => {
-    if (asset?.type_name === 'Stocks' && cryptoData) {
-      // cryptoData가 {data: [...]} 구조인 경우 data 배열 사용
-      const financialsArray = cryptoData.data || cryptoData
-      const financialData = Array.isArray(financialsArray) ? financialsArray[0] : financialsArray
-
-      if (!financialData)
-        return {
-          peRatio: 'N/A',
-          pbRatio: 'N/A',
-          eps: 'N/A',
-          roe: 'N/A',
-          beta: 'N/A',
-          dividendYield: 'N/A',
-          ebitda: 'N/A',
-        }
-
+    if (asset?.type_name === 'Stocks' && stockData) {
       return {
-        peRatio: financialData.pe_ratio ? `${financialData.pe_ratio.toFixed(1)}x` : 'N/A',
-        pbRatio: financialData.price_to_book_ratio
-          ? `${financialData.price_to_book_ratio.toFixed(1)}x`
+        peRatio: stockData.pe_ratio ? `${stockData.pe_ratio.toFixed(1)}x` : 'N/A',
+        pbRatio: stockData.price_to_book_ratio
+          ? `${stockData.price_to_book_ratio.toFixed(1)}x`
           : 'N/A',
-        eps: financialData.eps ? financialData.eps.toFixed(2) : 'N/A',
-        roe: financialData.return_on_equity_ttm
-          ? `${(financialData.return_on_equity_ttm * 100).toFixed(1)}%`
+        eps: stockData.eps ? stockData.eps.toFixed(2) : 'N/A',
+        roe: stockData.return_on_equity_ttm
+          ? `${(stockData.return_on_equity_ttm * 100).toFixed(1)}%`
           : 'N/A',
-        beta: financialData.beta ? financialData.beta.toFixed(2) : 'N/A',
-        dividendYield: financialData.dividend_yield
-          ? `${(financialData.dividend_yield * 100).toFixed(1)}%`
+        beta: stockData.beta ? stockData.beta.toFixed(2) : 'N/A',
+        dividendYield: stockData.dividend_yield
+          ? `${(stockData.dividend_yield * 100).toFixed(1)}%`
           : 'N/A',
-        ebitda: financialData.ebitda ? `${(financialData.ebitda / 1000000000).toFixed(1)}B` : (
+        ebitda: stockData.ebitda ? `${(stockData.ebitda / 1000000000).toFixed(1)}B` : (
           // EBITDA가 없으면 Revenue와 Profit Margin으로 계산
-          financialData.revenue_ttm && financialData.profit_margin_ttm 
-            ? `${((financialData.revenue_ttm * financialData.profit_margin_ttm * 1.3) / 1000000000).toFixed(1)}B`
+          stockData.revenue_ttm && stockData.profit_margin_ttm 
+            ? `${((stockData.revenue_ttm * stockData.profit_margin_ttm * 1.3) / 1000000000).toFixed(1)}B`
             : 'N/A'
         ),
       }
@@ -270,7 +240,7 @@ const ProfileTab = ({ asset, ohlcvData, cryptoData }) => {
               <span className="me-2">/</span>
               <span className="badge bg-info me-2">{asset?.ticker || 'MSFT'}</span>
               <span className="me-2">/</span>
-              <span className="badge bg-info me-2">{cryptoData?.sector || 'Technology'}</span>
+              <span className="badge bg-info me-2">{overviewData?.sector || 'Technology'}</span>
               <span className="me-2">/</span>
               <span className="badge bg-info me-2">{asset?.currency || 'USD'}</span>
             </div>

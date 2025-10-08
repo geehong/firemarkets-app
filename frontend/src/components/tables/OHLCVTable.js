@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { useAssetData } from '../../hooks/useAssetData'
-import HistoryTableAgGrid from './HistoryTableAgGrid'
+import HistoryTable from './HistoryTable'
 
 /**
  * OHLCV 데이터 전용 테이블 컴포넌트
@@ -305,7 +305,7 @@ const OHLCVTable = ({
   return (
     <div>
       <HeaderComponent />
-      <HistoryTableAgGrid 
+      <HistoryTable 
         data={processedData}
         columnDefs={columnDefs}
         loading={loading}

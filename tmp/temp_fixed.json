@@ -14,8 +14,8 @@
             "day_of_week": "tue,wed,thu,fri,sat"
         },
         {
-            "hour": [20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 9],
-            "minute": 20,
+            "hour": [9, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 9],
+            "minute": 40,
             "collectors": [
                 "world_assets_clients"
             ],

@@ -2,6 +2,20 @@
     "timezone": "Asia/Seoul",
     "schedules": [
         {
+            "hour": [
+                9,
+                9
+            ],
+            "minute": [
+                35,
+                36
+            ],
+            "collectors": [
+                "world_assets_clients"
+            ],
+            "day_of_week": "mon,tue,wed,thu,fri,sat,sun"
+        },
+        {
             "hour": 6,
             "minute": 0,
             "collectors": [
@@ -12,14 +26,6 @@
                 "commodity_ohlcv_clients"
             ],
             "day_of_week": "tue,wed,thu,fri,sat"
-        },
-        {
-            "hour": "20-23,0-6",
-            "minute": 0,
-            "collectors": [
-                "world_assets_clients"
-            ],
-            "day_of_week": "mon,tue,wed,thu,fri,sat,sun"
         },
         {
             "hour": 10,

@@ -50,7 +50,7 @@ const AssetsList = () => {
   }, [treemapData, liveLoading, liveError, typeNameFromQuery])
 
 
-  // AG Grid 컬럼 정의 (HistoryTableAgGrid와 호환)
+  // AG Grid 컬럼 정의 (HistoryTable와 호환)
   const columnDefs = useMemo(
     () => [
       { field: 'asset_id', headerName: 'ID', minWidth: 80 },

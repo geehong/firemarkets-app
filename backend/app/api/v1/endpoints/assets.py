@@ -16,7 +16,7 @@ from ....schemas.asset import (
     OHLCVResponse, StockProfileResponse, StockFinancialsResponse, StockEstimatesResponse,
     IndexInfoResponse, ETFInfoResponse, ETFSectorExposureResponse, ETFHoldingsResponse,
     CryptoMetricsResponse, TechnicalIndicatorsResponse, PriceResponse,
-    TreemapLiveResponse, TreemapLiveItem
+    TreemapLiveResponse, TreemapLiveItem, AssetOverviewResponse
 )
 from ....schemas.common import TickerSummaryResponse
 
@@ -1625,3 +1625,244 @@ def get_asset_by_ticker(db: Session, ticker: str):
     """Ticker로 자산 조회"""
     from ....models import Asset
     return db.query(Asset).filter(Asset.ticker == ticker).first()
+
+
+# ============================================================================
+# Asset Overview API Endpoints
+# ============================================================================
+
+@router.get("/overview/{asset_identifier}", response_model=AssetOverviewResponse)
+def get_asset_overview(
+    asset_identifier: str = Path(..., description="Asset ID (integer) or Ticker (string)"),
+    db: Session = Depends(get_postgres_db)
+):
+    """자산 개요 통합 정보 조회 (자산 타입별 최적화된 뷰 사용)"""
+    try:
+        asset_id = resolve_asset_identifier(db, asset_identifier)
+        
+        # 자산 타입 확인
+        from ....models import Asset, AssetType
+        asset_with_type = db.query(Asset, AssetType.type_name) \
+                            .join(AssetType, Asset.asset_type_id == AssetType.asset_type_id) \
+                            .filter(Asset.asset_id == asset_id) \
+                            .first()
+        
+        if not asset_with_type:
+            raise HTTPException(status_code=404, detail="Asset not found")
+        
+        asset, type_name = asset_with_type
+        
+        # 자산 타입별로 적절한 뷰에서 데이터 조회
+        if type_name == 'Stocks':
+            overview_data = get_stock_overview_data(db, asset_id)
+        elif type_name == 'Crypto':
+            overview_data = get_crypto_overview_data(db, asset_id)
+        elif type_name == 'ETFs':
+            overview_data = get_etf_overview_data(db, asset_id)
+        else:
+            # 기본 자산 정보만 조회
+            overview_data = get_basic_overview_data(db, asset_id)
+        
+        if not overview_data:
+            raise HTTPException(status_code=404, detail="Overview data not found")
+        
+        return overview_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting asset overview for {asset_identifier}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get asset overview: {str(e)}")
+
+
+def get_stock_overview_data(db: Session, asset_id: int):
+    """주식 개요 데이터 조회"""
+    try:
+        result = db.execute(text("""
+            SELECT * FROM stock_overview 
+            WHERE asset_id = :asset_id
+        """), {"asset_id": asset_id}).fetchone()
+        
+        if not result:
+            return None
+        
+        # SQLAlchemy Row를 딕셔너리로 변환
+        overview_dict = dict(result._mapping)
+        
+        # None 값 처리 및 타입 변환
+        for key, value in overview_dict.items():
+            if value is None:
+                continue
+            # 날짜/시간 타입 변환
+            if key in ['created_at', 'updated_at', 'crypto_last_updated'] and value:
+                overview_dict[key] = value
+            # 숫자 타입 변환
+            elif key in ['market_cap', 'ebitda', 'shares_outstanding', 'pe_ratio', 'peg_ratio', 
+                        'beta', 'eps', 'dividend_yield', 'dividend_per_share', 'profit_margin_ttm',
+                        'return_on_equity_ttm', 'revenue_ttm', 'price_to_book_ratio', 'book_value',
+                        'revenue_per_share_ttm', 'operating_margin_ttm', 'return_on_assets_ttm',
+                        'gross_profit_ttm', 'quarterly_earnings_growth_yoy', 'quarterly_revenue_growth_yoy',
+                        'analyst_target_price', 'trailing_pe', 'forward_pe', 'price_to_sales_ratio_ttm',
+                        'ev_to_revenue', 'ev_to_ebitda', 'week_52_high', 'week_52_low', 'day_50_avg', 'day_200_avg']:
+                try:
+                    overview_dict[key] = float(value) if value is not None else None
+                except (ValueError, TypeError):
+                    overview_dict[key] = None
+            # 정수 타입 변환
+            elif key in ['asset_id', 'employees_count', 'cmc_rank']:
+                try:
+                    overview_dict[key] = int(value) if value is not None else None
+                except (ValueError, TypeError):
+                    overview_dict[key] = None
+        
+        return AssetOverviewResponse(**overview_dict)
+        
+    except Exception as e:
+        logger.error(f"Error getting stock overview data: {str(e)}")
+        return None
+
+
+def get_crypto_overview_data(db: Session, asset_id: int):
+    """암호화폐 개요 데이터 조회"""
+    try:
+        result = db.execute(text("""
+            SELECT * FROM crypto_overview 
+            WHERE asset_id = :asset_id
+        """), {"asset_id": asset_id}).fetchone()
+        
+        if not result:
+            return None
+        
+        # SQLAlchemy Row를 딕셔너리로 변환
+        overview_dict = dict(result._mapping)
+        
+        # None 값 처리 및 타입 변환
+        for key, value in overview_dict.items():
+            if value is None:
+                continue
+            # 날짜/시간 타입 변환
+            if key in ['created_at', 'updated_at', 'crypto_last_updated', 'date_added'] and value:
+                overview_dict[key] = value
+            # 숫자 타입 변환
+            elif key in ['crypto_market_cap', 'circulating_supply', 'total_supply', 'max_supply',
+                        'crypto_current_price', 'volume_24h', 'percent_change_1h', 'percent_change_24h',
+                        'percent_change_7d', 'percent_change_30d']:
+                try:
+                    overview_dict[key] = float(value) if value is not None else None
+                except (ValueError, TypeError):
+                    overview_dict[key] = None
+            # 정수 타입 변환
+            elif key in ['asset_id', 'cmc_rank']:
+                try:
+                    overview_dict[key] = int(value) if value is not None else None
+                except (ValueError, TypeError):
+                    overview_dict[key] = None
+            # JSON 타입 변환
+            elif key in ['explorer', 'source_code'] and value:
+                try:
+                    import json
+                    overview_dict[key] = json.loads(value) if isinstance(value, str) else value
+                except (json.JSONDecodeError, TypeError):
+                    overview_dict[key] = None
+            # 리스트 타입 변환
+            elif key == 'tags' and value:
+                try:
+                    import json
+                    overview_dict[key] = json.loads(value) if isinstance(value, str) else value
+                except (json.JSONDecodeError, TypeError):
+                    overview_dict[key] = None
+        
+        return AssetOverviewResponse(**overview_dict)
+        
+    except Exception as e:
+        logger.error(f"Error getting crypto overview data: {str(e)}")
+        return None
+
+
+def get_etf_overview_data(db: Session, asset_id: int):
+    """ETF 개요 데이터 조회"""
+    try:
+        result = db.execute(text("""
+            SELECT * FROM etf_overview 
+            WHERE asset_id = :asset_id
+        """), {"asset_id": asset_id}).fetchone()
+        
+        if not result:
+            return None
+        
+        # SQLAlchemy Row를 딕셔너리로 변환
+        overview_dict = dict(result._mapping)
+        
+        # None 값 처리 및 타입 변환
+        for key, value in overview_dict.items():
+            if value is None:
+                continue
+            # 날짜/시간 타입 변환
+            if key in ['created_at', 'updated_at', 'inception_date'] and value:
+                overview_dict[key] = value
+            # 숫자 타입 변환
+            elif key in ['net_assets', 'net_expense_ratio', 'portfolio_turnover', 'etf_dividend_yield']:
+                try:
+                    overview_dict[key] = float(value) if value is not None else None
+                except (ValueError, TypeError):
+                    overview_dict[key] = None
+            # 정수 타입 변환
+            elif key in ['asset_id']:
+                try:
+                    overview_dict[key] = int(value) if value is not None else None
+                except (ValueError, TypeError):
+                    overview_dict[key] = None
+            # 불린 타입 변환
+            elif key == 'leveraged':
+                overview_dict[key] = bool(value) if value is not None else None
+            # JSON 타입 변환
+            elif key in ['sectors', 'holdings'] and value:
+                try:
+                    import json
+                    overview_dict[key] = json.loads(value) if isinstance(value, str) else value
+                except (json.JSONDecodeError, TypeError):
+                    overview_dict[key] = None
+        
+        return AssetOverviewResponse(**overview_dict)
+        
+    except Exception as e:
+        logger.error(f"Error getting ETF overview data: {str(e)}")
+        return None
+
+
+def get_basic_overview_data(db: Session, asset_id: int):
+    """기본 자산 개요 데이터 조회 (기타 자산 타입용)"""
+    try:
+        result = db.execute(text("""
+            SELECT * FROM asset_basic_info 
+            WHERE asset_id = :asset_id
+        """), {"asset_id": asset_id}).fetchone()
+        
+        if not result:
+            return None
+        
+        # SQLAlchemy Row를 딕셔너리로 변환
+        overview_dict = dict(result._mapping)
+        
+        # None 값 처리 및 타입 변환
+        for key, value in overview_dict.items():
+            if value is None:
+                continue
+            # 날짜/시간 타입 변환
+            if key in ['created_at', 'updated_at'] and value:
+                overview_dict[key] = value
+            # 정수 타입 변환
+            elif key in ['asset_id']:
+                try:
+                    overview_dict[key] = int(value) if value is not None else None
+                except (ValueError, TypeError):
+                    overview_dict[key] = None
+            # 불린 타입 변환
+            elif key == 'is_active':
+                overview_dict[key] = bool(value) if value is not None else None
+        
+        return AssetOverviewResponse(**overview_dict)
+        
+    except Exception as e:
+        logger.error(f"Error getting basic overview data: {str(e)}")
+        return None

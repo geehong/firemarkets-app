@@ -596,3 +596,117 @@ class GlobalCryptoMetrics(BaseModel):
     last_updated: datetime
 
 
+# ============================================================================
+# Asset Overview Schemas
+# ============================================================================
+
+class AssetOverviewResponse(BaseModel):
+    """자산 개요 통합 응답 스키마"""
+    # 기본 자산 정보
+    asset_id: int
+    ticker: str
+    name: str
+    exchange: Optional[str]
+    currency: Optional[str]
+    description: Optional[str]
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    type_name: str
+    type_description: Optional[str]
+    asset_category: str
+    
+    # 주식 정보 (주식인 경우)
+    company_name: Optional[str] = None
+    sector: Optional[str] = None
+    industry: Optional[str] = None
+    country: Optional[str] = None
+    city: Optional[str] = None
+    address: Optional[str] = None
+    phone: Optional[str] = None
+    website: Optional[str] = None
+    ceo: Optional[str] = None
+    employees_count: Optional[int] = None
+    ipo_date: Optional[date] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    exchange_full_name: Optional[str] = None
+    cik: Optional[str] = None
+    isin: Optional[str] = None
+    cusip: Optional[str] = None
+    description_en: Optional[str] = None
+    description_ko: Optional[str] = None
+    logo_image_url: Optional[str] = None
+    
+    # 재무 정보 (주식인 경우)
+    market_cap: Optional[float] = None
+    ebitda: Optional[float] = None
+    shares_outstanding: Optional[float] = None
+    pe_ratio: Optional[float] = None
+    peg_ratio: Optional[float] = None
+    beta: Optional[float] = None
+    eps: Optional[float] = None
+    dividend_yield: Optional[float] = None
+    dividend_per_share: Optional[float] = None
+    profit_margin_ttm: Optional[float] = None
+    return_on_equity_ttm: Optional[float] = None
+    revenue_ttm: Optional[float] = None
+    price_to_book_ratio: Optional[float] = None
+    book_value: Optional[float] = None
+    revenue_per_share_ttm: Optional[float] = None
+    operating_margin_ttm: Optional[float] = None
+    return_on_assets_ttm: Optional[float] = None
+    gross_profit_ttm: Optional[float] = None
+    quarterly_earnings_growth_yoy: Optional[float] = None
+    quarterly_revenue_growth_yoy: Optional[float] = None
+    analyst_target_price: Optional[float] = None
+    trailing_pe: Optional[float] = None
+    forward_pe: Optional[float] = None
+    price_to_sales_ratio_ttm: Optional[float] = None
+    ev_to_revenue: Optional[float] = None
+    ev_to_ebitda: Optional[float] = None
+    
+    # 52주 고가/저가 및 이동평균
+    week_52_high: Optional[float] = None
+    week_52_low: Optional[float] = None
+    day_50_avg: Optional[float] = None
+    day_200_avg: Optional[float] = None
+    
+    # 암호화폐 정보 (암호화폐인 경우)
+    crypto_symbol: Optional[str] = None
+    crypto_name: Optional[str] = None
+    crypto_market_cap: Optional[float] = None
+    circulating_supply: Optional[float] = None
+    total_supply: Optional[float] = None
+    max_supply: Optional[float] = None
+    crypto_current_price: Optional[float] = None
+    volume_24h: Optional[float] = None
+    percent_change_1h: Optional[float] = None
+    percent_change_24h: Optional[float] = None
+    percent_change_7d: Optional[float] = None
+    percent_change_30d: Optional[float] = None
+    cmc_rank: Optional[int] = None
+    category: Optional[str] = None
+    crypto_description: Optional[str] = None
+    logo_url: Optional[str] = None
+    website_url: Optional[str] = None
+    slug: Optional[str] = None
+    date_added: Optional[date] = None
+    platform: Optional[str] = None
+    explorer: Optional[List[str]] = None
+    source_code: Optional[List[str]] = None
+    tags: Optional[List[str]] = None
+    crypto_is_active: Optional[bool] = None
+    crypto_last_updated: Optional[datetime] = None
+    
+    # ETF 정보 (ETF인 경우)
+    net_assets: Optional[float] = None
+    net_expense_ratio: Optional[float] = None
+    portfolio_turnover: Optional[float] = None
+    etf_dividend_yield: Optional[float] = None
+    inception_date: Optional[date] = None
+    leveraged: Optional[bool] = None
+    sectors: Optional[List[Dict[str, Any]]] = None
+    holdings: Optional[List[Dict[str, Any]]] = None
+
+

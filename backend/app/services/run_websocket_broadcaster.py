@@ -208,15 +208,19 @@ async def listen_to_redis_and_broadcast():
                             if not symbol or price is None:
                                 continue
 
-                            # USDT 접미사 제거하여 데이터베이스에서 검색
-                            symbol_for_db = symbol.replace('USDT', '') if symbol.endswith('USDT') else symbol
-                            asset_id = ticker_to_asset_id_cache.get(symbol_for_db)
+                            # 먼저 전체 심볼로 검색, 없으면 USDT 접미사 제거하여 검색
+                            asset_id = ticker_to_asset_id_cache.get(symbol)
+                            if not asset_id and symbol.endswith('USDT'):
+                                symbol_for_db = symbol.replace('USDT', '')
+                                asset_id = ticker_to_asset_id_cache.get(symbol_for_db)
+                                logger.debug(f"🔍 Full symbol '{symbol}' not found, trying without USDT: '{symbol_for_db}'")
+                            
                             if not asset_id:
-                                logger.warning(f"⚠️ Asset ID not found for symbol: {symbol} (searched as: {symbol_for_db})")
+                                logger.warning(f"⚠️ Asset ID not found for symbol: {symbol}")
                                 logger.warning(f"📋 Available symbols in cache: {list(ticker_to_asset_id_cache.keys())[:10]}...")
                                 continue
                             else:
-                                logger.debug(f"✅ Found asset_id {asset_id} for symbol: {symbol} (searched as: {symbol_for_db})")
+                                logger.debug(f"✅ Found asset_id {asset_id} for symbol: {symbol}")
 
                             quote_data = {
                                 "asset_id": asset_id,

@@ -12,7 +12,6 @@ SELECT
     a.exchange,
     a.currency,
     a.description,
-    a.logo_image_url,
     a.is_active,
     a.created_at,
     a.updated_at,
@@ -53,6 +52,7 @@ SELECT
     sp.cusip,
     sp.description_en,
     sp.description_ko,
+    sp.logo_image_url,
     
     -- 주식 재무 정보
     sf.market_cap,
@@ -88,7 +88,7 @@ SELECT
     
     -- 이동평균
     ohlcv_ma.day_50_avg,
-    ohlcv_ma.day_200_avg
+    ohlcv_ma2.day_200_avg
     
 FROM asset_basic_info abi
 LEFT JOIN stock_profiles sp ON abi.asset_id = sp.asset_id

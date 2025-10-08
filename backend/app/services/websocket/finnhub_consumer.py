@@ -56,6 +56,16 @@ class FinnhubWSConsumer(BaseWSConsumer):
                 logger.error("Finnhub API key not configured")
                 return False
             
+            # 기존 연결이 있으면 먼저 닫기 (finnhub는 1 API key당 1개 연결만 허용)
+            if self.websocket and not self.websocket.closed:
+                logger.info(f"🔌 {self.client_name} closing existing connection before reconnecting")
+                try:
+                    await self.websocket.close()
+                except Exception as e:
+                    logger.warning(f"⚠️ {self.client_name} error closing existing connection: {e}")
+                self.websocket = None
+                self.is_connected = False
+            
             # 연결 시도 정보 로깅 (민감정보 마스킹)
             try:
                 token_hint = (self.api_key[:4] + "***" + self.api_key[-2:]) if self.api_key and len(self.api_key) > 6 else "set"

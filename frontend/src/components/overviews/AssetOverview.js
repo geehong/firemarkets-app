@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useAPI } from '../../hooks/useAPI'
 import AssetOverviewHeader from './AssetOverviewHeader'
 import AssetOverviewTabs from './tab/AssetOverviewTabs'
-import HistoryTable from '../tables/HistoryTable'
+import OHLCVChart from '../charts/ohlcvchart/OHLCVChart'
 
 /**
  * 자산 개요 메인 컨테이너 컴포넌트
@@ -25,26 +25,167 @@ const AssetOverview = () => {
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
 
-  // useAPI를 통한 데이터 fetching (assetId는 ticker로 사용)
-  // 자산 목록에서 해당 자산 정보를 찾아서 타입 확인
-  const { data: assetsList } = useAPI.assets.list()
-  const asset = assetsList?.data?.find(a => a.ticker === assetId) || { 
-    ticker: assetId, 
-    name: assetId, 
-    type_name: 'Stocks' // 기본값을 Stocks로 설정
+  // 통합 개요 데이터 fetching (새로운 엔드포인트 사용)
+  const { data: overviewData, loading: overviewLoading, error: overviewError } = useAPI.assetsoverviews.overview(assetId)
+
+  // 통합된 데이터에서 필요한 정보 추출
+  const asset = overviewData ? {
+    asset_id: overviewData.asset_id,
+    ticker: overviewData.ticker,
+    name: overviewData.name,
+    type_name: overviewData.type_name,
+    exchange: overviewData.exchange,
+    currency: overviewData.currency,
+    description: overviewData.description,
+    is_active: overviewData.is_active,
+    created_at: overviewData.created_at,
+    updated_at: overviewData.updated_at,
+    type_description: overviewData.type_description,
+    asset_category: overviewData.asset_category,
+    // 자산 타입별 추가 정보
+    ...(overviewData.type_name === 'Stocks' && {
+      company_name: overviewData.company_name,
+      sector: overviewData.sector,
+      industry: overviewData.industry,
+      country: overviewData.country,
+      city: overviewData.city,
+      address: overviewData.address,
+      phone: overviewData.phone,
+      website: overviewData.website,
+      ceo: overviewData.ceo,
+      employees_count: overviewData.employees_count,
+      ipo_date: overviewData.ipo_date,
+      logo_image_url: overviewData.logo_image_url,
+    }),
+    ...(overviewData.type_name === 'Crypto' && {
+      crypto_symbol: overviewData.crypto_symbol,
+      crypto_name: overviewData.crypto_name,
+      crypto_market_cap: overviewData.crypto_market_cap,
+      circulating_supply: overviewData.circulating_supply,
+      total_supply: overviewData.total_supply,
+      max_supply: overviewData.max_supply,
+      crypto_current_price: overviewData.crypto_current_price,
+      volume_24h: overviewData.volume_24h,
+      percent_change_1h: overviewData.percent_change_1h,
+      percent_change_24h: overviewData.percent_change_24h,
+      percent_change_7d: overviewData.percent_change_7d,
+      percent_change_30d: overviewData.percent_change_30d,
+      cmc_rank: overviewData.cmc_rank,
+      category: overviewData.category,
+      crypto_description: overviewData.crypto_description,
+      logo_url: overviewData.logo_url,
+      website_url: overviewData.website_url,
+      slug: overviewData.slug,
+      date_added: overviewData.date_added,
+      platform: overviewData.platform,
+      explorer: overviewData.explorer,
+      source_code: overviewData.source_code,
+      tags: overviewData.tags,
+    }),
+    ...(overviewData.type_name === 'ETFs' && {
+      net_assets: overviewData.net_assets,
+      net_expense_ratio: overviewData.net_expense_ratio,
+      portfolio_turnover: overviewData.portfolio_turnover,
+      etf_dividend_yield: overviewData.etf_dividend_yield,
+      inception_date: overviewData.inception_date,
+      leveraged: overviewData.leveraged,
+      sectors: overviewData.sectors,
+      holdings: overviewData.holdings,
+    }),
+  } : null
+
+  // OHLCV 데이터 (별도 API 호출 필요 - 통합 엔드포인트에 포함되지 않음)
+  // 더 많은 데이터를 가져오기 위해 maxDataPoints를 늘림 (약 10년치 데이터)
+  const { data: ohlcvData, loading: ohlcvLoading, error: ohlcvError } = useAPI.assets.ohlcv(assetId, '1d', null, null, 5000)
+
+  // 자산 타입별 데이터 추출
+  const getAssetSpecificData = () => {
+    if (!overviewData) return null
+
+    switch (overviewData.type_name) {
+      case 'Stocks':
+        return {
+          market_cap: overviewData.market_cap,
+          ebitda: overviewData.ebitda,
+          shares_outstanding: overviewData.shares_outstanding,
+          pe_ratio: overviewData.pe_ratio,
+          peg_ratio: overviewData.peg_ratio,
+          beta: overviewData.beta,
+          eps: overviewData.eps,
+          dividend_yield: overviewData.dividend_yield,
+          dividend_per_share: overviewData.dividend_per_share,
+          profit_margin_ttm: overviewData.profit_margin_ttm,
+          return_on_equity_ttm: overviewData.return_on_equity_ttm,
+          revenue_ttm: overviewData.revenue_ttm,
+          price_to_book_ratio: overviewData.price_to_book_ratio,
+          book_value: overviewData.book_value,
+          revenue_per_share_ttm: overviewData.revenue_per_share_ttm,
+          operating_margin_ttm: overviewData.operating_margin_ttm,
+          return_on_assets_ttm: overviewData.return_on_assets_ttm,
+          gross_profit_ttm: overviewData.gross_profit_ttm,
+          quarterly_earnings_growth_yoy: overviewData.quarterly_earnings_growth_yoy,
+          quarterly_revenue_growth_yoy: overviewData.quarterly_revenue_growth_yoy,
+          analyst_target_price: overviewData.analyst_target_price,
+          trailing_pe: overviewData.trailing_pe,
+          forward_pe: overviewData.forward_pe,
+          price_to_sales_ratio_ttm: overviewData.price_to_sales_ratio_ttm,
+          ev_to_revenue: overviewData.ev_to_revenue,
+          ev_to_ebitda: overviewData.ev_to_ebitda,
+          week_52_high: overviewData.week_52_high,
+          week_52_low: overviewData.week_52_low,
+          day_50_avg: overviewData.day_50_avg,
+          day_200_avg: overviewData.day_200_avg,
+        }
+      
+      case 'Crypto':
+        return {
+          symbol: overviewData.crypto_symbol,
+          name: overviewData.crypto_name,
+          market_cap: overviewData.crypto_market_cap,
+          circulating_supply: overviewData.circulating_supply,
+          total_supply: overviewData.total_supply,
+          max_supply: overviewData.max_supply,
+          price: overviewData.crypto_current_price,
+          volume_24h: overviewData.volume_24h,
+          percent_change_1h: overviewData.percent_change_1h,
+          percent_change_24h: overviewData.percent_change_24h,
+          percent_change_7d: overviewData.percent_change_7d,
+          percent_change_30d: overviewData.percent_change_30d,
+          rank: overviewData.cmc_rank,
+          category: overviewData.category,
+          description: overviewData.crypto_description,
+          logo_url: overviewData.logo_url,
+          website_url: overviewData.website_url,
+          slug: overviewData.slug,
+          date_added: overviewData.date_added,
+          platform: overviewData.platform,
+          explorer: overviewData.explorer,
+          source_code: overviewData.source_code,
+          tags: overviewData.tags,
+        }
+      
+      case 'ETFs':
+        return {
+          net_assets: overviewData.net_assets,
+          expense_ratio: overviewData.net_expense_ratio,
+          portfolio_turnover: overviewData.portfolio_turnover,
+          dividend_yield: overviewData.etf_dividend_yield,
+          inception_date: overviewData.inception_date,
+          leveraged: overviewData.leveraged,
+          sectors: overviewData.sectors,
+          holdings: overviewData.holdings,
+        }
+      
+      default:
+        return null
+    }
   }
-  
-  const { data: ohlcvData, loading: ohlcvLoading, error: ohlcvError } = useAPI.assets.ohlcv(assetId, '1d', null, null, 1000)
-  
-  // 자산 타입에 따라 적절한 API 호출
-  const shouldFetchCrypto = asset?.type_name === 'Crypto'
-  const { data: cryptoData, loading: cryptoLoading, error: cryptoError } = useAPI.assetsoverviews.crypto(
-    shouldFetchCrypto ? assetId : null
-  )
+
+  const assetSpecificData = getAssetSpecificData()
 
   // 로딩 상태
-  const isLoading = ohlcvLoading || (shouldFetchCrypto && cryptoLoading)
-  const hasError = ohlcvError || (shouldFetchCrypto && cryptoError)
+  const isLoading = overviewLoading || ohlcvLoading
+  const hasError = overviewError || ohlcvError
 
   // 에러 처리
   if (hasError) {
@@ -53,8 +194,8 @@ const AssetOverview = () => {
         <div className="alert alert-danger">
           <h4>Error Loading Asset Data</h4>
           <p>Failed to load data for asset: {assetId}</p>
+          {overviewError && <p>Overview Error: {overviewError.message}</p>}
           {ohlcvError && <p>OHLCV Error: {ohlcvError.message}</p>}
-          {cryptoError && <p>Crypto Error: {cryptoError.message}</p>}
         </div>
       </div>
     )
@@ -78,9 +219,12 @@ const AssetOverview = () => {
   const commonProps = {
     assetId,
     asset,
-    ohlcvData,
-    cryptoData,
-    // 추가 데이터는 나중에 필요에 따라 확장
+    ohlcvData: ohlcvData?.data || ohlcvData || [],
+    cryptoData: assetSpecificData, // 자산 타입별 데이터 사용
+    stockData: assetSpecificData, // 주식 데이터
+    etfData: assetSpecificData, // ETF 데이터
+    commodityData: assetSpecificData, // 상품 데이터
+    overviewData, // 전체 개요 데이터
   }
 
   return (
@@ -88,19 +232,22 @@ const AssetOverview = () => {
       {/* 헤더 영역 */}
       <AssetOverviewHeader {...commonProps} />
 
-      {/* OHLCV 데이터 테이블 영역 */}
+      {/* OHLCV 차트 영역 */}
       <div className="container-fluid p-3">
         <div className="row">
           <div className="col-12">
-            <h4 className="mb-3">{asset?.name} ({asset?.ticker}) Price History</h4>
-            <HistoryTable
-              data={ohlcvData?.data || []}
-              loading={ohlcvLoading}
-              error={ohlcvError}
-              dataType="ohlcv"
+            <OHLCVChart
+              assetIdentifier={asset?.ticker}
+              dataInterval="1d"
               height={isMobile ? 400 : 600}
-              loadingMessage="Loading price history..."
-              errorMessage="Failed to load price history"
+              showVolume={true}
+              showRangeSelector={true}
+              showStockTools={!isMobile}
+              showExporting={!isMobile}
+              title={`${asset?.name} (${asset?.ticker}) Price Chart`}
+              subtitle="OHLCV Data"
+              maxDataPoints={10000}
+              // externalOhlcvData를 제거하여 OHLCVChart가 자체적으로 더 많은 데이터를 가져오도록 함
             />
           </div>
         </div>

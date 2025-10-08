@@ -8,13 +8,13 @@ import EstimatesTab from './EstimatesTab'
 import CommodityInfoTab from './CommodityInfoTab'
 import CryptoInfoTab from './CryptoInfoTab'
 import ETFInfoTab from './ETFInfoTab'
-import HistoryTableAgGrid from '../../tables/HistoryTable'
+import HistoryTable from '../../tables/HistoryTable'
 
 /**
  * 자산 개요 탭 컴포넌트 (데스크톱/모바일 통합)
  * 자산 타입에 따라 동적으로 탭을 구성하고 렌더링
  */
-const AssetOverviewTabs = ({ assetId, asset, ohlcvData, cryptoData }) => {
+const AssetOverviewTabs = ({ assetId, asset, ohlcvData, cryptoData, stockData, etfData, commodityData, overviewData }) => {
   const [activeKey, setActiveKey] = useState(1)
 
   // 자산 타입별 탭 구성
@@ -26,7 +26,7 @@ const AssetOverviewTabs = ({ assetId, asset, ohlcvData, cryptoData }) => {
           { key: 2, label: 'Financials', component: 'FinancialsTab' },
           { key: 3, label: 'Estimates', component: 'EstimatesTab' },
           { key: 4, label: 'Market Data', component: 'MarketDataTab' },
-          { key: 5, label: 'History Data', component: 'HistoryTableAgGrid' },
+              { key: 5, label: 'History Data', component: 'HistoryTable' },
         ]
       
       case 'ETFs':
@@ -34,7 +34,7 @@ const AssetOverviewTabs = ({ assetId, asset, ohlcvData, cryptoData }) => {
           { key: 1, label: 'ETF Info', component: 'ETFInfoTab' },
           { key: 2, label: 'Profile', component: 'ProfileTab' },
           { key: 3, label: 'Market Data', component: 'MarketDataTab' },
-          { key: 4, label: 'History Data', component: 'HistoryTableAgGrid' },
+          { key: 4, label: 'History Data', component: 'HistoryTable' },
         ]
       
       case 'Crypto':
@@ -42,7 +42,7 @@ const AssetOverviewTabs = ({ assetId, asset, ohlcvData, cryptoData }) => {
           { key: 1, label: 'Crypto Info', component: 'CryptoInfoTab' },
           { key: 2, label: 'Profile', component: 'ProfileTab' },
           { key: 3, label: 'Market Data', component: 'MarketDataTab' },
-          { key: 4, label: 'History Data', component: 'HistoryTableAgGrid' },
+          { key: 4, label: 'History Data', component: 'HistoryTable' },
         ]
       
       case 'Commodities':
@@ -50,14 +50,14 @@ const AssetOverviewTabs = ({ assetId, asset, ohlcvData, cryptoData }) => {
           { key: 1, label: 'Commodity Info', component: 'CommodityInfoTab' },
           { key: 2, label: 'Profile', component: 'ProfileTab' },
           { key: 3, label: 'Market Data', component: 'MarketDataTab' },
-          { key: 4, label: 'History Data', component: 'HistoryTableAgGrid' },
+          { key: 4, label: 'History Data', component: 'HistoryTable' },
         ]
       
       default:
         return [
           { key: 1, label: 'Profile', component: 'ProfileTab' },
           { key: 2, label: 'Market Data', component: 'MarketDataTab' },
-          { key: 3, label: 'History Data', component: 'HistoryTableAgGrid' },
+          { key: 3, label: 'History Data', component: 'HistoryTable' },
         ]
     }
   }
@@ -68,6 +68,10 @@ const AssetOverviewTabs = ({ assetId, asset, ohlcvData, cryptoData }) => {
       asset,
       ohlcvData,
       cryptoData,
+      stockData,
+      etfData,
+      commodityData,
+      overviewData,
       assetId
     }
 
@@ -82,29 +86,29 @@ const AssetOverviewTabs = ({ assetId, asset, ohlcvData, cryptoData }) => {
         return <EstimatesTab {...commonProps} />
       
       case 'CommodityInfoTab':
-        return <CommodityInfoTab commodityData={cryptoData} />
+        return <CommodityInfoTab commodityData={commodityData} />
       
       case 'CryptoInfoTab':
         return <CryptoInfoTab cryptoData={cryptoData} asset={asset} />
       
       case 'ETFInfoTab':
-        return <ETFInfoTab etfData={cryptoData} />
+        return <ETFInfoTab etfData={etfData} />
       
       case 'MarketDataTab':
         return (
           <MarketDataTab
             assetId={assetId}
             assetType={asset?.type_name?.toLowerCase()}
-            stockFinancials={cryptoData} // 임시로 cryptoData 사용
+            stockFinancials={stockData}
             cryptoData={cryptoData}
-            etfData={cryptoData} // 임시로 cryptoData 사용
-            commodityData={null}
+            etfData={etfData}
+            commodityData={commodityData}
             ohlcvData={ohlcvData}
           />
         )
       
-      case 'HistoryTableAgGrid':
-        return <HistoryTableAgGrid 
+      case 'HistoryTable':
+        return <HistoryTable 
           data={ohlcvData || []} 
           dataType="ohlcv"
           height={500}

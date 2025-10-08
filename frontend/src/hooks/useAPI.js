@@ -42,6 +42,8 @@ import { useAssets, useAssetsOHLCV } from './useAssets'
 import { useWorldAssets } from './useWorldAssets'
 import { useCrypto } from './useCrypto'
 import { useETF } from './useETF'
+import { useAssetOverview } from './useAssetOverview'
+import { useAssetData } from './useAssetData'
 
 // Realtime 관련 훅들
 import { useRealtime, useRealtimePricesPg, useDelaySparklinePg } from './useRealtime'
@@ -82,7 +84,8 @@ export const useAPI = {
     crypto: useCrypto,
     etf: useETF,
     ohlcv: useAssetsOHLCV,  // OHLCV 데이터 훅 (useAssets.js에서)
-    ohlcvRecent: useAssetsOHLCV  // 최근 OHLCV 데이터도 같은 훅 사용
+    ohlcvRecent: useAssetsOHLCV,  // 최근 OHLCV 데이터도 같은 훅 사용
+    data: useAssetData  // 기존 useAssetData 훅 (호환성 유지)
   },
   specs: paramSpecs,
 
@@ -133,6 +136,8 @@ export const useAPI = {
 
   // 자산 개요 관련 훅들
   assetsoverviews: {
+    // 통합 개요 훅 (새로운 엔드포인트 사용)
+    overview: useAssetOverview,
     // 개별 훅들 (기존 것들 재사용)
     assets: useAssets,
     crypto: useCrypto,
@@ -154,6 +159,8 @@ export {
   useWorldAssets,
   useCrypto,
   useETF,
+  useAssetOverview,
+  useAssetData,
   useRealtime,
   useRealtimePricesPg,
   useDelaySparklinePg,
