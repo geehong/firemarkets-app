@@ -20,8 +20,8 @@ from app.services.websocket.swissquote_consumer import SwissquoteWSConsumer
 from app.core.websocket_logging import orchestrator_logger
 from app.core.database import SessionLocal
 from sqlalchemy import text
-# DISABLED: TwelveData WebSocket Consumer
-# from app.services.websocket.twelvedata_consumer import TwelveDataWSConsumer
+from app.services.websocket.twelvedata_consumer import TwelveDataWSConsumer
+from app.services.websocket.polygon_consumer import PolygonWSConsumer
 from app.core.config import GLOBAL_APP_CONFIGS
 
 logger = logging.getLogger(__name__)
@@ -79,8 +79,8 @@ class WebSocketOrchestrator:
             'binance': BinanceWSConsumer,
             'coinbase': CoinbaseWSConsumer,
             'swissquote': SwissquoteWSConsumer,
-            # DISABLED: TwelveData WebSocket Consumer
-            # 'twelvedata': TwelveDataWSConsumer
+            'twelvedata': TwelveDataWSConsumer,
+            'polygon': PolygonWSConsumer
         }
         # Conditionally register tiingo only if explicitly enabled
         if GLOBAL_APP_CONFIGS.get('WEBSOCKET_TIINGO_ENABLED', '0') == '1':
@@ -247,7 +247,60 @@ class WebSocketOrchestrator:
         return assets_by_type
     
     async def _assign_assets_by_type(self, asset_type: AssetType, assets: List[Asset]):
-        """특정 자산 타입의 자산들을 Consumer에 Fallback 순서 기반으로 할당"""
+        """특정 자산 타입의 자산들을 Consumer에 할당 (선호 Consumer 우선, Fallback 순서 적용)"""
+        
+        # 1. 선호 Consumer가 있는 자산들을 먼저 처리
+        preferred_assets = [asset for asset in assets if asset.preferred_websocket_consumer]
+        default_assets = [asset for asset in assets if not asset.preferred_websocket_consumer]
+        
+        # 선호 Consumer가 있는 자산들 처리
+        if preferred_assets:
+            await self._assign_preferred_assets(preferred_assets, asset_type)
+        
+        # 나머지 자산들은 기존 Fallback 순서로 처리
+        if default_assets:
+            await self._assign_default_assets(default_assets, asset_type)
+    
+    async def _assign_preferred_assets(self, assets: List[Asset], asset_type: AssetType):
+        """선호 Consumer가 지정된 자산들을 할당"""
+        # 선호 Consumer별로 그룹화
+        preferred_groups = {}
+        for asset in assets:
+            consumer_name = asset.preferred_websocket_consumer
+            if consumer_name not in preferred_groups:
+                preferred_groups[consumer_name] = []
+            preferred_groups[consumer_name].append(asset)
+        
+        for consumer_name, consumer_assets in preferred_groups.items():
+            # Consumer가 존재하고 활성화되어 있는지 확인
+            if consumer_name not in self.consumers:
+                logger.warning(f"⚠️ Preferred consumer '{consumer_name}' not available for {[a.ticker for a in consumer_assets]}")
+                continue
+            
+            # Consumer 활성화 여부 확인
+            enabled_key = f"WEBSOCKET_{consumer_name.upper()}_ENABLED"
+            is_enabled = GLOBAL_APP_CONFIGS.get(enabled_key, "1") == "1"
+            if not is_enabled:
+                logger.warning(f"⚠️ Preferred consumer '{consumer_name}' is disabled for {[a.ticker for a in consumer_assets]}")
+                continue
+            
+            # Consumer가 해당 자산 타입을 지원하는지 확인
+            config = WebSocketConfig.get_provider_config(consumer_name)
+            if not config or asset_type not in config.supported_asset_types:
+                logger.warning(f"⚠️ Preferred consumer '{consumer_name}' doesn't support {asset_type.value} for {[a.ticker for a in consumer_assets]}")
+                continue
+            
+            # 선호 Consumer에 할당
+            tickers = [asset.ticker for asset in consumer_assets]
+            # 선호 Consumer만 포함된 consumers 리스트 생성
+            preferred_consumer_config = WebSocketConfig.get_provider_config(consumer_name)
+            if preferred_consumer_config:
+                preferred_consumers = [(consumer_name, self.consumers[consumer_name], preferred_consumer_config)]
+                await self._assign_tickers_fallback_order(tickers, preferred_consumers, asset_type)
+                logger.info(f"🎯 Assigned {len(tickers)} assets to preferred consumer '{consumer_name}': {tickers}")
+    
+    async def _assign_default_assets(self, assets: List[Asset], asset_type: AssetType):
+        """기본 Fallback 순서로 자산들을 할당"""
         # Fallback 순서 가져오기
         fallback_order = WebSocketConfig.ASSET_TYPE_FALLBACK.get(asset_type, [])
         
@@ -402,8 +455,8 @@ class WebSocketOrchestrator:
         max_capacity_used = max([min(config.max_subscriptions, len(tickers)) for _, _, config in available_consumers], default=0)
         if max_capacity_used < len(tickers):
             remaining_tickers = tickers[max_capacity_used:]
-            logger.warning(f"⚠️ {len(remaining_tickers)}개 티커가 용량 제한으로 할당되지 않음, Fallback으로 처리: {remaining_tickers}")
-            await self._assign_tickers_fallback_order(remaining_tickers, available_consumers, asset_type)
+            logger.warning(f"⚠️ {len(remaining_tickers)}개 티커가 용량 제한으로 할당되지 않음: {remaining_tickers}")
+            # 재귀 호출 대신 로그만 남김 (용량 제한으로 할당 불가)
     
     async def _assign_tickers_fallback_order(self, tickers: List[str], available_consumers: List, asset_type: AssetType):
         """기존 Fallback 순서 기반 할당"""

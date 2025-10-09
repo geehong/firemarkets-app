@@ -1,6 +1,7 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react'
 import { CRow, CCol, CCard, CCardHeader, CCardBody, CCardTitle } from '@coreui/react'
 import useWebSocketStore from '../../store/websocketStore'
+import ErrorBoundary from '../../components/common/ErrorBoundary'
 
 // 지연 로딩으로 번들 크기 감소 (TreeMap은 모듈 의존성 때문에 즉시 로드)
 import { PerformanceTreeMapToday } from 'src/components/charts/threemap'
@@ -49,9 +50,11 @@ const MainDashboard = () => {
       {/* 시장 상태에 따른 차트 표시 */}
       <div className="card mb-4">
         <div className="card-body">
-          <Suspense fallback={<div style={{ height: '300px' }} className="d-flex align-items-center justify-content-center">Loading mini charts...</div>}>
-            <MiniPriceChartManage showTopLeaders />
-          </Suspense>
+          <ErrorBoundary>
+            <Suspense fallback={<div style={{ height: '300px' }} className="d-flex align-items-center justify-content-center">Loading mini charts...</div>}>
+              <MiniPriceChartManage showTopLeaders />
+            </Suspense>
+          </ErrorBoundary>
         </div>
       </div>
 
@@ -63,19 +66,25 @@ const MainDashboard = () => {
       {/* Performance TreeMap */}
       <div className="card mb-4">
         <div className="card-body p-0">
-          <PerformanceTreeMapToday />
+          <ErrorBoundary>
+            <PerformanceTreeMapToday />
+          </ErrorBoundary>
         </div>
       </div>
 
       {/* Default Chart */}
-      <Suspense fallback={<div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading Chart...</div>}>
-        <DefaultChart />
-      </Suspense>
+      <ErrorBoundary>
+        <Suspense fallback={<div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading Chart...</div>}>
+          <DefaultChart />
+        </Suspense>
+      </ErrorBoundary>
       
       {/* History Table */}
-      <Suspense fallback={<div style={{ height: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading Table...</div>}>
-        <HistoryTableDefault />
-      </Suspense>
+      <ErrorBoundary>
+        <Suspense fallback={<div style={{ height: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading Table...</div>}>
+          <HistoryTableDefault />
+        </Suspense>
+      </ErrorBoundary>
     </>
   )
 }

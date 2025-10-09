@@ -90,3 +90,4 @@ CREATE INDEX IF NOT EXISTS idx_technical_indicators_asset ON technical_indicator
 COMMENT ON VIEW realtime_price_data IS '실시간 가격 데이터 (별도 API용)';
 COMMENT ON VIEW ohlcv_history_data IS 'OHLCV 히스토리 데이터 (차트용)';
 COMMENT ON VIEW technical_indicators_data IS '기술적 지표 데이터 (차트용)';
+

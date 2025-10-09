@@ -67,6 +67,22 @@ class WebSocketConfig:
             priority=1,  # 암호화폐 1순위 (바이낸스와 동일)
             reconnect_interval=30,
             health_check_interval=60
+        ),
+        'twelvedata': ProviderConfig(
+            max_subscriptions=8,  # 트웰브데이터 무료 플랜 제한 (일일 8 크레딧)
+            supported_asset_types=[AssetType.STOCK, AssetType.ETF],  # 주식 + ETF 지원
+            rate_limit_per_minute=8,  # 분당 8회 제한
+            priority=2,  # fallback용으로 낮은 우선순위
+            reconnect_interval=30,
+            health_check_interval=60
+        ),
+        'polygon': ProviderConfig(
+            max_subscriptions=5,  # Polygon.io 무료 플랜 제한 (분당 5회 API 호출)
+            supported_asset_types=[AssetType.STOCK, AssetType.ETF],  # 주식 + ETF 지원 (REST API 폴링)
+            rate_limit_per_minute=5,  # 분당 5회 제한
+            priority=2,  # fallback용으로 낮은 우선순위
+            reconnect_interval=30,
+            health_check_interval=60
         )
     }
     
@@ -90,10 +106,10 @@ class WebSocketConfig:
     # 자산 타입별 Fallback 순서 (1순위 실패 시 다음 순위)
     ASSET_TYPE_FALLBACK = {
         AssetType.CRYPTO: ['coinbase', 'binance', 'finnhub', 'tiingo'],  # 코인베이스 -> 바이낸스 -> 핀허브 -> 팅고 (CRO를 Coinbase에 우선 할당)
-        AssetType.STOCK: ['finnhub', 'tiingo', 'alpaca'],    # 핀허브 -> 팅고 -> 알파카
+        AssetType.STOCK: ['finnhub', 'alpaca', 'twelvedata', 'polygon', 'tiingo'],    # 핀허브 -> 알파카 -> 트웰브데이터 -> 폴리곤 -> 팅고
         AssetType.FOREX: ['finnhub', 'swissquote'],          # 핀허브 -> 스위스쿼트
         AssetType.COMMODITY: ['swissquote', 'finnhub'],      # 스위스쿼트 -> 핀허브
-        AssetType.ETF: ['alpaca', 'tiingo', 'finnhub']       # 알파카 -> 팅고 -> 핀허브
+        AssetType.ETF: ['alpaca', 'finnhub', 'twelvedata', 'polygon', 'tiingo']       # 알파카 -> 핀허브 -> 트웰브데이터 -> 폴리곤 -> 팅고
     }
     
     @classmethod

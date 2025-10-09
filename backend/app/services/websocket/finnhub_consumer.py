@@ -205,7 +205,7 @@ class FinnhubWSConsumer(BaseWSConsumer):
         logger.info(f"⏰ {self.client_name} 저장 주기: {self.consumer_interval}초")
         
         reconnect_delay = 30  # 재연결 대기 시간 (5초 → 30초로 증가)
-        max_reconnect_attempts = 10
+        max_reconnect_attempts = 5  # 최대 재연결 시도 횟수를 5회로 설정
         reconnect_attempts = 0
         
         while self.is_running and reconnect_attempts < max_reconnect_attempts:
@@ -256,13 +256,13 @@ class FinnhubWSConsumer(BaseWSConsumer):
                 
                 # 재연결 대기 (지수 백오프)
                 # HTTP 429 오류 시 더 긴 대기 시간 적용
-                if reconnect_attempts > 1:  # 3 → 1로 변경 (더 빨리 5분 대기 적용)
-                    wait_time = 300  # 5분 대기 (API 제한 해제 대기)
-                    logger.warning(f"⚠️ {self.client_name} HTTP 429 detected, waiting 5 minutes before retry")
+                if reconnect_attempts > 1:  # 2번째 시도부터 15분 대기
+                    wait_time = 900  # 15분 대기 (finnhub 무료 플랜 제한 고려)
+                    logger.warning(f"⚠️ {self.client_name} HTTP 429 detected, waiting 15 minutes before retry")
                 else:
                     wait_time = reconnect_delay * (1.5 ** min(reconnect_attempts - 1, 5))
                 
-                await asyncio.sleep(min(wait_time, 300))  # 최대 5분 대기
+                await asyncio.sleep(min(wait_time, 900))  # 최대 15분 대기
                 
                 # 재연결 시도
                 if await self.connect():

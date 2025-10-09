@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
 import axios from 'axios';
+import { initializeHighcharts } from '../../../utils/highchartsConfig';
 
-// Load Highcharts modules
-import 'highcharts/modules/exporting';
-import 'highcharts/modules/export-data';
+// Highcharts 초기화
+const Highcharts = initializeHighcharts();
 
 const OnChainChart = ({ assetIdentifier }) => {
   const [chartData, setChartData] = useState([]);

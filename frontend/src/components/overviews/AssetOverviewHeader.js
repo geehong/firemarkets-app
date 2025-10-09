@@ -1,5 +1,7 @@
 import React from 'react'
 import { useAPI } from '../../hooks/useAPI'
+import useDocumentTitle from '../../hooks/useDocumentTitle'
+import useMetaTags from '../../hooks/useMetaTags'
 
 /**
  * 자산 개요 헤더 컴포넌트 (데스크톱/모바일 통합)
@@ -42,6 +44,24 @@ const AssetOverviewHeader = ({ assetId, asset, ohlcvData, cryptoData }) => {
 
   const { price, change, changePercent } = getCurrentPriceData()
   const isPositive = change >= 0
+
+  // SEO 최적화: 동적 제목 및 메타 태그 설정
+  const pageTitle = asset?.name ? `${asset.name} (${asset.ticker}) - 실시간 가격 및 분석` : '자산 분석'
+  const pageDescription = asset?.name 
+    ? `${asset.name} (${asset.ticker})의 실시간 가격, 변동률, 시가총액 등 상세 분석 정보를 확인하세요. ${asset.type_name} 투자 데이터 제공.`
+    : '실시간 금융 시장 데이터 및 자산 분석 정보'
+
+  useDocumentTitle(pageTitle)
+  useMetaTags({
+    title: pageTitle,
+    description: pageDescription,
+    keywords: `${asset?.name || ''}, ${asset?.ticker || ''}, ${asset?.type_name || ''}, 주식, 암호화폐, ETF, 실시간가격, 투자분석`,
+    ogTitle: pageTitle,
+    ogDescription: pageDescription,
+    ogImage: asset?.type_name === 'Crypto' 
+      ? (cryptoData?.logo_url || `https://cryptoicons.org/api/icon/${asset?.ticker?.toLowerCase()}/200`)
+      : `https://images.financialmodelingprep.com/symbol/${asset?.ticker}.png`
+  })
 
   // 자산 타입별 주요 메트릭스
   const getAssetMetrics = () => {
@@ -128,7 +148,7 @@ const AssetOverviewHeader = ({ assetId, asset, ohlcvData, cryptoData }) => {
           <div className="d-flex align-items-center">
             {renderAssetLogo()}
             <div>
-              <h1 className="h2 mb-0 fw-bold">
+              <h1 className="h3 mb-0 fw-bold">
                 {asset?.name || 'Unknown'} ({asset?.ticker || 'N/A'})
               </h1>
               <div className="d-flex align-items-center text-muted small">

@@ -4,7 +4,7 @@ import { CCard, CCardBody, CCardHeader } from '@coreui/react'
 import CardTools from '../common/CardTools'
 import Highcharts from 'highcharts/highstock'
 import 'highcharts/modules/exporting'
-import 'highcharts/modules/export-data'
+// import 'highcharts/modules/export-data' // 문제가 있는 모듈 제거
 import 'highcharts/modules/accessibility'
 import 'highcharts/modules/stock-tools'
 import { usePriceData, useOnChainMetricData } from '../../hooks/useIntegratedMetrics'

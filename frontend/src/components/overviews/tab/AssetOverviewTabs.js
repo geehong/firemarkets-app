@@ -86,13 +86,13 @@ const AssetOverviewTabs = ({ assetId, asset, ohlcvData, cryptoData, stockData, e
         return <EstimatesTab {...commonProps} />
       
       case 'CommodityInfoTab':
-        return <CommodityInfoTab commodityData={commodityData} />
+        return <CommodityInfoTab commodityData={commodityData} asset={asset} overviewData={overviewData} />
       
       case 'CryptoInfoTab':
-        return <CryptoInfoTab cryptoData={cryptoData} asset={asset} />
+        return <CryptoInfoTab cryptoData={cryptoData} asset={asset} overviewData={overviewData} />
       
       case 'ETFInfoTab':
-        return <ETFInfoTab etfData={etfData} />
+        return <ETFInfoTab etfData={etfData} asset={asset} overviewData={overviewData} />
       
       case 'MarketDataTab':
         return (

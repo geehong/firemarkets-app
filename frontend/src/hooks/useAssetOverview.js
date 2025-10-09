@@ -49,3 +49,4 @@ export const useAssetOverview = (assetIdentifier) => {
 }
 
 export default useAssetOverview
+

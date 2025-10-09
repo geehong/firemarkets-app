@@ -1,199 +1,201 @@
 import React from 'react'
-import { CCard, CCardBody, CCardHeader, CCol, CRow } from '@coreui/react'
+import { CCard, CCardBody, CCardHeader } from '@coreui/react'
 
-/**
- * 재무 데이터 탭 컴포넌트 (주식 전용) - 위젯 형식으로 변경
- */
 const FinancialsTab = ({ asset, stockData, overviewData }) => {
-  const formatValue = (value, type = 'number') => {
-    if (value === 'N/A' || value === null || value === undefined || isNaN(value)) return 'N/A'
+  const getFinancialData = () => {
+    if (asset?.type_name === 'Stocks' && stockData) {
+      // stockData가 {data: [...]} 구조인 경우 data 배열 사용
+      const financialsArray = stockData.data || stockData
+      const financialData = Array.isArray(financialsArray) ? financialsArray[0] : financialsArray
 
-    switch (type) {
-      case 'currency':
-        return new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: 'USD',
-          minimumFractionDigits: 0,
-          maximumFractionDigits: 0,
-        }).format(value)
-      case 'percentage':
-        return `${parseFloat(value).toFixed(2)}%`
-      case 'number':
-      default:
-        return new Intl.NumberFormat('en-US').format(value)
+      if (!financialData)
+        return {
+          revenue: 'N/A',
+          profitMargin: 'N/A',
+          roe: 'N/A',
+          eps: 'N/A',
+          dividend: 'N/A',
+          dividendYield: 'N/A',
+          peRatio: 'N/A',
+          pbRatio: 'N/A',
+          pegRatio: 'N/A',
+          beta: 'N/A',
+          marketCap: 'N/A',
+          sharesOutstanding: 'N/A',
+          week52High: 'N/A',
+          week52Low: 'N/A',
+          day50Avg: 'N/A',
+          day200Avg: 'N/A',
+        }
+
+      return {
+        // Available Financial Data
+        revenue: financialData.revenue_ttm
+          ? `${(financialData.revenue_ttm / 1000000000).toFixed(2)}B`
+          : 'N/A',
+        profitMargin: financialData.profit_margin_ttm
+          ? `${(financialData.profit_margin_ttm * 100).toFixed(1)}%`
+          : 'N/A',
+        roe: financialData.return_on_equity_ttm
+          ? `${(financialData.return_on_equity_ttm * 100).toFixed(1)}%`
+          : 'N/A',
+        eps: financialData.eps ? financialData.eps.toFixed(2) : 'N/A',
+        dividend: financialData.dividend_per_share
+          ? financialData.dividend_per_share.toFixed(2)
+          : 'N/A',
+        dividendYield: financialData.dividend_yield
+          ? `${(financialData.dividend_yield * 100).toFixed(2)}%`
+          : 'N/A',
+        peRatio: financialData.pe_ratio ? `${financialData.pe_ratio.toFixed(1)}x` : 'N/A',
+        pbRatio: financialData.price_to_book_ratio
+          ? `${financialData.price_to_book_ratio.toFixed(1)}x`
+          : 'N/A',
+        pegRatio: financialData.peg_ratio ? `${financialData.peg_ratio.toFixed(1)}x` : 'N/A',
+        beta: financialData.beta ? financialData.beta.toFixed(2) : 'N/A',
+        marketCap: financialData.market_cap
+          ? `${(financialData.market_cap / 1000000000).toFixed(2)}B`
+          : 'N/A',
+        sharesOutstanding: financialData.shares_outstanding
+          ? `${(financialData.shares_outstanding / 1000000000).toFixed(2)}B`
+          : 'N/A',
+        week52High: financialData.week_52_high ? financialData.week_52_high.toFixed(2) : 'N/A',
+        week52Low: financialData.week_52_low ? financialData.week_52_low.toFixed(2) : 'N/A',
+        day50Avg: financialData.day_50_avg
+          ? financialData.day_50_avg.toFixed(2)
+          : 'N/A',
+        day200Avg: financialData.day_200_avg
+          ? financialData.day_200_avg.toFixed(2)
+          : 'N/A',
+      }
+    }
+    return {
+      revenue: 'N/A',
+      profitMargin: 'N/A',
+      roe: 'N/A',
+      eps: 'N/A',
+      dividend: 'N/A',
+      dividendYield: 'N/A',
+      peRatio: 'N/A',
+      pbRatio: 'N/A',
+      pegRatio: 'N/A',
+      beta: 'N/A',
+      marketCap: 'N/A',
+      sharesOutstanding: 'N/A',
+      week52High: 'N/A',
+      week52Low: 'N/A',
+      day50Avg: 'N/A',
+      day200Avg: 'N/A',
     }
   }
 
-  // 변화율 색상 결정
-  const getChangeColor = (value) => {
-    if (value === null || value === undefined || isNaN(value)) return 'secondary'
-    return parseFloat(value) >= 0 ? 'success' : 'danger'
-  }
+  const financialData = getFinancialData()
 
+  const InfoRow = ({ label, value, isHighlight = false }) => (
+    <div
+      className={`d-flex justify-content-between border-bottom pb-2 mb-2 ${isHighlight ? 'fw-bold' : ''}`}
+    >
+      <span className="text-body-secondary">{label}</span>
+      <span className={`fw-semibold ${isHighlight ? 'text-primary' : ''}`}>{value}</span>
+    </div>
+  )
 
-  if (asset?.type_name !== 'Stocks' || !stockData) {
-    return (
-      <div className="tab-pane active">
-        <div className="alert alert-info">
-          <h5>Financials Data</h5>
-          <p>This tab displays detailed financial information for stocks only.</p>
-          <p>Current asset type: {asset?.type_name || 'Unknown'}</p>
-        </div>
-      </div>
-    )
-  }
+  const MetricCard = ({ title, children, className = '' }) => (
+    <CCard className={`h-100 ${className}`}>
+      <CCardHeader className="bg-light">
+        <h6 className="fw-semibold mb-0 text-primary">{title}</h6>
+      </CCardHeader>
+      <CCardBody>{children}</CCardBody>
+    </CCard>
+  )
+
 
   return (
     <div className="tab-pane active">
-      <CRow>
-        {/* 기본 재무 지표 */}
-        <CCol xs={12} lg={6} className="mb-4">
-          <CCard>
-            <CCardHeader>
-              <h5 className="mb-0">Basic Financials</h5>
-            </CCardHeader>
-            <CCardBody>
-              <div className="row g-3">
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">Market Cap:</span>
-                    <strong>{formatValue(stockData.market_cap, 'currency')}</strong>
-                  </div>
-                </div>
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">Revenue (TTM):</span>
-                    <strong>{formatValue(stockData.revenue_ttm, 'currency')}</strong>
-                  </div>
-                </div>
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">EBITDA:</span>
-                    <strong>{formatValue(stockData.ebitda, 'currency')}</strong>
-                  </div>
-                </div>
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">EPS:</span>
-                    <strong>{formatValue(stockData.eps, 'currency')}</strong>
-                  </div>
-                </div>
-              </div>
-            </CCardBody>
-          </CCard>
-        </CCol>
+      {/* Key Metrics Summary */}
+      <div className="row g-3 mb-4">
+        <div className="col-md-3">
+          <div className="text-center p-3 bg-primary bg-opacity-10 rounded">
+            <div className="text-primary fw-bold fs-4">{financialData.marketCap}</div>
+            <div className="text-muted small">Market Cap</div>
+          </div>
+        </div>
+        <div className="col-md-3">
+          <div className="text-center p-3 bg-success bg-opacity-10 rounded">
+            <div className="text-success fw-bold fs-4">{financialData.revenue}</div>
+            <div className="text-muted small">Revenue (TTM)</div>
+          </div>
+        </div>
+        <div className="col-md-3">
+          <div className="text-center p-3 bg-info bg-opacity-10 rounded">
+            <div className="text-info fw-bold fs-4">{financialData.eps}</div>
+            <div className="text-muted small">EPS</div>
+          </div>
+        </div>
+        <div className="col-md-3">
+          <div className="text-center p-3 bg-warning bg-opacity-10 rounded">
+            <div className="text-warning fw-bold fs-4">{financialData.dividendYield}</div>
+            <div className="text-muted small">Dividend Yield</div>
+          </div>
+        </div>
+      </div>
 
-        {/* 비율 지표 */}
-        <CCol xs={12} lg={6} className="mb-4">
-          <CCard>
-            <CCardHeader>
-              <h5 className="mb-0">Ratios & Margins</h5>
-            </CCardHeader>
-            <CCardBody>
-              <div className="row g-3">
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">P/E Ratio:</span>
-                    <strong>{formatValue(stockData.pe_ratio, 'number')}</strong>
-                  </div>
-                </div>
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">P/B Ratio:</span>
-                    <strong>{formatValue(stockData.price_to_book_ratio, 'number')}</strong>
-                  </div>
-                </div>
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">Profit Margin:</span>
-                    <strong>{formatValue(stockData.profit_margin_ttm, 'percentage')}</strong>
-                  </div>
-                </div>
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">ROE:</span>
-                    <strong>{formatValue(stockData.return_on_equity_ttm, 'percentage')}</strong>
-                  </div>
-                </div>
-              </div>
-            </CCardBody>
-          </CCard>
-        </CCol>
+      {/* Detailed Financial Data */}
+      <div className="row g-4">
+        {/* Valuation Metrics */}
+        <div className="col-md-6">
+          <MetricCard title="Valuation Metrics">
+            <InfoRow label="P/E Ratio" value={financialData.peRatio} isHighlight={true} />
+            <InfoRow label="P/B Ratio" value={financialData.pbRatio} />
+            <InfoRow label="PEG Ratio" value={financialData.pegRatio} />
+            <InfoRow label="Beta" value={financialData.beta} />
+            <InfoRow label="Market Cap" value={financialData.marketCap} />
+            <InfoRow label="Shares Outstanding" value={financialData.sharesOutstanding} />
+          </MetricCard>
+        </div>
 
-        {/* 성장률 및 기타 지표 */}
-        <CCol xs={12} lg={6} className="mb-4">
-          <CCard>
-            <CCardHeader>
-              <h5 className="mb-0">Growth & Risk</h5>
-            </CCardHeader>
-            <CCardBody>
-              <div className="row g-3">
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">Revenue Growth:</span>
-                    <strong>{formatValue(stockData.quarterly_revenue_growth_yoy, 'percentage')}</strong>
-                  </div>
-                </div>
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">Earnings Growth:</span>
-                    <strong>{formatValue(stockData.quarterly_earnings_growth_yoy, 'percentage')}</strong>
-                  </div>
-                </div>
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">Beta:</span>
-                    <strong>{formatValue(stockData.beta, 'number')}</strong>
-                  </div>
-                </div>
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">Dividend Yield:</span>
-                    <strong>{formatValue(stockData.dividend_yield, 'percentage')}</strong>
-                  </div>
-                </div>
-              </div>
-            </CCardBody>
-          </CCard>
-        </CCol>
+        {/* Financial Performance */}
+        <div className="col-md-6">
+          <MetricCard title="Financial Performance">
+            <InfoRow label="Revenue (TTM)" value={financialData.revenue} isHighlight={true} />
+            <InfoRow label="Profit Margin" value={financialData.profitMargin} />
+            <InfoRow label="Return on Equity" value={financialData.roe} />
+            <InfoRow label="EPS" value={financialData.eps} />
+            <InfoRow label="Dividend per Share" value={financialData.dividend} />
+            <InfoRow label="Dividend Yield" value={financialData.dividendYield} />
+          </MetricCard>
+        </div>
 
-        {/* 52주 고저가 및 이동평균 */}
-        <CCol xs={12} lg={6} className="mb-4">
-          <CCard>
-            <CCardHeader>
-              <h5 className="mb-0">Price Analysis</h5>
-            </CCardHeader>
-            <CCardBody>
-              <div className="row g-3">
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">52W High:</span>
-                    <strong>{formatValue(stockData.week_52_high, 'currency')}</strong>
-                  </div>
-                </div>
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">52W Low:</span>
-                    <strong>{formatValue(stockData.week_52_low, 'currency')}</strong>
-                  </div>
-                </div>
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">50D Avg:</span>
-                    <strong>{formatValue(stockData.day_50_avg, 'currency')}</strong>
-                  </div>
-                </div>
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">200D Avg:</span>
-                    <strong>{formatValue(stockData.day_200_avg, 'currency')}</strong>
-                  </div>
-                </div>
+        {/* Price Data */}
+        <div className="col-md-12">
+          <MetricCard title="Price Data">
+            <div className="row g-3">
+              <div className="col-md-3">
+                <InfoRow label="52 Week High" value={financialData.week52High} />
               </div>
-            </CCardBody>
-          </CCard>
-        </CCol>
-      </CRow>
+              <div className="col-md-3">
+                <InfoRow label="52 Week Low" value={financialData.week52Low} />
+              </div>
+              <div className="col-md-3">
+                <InfoRow label="50 Day Average" value={financialData.day50Avg} />
+              </div>
+              <div className="col-md-3">
+                <InfoRow label="200 Day Average" value={financialData.day200Avg} />
+              </div>
+            </div>
+          </MetricCard>
+        </div>
+      </div>
+
+      {/* Data Source Note */}
+      <div className="mt-4">
+        <div className="alert alert-info" role="alert">
+          <small className="text-muted">
+            <i className="fas fa-info-circle me-2"></i>
+            Data represents the most recent financial information available. Some metrics may not be
+            available for all assets.
+          </small>
+        </div>
+      </div>
     </div>
   )
 }

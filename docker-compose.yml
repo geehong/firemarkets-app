@@ -226,6 +226,10 @@ services:
       TZ: Asia/Seoul
       DISABLE_FILE_LOGS: "true"
       DISABLE_WEBSOCKET_FILE_LOGS: "true"
+      # Redis 설정
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       # WebSocket API Keys
       FINNHUB_API_KEY: ${FINNHUB_API_KEY}
       FINNHUB_SECRET_KEY: ${FINNHUB_SECRET_KEY}
@@ -311,6 +315,33 @@ services:
     volumes:
       - ./frontend:/app:delegated
       - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - app_network
+      - shared-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+
+  # 새로운 Next.js Frontend
+  frontend-nextjs:
+    build:
+      context: ./newfrontend
+      dockerfile: Dockerfile
+    container_name: fire_markets_frontend_nextjs
+    restart: unless-stopped
+    ports:
+      - "3006:3000" # Next.js 기본 포트 3000을 호스트 3006으로 매핑
+    environment:
+      NODE_ENV: development
+      TZ: Asia/Seoul
+    volumes:
+      - ./newfrontend:/app:delegated
+      - /app/node_modules
+      - /app/.next
     depends_on:
       - backend
     networks:

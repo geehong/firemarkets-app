@@ -221,7 +221,7 @@ const AssetOverview = () => {
     asset,
     ohlcvData: ohlcvData?.data || ohlcvData || [],
     cryptoData: assetSpecificData, // 자산 타입별 데이터 사용
-    stockData: assetSpecificData, // 주식 데이터
+    stockData: overviewData, // overviewData를 stockData로 전달 (통합 데이터)
     etfData: assetSpecificData, // ETF 데이터
     commodityData: assetSpecificData, // 상품 데이터
     overviewData, // 전체 개요 데이터

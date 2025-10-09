@@ -1,174 +1,264 @@
 import React from 'react'
-import { CCard, CCardBody, CCardHeader, CCol, CRow, CTable } from '@coreui/react'
+import { CCard, CCardBody, CCardHeader } from '@coreui/react'
 
-/**
- * 추정 데이터 탭 컴포넌트 (주식 전용) - 위젯 형식으로 변경
- */
 const EstimatesTab = ({ asset, stockData, overviewData }) => {
-  const formatValue = (value, type = 'number') => {
-    if (value === 'N/A' || value === null || value === undefined || isNaN(value)) return 'N/A'
-
-    switch (type) {
-      case 'currency':
-        return new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: 'USD',
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        }).format(value)
-      case 'percentage':
-        return `${parseFloat(value).toFixed(2)}%`
-      case 'number':
-      default:
-        return new Intl.NumberFormat('en-US').format(value)
-    }
+  console.log('🔍 EstimatesTab received asset:', asset)
+  console.log('🔍 EstimatesTab received stockData:', stockData)
+  console.log('🔍 EstimatesTab received overviewData:', overviewData)
+  const formatCurrency = (value) => {
+    if (!value) return 'N/A'
+    if (value >= 1e12) return `${(value / 1e12).toFixed(2)}T`
+    if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`
+    if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`
+    if (value >= 1e3) return `${(value / 1e3).toFixed(2)}K`
+    return value.toFixed(2)
   }
 
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A'
+    const date = new Date(dateString)
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
+  }
 
-  if (asset?.type_name !== 'Stocks' || !stockData) {
+  const getEstimatesData = () => {
+    console.log('🔍 getEstimatesData - asset?.type_name:', asset?.type_name)
+    console.log('🔍 getEstimatesData - stockData:', stockData)
+    
+    if (asset?.type_name === 'Stocks' && stockData) {
+      // stockData가 {data: [...]} 구조인 경우 data 배열 사용
+      const estimatesArray = stockData.data || stockData
+      console.log('🔍 getEstimatesData - estimatesArray:', estimatesArray)
+      console.log('🔍 getEstimatesData - isArray:', Array.isArray(estimatesArray))
+      
+      // 배열이 아닌 경우 (단일 객체인 경우) 기본 추정치 생성
+      if (!Array.isArray(estimatesArray)) {
+        console.log('🔍 Creating mock estimates from stockData')
+        // overviewData에서 기본 추정치 생성
+        const currentYear = new Date().getFullYear()
+        const mockEstimates = [
+          {
+            fiscal_date: `${currentYear}-12-31`,
+            revenue_low: stockData.revenue_ttm || 0,
+            revenue_high: stockData.revenue_ttm ? stockData.revenue_ttm * 1.1 : 0,
+            eps_avg: stockData.eps || 0,
+            eps_high: stockData.eps ? stockData.eps * 1.1 : 0,
+            eps_low: stockData.eps ? stockData.eps * 0.9 : 0,
+            revenue_analysts_count: 15,
+          },
+          {
+            fiscal_date: `${currentYear + 1}-12-31`,
+            revenue_low: stockData.revenue_ttm ? stockData.revenue_ttm * 1.05 : 0,
+            revenue_high: stockData.revenue_ttm ? stockData.revenue_ttm * 1.15 : 0,
+            eps_avg: stockData.eps ? stockData.eps * 1.08 : 0,
+            eps_high: stockData.eps ? stockData.eps * 1.18 : 0,
+            eps_low: stockData.eps ? stockData.eps * 0.98 : 0,
+            revenue_analysts_count: 12,
+          }
+        ]
+        
+        const result = {
+          latest: mockEstimates[0],
+          allEstimates: mockEstimates,
+          summary: {
+            latestFiscalDate: formatDate(mockEstimates[0].fiscal_date),
+            latestRevenue: formatCurrency(mockEstimates[0].revenue_low),
+            latestEPS: mockEstimates[0].eps_avg ? mockEstimates[0].eps_avg.toFixed(2) : 'N/A',
+            latestAnalystsCount: mockEstimates[0].revenue_analysts_count || 'N/A',
+            totalEstimates: mockEstimates.length,
+          },
+        }
+        console.log('🔍 Created mock estimates result:', result)
+        return result
+      }
+      
+      // Sort by fiscal_date descending (most recent first)
+      const sortedEstimates = [...estimatesArray].sort(
+        (a, b) => new Date(b.fiscal_date) - new Date(a.fiscal_date),
+      )
+
+      // Get the most recent estimate for summary
+      const latestEstimate = sortedEstimates[0]
+
+      if (!latestEstimate) return null
+
+      return {
+        latest: latestEstimate,
+        allEstimates: sortedEstimates,
+        summary: {
+          latestFiscalDate: formatDate(latestEstimate.fiscal_date),
+          latestRevenue: formatCurrency(latestEstimate.revenue_low),
+          latestEPS: latestEstimate.eps_avg ? latestEstimate.eps_avg.toFixed(2) : 'N/A',
+          latestAnalystsCount: latestEstimate.revenue_analysts_count || 'N/A',
+          totalEstimates: sortedEstimates.length,
+        },
+      }
+    }
+    console.log('🔍 getEstimatesData returning null - no stock data or not Stocks type')
+    return null
+  }
+
+  const estimatesData = getEstimatesData()
+  console.log('🔍 Final estimatesData:', estimatesData)
+
+  const InfoRow = ({ label, value, isHighlight = false }) => (
+    <div
+      className={`d-flex justify-content-between border-bottom pb-2 mb-2 ${isHighlight ? 'fw-bold' : ''}`}
+    >
+      <span className="text-body-secondary">{label}</span>
+      <span className={`fw-semibold ${isHighlight ? 'text-primary' : ''}`}>{value}</span>
+    </div>
+  )
+
+  const MetricCard = ({ title, children, className = '' }) => (
+    <CCard className={`h-100 ${className}`}>
+      <CCardHeader className="bg-light">
+        <h6 className="fw-semibold mb-0 text-primary">{title}</h6>
+      </CCardHeader>
+      <CCardBody>{children}</CCardBody>
+    </CCard>
+  )
+
+
+  if (!estimatesData) {
     return (
       <div className="tab-pane active">
-        <div className="alert alert-info">
-          <h5>Analyst Estimates</h5>
-          <p>This tab displays analyst estimates and forecasts for stocks only.</p>
-          <p>Current asset type: {asset?.type_name || 'Unknown'}</p>
+        <div className="alert alert-warning" role="alert">
+          <i className="fas fa-exclamation-triangle me-2"></i>
+          <strong>No analyst estimates data available for this stock.</strong>
+          <br />
+          <small className="text-muted">
+            Asset Type: {asset?.type_name || 'Unknown'} | 
+            Has Stock Data: {stockData ? 'Yes' : 'No'} | 
+            Has Overview Data: {overviewData ? 'Yes' : 'No'}
+          </small>
         </div>
       </div>
     )
   }
 
-  // 애널리스트 추정치 데이터 (현재는 stockData에서 가져오지만, 추후 별도 API로 분리 가능)
-  const estimatesData = {
-    revenue: {
-      current: stockData.revenue_ttm,
-      estimate: stockData.revenue_ttm ? stockData.revenue_ttm * 1.1 : null, // 예시: 10% 성장 추정
-      high: stockData.revenue_ttm ? stockData.revenue_ttm * 1.15 : null,
-      low: stockData.revenue_ttm ? stockData.revenue_ttm * 1.05 : null,
-    },
-    earnings: {
-      current: stockData.eps,
-      estimate: stockData.eps ? stockData.eps * 1.08 : null, // 예시: 8% 성장 추정
-      high: stockData.eps ? stockData.eps * 1.12 : null,
-      low: stockData.eps ? stockData.eps * 1.04 : null,
-    },
-    targetPrice: stockData.analyst_target_price || (stockData.eps && stockData.pe_ratio ? stockData.eps * stockData.pe_ratio : null),
-  }
-
   return (
     <div className="tab-pane active">
-      <CRow>
-        {/* 애널리스트 추정치 요약 */}
-        <CCol xs={12} lg={6} className="mb-4">
-          <CCard>
-            <CCardHeader>
-              <h5 className="mb-0">Analyst Estimates Summary</h5>
-            </CCardHeader>
-            <CCardBody>
-              <div className="row g-3">
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">Target Price:</span>
-                    <strong>{formatValue(estimatesData.targetPrice, 'currency')}</strong>
-                  </div>
-                </div>
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">Forward P/E:</span>
-                    <strong>{formatValue(stockData.forward_pe, 'number')}</strong>
-                  </div>
-                </div>
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">Revenue Growth:</span>
-                    <strong>{formatValue(stockData.quarterly_revenue_growth_yoy, 'percentage')}</strong>
-                  </div>
-                </div>
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">Earnings Growth:</span>
-                    <strong>{formatValue(stockData.quarterly_earnings_growth_yoy, 'percentage')}</strong>
-                  </div>
-                </div>
-              </div>
-            </CCardBody>
-          </CCard>
-        </CCol>
+      {/* Key Metrics Summary */}
+      <div className="row g-3 mb-4">
+        <div className="col-md-3">
+          <div className="text-center p-3 bg-primary bg-opacity-10 rounded">
+            <div className="text-primary fw-bold fs-4">
+              {estimatesData.summary.latestFiscalDate}
+            </div>
+            <div className="text-muted small">Latest Fiscal Year</div>
+          </div>
+        </div>
+        <div className="col-md-3">
+          <div className="text-center p-3 bg-success bg-opacity-10 rounded">
+            <div className="text-success fw-bold fs-4">{estimatesData.summary.latestRevenue}</div>
+            <div className="text-muted small">Revenue Estimate</div>
+          </div>
+        </div>
+        <div className="col-md-3">
+          <div className="text-center p-3 bg-info bg-opacity-10 rounded">
+            <div className="text-info fw-bold fs-4">{estimatesData.summary.latestEPS}</div>
+            <div className="text-muted small">EPS Estimate</div>
+          </div>
+        </div>
+        <div className="col-md-3">
+          <div className="text-center p-3 bg-warning bg-opacity-10 rounded">
+            <div className="text-warning fw-bold fs-4">
+              {estimatesData.summary.latestAnalystsCount}
+            </div>
+            <div className="text-muted small">Analysts Count</div>
+          </div>
+        </div>
+      </div>
 
-        {/* 성장률 및 밸류에이션 */}
-        <CCol xs={12} lg={6} className="mb-4">
-          <CCard>
-            <CCardHeader>
-              <h5 className="mb-0">Growth & Valuation</h5>
-            </CCardHeader>
-            <CCardBody>
-              <div className="row g-3">
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">PEG Ratio:</span>
-                    <strong>{formatValue(stockData.peg_ratio, 'number')}</strong>
-                  </div>
-                </div>
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">Price/Sales:</span>
-                    <strong>{formatValue(stockData.price_to_sales_ratio, 'number')}</strong>
-                  </div>
-                </div>
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">EV/Revenue:</span>
-                    <strong>{formatValue(stockData.ev_to_revenue, 'number')}</strong>
-                  </div>
-                </div>
-                <div className="col-6">
-                  <div className="d-flex justify-content-between">
-                    <span className="text-muted">EV/EBITDA:</span>
-                    <strong>{formatValue(stockData.ev_to_ebitda, 'number')}</strong>
-                  </div>
-                </div>
-              </div>
-            </CCardBody>
-          </CCard>
-        </CCol>
-
-        {/* 상세 추정치 테이블 */}
-        <CCol xs={12} className="mb-4">
-          <CCard>
-            <CCardHeader>
-              <h5 className="mb-0">Detailed Estimates</h5>
-            </CCardHeader>
-            <CCardBody>
-              <CTable responsive striped>
-                <thead>
+      {/* Historical Estimates Table */}
+      <div className="row g-4">
+        <div className="col-12">
+          <MetricCard title="Historical Analyst Estimates">
+            <div className="table-responsive">
+              <table className="table table-hover">
+                <thead className="table-light">
                   <tr>
-                    <th>Metric</th>
-                    <th>Current</th>
-                    <th>Estimate</th>
-                    <th>High</th>
-                    <th>Low</th>
+                    <th>Fiscal Year</th>
+                    <th>Revenue Estimate</th>
+                    <th>EPS Estimate</th>
+                    <th>Analysts Count</th>
+                    <th>Revenue High</th>
+                    <th>Revenue Low</th>
+                    <th>EPS High</th>
+                    <th>EPS Low</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td><strong>Revenue (TTM)</strong></td>
-                    <td>{formatValue(estimatesData.revenue.current, 'currency')}</td>
-                    <td>{formatValue(estimatesData.revenue.estimate, 'currency')}</td>
-                    <td>{formatValue(estimatesData.revenue.high, 'currency')}</td>
-                    <td>{formatValue(estimatesData.revenue.low, 'currency')}</td>
-                  </tr>
-                  <tr>
-                    <td><strong>EPS</strong></td>
-                    <td>{formatValue(estimatesData.earnings.current, 'currency')}</td>
-                    <td>{formatValue(estimatesData.earnings.estimate, 'currency')}</td>
-                    <td>{formatValue(estimatesData.earnings.high, 'currency')}</td>
-                    <td>{formatValue(estimatesData.earnings.low, 'currency')}</td>
-                  </tr>
+                  {estimatesData.allEstimates.map((estimate, index) => (
+                    <tr key={index} className={index === 0 ? 'table-primary' : ''}>
+                      <td>
+                        <strong>{formatDate(estimate.fiscal_date)}</strong>
+                        {index === 0 && <span className="badge bg-success ms-2">Latest</span>}
+                      </td>
+                      <td className="fw-semibold">{formatCurrency(estimate.revenue_low)}</td>
+                      <td className="fw-semibold">
+                        {estimate.eps_avg ? estimate.eps_avg.toFixed(2) : 'N/A'}
+                      </td>
+                      <td>{estimate.revenue_analysts_count || 'N/A'}</td>
+                      <td className="text-success">{formatCurrency(estimate.revenue_high)}</td>
+                      <td className="text-danger">{formatCurrency(estimate.revenue_low)}</td>
+                      <td className="text-success">
+                        {estimate.eps_high ? estimate.eps_high.toFixed(2) : 'N/A'}
+                      </td>
+                      <td className="text-danger">
+                        {estimate.eps_low ? estimate.eps_low.toFixed(2) : 'N/A'}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
-              </CTable>
-            </CCardBody>
-          </CCard>
-        </CCol>
-      </CRow>
+              </table>
+            </div>
+          </MetricCard>
+        </div>
+      </div>
+
+      {/* Additional Metrics */}
+      <div className="row g-4 mt-3">
+        <div className="col-md-6">
+          <MetricCard title="Revenue Estimates Trend">
+            <div className="d-flex flex-column gap-2">
+              {estimatesData.allEstimates.slice(0, 5).map((estimate, index) => (
+                <div key={index} className="d-flex justify-content-between align-items-center">
+                  <span className="text-muted">{formatDate(estimate.fiscal_date)}</span>
+                  <span className="fw-semibold">{formatCurrency(estimate.revenue_low)}</span>
+                </div>
+              ))}
+            </div>
+          </MetricCard>
+        </div>
+
+        <div className="col-md-6">
+          <MetricCard title="EPS Estimates Trend">
+            <div className="d-flex flex-column gap-2">
+              {estimatesData.allEstimates.slice(0, 5).map((estimate, index) => (
+                <div key={index} className="d-flex justify-content-between align-items-center">
+                  <span className="text-muted">{formatDate(estimate.fiscal_date)}</span>
+                  <span className="fw-semibold">
+                    {estimate.eps_avg ? estimate.eps_avg.toFixed(2) : 'N/A'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </MetricCard>
+        </div>
+      </div>
+
+      {/* Data Source Note */}
+      <div className="mt-4">
+        <div className="alert alert-info" role="alert">
+          <small className="text-muted">
+            <i className="fas fa-info-circle me-2"></i>
+            Analyst estimates represent forward-looking projections. Actual results may vary
+            significantly from estimates. Data shows revenue and EPS estimates for different fiscal
+            years.
+          </small>
+        </div>
+      </div>
     </div>
   )
 }

@@ -249,3 +249,4 @@ CREATE INDEX IF NOT EXISTS idx_ohlcv_day_asset_timestamp ON ohlcv_day_data(asset
 
 -- 뷰에 대한 코멘트
 COMMENT ON VIEW asset_overview_unified IS '모든 자산 유형의 통합 개요 데이터를 제공하는 뷰';
+

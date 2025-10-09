@@ -12,7 +12,7 @@ import 'highcharts/modules/accessibility';
 import 'highcharts/modules/stock';
 import 'highcharts/modules/drag-panes';
 import 'highcharts/modules/navigator';
-import 'highcharts/modules/export-data';
+// import 'highcharts/modules/export-data'; // 문제가 있는 모듈 제거
 import 'highcharts/modules/stock-tools';
 import 'highcharts/modules/full-screen';
 import 'highcharts/modules/annotations-advanced';

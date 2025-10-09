@@ -15,8 +15,12 @@ import {
   cilChart,
 } from '@coreui/icons'
 
-const CryptoInfoTab = ({ cryptoData, asset }) => {
+const CryptoInfoTab = ({ cryptoData, asset, overviewData }) => {
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false)
+  
+  console.log('🔍 CryptoInfoTab received cryptoData:', cryptoData)
+  console.log('🔍 CryptoInfoTab received asset:', asset)
+  console.log('🔍 CryptoInfoTab received overviewData:', overviewData)
 
   const formatValue = (value, type = 'number') => {
     if (value === 'N/A' || value === null || value === undefined) return 'N/A'
@@ -37,16 +41,13 @@ const CryptoInfoTab = ({ cryptoData, asset }) => {
     }
   }
 
-  // Use actual crypto data from database
-  const actualCryptoData = cryptoData || {}
-
-  console.log('🔍 CryptoInfoTab received cryptoData:', cryptoData)
-  console.log('🔍 CryptoInfoTab received asset:', asset)
+  // Use actual crypto data from database (overviewData 우선 사용)
+  const actualCryptoData = overviewData || cryptoData || {}
 
   // Get cryptocurrency description
   const getCryptoDescription = () => {
     return (
-      actualCryptoData.description || 'Detailed cryptocurrency information will be displayed here.'
+      actualCryptoData.crypto_description || actualCryptoData.description || 'Detailed cryptocurrency information will be displayed here.'
     )
   }
 
@@ -134,12 +135,12 @@ const CryptoInfoTab = ({ cryptoData, asset }) => {
   // Get basic crypto info
   const getBasicInfo = () => {
     return {
-      symbol: actualCryptoData.symbol || 'N/A',
-      name: actualCryptoData.name || 'N/A',
+      symbol: actualCryptoData.crypto_symbol || actualCryptoData.symbol || 'N/A',
+      name: actualCryptoData.crypto_name || actualCryptoData.name || 'N/A',
       category: actualCryptoData.category || 'Cryptocurrency',
       platform: actualCryptoData.platform || 'N/A',
       dateAdded: actualCryptoData.date_added || 'N/A',
-      cmcRank: actualCryptoData.rank || actualCryptoData.cmc_rank || 'N/A',
+      cmcRank: actualCryptoData.cmc_rank || actualCryptoData.rank || 'N/A',
       website: actualCryptoData.website_url || 'N/A',
     }
   }
@@ -147,11 +148,11 @@ const CryptoInfoTab = ({ cryptoData, asset }) => {
   // Get market info
   const getMarketInfo = () => {
     return {
-      marketCap: actualCryptoData.market_cap
-        ? `$${(actualCryptoData.market_cap / 1e9).toFixed(1)}B`
+      marketCap: actualCryptoData.crypto_market_cap || actualCryptoData.market_cap
+        ? `$${((actualCryptoData.crypto_market_cap || actualCryptoData.market_cap) / 1e9).toFixed(1)}B`
         : 'N/A',
-      currentPrice: actualCryptoData.price
-        ? `$${actualCryptoData.price.toFixed(2)}`
+      currentPrice: actualCryptoData.crypto_current_price || actualCryptoData.price
+        ? `$${(actualCryptoData.crypto_current_price || actualCryptoData.price).toFixed(2)}`
         : 'N/A',
       volume24h: actualCryptoData.volume_24h
         ? `$${(actualCryptoData.volume_24h / 1e9).toFixed(1)}B`
@@ -159,13 +160,13 @@ const CryptoInfoTab = ({ cryptoData, asset }) => {
       percentChange1h: actualCryptoData.percent_change_1h
         ? `${actualCryptoData.percent_change_1h.toFixed(2)}%`
         : 'N/A',
-      percentChange24h: actualCryptoData.price_change_percent_24h || actualCryptoData.percent_change_24h
-        ? `${(actualCryptoData.price_change_percent_24h || actualCryptoData.percent_change_24h).toFixed(2)}%`
+      percentChange24h: actualCryptoData.percent_change_24h
+        ? `${actualCryptoData.percent_change_24h.toFixed(2)}%`
         : 'N/A',
       percentChange7d: actualCryptoData.percent_change_7d
         ? `${actualCryptoData.percent_change_7d.toFixed(2)}%`
         : 'N/A',
-      slug: actualCryptoData.slug || actualCryptoData.symbol || 'N/A',
+      slug: actualCryptoData.slug || actualCryptoData.crypto_symbol || actualCryptoData.symbol || 'N/A',
     }
   }
 

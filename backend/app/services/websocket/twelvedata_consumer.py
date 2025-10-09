@@ -16,7 +16,7 @@ from app.core.config import GLOBAL_APP_CONFIGS
 logger = logging.getLogger(__name__)
 
 # DISABLED: TwelveData WebSocket Consumer
-# class TwelveDataWSConsumer(BaseWSConsumer):
+class TwelveDataWSConsumer(BaseWSConsumer):
     """TwelveData WebSocket Consumer"""
     
     def __init__(self, config: ConsumerConfig):
@@ -248,7 +248,7 @@ logger = logging.getLogger(__name__)
     
     def get_max_subscriptions(self) -> int:
         """최대 구독 수 반환"""
-        return 20  # TwelveData 무료 플랜 제한
+        return 8  # TwelveData 무료 플랜 제한 (일일 8 크레딧)
     
     def _build_redis_url(self) -> str:
         """Redis URL 구성"""

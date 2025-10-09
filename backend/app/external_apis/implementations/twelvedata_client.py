@@ -65,6 +65,8 @@ class TwelveDataClient(TradFiAPIClient):
     async def test_connection(self) -> bool:
         """Test connectivity to Twelve Data"""
         try:
+            # Rate limiting 적용
+            await self._rate_limit()
             async with httpx.AsyncClient() as client:
                 resp = await client.get(f"{self.base_url}/time_series", params={"symbol": "AAPL", "interval": "1min", "outputsize": 1, "apikey": self.api_key}, timeout=self.api_timeout)
                 return resp.status_code == 200
@@ -76,7 +78,7 @@ class TwelveDataClient(TradFiAPIClient):
         """Return known public rate limits for Twelve Data free plan"""
         return {
             "free_tier": {
-                "calls_per_minute": 7,
+                "calls_per_minute": 8,  # 실제 제한에 맞게 조정
                 "calls_per_day": 800
             }
         }

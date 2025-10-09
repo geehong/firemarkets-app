@@ -187,3 +187,4 @@ export const useAssetData = (assetId, interval = '1d', limit = 1000) => {
 }
 
 export default useAssetData
+

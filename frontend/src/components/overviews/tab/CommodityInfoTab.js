@@ -3,7 +3,10 @@ import { CCard, CCardBody, CCardHeader, CCol, CRow, CProgress, CBadge } from '@c
 import { CIcon } from '@coreui/icons-react'
 import { cilChart, cilBarChart, cilFactory } from '@coreui/icons'
 
-const CommodityInfoTab = ({ commodityData }) => {
+const CommodityInfoTab = ({ commodityData, asset, overviewData }) => {
+  console.log('🔍 CommodityInfoTab received commodityData:', commodityData)
+  console.log('🔍 CommodityInfoTab received asset:', asset)
+  console.log('🔍 CommodityInfoTab received overviewData:', overviewData)
   const formatValue = (value, type = 'number') => {
     if (value === 'N/A' || value === null || value === undefined) return 'N/A'
 
