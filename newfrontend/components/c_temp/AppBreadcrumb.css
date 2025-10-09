@@ -1,0 +1,85 @@
+.** 설명 **
+/*
+  - .breadcrumb-headroom-wrapper: Headroom가 생성하는 래퍼의 높이를 지정합니다.
+  - .breadcrumb-headroom: 브레드크럼 영역에 z-index 등 기본 스타일을 지정합니다.
+  - .breadcrumb-headroom.headroom: 전환(transition) 속성. 사라지는/나타나는 속도는 여기의 duration(300ms)을 조절합니다.
+  - .breadcrumb-headroom.headroom.headroom--unpinned: 스크롤로 숨김 상태. translateY와 opacity로 사라지는 연출, pointer-events로 클릭 방지.
+  - .breadcrumb-headroom.headroom.headroom--pinned: 표시 상태. 원래 위치와 불투명도 복원.
+
+  - 아래 .custom_breadcrumb_class* 규칙은 과거 inline 제어용 보조 규칙으로 남겨두었습니다.
+    현재는 Headroom 기반 전환이 우선이며, 필요 시 제거해도 무방합니다.
+*/
+.breadcrumb-headroom-wrapper {
+  height: 32px;
+}
+
+.breadcrumb-headroom {
+  position: relative;
+  z-index: 2;
+}
+
+.breadcrumb-headroom.headroom {
+  transition: transform 300ms ease, opacity 300ms ease;
+}
+
+.breadcrumb-headroom.headroom.headroom--unpinned {
+  transform: translateY(-12px);
+  opacity: 0.05;
+  pointer-events: none;
+}
+
+.breadcrumb-headroom.headroom.headroom--pinned {
+  transform: translateY(0);
+  opacity: 1;
+}
+/* Increase specificity and ensure override */
+.container-fluid.custom_breadcrumb_class {
+  transition: opacity 400ms ease, transform 400ms ease !important;
+  will-change: opacity, transform;
+}
+.container-fluid.custom_breadcrumb_class.is-hidden {
+  opacity: 0.05 !important;
+  transform: translateY(-12px) !important;
+  pointer-events: none !important;
+}
+.container-fluid.custom_breadcrumb_class.is-visible {
+  opacity: 1 !important;
+  transform: translateY(0) !important;
+}
+.container-fluid.custom_breadcrumb_class.slow {
+  transition-duration: 2000ms !important;
+}
+
+/* Package-free hide/show wrapper */
+.breadcrumb-hide-container {
+  transition: transform 300ms ease, opacity 300ms ease, height 300ms ease;
+  overflow: hidden;
+  height: var(--breadcrumb-height, 44px);
+}
+.breadcrumb-hide-container.unpinned {
+  transform: translateY(-100%);
+  opacity: 0.05;
+  height: 0;
+  pointer-events: none;
+}
+.breadcrumb-hide-container.pinned {
+  transform: translateY(0);
+  opacity: 1;
+  height: var(--breadcrumb-height, 44px);
+}
+
+/* Vertically center breadcrumb content inside its container */
+.breadcrumb-hide-container > .container-fluid {
+  height: var(--breadcrumb-height, 44px);
+  display: flex;
+  align-items: center;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0;
+}
+

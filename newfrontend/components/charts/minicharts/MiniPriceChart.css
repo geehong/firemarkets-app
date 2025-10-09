@@ -1,0 +1,221 @@
+/* MiniPriceChart.css - 미니 차트 스타일 */
+
+/* 기본 차트 컨테이너 */
+.mini-price-chart {
+  width: 100%;
+  height: 400px;
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+/* 모바일 환경 (768px 이하) */
+@media (max-width: 768px) {
+  .mini-price-chart {
+    height: 200px;
+    border-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+
+  /* 모바일에서 Y축 타이틀(Price (USD)) 숨김 */
+  .mini-price-chart .highcharts-yaxis-title {
+    display: none !important;
+  }
+}
+
+/* 로딩 상태 */
+.mini-price-chart.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f8f9fa;
+}
+
+.mini-price-chart.loading::before {
+  content: "Loading...";
+  color: #666666;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* 에러 상태 */
+.mini-price-chart.error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #fff5f5;
+  border: 1px solid #fed7d7;
+}
+
+.mini-price-chart.error::before {
+  content: "Chart Error";
+  color: #e53e3e;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* 차트 내부 요소 스타일 */
+.mini-price-chart .highcharts-container {
+  border-radius: inherit;
+}
+
+/* 차트 제목 스타일 (데스크톱) */
+.mini-price-chart .highcharts-title {
+  font-family: 'Inter', sans-serif;
+  font-weight: bold;
+  font-size: 16px;
+  color: #333333;
+}
+
+/* 차트 제목 스타일 (모바일) */
+@media (max-width: 768px) {
+  .mini-price-chart .highcharts-title {
+    font-weight: normal;
+    font-size: 14px;
+    color: #999999;
+    text-align: center;
+  }
+}
+
+/* Y축 라벨 스타일 (데스크톱만) */
+.mini-price-chart .highcharts-yaxis-labels {
+  font-size: 12px;
+  color: #666666;
+}
+
+/* Y축 라벨 숨김 (모바일) */
+@media (max-width: 768px) {
+  .mini-price-chart .highcharts-yaxis-labels {
+    display: none !important;
+  }
+  
+  /* X축 라벨 숨김 (모바일) */
+  .mini-price-chart .highcharts-xaxis-labels {
+    display: none !important;
+  }
+}
+
+/* X축 라벨 스타일 */
+.mini-price-chart .highcharts-xaxis-labels {
+  font-size: 11px;
+  color: #666666;
+}
+
+/* 그리드 라인 스타일 */
+.mini-price-chart .highcharts-grid-line {
+  stroke: #3a3a3a; /* slightly brighter dark gray */
+  stroke-opacity: 0.6; /* more visible */
+  stroke-width: 0.75px;
+}
+
+/* 차트 라인 스타일 */
+.mini-price-chart .highcharts-series-0 .highcharts-graph {
+  stroke-width: 2px;
+  stroke: #006064;
+}
+
+/* 플롯 라인 스타일 */
+.mini-price-chart .highcharts-plot-line {
+  stroke-width: 0.5px;
+  z-index: 10;
+}
+
+/* 플롯 라인 라벨 스타일 */
+.mini-price-chart .highcharts-plot-line-label {
+  font-weight: 900;
+  font-size: 12px;
+  z-index: 11;
+}
+
+/* 상승 색상 (초록) */
+.mini-price-chart .highcharts-plot-line.rising {
+  stroke: #18c58f;
+}
+
+.mini-price-chart .highcharts-plot-line.rising .highcharts-plot-line-label {
+  color: #18c58f;
+}
+
+/* 하락 색상 (빨강) */
+.mini-price-chart .highcharts-plot-line.falling {
+  stroke: #ff4d4f;
+}
+
+.mini-price-chart .highcharts-plot-line.falling .highcharts-plot-line-label {
+  color: #ff4d4f;
+}
+
+/* 변화 없음 색상 (회색) */
+.mini-price-chart .highcharts-plot-line.neutral {
+  stroke: #999999;
+}
+
+.mini-price-chart .highcharts-plot-line.neutral .highcharts-plot-line-label {
+  color: #999999;
+}
+
+/* 터치 디바이스 최적화 */
+@media (hover: none) and (pointer: coarse) {
+  .mini-price-chart {
+    touch-action: pan-x;
+  }
+  
+  .mini-price-chart .highcharts-container {
+    cursor: grab;
+  }
+  
+  .mini-price-chart .highcharts-container:active {
+    cursor: grabbing;
+  }
+}
+
+/* 다크 모드 지원 (선택사항) */
+@media (prefers-color-scheme: dark) {
+  .mini-price-chart {
+    background-color: #1a1a1a;
+    color: #ffffff;
+  }
+  
+  .mini-price-chart .highcharts-title {
+    color: #ffffff;
+  }
+  
+  .mini-price-chart .highcharts-yaxis-labels,
+  .mini-price-chart .highcharts-xaxis-labels {
+    color: #cccccc;
+  }
+  
+  .mini-price-chart .highcharts-grid-line {
+    stroke: #333333;
+  }
+}
+
+/* 애니메이션 효과 */
+.mini-price-chart .highcharts-series-0 .highcharts-graph {
+  transition: stroke 0.3s ease;
+}
+
+.mini-price-chart .highcharts-plot-line {
+  transition: stroke 0.3s ease;
+}
+
+.mini-price-chart .highcharts-plot-line-label {
+  transition: color 0.3s ease;
+}
+
+/* 반응형 그리드 시스템과의 호환성 */
+.mini-price-chart-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+/* 인쇄 최적화 */
+@media print {
+  .mini-price-chart {
+    height: 300px;
+    box-shadow: none;
+    border: 1px solid #cccccc;
+  }
+}
