@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/sidebar"
 import { TopNav } from "@/components/top-nav"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { SettingsProvider } from "@/contexts/settings-context"
+import { QueryProvider } from "@/components/providers/query-provider"
 import type React from "react"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -42,9 +43,10 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <SettingsProvider>
-            <TooltipProvider delayDuration={0}>
+        <QueryProvider>
+          <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+            <SettingsProvider>
+              <TooltipProvider delayDuration={0}>
               <div className="min-h-screen flex">
                 <Sidebar />
                 <div className="flex-1">
@@ -54,9 +56,10 @@ export default function RootLayout({
                   </div>
                 </div>
               </div>
-            </TooltipProvider>
-          </SettingsProvider>
-        </ThemeProvider>
+              </TooltipProvider>
+            </SettingsProvider>
+          </ThemeProvider>
+        </QueryProvider>
       </body>
     </html>
   )

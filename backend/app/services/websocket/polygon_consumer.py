@@ -13,6 +13,7 @@ import os
 import redis.asyncio as redis
 from app.services.websocket.base_consumer import BaseWSConsumer, ConsumerConfig, AssetType
 from app.core.config import GLOBAL_APP_CONFIGS
+from app.core.api_key_fallback_manager import APIKeyFallbackManager
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +23,9 @@ class PolygonWSConsumer(BaseWSConsumer):
     
     def __init__(self, config: ConsumerConfig):
         super().__init__(config)
-        self._api_key = GLOBAL_APP_CONFIGS.get('POLYGON_API_KEY')
-        if not self._api_key:
-            # 환경변수에서 직접 읽기
-            self._api_key = os.getenv('POLYGON_API_KEY')
+        # API 키 Fallback 매니저 초기화
+        self.api_key_manager = APIKeyFallbackManager("polygon")
+        self.current_key_info = None
         
         # Polygon.io REST API URLs
         self.base_url = "https://api.polygon.io"
@@ -50,38 +50,83 @@ class PolygonWSConsumer(BaseWSConsumer):
     
     @property
     def api_key(self) -> Optional[str]:
-        return self._api_key
-    
-    @api_key.setter
-    def api_key(self, value: str):
-        self._api_key = value
+        if self.current_key_info and 'key' in self.current_key_info:
+            return self.current_key_info['key']
+        return None
     
     async def connect(self) -> bool:
-        """REST API 연결 테스트"""
-        logger.info(f"🔌 {self.client_name} connect() method called")
+        """REST API 연결 테스트 (API 키 Fallback 지원)"""
+        max_retries = 3
+        retry_count = 0
         
-        try:
-            if not self.api_key:
-                logger.error("Polygon API key not configured")
-                return False
-            
-            # API 연결 테스트
-            test_url = f"{self.base_url}/v2/aggs/ticker/AAPL/prev"
-            params = {"apikey": self.api_key}
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.get(test_url, params=params, timeout=self.api_timeout)
-                if response.status_code == 200:
-                    self.is_connected = True
-                    logger.info(f"✅ {self.client_name} REST API connected successfully")
-                    return True
-                else:
-                    logger.error(f"❌ {self.client_name} API test failed: {response.status_code}")
+        while retry_count < max_retries:
+            try:
+                # 현재 API 키 정보 가져오기
+                self.current_key_info = self.api_key_manager.get_current_key()
+                if not self.current_key_info:
+                    logger.error("❌ No active Polygon API keys available")
                     return False
-                    
-        except Exception as e:
-            logger.error(f"❌ {self.client_name} connection test failed: {e}")
-            return False
+                
+                if not self.api_key:
+                    logger.error("❌ Polygon API key not configured")
+                    self.api_key_manager.mark_key_failed(self.current_key_info)
+                    retry_count += 1
+                    continue
+                
+                logger.info(f"🔑 Using Polygon API key: {self.api_key_manager.get_key_info_for_logging()}")
+                
+                # 연결 시도 로그
+                from app.services.websocket_orchestrator import log_consumer_connection_attempt
+                log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries)
+                
+                # API 연결 테스트
+                test_url = f"{self.base_url}/v2/aggs/ticker/AAPL/prev"
+                params = {"apikey": self.api_key}
+                
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(test_url, params=params, timeout=self.api_timeout)
+                    if response.status_code == 200:
+                        self.is_connected = True
+                        logger.info(f"✅ {self.client_name} REST API connected successfully with key: {self.api_key_manager.get_key_info_for_logging()}")
+                        return True
+                    else:
+                        logger.error(f"❌ Polygon API test failed with status {response.status_code}")
+                        failed_key = self.current_key_info['key'] if self.current_key_info else "unknown"
+                        self.api_key_manager.mark_key_failed(self.current_key_info)
+                        
+                        # API 키 fallback 로그
+                        from app.services.websocket_orchestrator import log_api_key_fallback, log_consumer_connection_attempt
+                        log_api_key_fallback(
+                            self.client_name, 
+                            failed_key, 
+                            "fallback_attempt", 
+                            f"API test failed with status {response.status_code}"
+                        )
+                        log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries, f"API test failed with status {response.status_code}")
+                        
+                        retry_count += 1
+                        continue
+            except Exception as e:
+                logger.error(f"❌ {self.client_name} connection test failed: {e}")
+                failed_key = self.current_key_info['key'] if self.current_key_info else "unknown"
+                self.api_key_manager.mark_key_failed(self.current_key_info)
+                
+                # API 키 fallback 로그
+                from app.services.websocket_orchestrator import log_api_key_fallback, log_consumer_connection_attempt
+                log_api_key_fallback(
+                    self.client_name, 
+                    failed_key, 
+                    "fallback_attempt", 
+                    f"Connection test failed: {str(e)}"
+                )
+                log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries, f"Connection test failed: {str(e)}")
+                
+                retry_count += 1
+                continue
+        
+        # 모든 재시도 실패
+        logger.error(f"❌ {self.client_name} connection failed after {max_retries} attempts")
+        return False
     
     async def disconnect(self):
         """REST API 연결 해제"""

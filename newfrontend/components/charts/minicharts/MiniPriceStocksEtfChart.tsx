@@ -1,8 +1,17 @@
 import React from 'react';
 import MiniPriceChart from './MiniPriceChart';
 
+interface MiniPriceStocksEtfChartProps {
+  containerId?: string;
+  assetIdentifier?: string;
+  chartType?: string;
+  useWebSocket?: boolean;
+  apiInterval?: string | null;
+  marketHours?: boolean;
+}
+
 // 미국시장 개장시간 체크 함수 (한국시간 기준)
-const checkUSMarketHours = () => {
+const checkUSMarketHours = (): boolean => {
     const now = new Date();
     const koreanTime = new Date(now.toLocaleString("en-US", {timeZone: "Asia/Seoul"}));
     const hour = koreanTime.getHours();
@@ -16,13 +25,13 @@ const checkUSMarketHours = () => {
     return currentTime >= marketOpenStart || currentTime <= marketOpenEnd;
 };
 
-const MiniPriceStocksEtfChart = (props) => {
+const MiniPriceStocksEtfChart: React.FC<MiniPriceStocksEtfChartProps> = (props) => {
     return (
         <MiniPriceChart
             {...props}
             chartType="stocks"
             useWebSocket={true}
-            marketHours={checkUSMarketHours}
+            marketHours={checkUSMarketHours()}
         />
     );
 };

@@ -12,6 +12,7 @@ import redis.asyncio as redis
 from app.services.websocket.base_consumer import BaseWSConsumer, ConsumerConfig, AssetType
 from app.core.config import GLOBAL_APP_CONFIGS
 from app.core.websocket_logging import WebSocketLogger
+from app.core.api_key_fallback_manager import APIKeyFallbackManager
 # websocket_log_service removed - using file logging only
 
 logger = logging.getLogger(__name__)
@@ -21,11 +22,9 @@ class FinnhubWSConsumer(BaseWSConsumer):
     
     def __init__(self, config: ConsumerConfig):
         super().__init__(config)
-        self.api_key = GLOBAL_APP_CONFIGS.get('FINNHUB_API_KEY')
-        if not self.api_key:
-            # 환경변수에서 직접 읽기
-            self.api_key = os.getenv('FINNHUB_API_KEY')
-        self.ws_url = f"wss://ws.finnhub.io?token={self.api_key}"
+        # API 키 Fallback 매니저 초기화
+        self.api_key_manager = APIKeyFallbackManager("finnhub")
+        self.current_key_info = None
         self.websocket = None
         self._receive_task = None
         # Redis
@@ -43,59 +42,104 @@ class FinnhubWSConsumer(BaseWSConsumer):
     
     @property
     def api_key(self) -> Optional[str]:
-        return self._api_key
+        if self.current_key_info and 'key' in self.current_key_info:
+            return self.current_key_info['key']
+        return None
     
-    @api_key.setter
-    def api_key(self, value: str):
-        self._api_key = value
+    @property
+    def ws_url(self) -> str:
+        if self.api_key:
+            return f"wss://ws.finnhub.io?token={self.api_key}"
+        return ""
+    
     
     async def connect(self) -> bool:
-        """WebSocket 연결"""
-        try:
-            if not self.api_key:
-                logger.error("Finnhub API key not configured")
-                return False
-            
-            # 기존 연결이 있으면 먼저 닫기 (finnhub는 1 API key당 1개 연결만 허용)
-            if self.websocket and not self.websocket.closed:
-                logger.info(f"🔌 {self.client_name} closing existing connection before reconnecting")
-                try:
-                    await self.websocket.close()
-                except Exception as e:
-                    logger.warning(f"⚠️ {self.client_name} error closing existing connection: {e}")
-                self.websocket = None
-                self.is_connected = False
-            
-            # 연결 시도 정보 로깅 (민감정보 마스킹)
+        """WebSocket 연결 (API 키 Fallback 지원)"""
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
             try:
-                token_hint = (self.api_key[:4] + "***" + self.api_key[-2:]) if self.api_key and len(self.api_key) > 6 else "set"
-                logger.info(f"🔌 {self.client_name} connecting to ws.finnhub.io (token={token_hint})")
-            except Exception:
-                pass
-
-            # 연결 타임아웃 설정
-            self.websocket = await asyncio.wait_for(
-                websockets.connect(self.ws_url, ping_interval=20, ping_timeout=10),
-                timeout=30.0
-            )
-            self.is_connected = True
-            self.connection_errors = 0
-            logger.info(f"✅ {self.client_name} connected")
-            return True
-            
-        except asyncio.TimeoutError:
-            logger.error(f"❌ {self.client_name} connection timeout after 30 seconds")
-            self.connection_errors += 1
-            return False
-        except Exception as e:
-            error_msg = str(e)
-            if "429" in error_msg or "Too Many Requests" in error_msg:
-                logger.error(f"❌ {self.client_name} connection failed: HTTP 429 - Too Many Requests")
-                logger.warning(f"⚠️ {self.client_name} API rate limit exceeded, will wait longer before retry")
-            else:
-                logger.error(f"❌ {self.client_name} connection failed: {e}")
-            self.connection_errors += 1
-            return False
+                # 현재 API 키 정보 가져오기
+                self.current_key_info = self.api_key_manager.get_current_key()
+                if not self.current_key_info:
+                    logger.error("❌ No active Finnhub API keys available")
+                    return False
+                
+                if not self.api_key:
+                    logger.error("❌ Finnhub API key not configured")
+                    self.api_key_manager.mark_key_failed(self.current_key_info)
+                    retry_count += 1
+                    continue
+                
+                logger.info(f"🔑 Using Finnhub API key: {self.api_key_manager.get_key_info_for_logging()}")
+                
+                # 연결 시도 로그
+                from app.services.websocket_orchestrator import log_consumer_connection_attempt
+                log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries)
+                
+                # 기존 연결이 있으면 먼저 닫기 (finnhub는 1 API key당 1개 연결만 허용)
+                if self.websocket and not self.websocket.closed:
+                    logger.info(f"🔌 {self.client_name} closing existing connection before reconnecting")
+                    try:
+                        await self.websocket.close()
+                    except Exception as e:
+                        logger.warning(f"⚠️ {self.client_name} error closing existing connection: {e}")
+                    self.websocket = None
+                    self.is_connected = False
+                
+                # 연결 타임아웃 설정
+                self.websocket = await asyncio.wait_for(
+                    websockets.connect(self.ws_url, ping_interval=20, ping_timeout=10),
+                    timeout=30.0
+                )
+                self.is_connected = True
+                self.connection_errors = 0
+                logger.info(f"✅ {self.client_name} connected successfully with key: {self.api_key_manager.get_key_info_for_logging()}")
+                return True
+                
+            except asyncio.TimeoutError:
+                logger.error(f"❌ {self.client_name} connection timeout after 30 seconds")
+                self.api_key_manager.mark_key_failed(self.current_key_info)
+                retry_count += 1
+                continue
+            except Exception as e:
+                error_msg = str(e)
+                failed_key = self.current_key_info['key'] if self.current_key_info else "unknown"
+                
+                if "429" in error_msg or "Too Many Requests" in error_msg:
+                    logger.error(f"❌ {self.client_name} connection failed: HTTP 429 - Too Many Requests")
+                    logger.warning(f"⚠️ {self.client_name} API rate limit exceeded, will wait longer before retry")
+                    
+                    # API 키 fallback 로그
+                    from app.services.websocket_orchestrator import log_api_key_fallback, log_consumer_connection_attempt
+                    log_api_key_fallback(
+                        self.client_name, 
+                        failed_key, 
+                        "fallback_attempt", 
+                        "HTTP 429 - Too Many Requests (Rate limit exceeded)"
+                    )
+                    log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries, "HTTP 429 - Too Many Requests (Rate limit exceeded)")
+                else:
+                    logger.error(f"❌ {self.client_name} connection failed: {e}")
+                    
+                    # API 키 fallback 로그
+                    from app.services.websocket_orchestrator import log_api_key_fallback, log_consumer_connection_attempt
+                    log_api_key_fallback(
+                        self.client_name, 
+                        failed_key, 
+                        "fallback_attempt", 
+                        f"Connection failed: {str(e)}"
+                    )
+                    log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries, f"Connection failed: {str(e)}")
+                
+                self.api_key_manager.mark_key_failed(self.current_key_info)
+                retry_count += 1
+                continue
+        
+        # 모든 재시도 실패
+        logger.error(f"❌ {self.client_name} connection failed after {max_retries} attempts")
+        return False
     
     async def disconnect(self):
         """WebSocket 연결 해제"""

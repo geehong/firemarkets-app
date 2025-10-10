@@ -36,22 +36,24 @@ app = FastAPI(
 
 # CORS 설정
 origins = [
-    "http://localhost", "http://localhost:3000", "http://localhost:8000", "http://localhost:8001",
-    "http://127.0.0.1:3000", "http://127.0.0.1:8000", "http://127.0.0.1:8001",
-    "ws://localhost:3000", "ws://localhost:8000", "ws://localhost:8001",
-    "ws://127.0.0.1:3000", "ws://127.0.0.1:8000", "ws://127.0.0.1:8001",
+    "http://localhost", "http://localhost:3000", "http://localhost:3006", "http://localhost:8000", "http://localhost:8001",
+    "http://127.0.0.1:3000", "http://127.0.0.1:3006", "http://127.0.0.1:8000", "http://127.0.0.1:8001",
+    "ws://localhost:3000", "ws://localhost:3006", "ws://localhost:8000", "ws://localhost:8001",
+    "ws://127.0.0.1:3000", "ws://127.0.0.1:3006", "ws://127.0.0.1:8000", "ws://127.0.0.1:8001",
     # 프로덕션 도메인 추가
     "https://firemarkets.net", "http://firemarkets.net",
+    "http://firemarkets.net:3006", "https://firemarkets.net:3006",
     "wss://firemarkets.net", "ws://firemarkets.net",
     "https://backend.firemarkets.net", "http://backend.firemarkets.net",
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
+    allow_origins=["*"],  # 개발 환경에서 모든 origin 허용
+    allow_credentials=False,  # credentials를 false로 설정
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Socket.IO 애플리케이션 생성

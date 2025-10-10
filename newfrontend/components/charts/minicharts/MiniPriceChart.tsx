@@ -1,9 +1,42 @@
 "use client"
 
 import React, { useEffect, useMemo, useRef, useState } from "react"
-import Highcharts from "highcharts/highstock"
 import { useAPI } from "@/hooks/useAPI"
-import "./MiniPriceChart.css"
+import { useRealtimePrices } from "@/hooks/useSocket"
+// CSS는 globals.css에서 글로벌로 로드됨
+
+// 연결 상태 표시 컴포넌트
+const ConnectionStatus: React.FC<{ isConnected: boolean }> = ({ isConnected }) => {
+  if (isConnected) {
+    // ON 상태 (녹색)
+    return (
+      <div style={{ 
+        color: '#10B981', 
+        fontWeight: 'bold', 
+        fontSize: '12px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        🟢 ON
+      </div>
+    )
+  } else {
+    // OFF 상태 (빨간색)
+    return (
+      <div style={{ 
+        color: '#dc2626', 
+        fontWeight: 'bold', 
+        fontSize: '12px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        🔴 OFF
+      </div>
+    )
+  }
+}
 
 type MiniPriceChartProps = {
   containerId?: string
@@ -11,7 +44,14 @@ type MiniPriceChartProps = {
   chartType?: string
   useWebSocket?: boolean
   apiInterval?: string | null
-  marketHours?: unknown
+  marketHours?: boolean
+}
+
+type ApiResponse = {
+  quotes?: Array<{
+    timestamp_utc: string
+    price: string | number
+  }>
 }
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && isFinite(v)
@@ -38,6 +78,43 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
   const chartRef = useRef<HTMLDivElement | null>(null)
   const [chart, setChart] = useState<any>(null)
   const [isMobile, setIsMobile] = useState<boolean>(() => (typeof window !== "undefined" ? window.innerWidth <= 768 : false))
+  const [highchartsLoaded, setHighchartsLoaded] = useState(false)
+
+  // 웹소켓 실시간 데이터 수신
+  const { latestPrice, priceHistory, isConnected: socketConnected } = useRealtimePrices(assetIdentifier)
+  
+  // 실제 연결 상태 (시장 개장 시간 고려)
+  const actualConnectionStatus = useMemo(() => {
+    if (chartType === 'stocks' && marketHours === false) {
+      return false // 주식/ETF이고 폐장 시간이면 OFF
+    }
+    return socketConnected // 그 외에는 WebSocket 연결 상태 그대로
+  }, [socketConnected, chartType, marketHours])
+
+  // Highcharts 동적 로드
+  useEffect(() => {
+    const loadHighcharts = async () => {
+      if (typeof window !== "undefined") {
+        try {
+          const Highcharts = (await import("highcharts")).default
+          const HighchartsStock = (await import("highcharts/modules/stock")).default
+          
+          // Highcharts Stock 모듈 초기화
+          if (typeof HighchartsStock === 'function') {
+            HighchartsStock(Highcharts)
+          }
+          
+          // 전역에 Highcharts 설정
+          ;(window as any).Highcharts = Highcharts
+          setHighchartsLoaded(true)
+        } catch (error) {
+          // console.error("Failed to load Highcharts:", error)
+        }
+      }
+    }
+    
+    loadHighcharts()
+  }, [])
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 768)
@@ -52,18 +129,43 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
     days: 1,
   } as any)
 
-  // 시계열 데이터로 변환 (정렬 포함)
+  // 시계열 데이터로 변환 (API 데이터 + 실시간 데이터)
   const chartData: [number, number][] = useMemo(() => {
-    if (!apiResponse?.quotes || apiResponse.quotes.length === 0) return []
-    return apiResponse.quotes
-      .map((q: any) => {
-        const ts = new Date(q.timestamp_utc).getTime()
-        if (!ts || !isFinite(ts)) return null
-        return [ts, parseFloat(q.price)] as [number, number]
-      })
-      .filter((p: any) => p !== null)
-      .sort((a: [number, number], b: [number, number]) => a[0] - b[0])
-  }, [apiResponse])
+    let baseData: [number, number][] = []
+    
+    // API 데이터 추가
+    if (apiResponse?.quotes && apiResponse.quotes.length > 0) {
+      baseData = apiResponse.quotes
+        .map((q: any) => {
+          const ts = new Date(q.timestamp_utc).getTime()
+          if (!ts || !isFinite(ts)) return null
+          return [ts, parseFloat(q.price)] as [number, number]
+        })
+        .filter((p: any): p is [number, number] => p !== null)
+        .sort((a: [number, number], b: [number, number]) => a[0] - b[0])
+    }
+    
+    // 실시간 데이터 추가 (최신 가격)
+    if (latestPrice) {
+      const realtimePoint: [number, number] = [
+        new Date(latestPrice.timestamp).getTime(),
+        parseFloat(latestPrice.price.toString())
+      ]
+      
+      // 중복 제거 (같은 시간대 데이터가 있으면 실시간 데이터로 교체)
+      const existingIndex = baseData.findIndex((point) => 
+        Math.abs(point[0] - realtimePoint[0]) < 60000 // 1분 이내
+      )
+      
+      if (existingIndex >= 0) {
+        baseData[existingIndex] = realtimePoint
+      } else {
+        baseData.push(realtimePoint)
+      }
+    }
+    
+    return baseData.sort((a, b) => a[0] - b[0])
+  }, [apiResponse, latestPrice])
 
   // 전일 클로즈 가격(24:00) 계산
   const prevClosePrice = useMemo(() => {
@@ -93,10 +195,12 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
     return { min: minTime - leftPad, max: maxTime + rightPad }
   }, [chartData])
 
-  // 차트 생성 (초기 로드 전용)
+  // 차트 초기 생성 (API 데이터 기반)
   useEffect(() => {
     if (!chartRef.current) return
+    if (!highchartsLoaded) return
     if (isLoading || chartData.length === 0) return
+    if (chart) return // 이미 차트가 있으면 스킵
 
     const last = chartData[chartData.length - 1]
     const lastPrice = last ? last[1] : null
@@ -107,14 +211,11 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
       else if (diff < 0) isRising = false
       else isRising = null
     }
-    const lineColor = isRising === null ? "#999999" : isRising ? "#18c58f" : "#ff4d4f"
+    const lineColor = isRising === null ? "#999999" : (isRising ? "#18c58f" : "#ff4d4f")
 
     const options: any = {
       title: {
-        text: `${assetIdentifier}`,
-        align: "center",
-        verticalAlign: "middle",
-        style: { fontSize: "14px", fontWeight: "bold", color: "#ffffff" },
+        text: null, // 차트 내부 타이틀 제거
       },
       xAxis: {
         type: "datetime",
@@ -129,6 +230,14 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
         maxPadding: 0,
         softMax: xAxisRange.max,
         softMin: xAxisRange.min,
+        events: {
+          setExtremes: function(e: any) {
+            // 휠로 인한 자동 범위 변경 방지
+            if (e.trigger === 'zoom' || e.trigger === 'pan') {
+              return false;
+            }
+          }
+        }
       },
       yAxis: {
         opposite: true,
@@ -162,7 +271,39 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
       credits: { enabled: false },
       exporting: { enabled: false },
       accessibility: { enabled: false },
-      chart: { backgroundColor: "#1a1a1a", animation: false },
+      chart: { 
+        backgroundColor: "#1a1a1a", 
+        animation: false,
+        scrollablePlotArea: { minHeight: 0 },
+        zoomType: null,
+        panning: { enabled: false },
+        panKey: 'shift',
+        events: {
+          wheel: function(e: any) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+          },
+          load: function() {
+            // 차트 로드 후 휠 이벤트 완전 차단
+            const chart = this;
+            const container = chart.container;
+            
+            // 모든 휠 이벤트 차단
+            const preventWheel = (e: any) => {
+              e.preventDefault();
+              e.stopPropagation();
+              e.stopImmediatePropagation();
+              return false;
+            };
+            
+            // 다양한 이벤트 타입에 대해 차단
+            ['wheel', 'mousewheel', 'DOMMouseScroll'].forEach(eventType => {
+              container.addEventListener(eventType, preventWheel, { passive: false, capture: true });
+            });
+          }
+        }
+      },
       series: [
         { type: "line", name: "Price", color: "#00d4ff", lineWidth: 2, marker: { enabled: false }, data: chartData },
         {
@@ -192,28 +333,166 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
 
     let newChart: any
     try {
-      newChart = Highcharts.stockChart(chartRef.current as any, options)
-      setChart(newChart)
-      return () => {
-        if (newChart) {
-          newChart.destroy()
-          setChart(null)
+      const Highcharts = (window as any).Highcharts
+      if (Highcharts) {
+        newChart = Highcharts.stockChart(chartRef.current as any, options)
+        setChart(newChart)
+        
+        // 차트 생성 후 추가 휠 이벤트 차단
+        if (newChart && newChart.container) {
+          const container = newChart.container;
+          const preventWheel = (e: any) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            return false;
+          };
+          
+          // 모든 휠 관련 이벤트 차단
+          ['wheel', 'mousewheel', 'DOMMouseScroll'].forEach(eventType => {
+            container.addEventListener(eventType, preventWheel, { passive: false, capture: true });
+          });
         }
+        
+        // console.log(`[MiniPriceChart - ${assetIdentifier}] 차트 초기 생성 완료`)
       }
     } catch (e) {
-      console.error(`[MiniPriceChart - ${assetIdentifier}] chart init error:`, e)
+      // console.error(`[MiniPriceChart - ${assetIdentifier}] chart init error:`, e)
     }
-  }, [assetIdentifier, chartData, isLoading, xAxisRange, prevClosePrice])
+  }, [assetIdentifier, isLoading, highchartsLoaded, chart])
+
+  // 실시간 데이터 업데이트 (마지막 포인트만 움직이는 효과)
+  useEffect(() => {
+    if (!chart || !latestPrice) return
+
+    const realtimePoint: [number, number] = [
+      new Date(latestPrice.timestamp).getTime(),
+      parseFloat(latestPrice.price.toString())
+    ]
+
+    try {
+      // 전일 종가 대비 상승/하락/보합 판단 및 컬러 결정
+      let isRising: boolean | null = null
+      if (isFiniteNumber(realtimePoint[1]) && isFiniteNumber(prevClosePrice)) {
+        const diff = realtimePoint[1] - prevClosePrice
+        if (diff > 0) isRising = true
+        else if (diff < 0) isRising = false
+        else isRising = null
+      }
+      const lineColor = isRising === null ? '#999999' : (isRising ? '#18c58f' : '#ff4d4f')
+
+      // 메인 라인 시리즈 업데이트: 마지막 포인트와 이어지도록 동작
+      const lineSeries = chart.series[0]
+      if (lineSeries) {
+        const lastPointObject = lineSeries.data && lineSeries.data.length > 0 ? lineSeries.data[lineSeries.data.length - 1] : null
+        if (!lastPointObject) {
+          // 첫 번째 포인트인 경우
+          lineSeries.addPoint(realtimePoint, false, false, false)
+        } else {
+          // 동일 버킷 판정: 1분(60000ms) 이내면 업데이트, 초과 시 새 포인트 추가
+          const isSameBucket = Math.abs(realtimePoint[0] - lastPointObject.x) < (60 * 1000)
+          if (isSameBucket) {
+            // x, y 모두 업데이트하여 라인 끝과 마커가 동일 시각으로 정렬되도록 함
+            lastPointObject.update(realtimePoint, false)
+          } else {
+            lineSeries.addPoint(realtimePoint, false, false, false)
+          }
+        }
+      }
+
+      // x축 우측 패딩 4시간 유지: 현재 시각을 기준으로 max를 앞으로 밀기
+      const xAxis = chart.xAxis[0]
+      if (xAxis) {
+        const rightPadMs = 4 * 60 * 60 * 1000
+        const extremes = xAxis.getExtremes()
+        const newMax = realtimePoint[0] + rightPadMs
+        const newMin = extremes && isFinite(extremes.min) ? extremes.min : undefined
+        if (!extremes || !isFinite(extremes.max) || newMax > extremes.max) {
+          xAxis.setExtremes(newMin, newMax, false, false)
+        }
+      }
+
+      // yAxis plotLines 업데이트 (현재가)
+      const yAxis = chart.yAxis[0]
+      if (yAxis) {
+        yAxis.removePlotLine('current-price-line')
+        yAxis.addPlotLine({
+          id: 'current-price-line',
+          value: Math.round(realtimePoint[1] * 100) / 100,
+          color: lineColor,
+          width: 0.75,
+          zIndex: 10,
+        })
+      }
+
+      // 마커 시리즈 업데이트 (색상과 라벨 포함)
+      const markerSeries = chart.series[1]
+      if (markerSeries) {
+        markerSeries.update({
+          color: lineColor,
+          dataLabels: {
+            enabled: true,
+            formatter: function (this: any) {
+              const val = Number(this.y)
+              if (!isFinite(val)) return ''
+              if (isFiniteNumber(prevClosePrice) && prevClosePrice !== 0) {
+                const diff = val - prevClosePrice
+                const pct = (diff / prevClosePrice) * 100
+                const sign = diff > 0 ? '+' : diff < 0 ? '-' : ''
+                return `$${val.toFixed(2)} (${sign}${Math.abs(pct).toFixed(2)}%, ${sign}$${Math.abs(diff).toFixed(2)})`
+              }
+              return `$${val.toFixed(2)}`
+            },
+            style: { color: lineColor, fontWeight: '900', fontSize: '12px' }
+          }
+        }, false)
+        markerSeries.setData([realtimePoint], false, false, false)
+      }
+
+      // 차트 리드로우 (애니메이션 없이)
+      chart.redraw(false)
+      
+      // console.log(`[MiniPriceChart - ${assetIdentifier}] 실시간 데이터 업데이트: $${realtimePoint[1]} (${isRising === true ? '상승' : isRising === false ? '하락' : '보합'})`)
+    } catch (e) {
+      // console.error(`[MiniPriceChart - ${assetIdentifier}] 실시간 업데이트 오류:`, e)
+    }
+  }, [chart, latestPrice, assetIdentifier, prevClosePrice])
+
+  // 차트 정리
+  useEffect(() => {
+    return () => {
+      if (chart) {
+        // console.log(`[MiniPriceChart - ${assetIdentifier}] 차트 정리`)
+        chart.destroy()
+        setChart(null)
+      }
+    }
+  }, [chart, assetIdentifier])
 
   // 웹소켓 연동은 테스트 페이지에서는 사용하지 않음 (store 미존재 환경 호환)
 
   return (
-    <div className="mini-price-chart-container">
+    <div 
+      className="mini-price-chart-container" 
+      style={{ position: 'relative' }}
+      onWheel={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }}
+    >
+      
+      
       <div
         ref={chartRef}
         id={containerId}
         className={`mini-price-chart ${isLoading ? "loading" : ""} ${error ? "error" : ""}`}
         style={{ height: isMobile ? "200px" : "300px" }}
+        onWheel={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          return false;
+        }}
       />
     </div>
   )

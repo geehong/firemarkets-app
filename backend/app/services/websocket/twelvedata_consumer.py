@@ -12,6 +12,7 @@ import os
 import redis.asyncio as redis
 from app.services.websocket.base_consumer import BaseWSConsumer, ConsumerConfig, AssetType
 from app.core.config import GLOBAL_APP_CONFIGS
+from app.core.api_key_fallback_manager import APIKeyFallbackManager
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +22,9 @@ class TwelveDataWSConsumer(BaseWSConsumer):
     
     def __init__(self, config: ConsumerConfig):
         super().__init__(config)
-        self._api_key = GLOBAL_APP_CONFIGS.get('TWELVEDATA_API_KEY')
-        if not self._api_key:
-            # 환경변수에서 직접 읽기
-            self._api_key = os.getenv('TWELVEDATA_API_KEY')
-        self.ws_url = f"wss://ws.twelvedata.com/v1/quotes/price?apikey={self._api_key}"
+        # API 키 Fallback 매니저 초기화
+        self.api_key_manager = APIKeyFallbackManager("twelvedata")
+        self.current_key_info = None
         self.websocket = None
         self._receive_task = None
         # Redis
@@ -38,37 +37,69 @@ class TwelveDataWSConsumer(BaseWSConsumer):
     
     @property
     def api_key(self) -> Optional[str]:
-        return self._api_key
+        if self.current_key_info and 'key' in self.current_key_info:
+            return self.current_key_info['key']
+        return None
     
-    @api_key.setter
-    def api_key(self, value: str):
-        self._api_key = value
+    @property
+    def ws_url(self) -> str:
+        if self.api_key:
+            return f"wss://ws.twelvedata.com/v1/quotes/price?apikey={self.api_key}"
+        return ""
     
     async def connect(self) -> bool:
-        """WebSocket 연결"""
-        logger.info(f"🔌 {self.client_name} connect() method called")
+        """WebSocket 연결 (API 키 Fallback 지원)"""
+        max_retries = 3
+        retry_count = 0
         
-        try:
-            if not self.api_key:
-                logger.error("TwelveData API key not configured")
-                return False
-            
-            logger.info(f"🔌 {self.client_name} attempting connection to: {self.ws_url}")
-            logger.info(f"🔑 {self.client_name} using API key: {self.api_key[:10]}...")
+        while retry_count < max_retries:
+            try:
+                # 현재 API 키 정보 가져오기
+                self.current_key_info = self.api_key_manager.get_current_key()
+                if not self.current_key_info:
+                    logger.error("❌ No active TwelveData API keys available")
+                    return False
                 
-            self.websocket = await websockets.connect(self.ws_url)
-            
-            self.is_connected = True
-            logger.info(f"✅ {self.client_name} connected")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ {self.client_name} connection failed: {e}")
-            logger.error(f"❌ {self.client_name} URL: {self.ws_url}")
-            logger.error(f"❌ {self.client_name} API key: {self.api_key[:10] if self.api_key else 'None'}...")
-            import traceback
-            logger.error(f"❌ {self.client_name} traceback: {traceback.format_exc()}")
-            return False
+                if not self.api_key:
+                    logger.error("❌ TwelveData API key not configured")
+                    self.api_key_manager.mark_key_failed(self.current_key_info)
+                    retry_count += 1
+                    continue
+                
+                logger.info(f"🔑 Using TwelveData API key: {self.api_key_manager.get_key_info_for_logging()}")
+                logger.info(f"🔌 {self.client_name} attempting connection to: {self.ws_url}")
+                
+                # 연결 시도 로그
+                from app.services.websocket_orchestrator import log_consumer_connection_attempt
+                log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries)
+                
+                self.websocket = await websockets.connect(self.ws_url)
+                
+                self.is_connected = True
+                logger.info(f"✅ {self.client_name} connected successfully with key: {self.api_key_manager.get_key_info_for_logging()}")
+                return True
+                
+            except Exception as e:
+                logger.error(f"❌ {self.client_name} connection failed: {e}")
+                failed_key = self.current_key_info['key'] if self.current_key_info else "unknown"
+                self.api_key_manager.mark_key_failed(self.current_key_info)
+                
+                # API 키 fallback 로그
+                from app.services.websocket_orchestrator import log_api_key_fallback, log_consumer_connection_attempt
+                log_api_key_fallback(
+                    self.client_name, 
+                    failed_key, 
+                    "fallback_attempt", 
+                    f"Connection failed: {str(e)}"
+                )
+                log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries, f"Connection failed: {str(e)}")
+                
+                retry_count += 1
+                continue
+        
+        # 모든 재시도 실패
+        logger.error(f"❌ {self.client_name} connection failed after {max_retries} attempts")
+        return False
     
     async def disconnect(self):
         """WebSocket 연결 해제"""

@@ -47,9 +47,37 @@ def create_structured_log(
     :param data_points_added: 추가된 데이터 포인트 수
     :param error_message: 오류 메시지
     """
-    # 스케줄러 로그 생성 비활성화 (트랜잭션 오류 방지)
-    logger.info(f"Skipping scheduler log creation for {collector_name} - {status}")
-    return None
+    try:
+        # SchedulerLog 생성
+        scheduler_log = SchedulerLog(
+            job_name=job_name or collector_name,
+            status=status,
+            start_time=start_time or datetime.now(),
+            end_time=end_time,
+            duration_seconds=duration_seconds,
+            assets_processed=assets_processed or 0,
+            data_points_added=data_points_added or 0,
+            error_message=error_message,
+            current_task=current_task,
+            strategy_used=strategy_used,
+            retry_count=retry_count,
+            details=details
+        )
+        
+        db.add(scheduler_log)
+        db.commit()
+        db.refresh(scheduler_log)
+        
+        logger.info(f"📋 Scheduler log created for {collector_name} - {status} (ID: {scheduler_log.log_id})")
+        return scheduler_log
+        
+    except Exception as e:
+        logger.error(f"Failed to create scheduler log for {collector_name}: {e}")
+        try:
+            db.rollback()
+        except Exception as rollback_error:
+            logger.error(f"Failed to rollback transaction: {rollback_error}")
+        return None
 
 
 def create_collection_summary_log(

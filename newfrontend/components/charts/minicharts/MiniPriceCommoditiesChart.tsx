@@ -1,7 +1,16 @@
 import React from 'react';
 import MiniPriceChart from './MiniPriceChart';
 
-const MiniPriceCommoditiesChart = (props) => {
+interface MiniPriceCommoditiesChartProps {
+  containerId?: string;
+  assetIdentifier?: string;
+  chartType?: string;
+  useWebSocket?: boolean;
+  apiInterval?: string | null;
+  marketHours?: boolean;
+}
+
+const MiniPriceCommoditiesChart: React.FC<MiniPriceCommoditiesChartProps> = (props) => {
     return (
         <MiniPriceChart
             {...props}

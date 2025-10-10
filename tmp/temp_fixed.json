@@ -1,77 +1,219 @@
 {
-    "timezone": "Asia/Seoul",
-    "schedules": [
+    "WEBSOCKET_TIME_WINDOW_MINUTES": {
+      "value": 15,
+      "type": "int",
+      "description": "Time window in minutes for WebSocket data accumulation and storage",
+      "is_sensitive": false,
+      "is_active": true
+    },
+    "WEBSOCKET_CONSUMER_GROUP_PREFIX": {
+      "value": "processor_group",
+      "type": "string",
+      "description": "Prefix for WebSocket consumer group names in Redis streams",
+      "is_sensitive": false,
+      "is_active": true
+    },
+    "WEBSOCKET_RECONNECT_DELAY_SECONDS": {
+      "value": 5,
+      "type": "int",
+      "description": "Delay in seconds before attempting WebSocket reconnection",
+      "is_sensitive": false,
+      "is_active": true
+    },
+    "WEBSOCKET_HEALTH_CHECK_INTERVAL_SECONDS": {
+      "value": 30,
+      "type": "int",
+      "description": "Health check interval in seconds for WebSocket connections",
+      "is_sensitive": false,
+      "is_active": true
+    },
+    "WEBSOCKET_CONSUMER_INTERVAL_SECONDS": {
+      "value": 15,
+      "type": "int",
+      "description": "Consumer processing interval in seconds for WebSocket data",
+      "is_sensitive": false,
+      "is_active": true
+    },
+    "WEBSOCKET_FINNHUB_ENABLED": {
+      "value": true,
+      "type": "boolean",
+      "description": "Enable or disable Finnhub WebSocket consumer for real-time data",
+      "is_sensitive": false,
+      "is_active": true
+    },
+    "WEBSOCKET_FINNHUB_API_KEYS": {
+      "value": [
         {
-            "hour": 6,
-            "minute": 0,
-            "collectors": [
-                "ohlcv_day_clients",
-                "ohlcv_intraday_clients",
-                "crypto_ohlcv_clients",
-                "onchain_clients",
-                "commodity_ohlcv_clients"
-            ],
-            "day_of_week": "tue,wed,thu,fri,sat"
+          "key": "d2t3t79r01qkuv3j6p30d2t3t79r01qkuv3j6p3g",
+          "priority": 1,
+          "is_active": true
         },
         {
-            "hour": [9, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 9],
-            "minute": 40,
-            "collectors": [
-                "world_assets_clients"
-            ],
-            "day_of_week": "mon,tue,wed,thu,fri,sat,sun"
-        },
-        {
-            "hour": 10,
-            "minute": 1,
-            "collectors": [
-                "stock_financials_clients",
-                "stock_analyst_estimates_clients"
-            ],
-            "day_of_week": "sun"
-        },
-        {
-            "hour": 6,
-            "minute": 0,
-            "collectors": [
-                "crypto_clients",
-                "etf_clients"
-            ],
-            "day_of_week": "mon"
-        },
-        {
-            "hour": 8,
-            "minute": 0,
-            "collectors": [
-                "stock_profiles_clients"
-            ],
-            "day_of_week": "tue,wed,thu,fri,sat"
-        },
-        {
-            "hour": 8,
-            "minute": 0,
-            "collectors": [
-                "stock_profiles_fmp_clients"
-            ],
-            "day_of_week": "sat,sun"
-        },
-        {
-            "hour": 13,
-            "minute": 38,
-            "collectors": [
-                "stock_profiles_clients"
-            ],
-            "day_of_week": "tue"
+          "key": "FINNHUB_ALTERNATIVE_KEY_2",
+          "priority": 2,
+          "is_active": true
         }
-    ],
-    "client_overrides": {
-        "stock_profiles_clients": [
-            "FinnhubClient",
-            "PolygonClient",
-            "TwelveDataClient"
-        ],
-        "stock_financials_clients": [],
-        "stock_analyst_estimates_clients": []
+      ],
+      "type": "json",
+      "description": "Finnhub API keys with fallback support",
+      "is_sensitive": true,
+      "is_active": true
+    },
+    "WEBSOCKET_BINANCE_ENABLED": {
+      "value": true,
+      "type": "boolean",
+      "description": "Enable or disable Binance WebSocket consumer for cryptocurrency data",
+      "is_sensitive": false,
+      "is_active": true
+    },
+    "WEBSOCKET_ALPACA_ENABLED": {
+      "value": true,
+      "type": "boolean",
+      "description": "Enable or disable Alpaca WebSocket consumer for stock market data",
+      "is_sensitive": false,
+      "is_active": true
+    },
+    "WEBSOCKET_ALPACA_API_KEYS": {
+      "value": [
+        {
+          "key": "PK6JPW2J1JY4GDVZ7HLD",
+          "secret": "OWLQA1QX7Wa79PhiDPTQdb0pHDbl0mUJOUT65QD7",
+          "priority": 1,
+          "is_active": true
+        },
+        {
+          "key": "PK_ALTERNATIVE_KEY_2",
+          "secret": "SECRET_ALTERNATIVE_2",
+          "priority": 2,
+          "is_active": true
+        },
+        {
+          "key": "PK_ALTERNATIVE_KEY_3",
+          "secret": "SECRET_ALTERNATIVE_3",
+          "priority": 3,
+          "is_active": true
+        }
+      ],
+      "type": "json",
+      "description": "Alpaca API keys with fallback support",
+      "is_sensitive": true,
+      "is_active": true
+    },
+    "WEBSOCKET_TIINGO_ENABLED": {
+      "value": false,
+      "type": "boolean",
+      "description": "Enable or disable Tiingo WebSocket consumer for financial data",
+      "is_sensitive": false,
+      "is_active": true
+    },
+    "WEBSOCKET_TIINGO_API_KEYS": {
+      "value": [
+        {
+          "key": "6ad65759391ef22e0dccb8d2b171769c782c4853",
+          "priority": 1,
+          "is_active": true
+        },
+        {
+          "key": "TIINGO_ALTERNATIVE_KEY_2",
+          "priority": 2,
+          "is_active": true
+        }
+      ],
+      "type": "json",
+      "description": "Tiingo API keys with fallback support",
+      "is_sensitive": true,
+      "is_active": true
+    },
+    "WEBSOCKET_TWELVEDATA_ENABLED": {
+      "value": true,
+      "type": "boolean",
+      "description": "Enable or disable TwelveData WebSocket consumer for market data",
+      "is_sensitive": false,
+      "is_active": true
+    },
+    "WEBSOCKET_TWELVEDATA_API_KEYS": {
+      "value": [
+        {
+          "key": "7d438a1ad6ed4ebfaea69eb965fe7e83",
+          "priority": 1,
+          "is_active": true
+        },
+        {
+          "key": "TWELVEDATA_ALTERNATIVE_KEY_2",
+          "priority": 2,
+          "is_active": true
+        }
+      ],
+      "type": "json",
+      "description": "TwelveData API keys with fallback support",
+      "is_sensitive": true,
+      "is_active": true
+    },
+    "WEBSOCKET_SWISSQUOTE_ENABLED": {
+      "value": true,
+      "type": "boolean",
+      "description": "Enable or disable Swissquote WebSocket consumer for European market data",
+      "is_sensitive": false,
+      "is_active": true
+    },
+    "WEBSOCKET_COINBASE_ENABLED": {
+      "value": true,
+      "type": "boolean",
+      "description": "Enable or disable Coinbase WebSocket consumer for cryptocurrency data",
+      "is_sensitive": false,
+      "is_active": true
+    },
+    "WEBSOCKET_POLYGON_ENABLED": {
+      "value": true,
+      "type": "boolean",
+      "description": "Enable or disable Polygon WebSocket consumer for market data",
+      "is_sensitive": false,
+      "is_active": true
+    },
+    "WEBSOCKET_POLYGON_API_KEYS": {
+      "value": [
+        {
+          "key": "tUWX3e7_Z_ppi90QUsiogmxTbwuWnpa_",
+          "priority": 1,
+          "is_active": true
+        },
+        {
+          "key": "POLYGON_ALTERNATIVE_KEY_2",
+          "priority": 2,
+          "is_active": true
+        }
+      ],
+      "type": "json",
+      "description": "Polygon API keys with fallback support",
+      "is_sensitive": true,
+      "is_active": true
+    },
+    "WEBSOCKET_BINANCE_API_KEYS": {
+      "value": [
+        {
+          "key": "your_binance_api_key_here",
+          "secret": "your_binance_secret_key_here",
+          "priority": 1,
+          "is_active": true
+        }
+      ],
+      "type": "json",
+      "description": "Binance API keys with fallback support",
+      "is_sensitive": true,
+      "is_active": true
+    },
+    "WEBSOCKET_COINBASE_API_KEYS": {
+      "value": [
+        {
+          "key": "your_coinbase_api_key_here",
+          "secret": "your_coinbase_secret_key_here",
+          "priority": 1,
+          "is_active": true
+        }
+      ],
+      "type": "json",
+      "description": "Coinbase API keys with fallback support",
+      "is_sensitive": true,
+      "is_active": true
     }
-}
-
+  }

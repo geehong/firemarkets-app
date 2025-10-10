@@ -58,6 +58,12 @@ ALPACA_API_KEY = os.getenv("ALPACA_API_KEY")
 ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
 ALPACA_PAPER = os.getenv("ALPACA_PAPER", "true").lower() == "true"
 
+# Polygon API 설정
+POLYGON_API_KEY = os.getenv("POLYGON_API_KEY")
+
+# Finnhub API 설정
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
+
 # Redis 설정
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")  # Docker Compose에서는 'redis' 서비스명 사용
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
@@ -104,6 +110,8 @@ def load_and_set_global_configs():
         "ALPACA_API_KEY": ALPACA_API_KEY,
         "ALPACA_SECRET_KEY": ALPACA_SECRET_KEY,
         "ALPACA_PAPER": ALPACA_PAPER,
+        "POLYGON_API_KEY": POLYGON_API_KEY,
+        "FINNHUB_API_KEY": FINNHUB_API_KEY,
         "API_REQUEST_TIMEOUT_SECONDS": API_REQUEST_TIMEOUT_SECONDS,
         "BATCH_PROCESSING_RETRY_ATTEMPTS": BATCH_PROCESSING_RETRY_ATTEMPTS,
         "BITCOIN_ASSET_ID": BITCOIN_ASSET_ID,

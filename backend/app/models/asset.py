@@ -520,19 +520,19 @@ class SchedulerLog(Base):
     
     log_id = Column(BIGINT, primary_key=True, autoincrement=True)
     job_name = Column(String(100), nullable=False, index=True)
-    start_time = Column(DateTime, nullable=False)
+    start_time = Column(DateTime, nullable=False, server_default=func.current_timestamp())
     end_time = Column(DateTime, nullable=True)
-    status = Column(String(20), nullable=False, index=True)  # running, completed, failed
     duration_seconds = Column(Integer, nullable=True)
-    assets_processed = Column(Integer, default=0)
-    data_points_added = Column(Integer, default=0)
+    status = Column(String(50), nullable=False, index=True, default='pending')  # pending, running, completed, failed
+    current_task = Column(String(255), nullable=True, default=None)
+    strategy_used = Column(String(100), nullable=True, default=None)
+    checkpoint_data = Column(JSON, nullable=True)
+    retry_count = Column(Integer, nullable=True, default=0)
+    assets_processed = Column(Integer, nullable=True, default=0)
+    data_points_added = Column(Integer, nullable=True, default=0)
     error_message = Column(Text, nullable=True)
     details = Column(JSON, nullable=True)  # 추가 메타데이터
-    current_task = Column(String(200), nullable=True)
-    checkpoint_data = Column(JSON, nullable=True)
-    retry_count = Column(Integer, default=0)
-    strategy_used = Column(String(100), nullable=True)
-    created_at = Column(TIMESTAMP, server_default=func.now())
+    created_at = Column(TIMESTAMP, nullable=False, server_default=func.current_timestamp())
     
     def __repr__(self):
         return f"<SchedulerLog(log_id={self.log_id}, job='{self.job_name}', status='{self.status}')>"

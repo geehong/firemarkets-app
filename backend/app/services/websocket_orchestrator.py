@@ -26,24 +26,80 @@ from app.core.config import GLOBAL_APP_CONFIGS
 
 logger = logging.getLogger(__name__)
 
-def log_to_websocket_orchestrator_logs(log_level: str, message: str):
+def log_to_websocket_orchestrator_logs(log_level: str, message: str, details: str = None):
     """WebSocket 오케스트레이터 로그를 websocket_orchestrator_logs 테이블에 저장"""
     db = SessionLocal()
     try:
+        # 상세 정보가 있으면 메시지에 포함
+        full_message = message
+        if details:
+            full_message = f"{message} | Details: {details}"
+            
         db.execute(text("""
             INSERT INTO websocket_orchestrator_logs (log_level, message, created_at)
             VALUES (:log_level, :message, NOW())
         """), {
             'log_level': log_level,
-            'message': message
+            'message': full_message
         })
         db.commit()
-        logger.debug(f"WebSocket orchestrator log saved: {log_level} - {message}")
+        logger.debug(f"WebSocket orchestrator log saved: {log_level} - {full_message}")
     except Exception as e:
         logger.error(f"Failed to save WebSocket orchestrator log: {e}")
         db.rollback()
     finally:
         db.close()
+
+def log_consumer_connection_attempt(consumer_name: str, attempt: int, max_attempts: int, error: str = None):
+    """Consumer 연결 시도 로그"""
+    if error:
+        log_to_websocket_orchestrator_logs(
+            "WARNING", 
+            f"Consumer {consumer_name} connection attempt {attempt}/{max_attempts} failed",
+            f"Error: {error}"
+        )
+    else:
+        log_to_websocket_orchestrator_logs(
+            "INFO", 
+            f"Consumer {consumer_name} connection attempt {attempt}/{max_attempts}",
+            "Connection attempt started"
+        )
+
+def log_ticker_reallocation(failed_consumer: str, ticker_count: int, target_consumers: list):
+    """Ticker 재할당 로그"""
+    log_to_websocket_orchestrator_logs(
+        "WARNING",
+        f"Consumer {failed_consumer} failed, attempting to reallocate {ticker_count} tickers",
+        f"Target consumers: {', '.join(target_consumers)}"
+    )
+
+def log_api_key_fallback(consumer_name: str, failed_key: str, new_key: str, reason: str):
+    """API 키 fallback 로그"""
+    log_to_websocket_orchestrator_logs(
+        "INFO",
+        f"Consumer {consumer_name} API key fallback triggered",
+        f"Failed key: {failed_key[:10]}... → New key: {new_key[:10]}... | Reason: {reason}"
+    )
+
+def log_consumer_status_change(consumer_name: str, old_status: str, new_status: str, details: str = None):
+    """Consumer 상태 변화 로그"""
+    log_to_websocket_orchestrator_logs(
+        "INFO",
+        f"Consumer {consumer_name} status changed: {old_status} → {new_status}",
+        details
+    )
+
+def log_error_with_traceback(consumer_name: str, error: Exception, context: str = None):
+    """에러와 스택 트레이스 로그"""
+    import traceback
+    traceback_str = traceback.format_exc()
+    details = f"Context: {context} | Traceback: {traceback_str}" if context else f"Traceback: {traceback_str}"
+    
+    log_to_websocket_orchestrator_logs(
+        "ERROR",
+        f"Consumer {consumer_name} error: {str(error)}",
+        details
+    )
 
 @dataclass
 class ConsumerAssignment:
@@ -537,11 +593,19 @@ class WebSocketOrchestrator:
     async def _handle_consumer_failure(self, failed_consumer_name: str, failed_tickers: List[str]):
         """Consumer 실패 시 다른 Consumer로 재할당"""
         logger.warning(f"🔄 {failed_consumer_name} 실패, {len(failed_tickers)}개 티커 재할당 시도: {failed_tickers}")
-        log_to_websocket_orchestrator_logs("WARNING", f"Consumer {failed_consumer_name} failed, attempting to reallocate {len(failed_tickers)} tickers")
+        
+        # 상세한 실패 로그
+        log_ticker_reallocation(
+            failed_consumer_name, 
+            len(failed_tickers), 
+            [ticker[:10] + "..." if len(ticker) > 10 else ticker for ticker in failed_tickers[:5]]
+        )
         
         # 실패한 Consumer의 할당 제거
         if failed_consumer_name in self.assignments:
+            old_assignment = self.assignments[failed_consumer_name]
             del self.assignments[failed_consumer_name]
+            logger.info(f"🗑️ Removed assignment for failed consumer {failed_consumer_name}: {len(old_assignment.assigned_tickers)} tickers")
         
         # 티커들의 자산 타입 확인 (암호화폐로 가정)
         from app.services.websocket.base_consumer import AssetType
@@ -551,11 +615,20 @@ class WebSocketOrchestrator:
         remaining_consumers = [name for name in fallback_order if name != failed_consumer_name]
         
         logger.info(f"🔄 재할당 대상 Consumer: {remaining_consumers}")
+        log_to_websocket_orchestrator_logs(
+            "INFO", 
+            f"Consumer failure reallocation started",
+            f"Failed: {failed_consumer_name} | Tickers: {len(failed_tickers)} | Available: {remaining_consumers}"
+        )
         
         # 사용 가능한 Consumer 찾기
         available_consumers = []
+        disabled_consumers = []
+        unsupported_consumers = []
+        
         for provider_name in remaining_consumers:
             if provider_name not in self.consumers:
+                logger.warning(f"⚠️ {provider_name} consumer not initialized")
                 continue
                 
             # 데이터베이스에서 Consumer 활성화 여부 확인
@@ -563,6 +636,7 @@ class WebSocketOrchestrator:
             is_enabled = GLOBAL_APP_CONFIGS.get(enabled_key, "1") == "1"
             
             if not is_enabled:
+                disabled_consumers.append(provider_name)
                 logger.debug(f"⏸️ {provider_name} consumer is disabled")
                 continue
                 
@@ -570,17 +644,40 @@ class WebSocketOrchestrator:
             if config and config.max_subscriptions > 0 and AssetType.CRYPTO in config.supported_asset_types:
                 consumer = self.consumers[provider_name]
                 available_consumers.append((provider_name, consumer, config))
-                logger.debug(f"✅ {provider_name} available for reallocation")
+                logger.debug(f"✅ {provider_name} available for reallocation (max: {config.max_subscriptions})")
+            else:
+                unsupported_consumers.append(provider_name)
+                logger.warning(f"⚠️ {provider_name} not suitable for crypto reallocation")
+        
+        # 상세한 Consumer 상태 로그
+        log_to_websocket_orchestrator_logs(
+            "INFO",
+            f"Consumer availability analysis completed",
+            f"Available: {[c[0] for c in available_consumers]} | Disabled: {disabled_consumers} | Unsupported: {unsupported_consumers}"
+        )
         
         if available_consumers:
             # Fallback 순서로 재할당
+            logger.info(f"🔄 Starting reallocation to {len(available_consumers)} available consumers")
             await self._assign_tickers_fallback_order(failed_tickers, available_consumers, AssetType.CRYPTO)
             
             # 재할당된 Consumer들 시작
+            logger.info(f"🚀 Starting reallocated consumers")
             await self._start_consumers()
+            
+            # 재할당 완료 로그
+            log_to_websocket_orchestrator_logs(
+                "INFO",
+                f"Consumer failure reallocation completed",
+                f"Failed: {failed_consumer_name} | Reallocated to: {[c[0] for c in available_consumers]} | Tickers: {len(failed_tickers)}"
+            )
         else:
             logger.error(f"❌ {failed_consumer_name} 실패 후 재할당할 Consumer가 없음")
-            log_to_websocket_orchestrator_logs("ERROR", f"No available consumers for reallocation after {failed_consumer_name} failure")
+            log_to_websocket_orchestrator_logs(
+                "ERROR", 
+                f"No available consumers for reallocation after {failed_consumer_name} failure",
+                f"Disabled: {disabled_consumers} | Unsupported: {unsupported_consumers} | Total tickers lost: {len(failed_tickers)}"
+            )
     
     async def _start_consumers(self):
         """Consumer 시작"""
@@ -588,7 +685,17 @@ class WebSocketOrchestrator:
         logger.info(f"Total assignments: {len(self.assignments)}")
         logger.info(f"Assignment details: {[(name, len(assignment.assigned_tickers)) for name, assignment in self.assignments.items()]}")
         
+        # Consumer 시작 통계 로그
+        total_tickers = sum(len(assignment.assigned_tickers) for assignment in self.assignments.values())
+        log_to_websocket_orchestrator_logs(
+            "INFO",
+            f"Consumer startup initiated",
+            f"Total consumers: {len(self.assignments)} | Total tickers: {total_tickers}"
+        )
+        
         tasks = []
+        skipped_consumers = []
+        failed_consumers = []
         
         for provider_name, assignment in self.assignments.items():
             logger.info(f"Processing assignment for {provider_name}")
@@ -598,7 +705,10 @@ class WebSocketOrchestrator:
                 # 이미 실행 중이면 중복 시작 방지
                 if getattr(assignment.consumer, 'is_running', False):
                     logger.info(f"⏭️ Skipping start for {provider_name}: already running")
+                    skipped_consumers.append(provider_name)
+                    log_consumer_status_change(provider_name, "stopped", "running", "Already running, skipping restart")
                     continue
+                    
                 logger.info(f"🔧 Creating task for {provider_name} with {len(assignment.assigned_tickers)} tickers")
                 logger.debug(f"Assigned tickers: {assignment.assigned_tickers}")
                 
@@ -612,41 +722,87 @@ class WebSocketOrchestrator:
                     logger.debug(f"Task created successfully for {provider_name}")
                     
                     # Consumer 시작 로그
-                    log_to_websocket_orchestrator_logs("INFO", f"Consumer {provider_name} starting with {len(assignment.assigned_tickers)} tickers")
+                    log_to_websocket_orchestrator_logs(
+                        "INFO", 
+                        f"Consumer {provider_name} starting with {len(assignment.assigned_tickers)} tickers",
+                        f"Tickers: {assignment.assigned_tickers[:5]}{'...' if len(assignment.assigned_tickers) > 5 else ''}"
+                    )
+                    log_consumer_status_change(provider_name, "stopped", "starting", f"Starting with {len(assignment.assigned_tickers)} tickers")
+                    
                 except Exception as e:
                     logger.error(f"❌ Failed to create task for {provider_name}: {e}")
                     logger.error(f"Exception type: {type(e).__name__}")
                     import traceback
                     logger.error(f"Traceback: {traceback.format_exc()}")
                     
+                    failed_consumers.append(provider_name)
                     # Consumer 시작 실패 로그
-                    log_to_websocket_orchestrator_logs("ERROR", f"Consumer {provider_name} failed to start: {e}")
+                    log_error_with_traceback(provider_name, e, f"Failed to create task for {provider_name}")
+                    log_consumer_status_change(provider_name, "stopped", "failed", f"Task creation failed: {str(e)}")
             else:
                 logger.warning(f"No tickers assigned to {provider_name}, skipping")
+                skipped_consumers.append(provider_name)
+                log_to_websocket_orchestrator_logs(
+                    "WARNING",
+                    f"Consumer {provider_name} skipped",
+                    "No tickers assigned"
+                )
         
         if tasks:
             logger.info(f"🔧 Starting {len(tasks)} consumer tasks")
             logger.debug(f"Task list: {[task.get_name() for task in tasks]}")
             
+            # Consumer 시작 통계 로그
+            log_to_websocket_orchestrator_logs(
+                "INFO",
+                f"Consumer tasks execution started",
+                f"Starting: {len(tasks)} | Skipped: {len(skipped_consumers)} | Failed: {len(failed_consumers)}"
+            )
+            
             try:
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 logger.info(f"All {len(tasks)} consumer tasks completed")
                 
+                # 결과 분석
+                successful_tasks = 0
+                failed_tasks = []
+                
                 for i, result in enumerate(results):
                     if isinstance(result, Exception):
+                        failed_tasks.append((i, result))
                         logger.error(f"❌ Task {i} failed with exception: {result}")
                         logger.error(f"Exception type: {type(result).__name__}")
                         import traceback
                         logger.error(f"Traceback: {traceback.format_exc()}")
+                        
+                        # 개별 태스크 실패 로그
+                        log_error_with_traceback(f"Task_{i}", result, f"Consumer task {i} execution failed")
                     else:
+                        successful_tasks += 1
                         logger.debug(f"Task {i} completed successfully")
+                
+                # Consumer 실행 완료 통계 로그
+                log_to_websocket_orchestrator_logs(
+                    "INFO",
+                    f"Consumer tasks execution completed",
+                    f"Successful: {successful_tasks} | Failed: {len(failed_tasks)} | Skipped: {len(skipped_consumers)}"
+                )
+                
             except Exception as e:
                 logger.error(f"❌ Error in asyncio.gather: {e}")
                 logger.error(f"Exception type: {type(e).__name__}")
                 import traceback
                 logger.error(f"Traceback: {traceback.format_exc()}")
+                
+                # asyncio.gather 실패 로그
+                log_error_with_traceback("asyncio.gather", e, "Error in consumer tasks execution")
         else:
             logger.warning("No consumer tasks to start")
+            log_to_websocket_orchestrator_logs(
+                "WARNING",
+                f"No consumer tasks to start",
+                f"Skipped: {skipped_consumers} | Failed: {failed_consumers}"
+            )
     
     async def _run_consumer(self, assignment: ConsumerAssignment):
         """Consumer 실행"""
@@ -658,6 +814,9 @@ class WebSocketOrchestrator:
         logger.debug(f"Consumer config: {consumer.config}")
         logger.debug(f"Assigned tickers: {tickers}")
         
+        # Consumer 실행 시작 로그
+        log_consumer_status_change(consumer.client_name, "starting", "connecting", f"Starting with {len(tickers)} tickers")
+        
         try:
             # 연결
             logger.info(f"🔌 Attempting to connect {consumer.client_name}")
@@ -668,12 +827,22 @@ class WebSocketOrchestrator:
             
             if not connect_result:
                 logger.error(f"❌ Failed to connect {consumer.client_name}")
-                log_to_websocket_orchestrator_logs("ERROR", f"Consumer {consumer.client_name} connection failed")
+                log_to_websocket_orchestrator_logs(
+                    "ERROR", 
+                    f"Consumer {consumer.client_name} connection failed",
+                    f"Tickers: {tickers[:5]}{'...' if len(tickers) > 5 else ''}"
+                )
+                log_consumer_status_change(consumer.client_name, "connecting", "failed", "Connection failed")
                 await self._handle_consumer_failure(consumer.client_name, tickers)
                 return
             
             logger.info(f"✅ {consumer.client_name} connected successfully")
-            log_to_websocket_orchestrator_logs("INFO", f"Consumer {consumer.client_name} connected successfully")
+            log_to_websocket_orchestrator_logs(
+                "INFO", 
+                f"Consumer {consumer.client_name} connected successfully",
+                f"Connection established"
+            )
+            log_consumer_status_change(consumer.client_name, "connecting", "subscribing", "Connection successful")
             
             # 구독
             logger.info(f"📋 Attempting to subscribe {consumer.client_name} to {len(tickers)} tickers")
@@ -684,12 +853,22 @@ class WebSocketOrchestrator:
             
             if not subscribe_result:
                 logger.error(f"❌ Failed to subscribe {consumer.client_name}")
-                log_to_websocket_orchestrator_logs("ERROR", f"Consumer {consumer.client_name} subscription failed")
+                log_to_websocket_orchestrator_logs(
+                    "ERROR", 
+                    f"Consumer {consumer.client_name} subscription failed",
+                    f"Tickers: {tickers[:5]}{'...' if len(tickers) > 5 else ''}"
+                )
+                log_consumer_status_change(consumer.client_name, "subscribing", "failed", "Subscription failed")
                 await self._handle_consumer_failure(consumer.client_name, tickers)
                 return
             
             logger.info(f"✅ {consumer.client_name} connected and subscribed to {len(tickers)} tickers")
-            log_to_websocket_orchestrator_logs("INFO", f"Consumer {consumer.client_name} subscribed to {len(tickers)} tickers")
+            log_to_websocket_orchestrator_logs(
+                "INFO", 
+                f"Consumer {consumer.client_name} subscribed to {len(tickers)} tickers",
+                f"Tickers: {tickers[:5]}{'...' if len(tickers) > 5 else ''}"
+            )
+            log_consumer_status_change(consumer.client_name, "subscribing", "running", f"Subscribed to {len(tickers)} tickers")
             
             # 실행
             logger.info(f"🚀 Starting run() method for {consumer.client_name}")
@@ -698,23 +877,33 @@ class WebSocketOrchestrator:
             await consumer.run()
             
             logger.info(f"✅ {consumer.client_name} run() method completed")
+            log_consumer_status_change(consumer.client_name, "running", "completed", "Consumer run completed successfully")
             
         except Exception as e:
             logger.error(f"❌ Error running {consumer.client_name}: {e}")
             logger.error(f"Exception type: {type(e).__name__}")
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
+            
+            # Consumer 실행 중 에러 로그
+            log_error_with_traceback(consumer.client_name, e, f"Consumer {consumer.client_name} execution failed")
+            log_consumer_status_change(consumer.client_name, "running", "failed", f"Execution failed: {str(e)}")
+            
             await self._handle_consumer_failure(consumer.client_name, tickers)
         finally:
             try:
                 logger.debug(f"Disconnecting {consumer.client_name}")
                 await consumer.disconnect()
                 logger.debug(f"Successfully disconnected {consumer.client_name}")
+                log_consumer_status_change(consumer.client_name, "running", "disconnected", "Consumer disconnected")
             except Exception as e:
                 logger.error(f"❌ Error disconnecting {consumer.client_name}: {e}")
                 logger.error(f"Exception type: {type(e).__name__}")
                 import traceback
                 logger.error(f"Traceback: {traceback.format_exc()}")
+                
+                # Consumer 연결 해제 에러 로그
+                log_error_with_traceback(consumer.client_name, e, f"Consumer {consumer.client_name} disconnect failed")
     
     async def _monitoring_loop(self):
         """모니터링 루프"""

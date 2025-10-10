@@ -12,7 +12,7 @@ from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
-from app.models.asset import AppConfiguration
+from app.models.asset import AppConfiguration, SchedulerLog
 from app.utils.logger import logger
 from app.core.config_manager import ConfigManager
 from app.services.api_strategy_manager import ApiStrategyManager
@@ -68,7 +68,24 @@ class SchedulerService:
             asyncio.set_event_loop(loop)
             
             db: Session = SessionLocal()
+            start_time = datetime.now()
+            job_name = collector_class.__name__
+            scheduler_log = None
+            
             try:
+                # 스케줄러 로그 시작 기록
+                scheduler_log = SchedulerLog(
+                    job_name=job_name,
+                    status="running",
+                    start_time=start_time,
+                    current_task=f"Starting {job_name} collection"
+                )
+                db.add(scheduler_log)
+                db.commit()
+                db.refresh(scheduler_log)
+                
+                self.logger.info(f"📋 Scheduler log created for {job_name} (ID: {scheduler_log.log_id})")
+                
                 # Instantiate the collector with all required dependencies.
                 # IMPORTANT: ApiStrategyManager must be constructed inside this loop to avoid
                 # cross-event-loop Futures/Locks.
@@ -79,10 +96,57 @@ class SchedulerService:
                     api_manager=api_manager,
                     redis_queue_manager=self.redis_queue_manager,
                 )
+                
                 # The `collect_with_settings` method in BaseCollector handles all logging.
-                loop.run_until_complete(collector_instance.collect_with_settings())
+                result = loop.run_until_complete(collector_instance.collect_with_settings())
+                
+                # 성공 로그 업데이트
+                end_time = datetime.now()
+                duration = int((end_time - start_time).total_seconds())
+                
+                if scheduler_log:
+                    scheduler_log.status = "completed"
+                    scheduler_log.end_time = end_time
+                    scheduler_log.duration_seconds = duration
+                    scheduler_log.current_task = f"Completed {job_name} collection"
+                    
+                    # 결과에서 데이터 추출
+                    if result and isinstance(result, dict):
+                        scheduler_log.assets_processed = result.get('assets_processed', 0)
+                        scheduler_log.data_points_added = result.get('data_points_added', 0)
+                        scheduler_log.details = {
+                            "success": result.get('success', True),
+                            "message": result.get('message', 'Collection completed successfully'),
+                            "collector_result": result
+                        }
+                    
+                    db.commit()
+                    self.logger.info(f"✅ Scheduler log updated for {job_name} - Completed in {duration}s")
+                
             except Exception as e:
                 self.logger.critical(f"Unhandled exception in {collector_class.__name__} runner: {e}", exc_info=True)
+                
+                # 실패 로그 업데이트
+                end_time = datetime.now()
+                duration = int((end_time - start_time).total_seconds())
+                
+                if scheduler_log:
+                    scheduler_log.status = "failed"
+                    scheduler_log.end_time = end_time
+                    scheduler_log.duration_seconds = duration
+                    scheduler_log.error_message = str(e)
+                    scheduler_log.current_task = f"Failed {job_name} collection"
+                    scheduler_log.details = {
+                        "error": str(e),
+                        "error_type": type(e).__name__
+                    }
+                    
+                    try:
+                        db.commit()
+                        self.logger.error(f"❌ Scheduler log updated for {job_name} - Failed after {duration}s")
+                    except Exception as commit_error:
+                        self.logger.error(f"Failed to update scheduler log: {commit_error}")
+                
                 # Ensure transaction is rolled back on error
                 try:
                     db.rollback()
@@ -299,6 +363,7 @@ class SchedulerService:
             db.rollback()
         finally:
             db.close()
+
 
     def start_scheduler(self, test_mode: bool = False):
         """Sets up jobs and starts the scheduler if not already running."""
