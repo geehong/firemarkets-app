@@ -14,7 +14,7 @@ const groupDefs = [
   },
   {
     title: 'US Stocks Top 8',
-    items: ['AAPL', 'MSFT', 'NVDA', 'GOOG', 'AMZN', 'META', 'NFLX', 'AVGO'],
+    items: ['AAPL', 'MSFT', 'NVDA', 'GOOG', 'AMZN', 'META', 'NFLX', 'AVGO','SPY','QQQ'],
     comp: MiniPriceStocksEtfChart
   },
   {

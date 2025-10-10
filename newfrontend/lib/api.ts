@@ -38,4 +38,79 @@ export async function apiFetch<T>(path: string, opts: FetchOptions = {}): Promis
   return res.json() as Promise<T>
 }
 
+// ---- High-level API client (TS) ----
+function resolveApiBaseUrl(): string {
+  const envUrl = process.env.NEXT_PUBLIC_API_URL
+  if (envUrl) return envUrl
+  if (typeof window !== 'undefined') {
+    try {
+      const { protocol, hostname } = window.location
+      // 퍼블릭 도메인에서도 일괄적으로 8001 포트의 백엔드에 직접 접근
+      return `${protocol}//${hostname}:8001/api/v1`
+    } catch (_) {}
+  }
+  return 'http://localhost:8001/api/v1'
+}
 
+export class ApiClient {
+  private readonly baseURL: string
+
+  constructor(baseURL: string = resolveApiBaseUrl()) {
+    this.baseURL = baseURL
+  }
+
+  private async request<T = any>(endpoint: string, init?: RequestInit): Promise<T> {
+    const url = `${this.baseURL}${endpoint}`
+    const defaultHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    }
+    const res = await fetch(url, {
+      ...init,
+      headers: { ...defaultHeaders, ...(init?.headers as Record<string, string> | undefined) },
+      mode: 'cors',
+      credentials: 'omit',
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`API Error: ${res.status} ${res.statusText} ${text}`)
+    }
+    return res.json() as Promise<T>
+  }
+
+  // Assets
+  getAssets() { return this.request('/assets') }
+  getAsset(id: string) { return this.request(`/assets/${id}`) }
+
+  // Realtime
+  getRealtimePricesPg(params: { asset_identifier: string; data_interval?: string; days?: number; }) {
+    const search = new URLSearchParams()
+    if (params.asset_identifier) search.append('asset_identifier', params.asset_identifier)
+    if (params.data_interval) search.append('data_interval', params.data_interval)
+    if (typeof params.days === 'number') search.append('days', String(params.days))
+    const qs = search.toString()
+    return this.request(`/realtime/pg/quotes-delay-price${qs ? `?${qs}` : ''}`)
+  }
+
+  // Realtime (fallback) - intraday OHLCV from MySQL API
+  getIntradayOhlcv(params: { asset_identifier: string; data_interval?: string; ohlcv?: boolean; days?: number; }) {
+    const search = new URLSearchParams()
+    if (params.asset_identifier) search.append('asset_identifier', params.asset_identifier)
+    search.append('data_interval', params.data_interval ?? '4h')
+    search.append('ohlcv', String(params.ohlcv ?? true))
+    search.append('days', String(params.days ?? 1))
+    const qs = search.toString()
+    return this.request(`/realtime/intraday-ohlcv${qs ? `?${qs}` : ''}`)
+  }
+
+  // Crypto
+  getCryptoData(id: string) { return this.request(`/crypto/${id}`) }
+
+  // Dashboard
+  getDashboardData() { return this.request('/dashboard') }
+
+  // Tickers
+  getTickers() { return this.request('/tickers') }
+}
+
+export const apiClient = new ApiClient()

@@ -21,17 +21,9 @@ interface BroadcastData {
 // 동적 Socket URL 설정
 const getSocketURL = () => {
   if (typeof window === 'undefined') return 'http://localhost:8001'
-  
-  const currentOrigin = window.location.origin
-  // console.log('🌐 현재 도메인:', currentOrigin)
-  
-  // 개발 환경에서는 localhost 사용
-  if (currentOrigin.includes('localhost') || currentOrigin.includes('127.0.0.1')) {
-    return 'http://localhost:8001'
-  }
-  
-  // 프로덕션 환경에서는 같은 도메인의 8001 포트 사용
-  return currentOrigin.replace(/:\d+$/, ':8001')
+  const { protocol, hostname } = window.location
+  // 퍼블릭 도메인에서도 일괄적으로 8001 포트의 백엔드에 직접 접근
+  return `${protocol}//${hostname}:8001`
 }
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || getSocketURL()

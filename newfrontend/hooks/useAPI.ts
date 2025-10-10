@@ -44,7 +44,23 @@ export const useRealtimePricesPg = (params: RealtimePricesParams) => {
   return useQuery({
     queryKey: ['realtime', 'pricesPg', params],
     queryFn: async () => {
-      return await apiClient.getRealtimePricesPg(params)
+      try {
+        const primary = await apiClient.getRealtimePricesPg(params)
+        const quotes = (primary as any)?.quotes
+        if (Array.isArray(quotes) && quotes.length > 0) return primary
+      } catch (e: any) {
+        // swallow and try fallback
+      }
+      // Fallback to intraday OHLCV and map -> { quotes: [{timestamp_utc, price}] }
+      try {
+        const intraday = await apiClient.getIntradayOhlcv({ asset_identifier: params.asset_identifier, data_interval: '4h', ohlcv: true, days: 1 })
+        const arr = (intraday as any)?.data || []
+        const mapped = Array.isArray(arr) ? arr.map((d: any) => ({ timestamp_utc: d.timestamp || d.timestamp_utc, price: d.close })) : []
+        return { quotes: mapped }
+      } catch (e: any) {
+        // if fallback also fails, rethrow last error
+        throw e
+      }
     },
     enabled: !!params?.asset_identifier,
     staleTime: 30 * 1000, // 30초 (실시간 데이터)

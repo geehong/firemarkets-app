@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -19,31 +20,51 @@ import {
   HelpCircle,
   Menu,
   ChevronLeft,
+  Check,
+  ChevronsUpDown,
   ChevronDown,
-  ChevronRight,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
-import { 
-  SidebarMenu, 
-  SidebarMenuItem
-} from "@/components/ui/sidebar"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 
 const navigation = [
-  { name: "Dashboard", href: "/dashboard", icon: Home },
+  { 
+    name: "Dashboard", 
+    value: "dashboard",
+    icon: Home,
+    items: [
+      { name: "Dashboard", href: "/", icon: Home },
+    ]
+  },
   { 
     name: "Analytics", 
-    icon: BarChart2, 
+    value: "analytics",
+    icon: BarChart2,
     items: [
       { name: "Analytics", href: "/analytics", icon: BarChart2 },
+    ]
+  },
+  { 
+    name: "Components", 
+    value: "components",
+    icon: BarChart2,
+    items: [
       { name: "Components", href: "/components", icon: BarChart2 },
       { name: "Mini Chart Test", href: "/components/minichart-test", icon: BarChart2 },
+      { name: "Realtime Test", href: "/components/realtime-test", icon: BarChart2 },
+      { name: "Socket Test", href: "/components/socket-test", icon: BarChart2 },
     ]
   },
   { 
     name: "Organization", 
-    icon: Building2, 
+    value: "organization",
+    icon: Building2,
     items: [
       { name: "Organization", href: "/organization", icon: Building2 },
       { name: "Projects", href: "/projects", icon: Folder },
@@ -53,7 +74,8 @@ const navigation = [
   },
   { 
     name: "Finance", 
-    icon: Wallet, 
+    value: "finance",
+    icon: Wallet,
     items: [
       { name: "Transactions", href: "/transactions", icon: Wallet },
       { name: "Invoices", href: "/invoices", icon: Receipt },
@@ -62,7 +84,8 @@ const navigation = [
   },
   { 
     name: "Communication", 
-    icon: MessagesSquare, 
+    value: "communication",
+    icon: MessagesSquare,
     items: [
       { name: "Chat", href: "/chat", icon: MessagesSquare },
       { name: "Meetings", href: "/meetings", icon: Video },
@@ -79,121 +102,146 @@ export function Sidebar() {
   const pathname = usePathname()
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
+  const [openComboboxes, setOpenComboboxes] = useState<Record<string, boolean>>({})
+  const [selectedValues, setSelectedValues] = useState<Record<string, string>>({})
+  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({})
 
   const NavItem = ({ item, isBottom = false }: { 
     item: { 
       name: string; 
-      href?: string; 
+      value: string;
       icon: React.ComponentType<{ className?: string }>; 
-      items?: Array<{ name: string; href: string; icon: React.ComponentType<{ className?: string }> }> 
+      items: Array<{ name: string; href: string; icon: React.ComponentType<{ className?: string }> }>;
     }; 
     isBottom?: boolean 
   }) => {
-    // 단일 아이템인 경우
-    if (!item.items) {
+    const isOpen = openComboboxes[item.value] || false
+    const selectedValue = selectedValues[item.value] || ""
+    
+    // 현재 경로에 해당하는 서브메뉴 찾기
+    const currentSubItem = item.items.find(subItem => pathname === subItem.href)
+    const displayValue = currentSubItem ? currentSubItem.name : item.name
+
+    // 축소된 상태일 때만 콤보박스로 작동
+    if (isCollapsed) {
       return (
-        <Tooltip delayDuration={0}>
-          <TooltipTrigger asChild>
-            <Link
-              href={item.href!}
-              className={cn(
-                "flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                pathname === item.href
-                  ? "bg-secondary text-secondary-foreground"
-                  : "text-muted-foreground hover:bg-secondary hover:text-secondary-foreground",
-                isCollapsed && "justify-center px-2",
-              )}
+        <Popover 
+          open={isOpen} 
+          onOpenChange={(open) => setOpenComboboxes(prev => ({ ...prev, [item.value]: open }))}
+        >
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              role="combobox"
+              aria-expanded={isOpen}
+              className="w-full justify-center h-8 px-2 text-sm font-medium hover:bg-secondary hover:text-secondary-foreground"
             >
-              <item.icon className={cn("h-4 w-4", !isCollapsed && "mr-3")} />
-              {!isCollapsed && <span>{item.name}</span>}
-            </Link>
-          </TooltipTrigger>
-          {isCollapsed && (
-            <TooltipContent side="right" className="flex items-center gap-4">
-              {item.name}
-            </TooltipContent>
-          )}
-        </Tooltip>
+              <item.icon className="h-4 w-4" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[200px] p-1 bg-background border" align="end" side="right">
+            <div className="space-y-1">
+              {item.items.map((subItem) => (
+                <Link
+                  key={subItem.href}
+                  href={subItem.href}
+                  className={cn(
+                    "flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors w-full",
+                    pathname === subItem.href
+                      ? "bg-secondary text-secondary-foreground"
+                      : "text-muted-foreground hover:bg-secondary hover:text-secondary-foreground"
+                  )}
+                  onClick={() => {
+                    setSelectedValues(prev => ({ ...prev, [item.value]: subItem.name }))
+                    setOpenComboboxes(prev => ({ ...prev, [item.value]: false }))
+                  }}
+                >
+                  <subItem.icon className="mr-2 h-4 w-4" />
+                  {subItem.name}
+                  <Check
+                    className={cn(
+                      "ml-auto h-4 w-4",
+                      pathname === subItem.href ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                </Link>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
       )
     }
 
-    // Collapsible 그룹인 경우
+    // 확장된 상태일 때는 일반적인 드롭다운 메뉴
+    const isExpanded = expandedMenus[item.value] || false
+    
     return (
-      <div className="relative">
-        <SidebarMenuItem>
-          <div className="group">
-            <Button
-              variant="ghost"
-              className={cn(
-                "w-full justify-start h-8 px-2 text-sm font-medium",
-                "hover:bg-secondary hover:text-secondary-foreground",
-                isCollapsed && "justify-center px-2"
-              )}
-            >
-              <item.icon className="h-4 w-4" />
-              {!isCollapsed && (
-                <>
-                  <span className="ml-3">{item.name}</span>
-                  <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200" />
-                </>
-              )}
-              {isCollapsed && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="sr-only">{item.name}</span>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    {item.name}
-                  </TooltipContent>
-                </Tooltip>
-              )}
-            </Button>
-            
-            {/* 서브메뉴 */}
-            {!isCollapsed ? (
-              <div className="ml-6 space-y-1">
-                {item.items.map((subItem) => (
-                  <Link
-                    key={subItem.name}
-                    href={subItem.href}
-                    className={cn(
-                      "flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                      pathname === subItem.href
-                        ? "bg-secondary text-secondary-foreground"
-                        : "text-muted-foreground hover:bg-secondary hover:text-secondary-foreground"
-                    )}
-                  >
-                    <subItem.icon className="h-4 w-4 mr-3" />
-                    <span>{subItem.name}</span>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <div className="absolute left-full top-0 ml-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg p-2 min-w-[200px] z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none group-hover:pointer-events-auto">
-                <div className="space-y-1">
-                  {item.items.map((subItem) => (
-                    <Link
-                      key={subItem.name}
-                      href={subItem.href}
-                      className={cn(
-                        "flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors w-full",
-                        pathname === subItem.href
-                          ? "bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                          : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                      )}
-                    >
-                      <subItem.icon className="h-4 w-4 mr-3" />
-                      <span>{subItem.name}</span>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            )}
+      <div className="relative group">
+        <Button
+          variant="ghost"
+          className="w-full justify-start h-8 px-2 text-sm font-medium hover:bg-secondary hover:text-secondary-foreground"
+          onClick={() => setExpandedMenus(prev => ({ ...prev, [item.value]: !prev[item.value] }))}
+        >
+          <item.icon className="h-4 w-4 mr-3" />
+          <span className="truncate">{item.name}</span>
+          <ChevronDown className={cn("ml-auto h-4 w-4 shrink-0 opacity-50 transition-transform", isExpanded && "rotate-180")} />
+        </Button>
+        
+        {/* 서브메뉴 */}
+        {isExpanded && (
+          <div className="ml-6 space-y-1">
+            {item.items.map((subItem) => (
+              <Link
+                key={subItem.href}
+                href={subItem.href}
+                className={cn(
+                  "flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                  pathname === subItem.href
+                    ? "bg-secondary text-secondary-foreground"
+                    : "text-muted-foreground hover:bg-secondary hover:text-secondary-foreground"
+                )}
+              >
+                <subItem.icon className="h-4 w-4 mr-3" />
+                <span>{subItem.name}</span>
+              </Link>
+            ))}
           </div>
-        </SidebarMenuItem>
+        )}
       </div>
     )
   }
+
+  const SimpleNavItem = ({ item, isBottom = false }: { 
+    item: { 
+      name: string; 
+      href: string; 
+      icon: React.ComponentType<{ className?: string }>; 
+    }; 
+    isBottom?: boolean 
+  }) => (
+    <Tooltip delayDuration={0}>
+      <TooltipTrigger asChild>
+        <Link
+          href={item.href}
+          className={cn(
+            "flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors",
+            pathname === item.href
+              ? "bg-secondary text-secondary-foreground"
+              : "text-muted-foreground hover:bg-secondary hover:text-secondary-foreground",
+            isCollapsed && "justify-center px-2",
+          )}
+        >
+          <item.icon className={cn("h-4 w-4", !isCollapsed && "mr-3")} />
+          {!isCollapsed && <span>{item.name}</span>}
+        </Link>
+      </TooltipTrigger>
+      {isCollapsed && (
+        <TooltipContent side="right" className="flex items-center gap-4">
+          {item.name}
+        </TooltipContent>
+      )}
+    </Tooltip>
+  )
 
   return (
     <TooltipProvider>
@@ -232,20 +280,16 @@ export function Sidebar() {
           </div>
           <div className="flex-1 overflow-auto">
             <nav className="flex-1 space-y-1 px-2 py-4">
-              <SidebarMenu>
-                {navigation.map((item) => (
-                  <NavItem key={item.name} item={item} />
-                ))}
-              </SidebarMenu>
+              {navigation.map((item) => (
+                <NavItem key={item.value} item={item} />
+              ))}
             </nav>
           </div>
           <div className="border-t border-border p-2">
             <nav className="space-y-1">
-              <SidebarMenu>
-                {bottomNavigation.map((item) => (
-                  <NavItem key={item.name} item={item} isBottom />
-                ))}
-              </SidebarMenu>
+              {bottomNavigation.map((item) => (
+                <SimpleNavItem key={item.name} item={item} isBottom />
+              ))}
             </nav>
           </div>
         </div>

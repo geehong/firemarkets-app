@@ -77,8 +77,25 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
 }) => {
   const chartRef = useRef<HTMLDivElement | null>(null)
   const [chart, setChart] = useState<any>(null)
-  const [isMobile, setIsMobile] = useState<boolean>(() => (typeof window !== "undefined" ? window.innerWidth <= 768 : false))
+  const [isMobile, setIsMobile] = useState<boolean>(false)
   const [highchartsLoaded, setHighchartsLoaded] = useState(false)
+
+  // 화면 크기 감지 (클라이언트에서만)
+  useEffect(() => {
+    const checkIsMobile = () => {
+      setIsMobile(window.innerWidth <= 768)
+    }
+    
+    // 초기 체크
+    checkIsMobile()
+    
+    // 리사이즈 이벤트 리스너
+    window.addEventListener('resize', checkIsMobile)
+    
+    return () => {
+      window.removeEventListener('resize', checkIsMobile)
+    }
+  }, [])
 
   // 웹소켓 실시간 데이터 수신
   const { latestPrice, priceHistory, isConnected: socketConnected } = useRealtimePrices(assetIdentifier)
@@ -96,7 +113,9 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
     const loadHighcharts = async () => {
       if (typeof window !== "undefined") {
         try {
+          // @ts-ignore - runtime dynamic import; types may not be present
           const Highcharts = (await import("highcharts")).default
+          // @ts-ignore - runtime dynamic import; types may not be present
           const HighchartsStock = (await import("highcharts/modules/stock")).default
           
           // Highcharts Stock 모듈 초기화
@@ -286,8 +305,8 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
           },
           load: function() {
             // 차트 로드 후 휠 이벤트 완전 차단
-            const chart = this;
-            const container = chart.container;
+            const chartAny = this as any;
+            const container = chartAny && chartAny.container ? chartAny.container : null;
             
             // 모든 휠 이벤트 차단
             const preventWheel = (e: any) => {
@@ -298,9 +317,11 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
             };
             
             // 다양한 이벤트 타입에 대해 차단
-            ['wheel', 'mousewheel', 'DOMMouseScroll'].forEach(eventType => {
-              container.addEventListener(eventType, preventWheel, { passive: false, capture: true });
-            });
+            if (container) {
+              ['wheel', 'mousewheel', 'DOMMouseScroll'].forEach(eventType => {
+                container.addEventListener(eventType, preventWheel, { passive: false, capture: true });
+              });
+            }
           }
         }
       },
@@ -475,11 +496,6 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
     <div 
       className="mini-price-chart-container" 
       style={{ position: 'relative' }}
-      onWheel={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        return false;
-      }}
     >
       
       
@@ -488,11 +504,6 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
         id={containerId}
         className={`mini-price-chart ${isLoading ? "loading" : ""} ${error ? "error" : ""}`}
         style={{ height: isMobile ? "200px" : "300px" }}
-        onWheel={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          return false;
-        }}
       />
     </div>
   )
