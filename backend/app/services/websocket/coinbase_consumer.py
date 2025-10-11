@@ -78,13 +78,14 @@ class CoinbaseWSConsumer(BaseWSConsumer):
     async def disconnect(self):
         """WebSocket 연결 해제"""
         try:
-            if self._ws is not None:
+            if self._ws is not None and not self._ws.closed:
                 await self._ws.close()
-        except Exception:
-            pass
-        self._ws = None
-        self.is_connected = False
-        logger.info(f"🔌 {self.client_name} disconnected")
+        except Exception as e:
+            logger.debug(f"🔌 {self.client_name} disconnect error: {e}")
+        finally:
+            self._ws = None
+            self.is_connected = False
+            logger.info(f"🔌 {self.client_name} disconnected")
     
     def _normalize_symbol(self, ticker: str) -> str:
         """Coinbase 심볼 규격으로 정규화 (asset_mapping.json 반영)"""
@@ -187,9 +188,14 @@ class CoinbaseWSConsumer(BaseWSConsumer):
                             await asyncio.sleep(reconnect_delay)
                             continue
                     
-                    # 구독 시도
-                    if not await self.subscribe(list(self.subscribed_tickers)):
+                    # 구독 시도 (원래 티커 목록이 있는 경우에만)
+                    if self.original_tickers and not await self.subscribe(list(self.original_tickers)):
                         logger.error(f"❌ {self.client_name} subscription failed")
+                        reconnect_attempts += 1
+                        await asyncio.sleep(reconnect_delay)
+                        continue
+                    elif not self.original_tickers:
+                        logger.warning(f"⚠️ {self.client_name} no tickers to subscribe to")
                         reconnect_attempts += 1
                         await asyncio.sleep(reconnect_delay)
                         continue
@@ -198,18 +204,37 @@ class CoinbaseWSConsumer(BaseWSConsumer):
                     reconnect_attempts = 0
                     logger.info(f"✅ {self.client_name} connected and subscribed to {len(self.subscribed_tickers)} tickers")
                     
-                    # 메시지 수신 루프
-                    async for message in self._ws:
-                        if not self.is_running:
-                            break
-                        
+                    # 메시지 수신 루프 - 단일 recv 루프로 변경
+                    while self.is_running and self.is_connected:
                         try:
-                            data = json.loads(message)
-                            await self._handle_message(data)
-                        except json.JSONDecodeError as e:
-                            logger.error(f"❌ {self.client_name} JSON decode error: {e}")
+                            # 단일 recv 호출로 동시성 문제 해결
+                            message = await asyncio.wait_for(self._ws.recv(), timeout=30.0)
+                            
+                            try:
+                                data = json.loads(message)
+                                await self._handle_message(data)
+                            except json.JSONDecodeError as e:
+                                logger.error(f"❌ {self.client_name} JSON decode error: {e}")
+                            except Exception as e:
+                                logger.error(f"❌ {self.client_name} message handling error: {e}")
+                                
+                        except asyncio.TimeoutError:
+                            # 타임아웃 시 ping으로 연결 상태 확인
+                            try:
+                                await self._ws.ping()
+                                logger.debug(f"🏓 {self.client_name} ping successful")
+                            except Exception as e:
+                                logger.warning(f"⚠️ {self.client_name} ping failed: {e}")
+                                self.is_connected = False
+                                break
+                        except websockets.exceptions.ConnectionClosed:
+                            logger.warning(f"⚠️ {self.client_name} connection closed")
+                            self.is_connected = False
+                            break
                         except Exception as e:
-                            logger.error(f"❌ {self.client_name} message handling error: {e}")
+                            logger.error(f"❌ {self.client_name} recv error: {e}")
+                            self.is_connected = False
+                            break
                             
                 except websockets.exceptions.ConnectionClosed:
                     logger.warning(f"⚠️ {self.client_name} connection closed")

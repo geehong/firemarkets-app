@@ -139,10 +139,11 @@ class WebSocketOrchestrator:
             'polygon': PolygonWSConsumer
         }
         # Conditionally register tiingo only if explicitly enabled
-        if GLOBAL_APP_CONFIGS.get('WEBSOCKET_TIINGO_ENABLED', '0') == '1':
-            self.consumer_classes['tiingo'] = TiingoWSConsumer
-        else:
-            logger.info("tiingo consumer registration skipped (WEBSOCKET_TIINGO_ENABLED!=1)")
+        # if GLOBAL_APP_CONFIGS.get('WEBSOCKET_TIINGO_ENABLED', '0') == '1':
+        #     self.consumer_classes['tiingo'] = TiingoWSConsumer
+        # else:
+        #     logger.info("tiingo consumer registration skipped (WEBSOCKET_TIINGO_ENABLED!=1)")
+        logger.info("tiingo consumer registration disabled (commented out)")
         logger.info(f"Consumer classes registered: {list(self.consumer_classes.keys())}")
         logger.info("WebSocket Orchestrator initialization completed")
     

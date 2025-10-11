@@ -79,6 +79,17 @@ class APIKeyFallbackManager:
     
     def _get_fallback_key(self) -> Optional[Dict]:
         """기존 방식으로 환경변수에서 키 읽기 (하위 호환성)"""
+        # Tiingo의 경우 여러 키 지원
+        if self.provider.lower() == "tiingo":
+            tiingo_keys = GLOBAL_APP_CONFIGS.get("TIINGO_API_KEYS", [])
+            if tiingo_keys and len(tiingo_keys) > 0:
+                # 현재 인덱스의 키 반환
+                if self.current_key_index < len(tiingo_keys):
+                    return {"key": tiingo_keys[self.current_key_index], "priority": 1, "is_active": True}
+                # 인덱스가 범위를 벗어나면 첫 번째 키 반환
+                return {"key": tiingo_keys[0], "priority": 1, "is_active": True}
+        
+        # 기본 방식: 단일 키
         key_name = f"{self.provider.upper()}_API_KEY"
         secret_name = f"{self.provider.upper()}_SECRET_KEY"
         

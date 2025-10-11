@@ -14,6 +14,7 @@ project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
 from app.services.websocket_orchestrator import WebSocketOrchestrator
+from app.core.config import load_and_set_global_configs
 
 # 로깅 설정
 handlers = [logging.StreamHandler()]
@@ -41,6 +42,12 @@ class OrchestratorRunner:
         """오케스트레이터 시작"""
         try:
             logger.info("🚀 Starting WebSocket Orchestrator...")
+            
+            # 전역 설정 로드
+            logger.info("Loading global configurations...")
+            load_and_set_global_configs()
+            logger.info("✅ Global configurations loaded successfully")
+            
             logger.info("Creating WebSocketOrchestrator instance")
             
             self.orchestrator = WebSocketOrchestrator()

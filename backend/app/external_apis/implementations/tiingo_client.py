@@ -25,45 +25,67 @@ class TiingoClient(TradFiAPIClient):
     def __init__(self):
         super().__init__()
         self.base_url = "https://api.tiingo.com"
-        # 직접 환경 변수에서 읽기
+        # API 키 fallback 로직
         import os
-        self.api_key = os.getenv("TIINGO_API_KEY", "")
+        self.api_keys = [
+            os.getenv("TIINGO_API_KEY_1", ""),
+            os.getenv("TIINGO_API_KEY_2", ""),
+            os.getenv("TIINGO_API_KEY", "")  # 기존 키도 fallback으로 유지
+        ]
+        # 빈 키 제거
+        self.api_keys = [key for key in self.api_keys if key]
+        self.current_key_index = 0
+        self.api_key = self.api_keys[0] if self.api_keys else ""
+        
         if not self.api_key:
-            logger.warning("TIINGO_API_KEY is not configured.")
+            logger.warning("No TIINGO API keys are configured.")
+        else:
+            logger.info(f"Tiingo client initialized with {len(self.api_keys)} API keys")
 
     async def _request(self, path: str, params: Dict[str, Any] = None) -> Any:
         """Internal helper to perform GET requests with api key injected."""
         if params is None:
             params = {}
         
-        # API 키 추가
-        params["token"] = self.api_key
         # 경로 정규화: 잘못된 "/api/tiingo"가 포함된 경우 교정
         normalized_path = path
         if normalized_path.startswith("/api/tiingo"):
             normalized_path = normalized_path.replace("/api/tiingo", "/tiingo", 1)
-        url = f"{self.base_url}{normalized_path}"
         
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(url, params=params, timeout=self.api_timeout)
-                
-                # 404 에러 처리: 지원하지 않는 심볼
-                if resp.status_code == 404:
+        # API 키 fallback 로직
+        for attempt in range(len(self.api_keys)):
+            current_key = self.api_keys[self.current_key_index]
+            params["token"] = current_key
+            url = f"{self.base_url}{normalized_path}"
+            
+            try:
+                async with httpx.AsyncClient() as client:
+                    resp = await client.get(url, params=params, timeout=self.api_timeout)
+                    
+                    # 404 에러 처리: 지원하지 않는 심볼
+                    if resp.status_code == 404:
+                        logger.info(f"Tiingo: Symbol not supported (미지원 티커): {path}")
+                        return None
+                    
+                    resp.raise_for_status()
+                    return resp.json()
+                    
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
                     logger.info(f"Tiingo: Symbol not supported (미지원 티커): {path}")
                     return None
-                
-                resp.raise_for_status()
-                return resp.json()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                logger.info(f"Tiingo: Symbol not supported (미지원 티커): {path}")
-                return None
-            logger.error(f"Tiingo API error: {e.response.status_code} - {e.response.text}")
-            raise
-        except Exception as e:
-            logger.error(f"Tiingo request failed: {e}")
-            raise
+                elif e.response.status_code in [401, 403, 429]:  # API 키 관련 오류
+                    logger.warning(f"Tiingo API key failed (attempt {attempt + 1}): {e.response.status_code}")
+                    if attempt < len(self.api_keys) - 1:
+                        # 다음 키로 전환
+                        self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
+                        logger.info(f"Switching to next Tiingo API key (index: {self.current_key_index})")
+                        continue
+                logger.error(f"Tiingo API error: {e.response.status_code} - {e.response.text}")
+                raise
+            except Exception as e:
+                logger.error(f"Tiingo request failed: {e}")
+                raise
 
     async def test_connection(self) -> bool:
         """Test connectivity to Tiingo API"""
