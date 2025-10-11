@@ -1,12 +1,11 @@
+"use client"
+
 import React, { useState, useRef, useEffect } from 'react';
 import Highcharts from 'highcharts/highstock';
 import HighchartsReact from 'highcharts-react-official';
-import { CCard, CCardBody, CCardHeader } from '@coreui/react';
-import CardTools from '../../common/CardTools';
-import '../../common/CardTools.css';
-import { useAPI } from '../../../hooks/useAPI';
-import ChartControls from '../../common/ChartControls';
-import { getColorMode } from '../../../constants/colorModes';
+import { apiClient } from '@/lib/api';
+import ChartControls from '@/components/common/ChartControls';
+import { getColorMode } from '@/constants/colorModes';
 
 // Load Highcharts modules in correct order
 import 'highcharts/modules/stock';
@@ -15,7 +14,15 @@ import 'highcharts/modules/accessibility';
 import 'highcharts/modules/drag-panes';
 import 'highcharts/modules/navigator';
 
-const HalvingChart = ({
+interface HalvingChartProps {
+  title?: string;
+  height?: number;
+  showRangeSelector?: boolean;
+  showExporting?: boolean;
+  singlePeriod?: number | null;
+}
+
+const HalvingChart: React.FC<HalvingChartProps> = ({
   title = 'Bitcoin Halving Price Analysis',
   height = 1500,
   showRangeSelector = false,
@@ -25,7 +32,7 @@ const HalvingChart = ({
   const [chartType, setChartType] = useState('line');
   const [useLogScale, setUseLogScale] = useState(true);
   const [isAreaMode, setIsAreaMode] = useState(false);
-  const [lineSplineMode, setLineSplineMode] = useState('line'); // 'line' 또는 'spline'
+  const [lineSplineMode, setLineSplineMode] = useState<'line' | 'spline'>('line');
   const [startPrice, setStartPrice] = useState(64940);
   const [customStartPrice, setCustomStartPrice] = useState(64940);
   const [showPlotBands, setShowPlotBands] = useState(false);
@@ -41,19 +48,19 @@ const HalvingChart = ({
   const [showHalving2, setShowHalving2] = useState(true);
   const [showHalving3, setShowHalving3] = useState(true);
   const [showHalving4, setShowHalving4] = useState(true);
-  const [showFlags, setShowFlags] = useState(false); // Halving 차트에서는 플래그를 기본적으로 비활성화
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  const [colorMode, setColorMode] = useState('dark'); // 색상 모드 상태 추가
-  const [showSettings, setShowSettings] = useState(false); // 설정 패널 표시 상태
-  const chartRef = useRef(null);
+  const [showFlags, setShowFlags] = useState(false);
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+  const [colorMode, setColorMode] = useState<'dark' | 'vivid' | 'high-contrast' | 'simple'>('vivid'); // 다크모드 제거
+  const [showSettings, setShowSettings] = useState(false);
+  const chartRef = useRef<HighchartsReact.RefObject>(null);
 
-  // 4차 반감기 시작가격 기본값 (필요 시 입력값 사용)
+  // 4차 반감기 시작가격 기본값
   const isLoadingStartPrice = false;
   const defaultStartPrice = 0;
 
   // 반감기 데이터 - 전용 API 사용으로 과도한/잘못된 쿼리 방지
   const periodsToLoad = singlePeriod ? [singlePeriod] : [1, 2, 3, 4];
-  const [halvingDataMap, setHalvingDataMap] = useState({});
+  const [halvingDataMap, setHalvingDataMap] = useState<Record<number, any>>({});
   const lastFetchKeyRef = useRef(0);
 
   useEffect(() => {
@@ -70,21 +77,15 @@ const HalvingChart = ({
           return draft;
         });
 
-        // 순차 로드(폭주 방지). 필요 시 2개씩 배치도 가능
+        // 순차 로드(폭주 방지)
         for (const period of periodsToLoad) {
-          const qs = new URLSearchParams();
-          qs.set('include_ohlcv', 'false');
-          qs.set('normalize_to_price', String(startPrice));
-          const url = `/api/v1/crypto/bitcoin/halving-data/${period}?${qs.toString()}`;
-          const res = await fetch(url, { signal: controller.signal });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const json = await res.json();
+          const data = await apiClient.getHalvingData(period, startPrice);
           if (lastFetchKeyRef.current !== fetchKey) return; // 최신 요청만 반영
-          const data = {
-            close_price_data: Array.isArray(json?.close_price_data) ? json.close_price_data : [],
-            metadata: json?.metadata || {}
+          const processedData = {
+            close_price_data: Array.isArray(data?.close_price_data) ? data.close_price_data : [],
+            metadata: data?.metadata || {}
           };
-          setHalvingDataMap(prev => ({ ...prev, [period]: { isLoading: false, error: null, data } }));
+          setHalvingDataMap(prev => ({ ...prev, [period]: { isLoading: false, error: null, data: processedData } }));
         }
       } catch (e) {
         if (controller.signal.aborted) return;
@@ -105,28 +106,12 @@ const HalvingChart = ({
     error: halvingDataMap[period]?.error,
     data: halvingDataMap[period]?.data,
   }));
-  
-  // 디버깅을 위한 로그
-  // console.log('Halving queries:', halvingQueries);
-  // console.log('Start price:', startPrice);
-  // console.log('Periods to load:', periodsToLoad);
 
   // 모든 쿼리의 로딩 상태 확인
   const isLoading = isLoadingStartPrice || halvingQueries.some(query => query.isLoading);
   
   // 에러 확인
   const error = halvingQueries.find(query => query.error)?.error;
-  
-  // 디버깅: 각 쿼리 상태 확인
-  // halvingQueries.forEach((query, index) => {
-  //   const period = periodsToLoad[index];
-  //   console.log(`Query ${period}:`, {
-  //     isLoading: query.isLoading,
-  //     isError: query.isError,
-  //     error: query.error,
-  //     data: query.data
-  //   });
-  // });
 
   // 화면 크기 변경 감지
   useEffect(() => {
@@ -139,11 +124,11 @@ const HalvingChart = ({
   }, []);
 
   // 차트 타입 변경 핸들러
-  const handleChartTypeChange = (type) => {
+  const handleChartTypeChange = (type: string) => {
     setChartType(type);
     const chart = chartRef.current?.chart;
     if (chart && chart.series && chart.series.length > 0) {
-      chart.series.forEach(series => {
+      chart.series.forEach((series: any) => {
         series.update({ type }, false);
       });
       chart.redraw();
@@ -166,7 +151,7 @@ const HalvingChart = ({
     
     const chart = chartRef.current?.chart;
     if (chart && chart.series && chart.series.length > 0) {
-      chart.series.forEach(series => {
+      chart.series.forEach((series: any) => {
         series.update({ type: newChartType }, false);
       });
       chart.redraw();
@@ -189,7 +174,7 @@ const HalvingChart = ({
     
     const chart = chartRef.current?.chart;
     if (chart && chart.series && chart.series.length > 0) {
-      chart.series.forEach(series => {
+      chart.series.forEach((series: any) => {
         series.update({ type: newChartType }, false);
       });
       chart.redraw();
@@ -202,7 +187,7 @@ const HalvingChart = ({
     const chart = chartRef.current?.chart;
     if (chart) {
       // 모든 Y축을 로그 스케일로 변경
-      chart.yAxis.forEach(axis => {
+      chart.yAxis.forEach((axis: any) => {
         axis.update({
           type: !useLogScale ? 'logarithmic' : 'linear'
         }, false);
@@ -220,16 +205,15 @@ const HalvingChart = ({
   useEffect(() => {
     const chart = chartRef.current?.chart;
     if (chart) {
-      //console.log('Updating chart xAxis max to:', dayRange);
       chart.xAxis[0].setExtremes(0, dayRange);
     }
   }, [dayRange]);
 
   // 이동평균 계산 함수
-  const calculateMovingAverage = (data, period) => {
+  const calculateMovingAverage = (data: number[][], period: number) => {
     if (!data || data.length < period) return [];
     
-    const result = [];
+    const result: (number[] | null)[] = [];
     let sum = 0;
     
     for (let i = 0; i < data.length; i++) {
@@ -261,7 +245,7 @@ const HalvingChart = ({
         
         if (data && (data.ohlcv_data || data.close_price_data)) {
           const priceData = data.ohlcv_data || data.close_price_data;
-          const chartData = priceData.map((point) => {
+          const chartData = priceData.map((point: any) => {
             const pointDate = new Date(point.timestamp_utc + 'T00:00:00.000Z');
             
             // 각 반감기의 시작일 정의
@@ -272,20 +256,21 @@ const HalvingChart = ({
               4: new Date('2024-04-20T00:00:00.000Z')
             };
             
-            const startDate = halvingStartDates[period];
-            const days = Math.floor((pointDate - startDate) / (24 * 60 * 60 * 1000));
+            const startDate = halvingStartDates[period as keyof typeof halvingStartDates];
+            const days = Math.floor((pointDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000));
             
             // 모든 반감기를 동일한 시작 가격으로 정규화
             const normalizedPrice = point.close_price;
             return [days, normalizedPrice];
-          }).sort((a, b) => a[0] - b[0]); // 날짜순으로 정렬
+          }).sort((a: any, b: any) => a[0] - b[0]); // 날짜순으로 정렬
           
           const maData = calculateMovingAverage(chartData, maPeriod);
           const maSeries = maData
             .filter(point => point !== null)
-            .map(point => [point[0], point[1]]);
+            .map(point => [point![0], point![1]]);
           
           if (maSeries.length > 0) {
+            const currentColors = getColorMode(colorMode);
             series.push({
               name: `${period}st MA(${maPeriod})`,
               type: chartType === 'area' ? 'area' : 'line',
@@ -325,7 +310,7 @@ const HalvingChart = ({
                   // 시리즈 이름에서 반감기 번호 추출 (예: "1st MA(20)" -> 1)
                   const periodMatch = this.series.name.match(/(\d+)st/);
                   const period = periodMatch ? parseInt(periodMatch[1]) : 4;
-                  const startDate = halvingStartDates[period];
+                  const startDate = halvingStartDates[period as keyof typeof halvingStartDates];
                   
                   const currentDate = new Date(startDate.getTime() + this.x * 24 * 60 * 60 * 1000);
                   const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
@@ -368,7 +353,7 @@ const HalvingChart = ({
 
   // 차트 데이터 변환
   const getChartSeries = () => {
-    const series = [];
+    const series: any[] = [];
     const currentColors = getColorMode(colorMode);
     const lineWidths = [2, 2, 2, 4]; // 4차 반감기는 굵게
     
@@ -389,11 +374,8 @@ const HalvingChart = ({
       if (data && (data.ohlcv_data || data.close_price_data)) {
         const priceData = data.ohlcv_data || data.close_price_data;
         
-        // console.log(`Period ${period} data:`, data);
-        // console.log(`Period ${period} priceData:`, priceData);
-        
         // 가로축을 일수로 변경 (각 반감기의 시작일 기준으로 계산)
-        let chartData = priceData.map((point) => {
+        let chartData = priceData.map((point: any) => {
           const pointDate = new Date(point.timestamp_utc + 'T00:00:00.000Z');
           
           // 각 반감기의 시작일 정의
@@ -404,15 +386,13 @@ const HalvingChart = ({
             4: new Date('2024-04-20T00:00:00.000Z')
           };
           
-          const startDate = halvingStartDates[period];
-          const days = Math.floor((pointDate - startDate) / (24 * 60 * 60 * 1000));
+          const startDate = halvingStartDates[period as keyof typeof halvingStartDates];
+          const days = Math.floor((pointDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000));
           
           // 모든 반감기를 동일한 시작 가격으로 정규화
           const normalizedPrice = point.close_price;
           return [days, normalizedPrice]; // 정규화된 가격 사용
-        }).sort((a, b) => a[0] - b[0]); // 날짜순으로 정렬
-        
-        // console.log(`Period ${period} chartData:`, chartData.slice(0, 5)); // 처음 5개만 로그
+        }).sort((a: any, b: any) => a[0] - b[0]); // 날짜순으로 정렬
         
         // 4차 반감기의 경우 데이터가 끝나는 지점 이후부터 1400일까지 빈 데이터 추가
         if (period === 4) {
@@ -429,7 +409,7 @@ const HalvingChart = ({
           name: `${period}st`,
           type: chartType,
           data: chartData,
-          color: currentColors[`halving_${period}`],
+          color: currentColors[`halving_${period}` as keyof typeof currentColors],
           line: {
             width: lineWidths[index % lineWidths.length]
           },
@@ -443,11 +423,11 @@ const HalvingChart = ({
                 y2: 1
               },
               stops: [
-                [0, Highcharts.color(currentColors[`halving_${period}`]).setOpacity(0.7).get('rgba')],
-                [0.5, Highcharts.color(currentColors[`halving_${period}`]).setOpacity(0.35).get('rgba')],
-                [0.8, Highcharts.color(currentColors[`halving_${period}`]).setOpacity(0.05).get('rgba')],
-                [0.9, Highcharts.color(currentColors[`halving_${period}`]).setOpacity(0.02).get('rgba')],
-                [1, Highcharts.color(currentColors[`halving_${period}`]).setOpacity(0.01).get('rgba')]
+                [0, Highcharts.color(currentColors[`halving_${period}` as keyof typeof currentColors]).setOpacity(0.7).get('rgba')],
+                [0.5, Highcharts.color(currentColors[`halving_${period}` as keyof typeof currentColors]).setOpacity(0.35).get('rgba')],
+                [0.8, Highcharts.color(currentColors[`halving_${period}` as keyof typeof currentColors]).setOpacity(0.05).get('rgba')],
+                [0.9, Highcharts.color(currentColors[`halving_${period}` as keyof typeof currentColors]).setOpacity(0.02).get('rgba')],
+                [1, Highcharts.color(currentColors[`halving_${period}` as keyof typeof currentColors]).setOpacity(0.01).get('rgba')]
               ]
             }
           }),
@@ -466,7 +446,7 @@ const HalvingChart = ({
               // 시리즈 이름에서 반감기 번호 추출 (예: "1st" -> 1)
               const periodMatch = this.series.name.match(/(\d+)st/);
               const period = periodMatch ? parseInt(periodMatch[1]) : 4;
-              const startDate = halvingStartDates[period];
+              const startDate = halvingStartDates[period as keyof typeof halvingStartDates];
               
               const currentDate = new Date(startDate.getTime() + this.x * 24 * 60 * 60 * 1000);
               const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
@@ -629,7 +609,7 @@ const HalvingChart = ({
           
           let tooltip = [`Day ${days} <span style="font-weight: bold; color: blue;">[${dateStr}]</span>`];
           
-          points.forEach(point => {
+          points.forEach((point: any) => {
             tooltip.push(`<span style="color:${point.series.color}">\u25CF ${point.series.name}</span>: <b>$${Highcharts.numberFormat(point.y, 2)}</b>`);
           });
           
@@ -724,235 +704,233 @@ const HalvingChart = ({
   }
 
   return (
-    <CCard className="mb-4">
-      <CCardHeader className="d-flex justify-content-between align-items-center">
+    <div className="bg-white rounded-lg p-4 mb-4">
+      <div className="d-flex justify-content-between align-items-center mb-3">
         <h5 className="mb-0">{title}</h5>
-        <CardTools />
-      </CCardHeader>
-      <CCardBody>
-        {/* Chart Controls */}
-        <div className="row justify-content-center mb-3">
-          <div className="col-md-8">
-            <ChartControls
-              chartType={lineSplineMode}
-              onChartTypeChange={handleLineSplineToggle}
-              isAreaMode={isAreaMode}
-              onAreaModeToggle={handleAreaModeToggle}
-              showFlags={showFlags}
-              onFlagsToggle={() => setShowFlags(!showFlags)}
-              useLogScale={useLogScale}
-              onLogScaleToggle={handleLogScaleToggle}
-              colorMode={colorMode}
-              onColorModeChange={setColorMode}
-              showFlagsButton={false} // Halving 차트에서는 플래그 버튼 숨김
-              isHalvingChart={true}
-              halvingStates={{
-                showHalving1,
-                showHalving2,
-                showHalving3,
-                showHalving4
-              }}
-              onHalvingToggle={(id) => {
-                const setters = {
-                  1: setShowHalving1,
-                  2: setShowHalving2,
-                  3: setShowHalving3,
-                  4: setShowHalving4
-                };
-                const states = {
-                  1: showHalving1,
-                  2: showHalving2,
-                  3: showHalving3,
-                  4: showHalving4
-                };
-                setters[id](!states[id]);
-              }}
-              halvingColors={getHalvingColors()}
-            />
-          </div>
-        </div>
-
-        {/* 차트 */}
-        <div style={{ height: `${height}px` }}>
-          <HighchartsReact
-            highcharts={Highcharts}
-            constructorType={'stockChart'}
-            options={getChartOptions()}
-            ref={chartRef}
+      </div>
+      
+      {/* Chart Controls */}
+      <div className="row justify-content-center mb-3">
+        <div className="col-md-8">
+          <ChartControls
+            chartType={lineSplineMode}
+            onChartTypeChange={handleLineSplineToggle}
+            isAreaMode={isAreaMode}
+            onAreaModeToggle={handleAreaModeToggle}
+            showFlags={showFlags}
+            onFlagsToggle={() => setShowFlags(!showFlags)}
+            useLogScale={useLogScale}
+            onLogScaleToggle={handleLogScaleToggle}
+            colorMode={colorMode}
+            onColorModeChange={setColorMode}
+            showFlagsButton={false} // Halving 차트에서는 플래그 버튼 숨김
+            isHalvingChart={true}
+            halvingStates={{
+              showHalving1,
+              showHalving2,
+              showHalving3,
+              showHalving4
+            }}
+            onHalvingToggle={(id) => {
+              const setters = {
+                1: setShowHalving1,
+                2: setShowHalving2,
+                3: setShowHalving3,
+                4: setShowHalving4
+              };
+              const states = {
+                1: showHalving1,
+                2: showHalving2,
+                3: showHalving3,
+                4: showHalving4
+              };
+              setters[id as keyof typeof setters](!states[id as keyof typeof states]);
+            }}
+            halvingColors={getHalvingColors()}
           />
         </div>
+      </div>
 
-        {/* Settings Toggle Button */}
-        <div className="row mt-4">
-          <div className="col-12">
-            <button
-              type="button"
-              className="btn btn-outline-secondary btn-sm"
-              onClick={() => setShowSettings(!showSettings)}
-              style={{ width: '100%' }}
-            >
-              {showSettings ? '▼ Option' : '▶ Option'}
-            </button>
-          </div>
+      {/* 차트 */}
+      <div style={{ height: `${height}px` }}>
+        <HighchartsReact
+          highcharts={Highcharts}
+          constructorType={'stockChart'}
+          options={getChartOptions()}
+          ref={chartRef}
+        />
+      </div>
+
+      {/* Settings Toggle Button */}
+      <div className="row mt-4">
+        <div className="col-12">
+          <button
+            type="button"
+            className="btn btn-outline-secondary btn-sm"
+            onClick={() => setShowSettings(!showSettings)}
+            style={{ width: '100%' }}
+          >
+            {showSettings ? '▼ Option' : '▶ Option'}
+          </button>
         </div>
+      </div>
 
-        {/* Input Controls and Indicate Controls */}
-        {showSettings && (
-          <div className="row mt-3">
-            {/* Input Settings */}
-            <div className="col-md-6">
-              <div className="card">
-                <div className="card-header">
-                  <h6 className="mb-0">Input Settings</h6>
-                </div>
-                <div className="card-body">
-                  <div className="row">
-                    <div className="col-12 mb-3">
-                      <label className="form-label">Start Price</label>
-                      <div className="input-group">
-                        <input
-                          type="number"
-                          className="form-control"
-                          value={customStartPrice}
-                          onChange={(e) => setCustomStartPrice(Number(e.target.value))}
-                          placeholder="Enter start price"
-                        />
-                        <button
-                          className="btn btn-primary"
-                          onClick={handleExecuteStartPrice}
-                        >
-                          Execute
-                        </button>
-                      </div>
+      {/* Input Controls and Indicate Controls */}
+      {showSettings && (
+        <div className="row mt-3">
+          {/* Input Settings */}
+          <div className="col-md-6">
+            <div className="card">
+              <div className="card-header">
+                <h6 className="mb-0">Input Settings</h6>
+              </div>
+              <div className="card-body">
+                <div className="row">
+                  <div className="col-12 mb-3">
+                    <label className="form-label">Start Price</label>
+                    <div className="input-group">
+                      <input
+                        type="number"
+                        className="form-control"
+                        value={customStartPrice}
+                        onChange={(e) => setCustomStartPrice(Number(e.target.value))}
+                        placeholder="Enter start price"
+                      />
+                      <button
+                        className="btn btn-primary"
+                        onClick={handleExecuteStartPrice}
+                      >
+                        Execute
+                      </button>
                     </div>
-                    <div className="col-12">
-                      <div className="d-flex align-items-center gap-3">
-                        <label className="form-label mb-0">Range: {dayRange} Days</label>
-                        <div className="flex-grow-1">
+                  </div>
+                  <div className="col-12">
+                    <div className="d-flex align-items-center gap-3">
+                      <label className="form-label mb-0">Range: {dayRange} Days</label>
+                      <div className="flex-grow-1">
+                        <input
+                          type="range"
+                          className="form-range"
+                          min="0"
+                          max="1460"
+                          value={dayRange}
+                          onChange={(e) => {
+                            const value = Number(e.target.value);
+                            setDayRange(value);
+                          }}
+                        />
+                      </div>
+                      <span className="text-muted">{dayRange} Days</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Indicate Settings */}
+          <div className="col-md-6">
+            <div className="card">
+              <div className="card-header">
+                <h6 className="mb-0">Indicate Settings</h6>
+              </div>
+              <div className="card-body">
+                <div className="row">
+                  {/* Plot Bands Section */}
+                  <div className="col-md-6">
+                    <div className="form-check mb-3">
+                      <input
+                        className="form-check-input"
+                        type="checkbox"
+                        checked={showPlotBands}
+                        onChange={(e) => setShowPlotBands(e.target.checked)}
+                      />
+                      <label className="form-check-label">Plot Bands/Lines</label>
+                    </div>
+                    {showPlotBands && (
+                      <div className="row">
+                        <div className="col-md-4">
+                          <label className="form-label">PL Day</label>
                           <input
-                            type="range"
-                            className="form-range"
+                            type="number"
+                            className="form-control"
+                            value={plotLineDay}
+                            onChange={(e) => setPlotLineDay(Number(e.target.value))}
                             min="0"
                             max="1460"
-                            value={dayRange}
-                            onChange={(e) => {
-                              const value = Number(e.target.value);
-                              setDayRange(value);
-                            }}
                           />
                         </div>
-                        <span className="text-muted">{dayRange} Days</span>
+                        <div className="col-md-4">
+                          <label className="form-label">PB Start</label>
+                          <input
+                            type="number"
+                            className="form-control"
+                            value={plotBandStart}
+                            onChange={(e) => setPlotBandStart(Number(e.target.value))}
+                            min="0"
+                            max="1460"
+                          />
+                        </div>
+                        <div className="col-md-4">
+                          <label className="form-label">PB End</label>
+                          <input
+                            type="number"
+                            className="form-control"
+                            value={plotBandEnd}
+                            onChange={(e) => setPlotBandEnd(Number(e.target.value))}
+                            min={plotBandStart}
+                            max="1460"
+                          />
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
-                </div>
-              </div>
-            </div>
 
-            {/* Indicate Settings */}
-            <div className="col-md-6">
-              <div className="card">
-                <div className="card-header">
-                  <h6 className="mb-0">Indicate Settings</h6>
-                </div>
-                <div className="card-body">
-                  <div className="row">
-                    {/* Plot Bands Section */}
-                    <div className="col-md-6">
-                      <div className="form-check mb-3">
-                        <input
-                          className="form-check-input"
-                          type="checkbox"
-                          checked={showPlotBands}
-                          onChange={(e) => setShowPlotBands(e.target.checked)}
-                        />
-                        <label className="form-check-label">Plot Bands/Lines</label>
-                      </div>
-                      {showPlotBands && (
-                        <div className="row">
-                          <div className="col-md-4">
-                            <label className="form-label">PL Day</label>
-                            <input
-                              type="number"
-                              className="form-control"
-                              value={plotLineDay}
-                              onChange={(e) => setPlotLineDay(Number(e.target.value))}
-                              min="0"
-                              max="1460"
-                            />
-                          </div>
-                          <div className="col-md-4">
-                            <label className="form-label">PB Start</label>
-                            <input
-                              type="number"
-                              className="form-control"
-                              value={plotBandStart}
-                              onChange={(e) => setPlotBandStart(Number(e.target.value))}
-                              min="0"
-                              max="1460"
-                            />
-                          </div>
-                          <div className="col-md-4">
-                            <label className="form-label">PB End</label>
-                            <input
-                              type="number"
-                              className="form-control"
-                              value={plotBandEnd}
-                              onChange={(e) => setPlotBandEnd(Number(e.target.value))}
-                              min={plotBandStart}
-                              max="1460"
-                            />
-                          </div>
-                        </div>
-                      )}
+                  {/* Moving Average Section */}
+                  <div className="col-md-6">
+                    <div className="form-check mb-3">
+                      <input
+                        className="form-check-input"
+                        type="checkbox"
+                        checked={showMovingAverage}
+                        onChange={(e) => setShowMovingAverage(e.target.checked)}
+                      />
+                      <label className="form-check-label">Moving Average</label>
                     </div>
-
-                    {/* Moving Average Section */}
-                    <div className="col-md-6">
-                      <div className="form-check mb-3">
-                        <input
-                          className="form-check-input"
-                          type="checkbox"
-                          checked={showMovingAverage}
-                          onChange={(e) => setShowMovingAverage(e.target.checked)}
-                        />
-                        <label className="form-check-label">Moving Average</label>
-                      </div>
-                      {showMovingAverage && (
-                        <div className="row">
-                          <div className="col-md-6">
-                            <label className="form-label">MA Period</label>
-                            <input
-                              type="number"
-                              className="form-control"
-                              value={maPeriod}
-                              onChange={(e) => setMaPeriod(Number(e.target.value))}
-                              min="1"
-                              max="100"
-                            />
-                          </div>
-                          <div className="col-md-6">
-                            <label className="form-label">MA Width</label>
-                            <input
-                              type="number"
-                              className="form-control"
-                              value={maWidth}
-                              onChange={(e) => setMaWidth(Number(e.target.value))}
-                              min="1"
-                              max="10"
-                            />
-                          </div>
+                    {showMovingAverage && (
+                      <div className="row">
+                        <div className="col-md-6">
+                          <label className="form-label">MA Period</label>
+                          <input
+                            type="number"
+                            className="form-control"
+                            value={maPeriod}
+                            onChange={(e) => setMaPeriod(Number(e.target.value))}
+                            min="1"
+                            max="100"
+                          />
                         </div>
-                      )}
-                    </div>
+                        <div className="col-md-6">
+                          <label className="form-label">MA Width</label>
+                          <input
+                            type="number"
+                            className="form-control"
+                            value={maWidth}
+                            onChange={(e) => setMaWidth(Number(e.target.value))}
+                            min="1"
+                            max="10"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
             </div>
           </div>
-        )}
-      </CCardBody>
-    </CCard>
+        </div>
+      )}
+    </div>
   );
 };
 

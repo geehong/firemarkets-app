@@ -41,15 +41,28 @@ export async function apiFetch<T>(path: string, opts: FetchOptions = {}): Promis
 // ---- High-level API client (TS) ----
 function resolveApiBaseUrl(): string {
   const envUrl = process.env.NEXT_PUBLIC_API_URL
-  if (envUrl) return envUrl
-  if (typeof window !== 'undefined') {
-    try {
-      const { protocol, hostname } = window.location
-      // 퍼블릭 도메인에서도 일괄적으로 8001 포트의 백엔드에 직접 접근
-      return `${protocol}//${hostname}:8001/api/v1`
-    } catch (_) {}
+  if (envUrl) {
+    console.log('Using NEXT_PUBLIC_API_URL:', envUrl)
+    return envUrl
   }
-  return 'http://localhost:8001/api/v1'
+  
+  // 하드코딩된 백엔드 URL 사용
+  const hardcodedUrl = 'http://firemarkets.net:8001/api/v1'
+  console.log('Using hardcoded API URL:', hardcodedUrl)
+  return hardcodedUrl
+  
+  // 기존 로직 (백업용)
+  // if (typeof window !== 'undefined') {
+  //   try {
+  //     const { protocol, hostname, port } = window.location
+  //     const apiUrl = `${protocol}//${hostname}:8001/api/v1`
+  //     console.log('Resolved API URL:', apiUrl, 'from window.location:', { protocol, hostname, port })
+  //     return apiUrl
+  //   } catch (_) {}
+  // }
+  // const fallbackUrl = 'http://localhost:8001/api/v1'
+  // console.log('Using fallback API URL:', fallbackUrl)
+  // return fallbackUrl
 }
 
 export class ApiClient {
@@ -92,13 +105,25 @@ export class ApiClient {
     return this.request(`/realtime/pg/quotes-delay-price${qs ? `?${qs}` : ''}`)
   }
 
+  // Assets OHLCV - main OHLCV endpoint with more flexibility
+  getAssetsOhlcv(params: { asset_identifier: string; data_interval?: string; start_date?: string; end_date?: string; limit?: number; }) {
+    const search = new URLSearchParams()
+    search.append('data_interval', params.data_interval ?? '1d')
+    if (params.start_date) search.append('start_date', params.start_date)
+    if (params.end_date) search.append('end_date', params.end_date)
+    if (params.limit) search.append('limit', String(params.limit))
+    const qs = search.toString()
+    return this.request(`/assets/ohlcv/${params.asset_identifier}${qs ? `?${qs}` : ''}`)
+  }
+
   // Realtime (fallback) - intraday OHLCV from MySQL API
-  getIntradayOhlcv(params: { asset_identifier: string; data_interval?: string; ohlcv?: boolean; days?: number; }) {
+  getIntradayOhlcv(params: { asset_identifier: string; data_interval?: string; ohlcv?: boolean; days?: number; limit?: number; }) {
     const search = new URLSearchParams()
     if (params.asset_identifier) search.append('asset_identifier', params.asset_identifier)
     search.append('data_interval', params.data_interval ?? '4h')
     search.append('ohlcv', String(params.ohlcv ?? true))
     search.append('days', String(params.days ?? 1))
+    if (params.limit) search.append('limit', String(params.limit))
     const qs = search.toString()
     return this.request(`/realtime/intraday-ohlcv${qs ? `?${qs}` : ''}`)
   }
@@ -111,6 +136,25 @@ export class ApiClient {
 
   // Tickers
   getTickers() { return this.request('/tickers') }
+
+  // On-chain metrics data (통합 엔드포인트 - price + metric + correlation)
+  getOnchainMetricsData(assetId: string, metricId: string, limit: number = 10000) {
+    const search = new URLSearchParams();
+    search.append('metrics', `price,${metricId}`);
+    search.append('limit', String(limit));
+    search.append('compute', 'correlation');
+    const qs = search.toString();
+    return this.request(`/metrics/${assetId}${qs ? `?${qs}` : ''}`);
+  }
+
+  // Halving data
+  getHalvingData(period: number, startPrice: number) {
+    const search = new URLSearchParams();
+    search.append('include_ohlcv', 'false');
+    search.append('normalize_to_price', String(startPrice));
+    const qs = search.toString();
+    return this.request(`/crypto/bitcoin/halving-data/${period}${qs ? `?${qs}` : ''}`);
+  }
 }
 
 export const apiClient = new ApiClient()

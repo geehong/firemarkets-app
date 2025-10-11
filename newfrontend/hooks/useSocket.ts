@@ -38,16 +38,19 @@ export const useSocket = () => {
   useEffect(() => {
     // console.log('🔌 Socket.IO 연결 시도:', SOCKET_URL)
     
-    // Socket.IO 연결 초기화
+    // Socket.IO 연결 초기화 (모바일 환경 고려)
+    const isMobile = typeof window !== 'undefined' && 
+      (window.innerWidth <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent))
+    
     socketRef.current = io(SOCKET_URL, {
-      transports: ['polling', 'websocket'], // polling을 먼저 시도
-      timeout: 20000,
+      transports: isMobile ? ['polling'] : ['polling', 'websocket'], // 모바일에서는 polling만 사용
+      timeout: isMobile ? 30000 : 20000, // 모바일에서는 더 긴 타임아웃
       forceNew: true,
       autoConnect: true,
       reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionAttempts: 5,
-      maxReconnectionAttempts: 5,
+      reconnectionDelay: isMobile ? 2000 : 1000, // 모바일에서는 더 긴 재연결 지연
+      reconnectionAttempts: isMobile ? 3 : 5, // 모바일에서는 재연결 시도 횟수 감소
+      maxReconnectionAttempts: isMobile ? 3 : 5,
     })
 
     const socket = socketRef.current

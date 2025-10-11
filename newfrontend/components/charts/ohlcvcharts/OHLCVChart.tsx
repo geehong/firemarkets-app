@@ -1,19 +1,50 @@
+"use client"
+
 import React, { useEffect, useState } from 'react'
 import HighchartsReact from 'highcharts-react-official'
-import { CCard, CCardBody, CCardHeader } from '@coreui/react'
-import useAPI from 'src/hooks/useAPI'
+import { apiClient } from '@/lib/api'
+import { useQuery } from '@tanstack/react-query'
 
 // Highcharts 모듈들을 import 및 초기화
 import Highcharts from 'highcharts/highstock'
 import 'highcharts/modules/exporting'
-// import 'highcharts/modules/export-data' // 문제가 있는 모듈 제거
 import 'highcharts/modules/accessibility'
 import 'highcharts/modules/stock-tools'
 import 'highcharts/modules/full-screen'
 import 'highcharts/modules/annotations-advanced'
 import 'highcharts/modules/price-indicator'
 
-const OHLCVChart = ({
+interface OHLCVData {
+  timestamp_utc: string
+  open_price: string | number
+  high_price: string | number
+  low_price: string | number
+  close_price: string | number
+  volume: string | number
+}
+
+interface OHLCVChartProps {
+  assetIdentifier: string
+  dataInterval?: string
+  height?: number
+  showVolume?: boolean
+  showRangeSelector?: boolean
+  showStockTools?: boolean
+  showExporting?: boolean
+  title?: string
+  subtitle?: string
+  backgroundColor?: string
+  volumeColor?: string
+  volumeOpacity?: number
+  maxDataPoints?: number
+  onDataLoad?: (data: { ohlcData: number[][]; volumeData: number[][]; totalCount: number }) => void
+  onError?: (error: string) => void
+  customOptions?: any
+  externalOhlcvData?: OHLCVData[] | null
+  useIntradayApi?: boolean
+}
+
+const OHLCVChart: React.FC<OHLCVChartProps> = ({
   assetIdentifier,
   dataInterval = '1d',
   height = 600,
@@ -30,21 +61,39 @@ const OHLCVChart = ({
   onDataLoad,
   onError,
   customOptions = {},
-  // 외부에서 전달받은 데이터 (선택적)
   externalOhlcvData = null,
+  useIntradayApi = false,
 }) => {
-  const [chartData, setChartData] = useState(null)
-  const [volumeData, setVolumeData] = useState(null)
+  const [chartData, setChartData] = useState<number[][] | null>(null)
+  const [volumeData, setVolumeData] = useState<number[][] | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [error, setError] = useState<string | null>(null)
 
-  const { data: apiData, loading: apiLoading, error: apiError } = useAPI.assets.ohlcv(
-    assetIdentifier,
-    dataInterval,
-    null,
-    null,
-    maxDataPoints
-  )
+  const { data: apiData, isLoading: apiLoading, error: apiError } = useQuery({
+    queryKey: ['ohlcv', assetIdentifier, dataInterval, useIntradayApi ? 'intraday' : 'assets'],
+    queryFn: () => {
+      if (useIntradayApi) {
+        // ohlcv_intraday_data 테이블 사용 (1h, 4h, 6h, 12h, 24h 간격)
+        return apiClient.getIntradayOhlcv({
+          asset_identifier: assetIdentifier,
+          data_interval: dataInterval,
+          ohlcv: true,
+          days: 1,
+          limit: 1000 // 최대 1000개 데이터 포인트
+        })
+      } else {
+        // ohlcv_day_data 테이블 사용 (1d 간격)
+        return apiClient.getAssetsOhlcv({
+          asset_identifier: assetIdentifier,
+          data_interval: dataInterval,
+          limit: 1000
+        })
+      }
+    },
+    enabled: !!assetIdentifier,
+    staleTime: 1 * 60 * 1000, // 1분
+    retry: 3,
+  })
 
   useEffect(() => {
     if (!assetIdentifier) return
@@ -54,16 +103,16 @@ const OHLCVChart = ({
       const ohlcData = externalOhlcvData
         .map((item) => [
           new Date(item.timestamp_utc).getTime(),
-          parseFloat(item.open_price) || 0,
-          parseFloat(item.high_price) || 0,
-          parseFloat(item.low_price) || 0,
-          parseFloat(item.close_price) || 0,
+          parseFloat(String(item.open_price)) || 0,
+          parseFloat(String(item.high_price)) || 0,
+          parseFloat(String(item.low_price)) || 0,
+          parseFloat(String(item.close_price)) || 0,
         ])
         .filter((item) => item[0] > 0)
         .sort((a, b) => a[0] - b[0])
 
       const volumeData = externalOhlcvData
-        .map((item) => [new Date(item.timestamp_utc).getTime(), parseFloat(item.volume) || 0])
+        .map((item) => [new Date(item.timestamp_utc).getTime(), parseFloat(String(item.volume)) || 0])
         .filter((item) => item[0] > 0)
         .sort((a, b) => a[0] - b[0])
 
@@ -85,18 +134,41 @@ const OHLCVChart = ({
     const rows = apiData?.data || apiData || []
     if (rows && rows.length > 0) {
       const ohlcData = rows
-        .map((item) => [
-          new Date(item.timestamp_utc).getTime(),
-          parseFloat(item.open_price) || 0,
-          parseFloat(item.high_price) || 0,
-          parseFloat(item.low_price) || 0,
-          parseFloat(item.close_price) || 0,
-        ])
+        .map((item: any) => {
+          // useIntradayApi에 따라 다른 필드명 사용
+          const timestamp = useIntradayApi 
+            ? new Date(item.timestamp || item.timestamp_utc).getTime()
+            : new Date(item.timestamp_utc).getTime()
+          
+          const open = useIntradayApi 
+            ? parseFloat(item.open || item.open_price) || 0
+            : parseFloat(item.open_price) || 0
+            
+          const high = useIntradayApi 
+            ? parseFloat(item.high || item.high_price) || 0
+            : parseFloat(item.high_price) || 0
+            
+          const low = useIntradayApi 
+            ? parseFloat(item.low || item.low_price) || 0
+            : parseFloat(item.low_price) || 0
+            
+          const close = useIntradayApi 
+            ? parseFloat(item.close || item.close_price) || 0
+            : parseFloat(item.close_price) || 0
+
+          return [timestamp, open, high, low, close]
+        })
         .filter((item) => item[0] > 0)
         .sort((a, b) => a[0] - b[0])
 
       const volumeData = rows
-        .map((item) => [new Date(item.timestamp_utc).getTime(), parseFloat(item.volume) || 0])
+        .map((item: any) => {
+          const timestamp = useIntradayApi 
+            ? new Date(item.timestamp || item.timestamp_utc).getTime()
+            : new Date(item.timestamp_utc).getTime()
+          const volume = parseFloat(item.volume) || 0
+          return [timestamp, volume]
+        })
         .filter((item) => item[0] > 0)
         .sort((a, b) => a[0] - b[0])
 
@@ -214,44 +286,33 @@ const OHLCVChart = ({
     ...customOptions,
   }
 
-  console.log('[OHLCVChart] Render state:', { 
-    loading, 
-    error, 
-    chartDataLength: chartData?.length,
-    hasVolumeData: !!volumeData,
-    volumeDataLength: volumeData?.length
-  })
-  
   if (loading) return (
-    <div className="d-flex justify-content-center align-items-center" style={{ height: '200px' }}>
-      <div className="spinner-border text-primary" role="status">
-        <span className="visually-hidden">Loading...</span>
-      </div>
-      <span className="ms-3">Loading chart data...</span>
+    <div className="flex justify-center items-center h-[200px]">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <span className="ml-3 text-gray-600">Loading chart data...</span>
     </div>
   )
   
   if (error) return (
-    <div className="alert alert-danger">
-      <h5>Chart Error</h5>
-      <p>{error}</p>
+    <div className="bg-red-50 border border-red-200 rounded-md p-4">
+      <h5 className="text-red-800 font-medium">Chart Error</h5>
+      <p className="text-red-600">{error}</p>
     </div>
   )
   
   if (!chartData || chartData.length === 0) return (
-    <div className="alert alert-warning">
-      <h5>No Data Available</h5>
-      <p>차트 데이터가 없습니다. (데이터 포인트: {chartData?.length || 0})</p>
+    <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+      <h5 className="text-yellow-800 font-medium">No Data Available</h5>
+      <p className="text-yellow-600">차트 데이터가 없습니다. (데이터 포인트: {chartData?.length || 0})</p>
     </div>
   )
 
   return (
-    <CCard className="mb-4">
-      <CCardHeader className="d-flex justify-content-between align-items-center">
-        <h5 className="mb-0">가격 차트 - {assetIdentifier}</h5>
-        {/* CardTools 제거됨 */}
-      </CCardHeader>
-      <CCardBody>
+    <div className="bg-white rounded-lg shadow-sm border">
+      <div className="border-b border-gray-200 px-6 py-4">
+        <h5 className="text-lg font-medium text-gray-900">가격 차트 - {assetIdentifier}</h5>
+      </div>
+      <div className="p-6">
         <div style={{ height: `${height}px` }}>
           <HighchartsReact
             highcharts={Highcharts}
@@ -259,8 +320,8 @@ const OHLCVChart = ({
             options={chartOptions}
           />
         </div>
-      </CCardBody>
-    </CCard>
+      </div>
+    </div>
   )
 }
 

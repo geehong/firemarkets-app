@@ -50,17 +50,19 @@ const navigation = [
       { name: "Analytics", href: "/analytics", icon: BarChart2 },
     ]
   },
-  { 
-    name: "Components", 
-    value: "components",
-    icon: BarChart2,
-    items: [
-      { name: "Components", href: "/components", icon: BarChart2 },
-      { name: "Mini Chart Test", href: "/components/minichart-test", icon: BarChart2 },
-      { name: "Realtime Test", href: "/components/realtime-test", icon: BarChart2 },
-      { name: "Socket Test", href: "/components/socket-test", icon: BarChart2 },
-    ]
-  },
+        { 
+          name: "Components", 
+          value: "components",
+          icon: BarChart2,
+          items: [
+            { name: "Components", href: "/components", icon: BarChart2 },
+            { name: "Mini Chart Test", href: "/components/minichart-test", icon: BarChart2 },
+            { name: "OHLCV Chart", href: "/components/ohlcvchart", icon: BarChart2 },
+            { name: "On-Chain Chart", href: "/components/onchainchart", icon: BarChart2 },
+            { name: "Realtime Test", href: "/components/realtime-test", icon: BarChart2 },
+            { name: "Socket Test", href: "/components/socket-test", icon: BarChart2 },
+          ]
+        },
   { 
     name: "Organization", 
     value: "organization",

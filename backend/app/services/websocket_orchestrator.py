@@ -231,7 +231,12 @@ class WebSocketOrchestrator:
                 enabled_key = f"WEBSOCKET_{provider_name.upper()}_ENABLED"
                 logger.debug(f"Checking enabled key: {enabled_key}")
                 
-                is_enabled = GLOBAL_APP_CONFIGS.get(enabled_key, "1") == "1"
+                # Handle both boolean and string values for enabled status
+                enabled_value = GLOBAL_APP_CONFIGS.get(enabled_key, True)
+                if isinstance(enabled_value, bool):
+                    is_enabled = enabled_value
+                else:
+                    is_enabled = str(enabled_value).lower() in ["1", "true", "yes"]
                 logger.info(f"{provider_name} enabled status: {is_enabled} (config value: {GLOBAL_APP_CONFIGS.get(enabled_key, '1')})")
                 
                 if not is_enabled:
@@ -336,7 +341,12 @@ class WebSocketOrchestrator:
             
             # Consumer 활성화 여부 확인
             enabled_key = f"WEBSOCKET_{consumer_name.upper()}_ENABLED"
-            is_enabled = GLOBAL_APP_CONFIGS.get(enabled_key, "1") == "1"
+            # Handle both boolean and string values for enabled status
+            enabled_value = GLOBAL_APP_CONFIGS.get(enabled_key, True)
+            if isinstance(enabled_value, bool):
+                is_enabled = enabled_value
+            else:
+                is_enabled = str(enabled_value).lower() in ["1", "true", "yes"]
             if not is_enabled:
                 logger.warning(f"⚠️ Preferred consumer '{consumer_name}' is disabled for {[a.ticker for a in consumer_assets]}")
                 continue
@@ -373,7 +383,12 @@ class WebSocketOrchestrator:
                 
             # 데이터베이스에서 Consumer 활성화 여부 확인
             enabled_key = f"WEBSOCKET_{provider_name.upper()}_ENABLED"
-            is_enabled = GLOBAL_APP_CONFIGS.get(enabled_key, "1") == "1"
+            # Handle both boolean and string values for enabled status
+            enabled_value = GLOBAL_APP_CONFIGS.get(enabled_key, True)
+            if isinstance(enabled_value, bool):
+                is_enabled = enabled_value
+            else:
+                is_enabled = str(enabled_value).lower() in ["1", "true", "yes"]
             
             if not is_enabled:
                 logger.debug(f"⏸️ {provider_name} consumer is disabled")
@@ -634,7 +649,12 @@ class WebSocketOrchestrator:
                 
             # 데이터베이스에서 Consumer 활성화 여부 확인
             enabled_key = f"WEBSOCKET_{provider_name.upper()}_ENABLED"
-            is_enabled = GLOBAL_APP_CONFIGS.get(enabled_key, "1") == "1"
+            # Handle both boolean and string values for enabled status
+            enabled_value = GLOBAL_APP_CONFIGS.get(enabled_key, True)
+            if isinstance(enabled_value, bool):
+                is_enabled = enabled_value
+            else:
+                is_enabled = str(enabled_value).lower() in ["1", "true", "yes"]
             
             if not is_enabled:
                 disabled_consumers.append(provider_name)

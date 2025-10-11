@@ -5,7 +5,7 @@ import { CCard, CCardBody, CCardHeader } from '@coreui/react';
 import CardTools from '../../common/CardTools';
 import '../../common/CardTools.css';
 import { useAPI } from '../../../hooks/useAPI';
-import ChartControls from '../../common/ChartControls';
+import ChartControls from '../../common/ChartControls.js';
 import { getColorMode } from '../../../constants/colorModes';
 
 // Load Highcharts modules in correct order

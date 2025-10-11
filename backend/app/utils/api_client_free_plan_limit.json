@@ -1,0 +1,209 @@
+{
+  "api_clients": {
+    "finnhub": {
+      "free_plan": {
+        "calls_per_minute": 60,
+        "calls_per_hour": 3600,
+        "calls_per_day": 86400,
+        "calls_per_month": 2592000,
+        "history_available": false,
+        "websocket": {
+          "limit": "1 connection",
+          "ticker_limit": 50
+        },
+        "time_delay": null
+      },
+      "paid_plan": {
+        "price": "$50/month",
+        "calls_per_minute": null,
+        "history_available": true,
+        "features": ["OHLC(x)", "Company Profile", "Financials As Reported"]
+      }
+    },
+    "fmp": {
+      "free_plan": {
+        "calls_per_minute": 5,
+        "calls_per_hour": 250,
+        "calls_per_day": 250,
+        "calls_per_month": 7500,
+        "history_available": true,
+        "history_years": 5,
+        "websocket": {
+          "limit": null,
+          "ticker_limit": null
+        },
+        "time_delay": null
+      },
+      "paid_plan": {
+        "price": "$14.99/month",
+        "calls_per_minute": 300,
+        "history_available": true,
+        "features": ["Profile and Reference Data"]
+      }
+    },
+    "tiingo": {
+      "free_plan": {
+        "calls_per_minute": null,
+        "calls_per_hour": 50,
+        "calls_per_day": 1000,
+        "calls_per_month": 30000,
+        "history_available": true,
+        "history_years": 5,
+        "websocket": {
+          "limit": "1 connection",
+          "ticker_limit": "1GB"
+        },
+        "time_delay": null
+      },
+      "paid_plan": {
+        "price": "$30/month",
+        "calls_per_hour": 10000,
+        "history_available": true,
+        "history_years": 15
+      }
+    },
+    "alpha_vantage": {
+      "free_plan": {
+        "calls_per_minute": 25,
+        "calls_per_hour": 750,
+        "calls_per_day": null,
+        "calls_per_month": null,
+        "history_available": false,
+        "websocket": {
+          "limit": null,
+          "ticker_limit": null
+        },
+        "time_delay": null
+      },
+      "paid_plan": {
+        "price": "$49.99/month",
+        "calls_per_minute": null,
+        "history_available": true
+      }
+    },
+    "polygon": {
+      "free_plan": {
+        "calls_per_minute": 5,
+        "calls_per_hour": 300,
+        "calls_per_day": 7200,
+        "calls_per_month": 216000,
+        "history_available": true,
+        "history_years": 2,
+        "time_delay": "5min",
+        "websocket": {
+          "limit": 50000,
+          "ticker_limit": null
+        }
+      },
+      "paid_plan": {
+        "price": "$99/month",
+        "calls_per_minute": null,
+        "history_available": true
+      }
+    },
+    "twelvedata": {
+      "free_plan": {
+        "calls_per_minute": 8,
+        "calls_per_hour": null,
+        "calls_per_day": 800,
+        "calls_per_month": 24000,
+        "history_available": true,
+        "history_period": "20/02/10 ~",
+        "time_delay": "1 min",
+        "websocket": {
+          "limit": 5000,
+          "ticker_limit": 8,
+          "connections": 1
+        }
+      },
+      "paid_plan": {
+        "price": "$29.99/month",
+        "calls_per_minute": null,
+        "history_available": true
+      }
+    },
+    "binance": {
+      "free_plan": {
+        "calls_per_minute": 1200,
+        "calls_per_hour": 72000,
+        "calls_per_day": 1728000,
+        "calls_per_month": 51840000,
+        "history_available": true,
+        "websocket": {
+          "limit": "unlimited",
+          "ticker_limit": null
+        },
+        "time_delay": null
+      },
+      "paid_plan": {
+        "price": "unlimited",
+        "calls_per_minute": null,
+        "history_available": true
+      }
+    },
+    "coinbase": {
+      "free_plan": {
+        "calls_per_minute": 10000,
+        "calls_per_hour": 10000,
+        "calls_per_day": 240000,
+        "calls_per_month": 7200000,
+        "history_available": true,
+        "websocket": {
+          "limit": "unlimited",
+          "ticker_limit": null
+        },
+        "time_delay": null
+      },
+      "paid_plan": {
+        "price": "unlimited",
+        "calls_per_minute": null,
+        "history_available": true
+      }
+    },
+    "coinmarketcap": {
+      "free_plan": {
+        "calls_per_minute": 333,
+        "calls_per_hour": 20000,
+        "calls_per_day": 480000,
+        "calls_per_month": 14400000,
+        "history_available": true,
+        "websocket": {
+          "limit": null,
+          "ticker_limit": null
+        },
+        "time_delay": null
+      },
+      "paid_plan": {
+        "price": "$29/month",
+        "calls_per_minute": null,
+        "history_available": true
+      }
+    },
+    "coingecko": {
+      "free_plan": {
+        "calls_per_minute": "10-30",
+        "calls_per_hour": "600-1800",
+        "calls_per_day": "14400-43200",
+        "calls_per_month": null,
+        "history_available": true,
+        "websocket": {
+          "limit": null,
+          "ticker_limit": null
+        },
+        "time_delay": null
+      },
+      "paid_plan": {
+        "price": "$129/month",
+        "calls_per_minute": null,
+        "history_available": true
+      }
+    }
+  },
+  "last_updated": "2025-10-11",
+  "notes": {
+    "websocket_limits": "WebSocket 연결 제한 및 티커 수 제한",
+    "time_delay": "실시간 데이터 지연 시간",
+    "history_available": "과거 데이터 제공 여부",
+    "calls_per_*": "API 호출 제한 (무료 플랜 기준)"
+  }
+}

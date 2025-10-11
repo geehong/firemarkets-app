@@ -1,13 +1,7 @@
-export const metadata = {
-  title: "Mini Chart Test | FireMarkets",
-}
-
-import MiniPriceChart from "@/components/charts/minicharts/MiniPriceChart"
-import MiniPriceCryptoChart from "@/components/charts/minicharts/MiniPriceCryptoChart"
-import MiniPriceCommoditiesChart from "@/components/charts/minicharts/MiniPriceCommoditiesChart"
-import MiniPriceStocksEtfChart from "@/components/charts/minicharts/MiniPriceStocksEtfChart"
+import ClientOnlyChart from "@/components/charts/minicharts/ClientOnlyChart"
 
 export default function MiniChartTestPage() {
+
   return (
     <div className="container mx-auto py-10 space-y-8">
       <h1 className="text-3xl font-bold text-center mb-8">MiniPriceChart Test</h1>
@@ -21,7 +15,8 @@ export default function MiniChartTestPage() {
               Bitcoin 
               <span className="text-xs">🟢</span>
             </h3>
-            <MiniPriceCryptoChart 
+            <ClientOnlyChart 
+              type="crypto"
               containerId="btc-chart"
               assetIdentifier="BTCUSDT" 
             />
@@ -31,7 +26,8 @@ export default function MiniChartTestPage() {
               Ethereum 
               <span className="text-xs">🟢</span>
             </h3>
-            <MiniPriceCryptoChart 
+            <ClientOnlyChart 
+              type="crypto"
               containerId="eth-chart"
               assetIdentifier="ETHUSDT" 
             />
@@ -41,7 +37,8 @@ export default function MiniChartTestPage() {
               XRP 
               <span className="text-xs">🟢</span>
             </h3>
-            <MiniPriceCryptoChart 
+            <ClientOnlyChart 
+              type="crypto"
               containerId="xrp-chart"
               assetIdentifier="XRPUSDT" 
             />
@@ -51,7 +48,8 @@ export default function MiniChartTestPage() {
               BNB 
               <span className="text-xs">🟢</span>
             </h3>
-            <MiniPriceCryptoChart 
+            <ClientOnlyChart 
+              type="crypto"
               containerId="bnb-chart"
               assetIdentifier="BNB" 
             />
@@ -61,7 +59,8 @@ export default function MiniChartTestPage() {
               Solana 
               <span className="text-xs">🟢</span>
             </h3>
-            <MiniPriceCryptoChart 
+            <ClientOnlyChart 
+              type="crypto"
               containerId="sol-chart"
               assetIdentifier="SOL" 
             />
@@ -71,7 +70,8 @@ export default function MiniChartTestPage() {
               Dogecoin 
               <span className="text-xs">🟢</span>
             </h3>
-            <MiniPriceCryptoChart 
+            <ClientOnlyChart 
+              type="crypto"
               containerId="doge-chart"
               assetIdentifier="DOGE" 
             />
@@ -81,7 +81,8 @@ export default function MiniChartTestPage() {
               TRON 
               <span className="text-xs">🟢</span>
             </h3>
-            <MiniPriceCryptoChart 
+            <ClientOnlyChart 
+              type="crypto"
               containerId="trx-chart"
               assetIdentifier="TRX" 
             />
@@ -91,7 +92,8 @@ export default function MiniChartTestPage() {
               Cardano 
               <span className="text-xs">🟢</span>
             </h3>
-            <MiniPriceCryptoChart 
+            <ClientOnlyChart 
+              type="crypto"
               containerId="ada-chart"
               assetIdentifier="ADA" 
             />
@@ -122,7 +124,8 @@ export default function MiniChartTestPage() {
                 })()}
               </span>
             </h3>
-            <MiniPriceStocksEtfChart 
+            <ClientOnlyChart 
+              type="stocks"
               containerId="aapl-chart"
               assetIdentifier="AAPL" 
             />
@@ -145,7 +148,8 @@ export default function MiniChartTestPage() {
                 })()}
               </span>
             </h3>
-            <MiniPriceStocksEtfChart 
+            <ClientOnlyChart 
+              type="stocks"
               containerId="msft-chart"
               assetIdentifier="MSFT" 
             />
@@ -168,7 +172,8 @@ export default function MiniChartTestPage() {
                 })()}
               </span>
             </h3>
-            <MiniPriceStocksEtfChart 
+            <ClientOnlyChart 
+              type="stocks"
               containerId="nvda-chart"
               assetIdentifier="NVDA" 
             />
@@ -191,7 +196,8 @@ export default function MiniChartTestPage() {
                 })()}
               </span>
             </h3>
-            <MiniPriceStocksEtfChart 
+            <ClientOnlyChart 
+              type="stocks"
               containerId="goog-chart"
               assetIdentifier="GOOG" 
             />
@@ -214,7 +220,8 @@ export default function MiniChartTestPage() {
                 })()}
               </span>
             </h3>
-            <MiniPriceStocksEtfChart 
+            <ClientOnlyChart 
+              type="stocks"
               containerId="amzn-chart"
               assetIdentifier="AMZN" 
             />
@@ -237,7 +244,8 @@ export default function MiniChartTestPage() {
                 })()}
               </span>
             </h3>
-            <MiniPriceStocksEtfChart 
+            <ClientOnlyChart 
+              type="stocks"
               containerId="meta-chart"
               assetIdentifier="META" 
             />
@@ -260,7 +268,8 @@ export default function MiniChartTestPage() {
                 })()}
               </span>
             </h3>
-            <MiniPriceStocksEtfChart 
+            <ClientOnlyChart 
+              type="stocks"
               containerId="nflx-chart"
               assetIdentifier="NFLX" 
             />
@@ -283,7 +292,8 @@ export default function MiniChartTestPage() {
                 })()}
               </span>
             </h3>
-            <MiniPriceStocksEtfChart 
+            <ClientOnlyChart 
+              type="stocks"
               containerId="avgo-chart"
               assetIdentifier="AVGO" 
             />
@@ -306,7 +316,8 @@ export default function MiniChartTestPage() {
                 })()}
               </span>
             </h3>
-            <MiniPriceStocksEtfChart 
+            <ClientOnlyChart 
+              type="stocks"
               containerId="spy-chart"
               assetIdentifier="SPY" 
             />
@@ -329,7 +340,8 @@ export default function MiniChartTestPage() {
                 })()}
               </span>
             </h3>
-            <MiniPriceStocksEtfChart 
+            <ClientOnlyChart 
+              type="stocks"
               containerId="qqq-chart"
               assetIdentifier="QQQ" 
             />
@@ -346,7 +358,8 @@ export default function MiniChartTestPage() {
               Gold 
               <span className="text-xs">🟢</span>
             </h3>
-            <MiniPriceCommoditiesChart 
+            <ClientOnlyChart 
+              type="commodities"
               containerId="gold-chart"
               assetIdentifier="GCUSD" 
             />
@@ -356,7 +369,8 @@ export default function MiniChartTestPage() {
               Silver 
               <span className="text-xs">🟢</span>
             </h3>
-            <MiniPriceCommoditiesChart 
+            <ClientOnlyChart 
+              type="commodities"
               containerId="silver-chart"
               assetIdentifier="SIUSD" 
             />
@@ -372,7 +386,8 @@ export default function MiniChartTestPage() {
             Bitcoin (기본 설정) 
             <span className="text-xs">🟢</span>
           </h3>
-          <MiniPriceChart 
+          <ClientOnlyChart 
+            type="default"
             containerId="base-btc-chart"
             assetIdentifier="BTCUSDT" 
             useWebSocket={true}

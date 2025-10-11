@@ -4,9 +4,9 @@ import HighchartsReact from 'highcharts-react-official';
 import { useIntegratedMetrics } from '../../../hooks/useIntegratedMetrics';
 import { CCard, CCardBody, CCardHeader } from '@coreui/react';
 import CardTools from '../../common/CardTools';
-import ChartControls from '../../common/ChartControls';
+import ChartControls from '../../common/ChartControls.js';
 import { getColorMode } from '../../../constants/colorModes';
-import styles from './css/CorrelationChart.module.css';
+import styles from '../onchainchart/css/CorrelationChart.module.css';
 
 // Load Highcharts modules in correct order
 import 'highcharts/modules/stock';

@@ -78,24 +78,36 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
   const chartRef = useRef<HTMLDivElement | null>(null)
   const [chart, setChart] = useState<any>(null)
   const [isMobile, setIsMobile] = useState<boolean>(false)
+  const [isClient, setIsClient] = useState<boolean>(false)
   const [highchartsLoaded, setHighchartsLoaded] = useState(false)
 
-  // 화면 크기 감지 (클라이언트에서만)
+  // 클라이언트 사이드 렌더링 확인
   useEffect(() => {
+    setIsClient(true)
+  }, [])
+
+  // 화면 크기 감지 (클라이언트에서만, 안전하게)
+  useEffect(() => {
+    if (!isClient) return
+
     const checkIsMobile = () => {
-      setIsMobile(window.innerWidth <= 768)
+      // 더 안전한 모바일 감지
+      const width = window.innerWidth
+      const isMobileDevice = width <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+      setIsMobile(isMobileDevice)
     }
     
-    // 초기 체크
-    checkIsMobile()
+    // 초기 체크 (약간의 지연을 두어 안정성 확보)
+    const timeoutId = setTimeout(checkIsMobile, 100)
     
     // 리사이즈 이벤트 리스너
     window.addEventListener('resize', checkIsMobile)
     
     return () => {
+      clearTimeout(timeoutId)
       window.removeEventListener('resize', checkIsMobile)
     }
-  }, [])
+  }, [isClient])
 
   // 웹소켓 실시간 데이터 수신
   const { latestPrice, priceHistory, isConnected: socketConnected } = useRealtimePrices(assetIdentifier)
@@ -492,6 +504,9 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
 
   // 웹소켓 연동은 테스트 페이지에서는 사용하지 않음 (store 미존재 환경 호환)
 
+  // 클라이언트 사이드 렌더링이 완료되기 전에는 기본 높이 사용
+  const chartHeight = isClient ? (isMobile ? "200px" : "300px") : "300px"
+
   return (
     <div 
       className="mini-price-chart-container" 
@@ -503,7 +518,7 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
         ref={chartRef}
         id={containerId}
         className={`mini-price-chart ${isLoading ? "loading" : ""} ${error ? "error" : ""}`}
-        style={{ height: isMobile ? "200px" : "300px" }}
+        style={{ height: chartHeight }}
       />
     </div>
   )

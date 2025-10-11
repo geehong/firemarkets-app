@@ -4,7 +4,7 @@ import HighchartsReact from 'highcharts-react-official';
 import { useAPI } from '../../../hooks/useAPI';
 import { CCard, CCardBody, CCardHeader } from '@coreui/react';
 import CardTools from '../../common/CardTools';
-import ChartControls from '../../common/ChartControls';
+import ChartControls from '../../common/ChartControls.js';
 import { getColorMode } from '../../../constants/colorModes';
 import styles from './css/CorrelationChart.module.css';
 

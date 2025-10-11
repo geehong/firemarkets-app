@@ -305,8 +305,9 @@ async def get_realtime_quotes_delay_price_postgres(
 async def get_ohlcv_intraday(
     asset_identifier: str = Query(..., description="Asset ID (integer) or Ticker (string)"),
     ohlcv: bool = Query(True, description="true=OHLCV 데이터, false=close price만"),
-    data_interval: str = Query("4h", description="Data interval (4h, 6h, 12h, 24h)"),
+    data_interval: str = Query("4h", description="Data interval (1h, 4h, 6h, 12h, 24h)"),
     days: int = Query(1, ge=1, le=1, description="Number of days to fetch (limited to 1 day)"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum number of data points"),
     db: Session = Depends(get_postgres_db)
 ):
     """
@@ -319,7 +320,7 @@ async def get_ohlcv_intraday(
         from ....services.endpoint.ohlcv_service import OHLCVService
         
         # 지원되는 간격 확인
-        supported_intervals = ["4h", "6h", "12h", "24h"]
+        supported_intervals = ["1h", "4h", "6h", "12h", "24h"]
         if data_interval not in supported_intervals:
             raise HTTPException(
                 status_code=400, 
@@ -342,7 +343,8 @@ async def get_ohlcv_intraday(
             db=db,
             asset_id=asset_id,
             data_interval=data_interval,
-            include_ohlcv=ohlcv
+            include_ohlcv=ohlcv,
+            limit=limit
         )
         
         if not ohlcv_data:

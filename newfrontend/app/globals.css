@@ -1,5 +1,136 @@
 @import "tailwindcss";
 
+/* Chart Controls Styles */
+.chart-controls-container {
+  margin-bottom: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.chart-button-group {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.chart-button {
+  margin: 0;
+  padding: 4px;
+  width: 32px !important;
+  height: 32px !important;
+  max-width: 32px !important;
+  max-height: 32px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.chart-button-active {
+  background-color: #0d6efd !important;
+  opacity: 1 !important;
+  box-shadow: 2px 2px 4px rgba(0,0,0,0.2) !important;
+}
+
+.chart-button-inactive {
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.flag-button-active {
+  background-color: #0dcaf0 !important;
+  opacity: 1 !important;
+}
+
+.flag-button-inactive {
+  background-color: transparent !important;
+}
+
+.log-button-active {
+  background-color: #198754 !important;
+  opacity: 1 !important;
+}
+
+.log-button-inactive {
+  background-color: transparent !important;
+}
+
+.chart-icon {
+  width: 24px !important;
+  height: 24px !important;
+  max-width: 24px !important;
+  max-height: 24px !important;
+  transition: filter 0.2s ease;
+  object-fit: contain;
+}
+
+.chart-button-active .chart-icon {
+  filter: brightness(0) invert(1);
+}
+
+.chart-button-inactive .chart-icon {
+  filter: none;
+}
+
+.flag-container {
+  position: relative;
+  width: 24px;
+  height: 24px;
+}
+
+.flag-icon-inactive {
+  width: 24px;
+  height: 24px;
+}
+
+.x-line {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 18px;
+  height: 2px;
+  background-color: red;
+}
+
+.x-line-1 {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.x-line-2 {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.chart-button:hover {
+  transform: translateY(-1px);
+}
+
+.chart-button-inactive:hover {
+  box-shadow: 3px 3px 6px rgba(0,0,0,0.25);
+}
+
+@media (max-width: 768px) {
+  .chart-controls-container {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  
+  .chart-button-group {
+    justify-content: center;
+  }
+  
+  .chart-button-group:last-child {
+    margin-left: 0 !important;
+  }
+}
+
 /* MiniPriceChart 스타일 */
 .mini-price-chart {
   width: 100%;

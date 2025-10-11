@@ -4,7 +4,7 @@ import HighchartsReact from 'highcharts-react-official';
 import { useIntegratedMetrics } from '../../hooks/useIntegratedMetrics';
 import { CCard, CCardBody, CCardHeader } from '@coreui/react';
 import CardTools from '../common/CardTools';
-import styles from './css/CorrelationChart.module.css';
+import styles from '../onchainchart/css/CorrelationChart.module.css';
 
 // Load Highcharts modules
 import 'highcharts/modules/exporting';
