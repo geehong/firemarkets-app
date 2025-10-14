@@ -89,8 +89,8 @@ class WebSocketConfig:
     # 오케스트레이터 설정
     ORCHESTRATOR = {
         'asset_refresh_interval': 300,  # 5분마다 자산 목록 갱신
-        'health_check_interval': 60,    # 1분마다 헬스체크
-        'rebalance_interval': 300,      # 5분마다 재조정
+        'health_check_interval': 300,   # 5분마다 헬스체크 (1분 → 5분으로 증가)
+        'rebalance_interval': 600,      # 10분마다 재조정 (5분 → 10분으로 증가)
         'max_retry_attempts': 3,        # 최대 재시도 횟수
         'retry_delay': 30,              # 재시도 간격 (초)
     }

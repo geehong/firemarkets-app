@@ -37,6 +37,10 @@ class AlpacaWSConsumer(BaseWSConsumer):
         # 재연결을 위한 원래 티커 목록 저장
         self.original_tickers = set()
         self.subscribed_tickers = []  # 구독 순서 보장을 위해 List 사용
+        # 동시성 제어를 위한 락
+        self._run_lock = asyncio.Lock()
+        self._recv_lock = asyncio.Lock()
+        self._is_running_task = False
     
     @property
     def client_name(self) -> str:
@@ -64,12 +68,48 @@ class AlpacaWSConsumer(BaseWSConsumer):
                 # 현재 API 키 정보 가져오기
                 self.current_key_info = self.api_key_manager.get_current_key()
                 if not self.current_key_info:
-                    logger.error("❌ No active Alpaca API keys available")
-                    return False
+                    # 환경 변수에서 직접 읽기
+                    import os
+                    api_key = os.getenv("ALPACA_API_KEY")
+                    secret_key = os.getenv("ALPACA_SECRET_KEY")
+                    if api_key and secret_key:
+                        self.current_key_info = {
+                            "key": api_key,
+                            "secret": secret_key,
+                            "priority": 1,
+                            "is_active": True
+                        }
+                        logger.info(f"🔑 Using Alpaca API key from environment variables")
+                    else:
+                        logger.error("❌ No active Alpaca API keys available")
+                        return False
+                
+                # API 키 정보가 딕셔너리가 아닌 경우 처리
+                if not isinstance(self.current_key_info, dict):
+                    logger.error(f"❌ Invalid API key format: {type(self.current_key_info)}")
+                    # 리스트인 경우 첫 번째 요소 사용
+                    if isinstance(self.current_key_info, list) and len(self.current_key_info) > 0:
+                        self.current_key_info = self.current_key_info[0]
+                        logger.info(f"🔄 Using first API key from list: {type(self.current_key_info)}")
+                    else:
+                        retry_count += 1
+                        continue
                 
                 if not self.api_key or not self.secret_key:
                     logger.error("❌ alpaca api/secret not set")
+                    failed_key = self.current_key_info.get('key', 'unknown') if self.current_key_info else "unknown"
                     self.api_key_manager.mark_key_failed(self.current_key_info)
+                    
+                    # API 키 fallback 로그
+                    from app.services.websocket_orchestrator import log_api_key_fallback, log_consumer_connection_attempt
+                    log_api_key_fallback(
+                        self.client_name, 
+                        failed_key, 
+                        "fallback_attempt", 
+                        "API key or secret not set"
+                    )
+                    log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries, "API key or secret not set")
+                    
                     retry_count += 1
                     continue
                 
@@ -79,7 +119,10 @@ class AlpacaWSConsumer(BaseWSConsumer):
                 from app.services.websocket_orchestrator import log_consumer_connection_attempt
                 log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries)
                 
-                self._ws = await websockets.connect(self.ws_url, ping_interval=20, ping_timeout=20)
+                self._ws = await asyncio.wait_for(
+                    websockets.connect(self.ws_url, ping_interval=20, ping_timeout=20),
+                    timeout=60.0  # 60초 타임아웃
+                )
                 # 인증 전송
                 await self._ws.send(json.dumps({"action": "auth", "key": self.api_key, "secret": self.secret_key}))
                 resp = await asyncio.wait_for(self._ws.recv(), timeout=10)
@@ -91,21 +134,21 @@ class AlpacaWSConsumer(BaseWSConsumer):
                 # 인증 실패 확인
                 if isinstance(auth_msg, dict) and auth_msg.get('T') == 'error':
                     logger.error(f"❌ Alpaca authentication failed: {auth_msg}")
-                    failed_key = self.current_key_info['key'] if self.current_key_info else "unknown"
+                    failed_key = self.current_key_info.get('key', 'unknown') if self.current_key_info else "unknown"
                     self.api_key_manager.mark_key_failed(self.current_key_info)
                     
-                # API 키 fallback 로그
-                from app.services.websocket_orchestrator import log_api_key_fallback, log_consumer_connection_attempt
-                log_api_key_fallback(
-                    self.client_name, 
-                    failed_key, 
-                    "fallback_attempt", 
-                    f"Authentication failed: {auth_msg.get('msg', 'Unknown error')}"
-                )
-                log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries, f"Authentication failed: {auth_msg.get('msg', 'Unknown error')}")
-                
-                retry_count += 1
-                continue
+                    # API 키 fallback 로그
+                    from app.services.websocket_orchestrator import log_api_key_fallback, log_consumer_connection_attempt
+                    log_api_key_fallback(
+                        self.client_name, 
+                        failed_key, 
+                        "fallback_attempt", 
+                        f"Authentication failed: {auth_msg.get('msg', 'Unknown error')}"
+                    )
+                    log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries, f"Authentication failed: {auth_msg.get('msg', 'Unknown error')}")
+                    
+                    retry_count += 1
+                    continue
                 
                 logger.info(f"alpaca auth response: {auth_msg}")
                 self.is_connected = True
@@ -115,8 +158,10 @@ class AlpacaWSConsumer(BaseWSConsumer):
                 await self._send_subscribe()
                 return True
             except Exception as e:
-                logger.error(f"❌ {self.client_name} connection failed: {e}")
-                failed_key = self.current_key_info['key'] if self.current_key_info else "unknown"
+                error_msg = str(e) if e else "Unknown connection error"
+                logger.error(f"❌ {self.client_name} connection failed: {error_msg}")
+                logger.error(f"❌ {self.client_name} error type: {type(e).__name__}")
+                failed_key = self.current_key_info.get('key', 'unknown') if self.current_key_info else "unknown"
                 self.api_key_manager.mark_key_failed(self.current_key_info)
                 
                 # API 키 fallback 로그
@@ -139,6 +184,9 @@ class AlpacaWSConsumer(BaseWSConsumer):
     async def disconnect(self):
         """WebSocket 연결 해제"""
         try:
+            # 연결 상태를 먼저 False로 설정하여 추가 recv() 호출 방지
+            self.is_connected = False
+            
             if self._ws is not None:
                 await self._ws.close()
         except Exception:
@@ -146,6 +194,18 @@ class AlpacaWSConsumer(BaseWSConsumer):
         self._ws = None
         self.is_connected = False
         logger.info(f"🔌 {self.client_name} disconnected")
+    
+    async def _safe_recv(self):
+        """동시성 문제를 방지하는 안전한 recv() 메서드"""
+        async with self._recv_lock:
+            if self._ws is None or self._ws.closed:
+                raise websockets.exceptions.ConnectionClosed(None, None)
+            
+            # 추가적인 연결 상태 확인
+            if not self.is_connected:
+                raise websockets.exceptions.ConnectionClosed(None, None)
+                
+            return await self._ws.recv()
     
     async def subscribe(self, tickers: List[str], skip_normalization: bool = False) -> bool:
         try:
@@ -185,78 +245,98 @@ class AlpacaWSConsumer(BaseWSConsumer):
     
     async def run(self):
         """메인 실행 루프 - 연결 상태 관리 개선"""
-        if not self.is_connected:
-            logger.error(f"❌ {self.client_name} not connected")
-            return
-        
-        self.is_running = True
-        logger.info(f"🚀 {self.client_name} started with {len(self.subscribed_tickers)} tickers")
-        
-        # 수신 주기 설정 (기본 15초)
-        self.consumer_interval = int(GLOBAL_APP_CONFIGS.get("WEBSOCKET_CONSUMER_INTERVAL_SECONDS", 15))
-        self.last_save_time = time.time()
-        logger.info(f"⏰ {self.client_name} 저장 주기: {self.consumer_interval}초")
-        
-        max_reconnect_attempts = 5
-        reconnect_attempts = 0
-        reconnect_delay = 5
-        
-        try:
-            while self.is_running and self.is_connected:
-                try:
-                    # 메시지 수신
-                    raw = await asyncio.wait_for(self._ws.recv(), timeout=30.0)
-                    await self._handle_message(raw)
-                    reconnect_attempts = 0  # 성공 시 리셋
-                    
-                except asyncio.TimeoutError:
-                    # 타임아웃 시 구독 갱신
-                    await self._send_subscribe()
-                    continue
-                    
-                except websockets.exceptions.ConnectionClosed:
-                    logger.warning(f"⚠️ {self.client_name} connection closed")
-                    self.is_connected = False
-                    break
-                    
-                except Exception as e:
-                    logger.warning(f"⚠️ {self.client_name} ws error: {e}")
-                    self.is_connected = False
-                    break
+        # 동시성 제어: 이미 실행 중이면 중복 실행 방지
+        async with self._run_lock:
+            if self._is_running_task:
+                logger.warning(f"⚠️ {self.client_name} already running, skipping duplicate execution")
+                return
             
-            # 연결이 끊어진 경우 재연결 시도
-            if not self.is_connected and self.is_running and reconnect_attempts < max_reconnect_attempts:
-                reconnect_attempts += 1
-                logger.info(f"🔄 {self.client_name} attempting reconnection {reconnect_attempts}/{max_reconnect_attempts}")
-                
-                # 재연결 대기
-                await asyncio.sleep(reconnect_delay)
-                reconnect_delay = min(reconnect_delay * 1.5, 30)
-                
-                # 재연결 시도
-                if await self.connect():
-                    # 재연결 성공 시 원래 티커 목록으로 구독 복원
-                    if self.original_tickers:
-                        if await self.subscribe(list(self.original_tickers), skip_normalization=True):
-                            logger.info(f"✅ {self.client_name} reconnected and resubscribed to {len(self.original_tickers)} tickers")
-                            # 재연결 성공 시 다시 실행
-                            await self.run()
-                            return
-                        else:
-                            logger.error(f"❌ {self.client_name} failed to resubscribe after reconnection")
-                    else:
-                        logger.warning(f"⚠️ {self.client_name} no original tickers to resubscribe")
-                        # 재연결 성공 시 다시 실행
-                        await self.run()
-                        return
-                
-                logger.error(f"❌ {self.client_name} reconnection failed")
+            self._is_running_task = True
             
-        except Exception as e:
-            logger.error(f"❌ {self.client_name} run error: {e}")
-        finally:
-            self.is_running = False
-            logger.info(f"🛑 {self.client_name} stopped")
+            if not self.is_connected:
+                logger.error(f"❌ {self.client_name} not connected")
+                self._is_running_task = False
+                return
+            
+            self.is_running = True
+            logger.info(f"🚀 {self.client_name} started with {len(self.subscribed_tickers)} tickers")
+            
+            # 수신 주기 설정 (기본 15초)
+            self.consumer_interval = int(GLOBAL_APP_CONFIGS.get("WEBSOCKET_CONSUMER_INTERVAL_SECONDS", 15))
+            self.last_save_time = time.time()
+            logger.info(f"⏰ {self.client_name} 저장 주기: {self.consumer_interval}초")
+            
+            max_reconnect_attempts = 5
+            reconnect_attempts = 0
+            reconnect_delay = 30  # 5초 → 30초로 증가
+            
+            # 메인 실행 루프 (재연결 포함)
+            try:
+                while self.is_running:
+                    try:
+                        # 연결이 끊어진 경우 재연결 시도
+                        if not self.is_connected and reconnect_attempts < max_reconnect_attempts:
+                            reconnect_attempts += 1
+                            logger.info(f"🔄 {self.client_name} attempting reconnection {reconnect_attempts}/{max_reconnect_attempts}")
+                            
+                            # 재연결 대기
+                            await asyncio.sleep(reconnect_delay)
+                            reconnect_delay = min(reconnect_delay * 1.5, 30)
+                            
+                            # 재연결 시도
+                            if await self.connect():
+                                # 재연결 성공 시 원래 티커 목록으로 구독 복원
+                                if self.original_tickers:
+                                    if await self.subscribe(list(self.original_tickers), skip_normalization=True):
+                                        logger.info(f"✅ {self.client_name} reconnected and resubscribed to {len(self.original_tickers)} tickers")
+                                        reconnect_attempts = 0  # 재연결 시도 횟수 리셋
+                                        continue  # 메인 루프로 돌아가서 계속 실행
+                                    else:
+                                        logger.error(f"❌ {self.client_name} failed to resubscribe after reconnection")
+                                else:
+                                    logger.warning(f"⚠️ {self.client_name} no original tickers to resubscribe")
+                                    reconnect_attempts = 0  # 재연결 시도 횟수 리셋
+                                    continue  # 메인 루프로 돌아가서 계속 실행
+                            
+                            logger.error(f"❌ {self.client_name} reconnection failed")
+                            continue
+                        
+                        # 연결되지 않은 상태면 대기
+                        if not self.is_connected:
+                            await asyncio.sleep(5)
+                            continue
+                        
+                        # 메시지 수신 루프
+                        while self.is_running and self.is_connected:
+                            try:
+                                # 안전한 메시지 수신
+                                raw = await asyncio.wait_for(self._safe_recv(), timeout=30.0)
+                                await self._handle_message(raw)
+                                reconnect_attempts = 0  # 성공 시 리셋
+                                
+                            except asyncio.TimeoutError:
+                                # 타임아웃 시 구독 갱신
+                                await self._send_subscribe()
+                                continue
+                                
+                            except websockets.exceptions.ConnectionClosed:
+                                logger.warning(f"⚠️ {self.client_name} connection closed")
+                                self.is_connected = False
+                                break
+                                
+                            except Exception as e:
+                                logger.warning(f"⚠️ {self.client_name} ws error: {e}")
+                                self.is_connected = False
+                                break
+                                
+                    except Exception as e:
+                        logger.error(f"❌ {self.client_name} main loop error: {e}")
+                        self.is_connected = False
+                        
+            finally:
+                self.is_running = False
+                self._is_running_task = False
+                logger.info(f"🛑 {self.client_name} stopped")
     
     async def _send_subscribe(self):
         if not self._ws or not self.subscribed_tickers:
@@ -284,18 +364,18 @@ class AlpacaWSConsumer(BaseWSConsumer):
             return
         
         # 폐장 시간 디버깅을 위한 로깅 추가
-        logger.debug(f"📨 {self.client_name} received message: {msg}")
+        logger.info(f"📨 {self.client_name} received message: {msg}")
         
         # 저장 주기 체크
         current_time = time.time()
         if current_time - self.last_save_time < self.consumer_interval:
             # 아직 저장 시간이 되지 않았으면 메시지만 받고 저장하지 않음
-            logger.debug(f"⏰ {self.client_name} skipping message due to interval ({current_time - self.last_save_time:.1f}s < {self.consumer_interval}s)")
+            logger.info(f"⏰ {self.client_name} skipping message due to interval ({current_time - self.last_save_time:.1f}s < {self.consumer_interval}s)")
             return
         
         # 저장 시간이 되었으면 데이터 처리
         self.last_save_time = current_time
-        logger.debug(f"✅ {self.client_name} processing message after interval")
+        logger.info(f"✅ {self.client_name} processing message after interval")
         
         # 메시지는 리스트 형태로 배달되는 경우가 많음
         if isinstance(msg, list):

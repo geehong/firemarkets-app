@@ -617,11 +617,14 @@ class WebSocketOrchestrator:
             [ticker[:10] + "..." if len(ticker) > 10 else ticker for ticker in failed_tickers[:5]]
         )
         
-        # 실패한 Consumer의 할당 제거
+        # 실패한 Consumer의 할당 제거 및 정리
         if failed_consumer_name in self.assignments:
             old_assignment = self.assignments[failed_consumer_name]
             del self.assignments[failed_consumer_name]
             logger.info(f"🗑️ Removed assignment for failed consumer {failed_consumer_name}: {len(old_assignment.assigned_tickers)} tickers")
+            
+            # 실패한 Consumer 정리
+            await self._cleanup_failed_consumer(failed_consumer_name, old_assignment.consumer)
         
         # 티커들의 자산 타입 확인 (암호화폐로 가정)
         from app.services.websocket.base_consumer import AssetType
@@ -723,12 +726,23 @@ class WebSocketOrchestrator:
             logger.debug(f"Assignment details: {assignment}")
             
             if assignment.assigned_tickers:
+                # Consumer 상태 확인 및 조율
+                consumer = assignment.consumer
+                is_running = getattr(consumer, 'is_running', False)
+                is_running_task = getattr(consumer, '_is_running_task', False)
+                is_connected = getattr(consumer, 'is_connected', False)
+                
                 # 이미 실행 중이면 중복 시작 방지
-                if getattr(assignment.consumer, 'is_running', False):
-                    logger.info(f"⏭️ Skipping start for {provider_name}: already running")
-                    skipped_consumers.append(provider_name)
-                    log_consumer_status_change(provider_name, "stopped", "running", "Already running, skipping restart")
-                    continue
+                if is_running or is_running_task:
+                    # 연결 상태도 확인하여 재연결이 필요한지 판단
+                    if not is_connected:
+                        logger.warning(f"⚠️ {provider_name} is running but not connected, allowing restart")
+                        # 연결되지 않은 상태면 재시작 허용
+                    else:
+                        logger.info(f"⏭️ Skipping start for {provider_name}: already running and connected")
+                        skipped_consumers.append(provider_name)
+                        log_consumer_status_change(provider_name, "stopped", "running", "Already running and connected, skipping restart")
+                        continue
                     
                 logger.info(f"🔧 Creating task for {provider_name} with {len(assignment.assigned_tickers)} tickers")
                 logger.debug(f"Assigned tickers: {assignment.assigned_tickers}")
@@ -808,6 +822,15 @@ class WebSocketOrchestrator:
                     f"Consumer tasks execution completed",
                     f"Successful: {successful_tasks} | Failed: {len(failed_tasks)} | Skipped: {len(skipped_consumers)}"
                 )
+                
+                # 완료된 Task들 정리
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                        try:
+                            await task
+                        except asyncio.CancelledError:
+                            pass
                 
             except Exception as e:
                 logger.error(f"❌ Error in asyncio.gather: {e}")
@@ -912,19 +935,64 @@ class WebSocketOrchestrator:
             
             await self._handle_consumer_failure(consumer.client_name, tickers)
         finally:
+            # Consumer가 정상적으로 실행 중이면 disconnect하지 않음 (재연결 허용)
+            if not getattr(consumer, 'is_running', False):
+                try:
+                    logger.debug(f"Disconnecting {consumer.client_name} (not running)")
+                    await consumer.disconnect()
+                    logger.debug(f"Successfully disconnected {consumer.client_name}")
+                    log_consumer_status_change(consumer.client_name, "running", "disconnected", "Consumer disconnected")
+                except Exception as e:
+                    logger.error(f"❌ Error disconnecting {consumer.client_name}: {e}")
+                    logger.error(f"Exception type: {type(e).__name__}")
+                    import traceback
+                    logger.error(f"Traceback: {traceback.format_exc()}")
+                    
+                    # Consumer 연결 해제 에러 로그
+                    log_error_with_traceback(consumer.client_name, e, f"Consumer {consumer.client_name} disconnect failed")
+            else:
+                logger.info(f"⏭️ Skipping disconnect for {consumer.client_name} (still running, allowing reconnection)")
+    
+    async def _cleanup_failed_consumer(self, consumer_name: str, consumer):
+        """실패한 Consumer 정리"""
+        try:
+            logger.info(f"🧹 Cleaning up failed consumer: {consumer_name}")
+            
+            # Consumer 상태 정리
+            if hasattr(consumer, 'is_running'):
+                consumer.is_running = False
+            if hasattr(consumer, '_is_running_task'):
+                consumer._is_running_task = False
+            if hasattr(consumer, 'is_connected'):
+                consumer.is_connected = False
+            
+            # Consumer 연결 해제
             try:
-                logger.debug(f"Disconnecting {consumer.client_name}")
                 await consumer.disconnect()
-                logger.debug(f"Successfully disconnected {consumer.client_name}")
-                log_consumer_status_change(consumer.client_name, "running", "disconnected", "Consumer disconnected")
+                logger.info(f"✅ Successfully disconnected failed consumer: {consumer_name}")
             except Exception as e:
-                logger.error(f"❌ Error disconnecting {consumer.client_name}: {e}")
-                logger.error(f"Exception type: {type(e).__name__}")
-                import traceback
-                logger.error(f"Traceback: {traceback.format_exc()}")
-                
-                # Consumer 연결 해제 에러 로그
-                log_error_with_traceback(consumer.client_name, e, f"Consumer {consumer.client_name} disconnect failed")
+                logger.warning(f"⚠️ Error disconnecting failed consumer {consumer_name}: {e}")
+            
+            # Consumer 리소스 정리
+            if hasattr(consumer, '_ws') and consumer._ws:
+                consumer._ws = None
+            if hasattr(consumer, 'websocket') and consumer.websocket:
+                consumer.websocket = None
+            
+            # 실패한 Consumer 로그
+            log_to_websocket_orchestrator_logs(
+                "INFO", 
+                f"Failed consumer {consumer_name} cleaned up",
+                f"Consumer resources released and state reset"
+            )
+            
+        except Exception as e:
+            logger.error(f"❌ Error cleaning up failed consumer {consumer_name}: {e}")
+            log_to_websocket_orchestrator_logs(
+                "ERROR", 
+                f"Failed consumer {consumer_name} cleanup error: {e}",
+                f"Cleanup failed but continuing"
+            )
     
     async def _monitoring_loop(self):
         """모니터링 루프"""
@@ -954,13 +1022,34 @@ class WebSocketOrchestrator:
         log_to_websocket_orchestrator_logs("INFO", "Monitoring loop stopped")
     
     async def _health_check_consumers(self):
-        """Consumer 헬스체크"""
+        """Consumer 헬스체크 - 재연결과 조율"""
         for provider_name, consumer in self.consumers.items():
             try:
+                # Consumer 상태 확인
+                is_running = getattr(consumer, 'is_running', False)
+                is_connected = getattr(consumer, 'is_connected', False)
+                
+                # 실행 중이지만 연결되지 않은 경우
+                if is_running and not is_connected:
+                    logger.warning(f"⚠️ {provider_name} is running but not connected - allowing internal reconnection")
+                    log_to_websocket_orchestrator_logs(
+                        "WARNING", 
+                        f"Consumer {provider_name} running but disconnected",
+                        f"Allowing internal reconnection logic to handle"
+                    )
+                    continue  # 내부 재연결 로직에 맡김
+                
+                # 헬스체크 실행
                 is_healthy = await consumer.health_check()
                 if not is_healthy:
                     logger.warning(f"⚠️ {provider_name} health check failed")
                     log_to_websocket_orchestrator_logs("WARNING", f"Consumer {provider_name} health check failed")
+                    
+                    # 헬스체크 실패 시 Consumer가 실행 중이면 내부 재연결에 맡김
+                    if is_running:
+                        logger.info(f"🔄 {provider_name} health check failed but running - letting internal reconnection handle")
+                        continue
+                    
             except Exception as e:
                 logger.error(f"❌ Health check failed for {provider_name}: {e}")
                 log_to_websocket_orchestrator_logs("ERROR", f"Consumer {provider_name} health check error: {e}")

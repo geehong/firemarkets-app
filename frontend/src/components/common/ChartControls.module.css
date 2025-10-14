@@ -1,0 +1,165 @@
+/* Chart Controls Container */
+.chart-controls-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 15px;
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* Button Groups */
+.chart-button-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Chart Buttons */
+.chart-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  background-color: #ffffff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.chart-button:hover {
+  background-color: #e9ecef;
+  border-color: #adb5bd;
+}
+
+.chart-button-active {
+  background-color: #007bff !important;
+  border-color: #007bff !important;
+  color: white;
+}
+
+.chart-button-inactive {
+  background-color: #ffffff;
+  border-color: #dee2e6;
+}
+
+.flag-button-active {
+  background-color: #28a745 !important;
+  border-color: #28a745 !important;
+}
+
+.flag-button-inactive {
+  background-color: #ffffff;
+  border-color: #dee2e6;
+}
+
+.log-button-active {
+  background-color: #ffc107 !important;
+  border-color: #ffc107 !important;
+  color: #212529;
+}
+
+.log-button-inactive {
+  background-color: #ffffff;
+  border-color: #dee2e6;
+}
+
+/* Chart Icons */
+.chart-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.flag-icon-inactive {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  opacity: 0.5;
+}
+
+/* Flag Container with X lines */
+.flag-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+
+.x-line {
+  position: absolute;
+  background-color: #dc3545;
+  border-radius: 1px;
+}
+
+.x-line-1 {
+  width: 16px;
+  height: 2px;
+  transform: rotate(45deg);
+  top: 9px;
+  left: 2px;
+}
+
+.x-line-2 {
+  width: 16px;
+  height: 2px;
+  transform: rotate(-45deg);
+  top: 9px;
+  left: 2px;
+}
+
+/* Halving Buttons */
+.halving-button {
+  min-width: 40px;
+  height: 28px;
+  font-size: 11px;
+  font-weight: bold;
+  border-radius: 4px;
+  border: 1px solid;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+/* Color Mode Buttons */
+.color-mode-button {
+  min-width: 50px;
+  height: 28px;
+  font-size: 11px;
+  font-weight: bold;
+  border-radius: 4px;
+  border: 1px solid;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .chart-controls-container {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .chart-button-group {
+    justify-content: center;
+    margin: 5px 0;
+  }
+  
+  .chart-button {
+    width: 32px;
+    height: 32px;
+  }
+  
+  .chart-icon {
+    width: 18px;
+    height: 18px;
+  }
+}

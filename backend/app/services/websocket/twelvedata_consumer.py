@@ -57,8 +57,19 @@ class TwelveDataWSConsumer(BaseWSConsumer):
                 # 현재 API 키 정보 가져오기
                 self.current_key_info = self.api_key_manager.get_current_key()
                 if not self.current_key_info:
-                    logger.error("❌ No active TwelveData API keys available")
-                    return False
+                    # 환경 변수에서 직접 읽기
+                    import os
+                    api_key = os.getenv("TWELVEDATA_API_KEY")
+                    if api_key:
+                        self.current_key_info = {
+                            "key": api_key,
+                            "priority": 1,
+                            "is_active": True
+                        }
+                        logger.info(f"🔑 Using TwelveData API key from environment variables")
+                    else:
+                        logger.error("❌ No active TwelveData API keys available")
+                        return False
                 
                 if not self.api_key:
                     logger.error("❌ TwelveData API key not configured")

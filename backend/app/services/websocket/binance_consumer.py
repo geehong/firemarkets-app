@@ -191,7 +191,7 @@ class BinanceWSConsumer(BaseWSConsumer):
         
         max_reconnect_attempts = 5
         reconnect_attempts = 0
-        reconnect_delay = 5
+        reconnect_delay = 30  # 5초 → 30초로 증가
         
         try:
             while self.is_running and reconnect_attempts < max_reconnect_attempts:

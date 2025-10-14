@@ -33,7 +33,7 @@ class PolygonWSConsumer(BaseWSConsumer):
         
         # 폴링 관련 설정
         self._polling_task = None
-        self._polling_interval = 12  # 분당 5회 = 12초 간격
+        self._polling_interval = 30  # 분당 2회 = 30초 간격 (매우 보수적)
         self._last_request_time = 0
         
         # Rate limiting
@@ -64,8 +64,19 @@ class PolygonWSConsumer(BaseWSConsumer):
                 # 현재 API 키 정보 가져오기
                 self.current_key_info = self.api_key_manager.get_current_key()
                 if not self.current_key_info:
-                    logger.error("❌ No active Polygon API keys available")
-                    return False
+                    # 환경 변수에서 직접 읽기
+                    import os
+                    api_key = os.getenv("POLYGON_API_KEY")
+                    if api_key:
+                        self.current_key_info = {
+                            "key": api_key,
+                            "priority": 1,
+                            "is_active": True
+                        }
+                        logger.info(f"🔑 Using Polygon API key from environment variables")
+                    else:
+                        logger.error("❌ No active Polygon API keys available")
+                        return False
                 
                 if not self.api_key:
                     logger.error("❌ Polygon API key not configured")
@@ -238,15 +249,16 @@ class PolygonWSConsumer(BaseWSConsumer):
         logger.info(f"🔄 {self.client_name} polling loop ended")
     
     async def _rate_limit(self):
-        """Rate limiting - 분당 5회 제한"""
+        """Rate limiting - 분당 2회 제한 (매우 보수적)"""
         now = time.time()
         
         # 1분 이전의 요청 기록 제거
         self._request_times = [t for t in self._request_times if now - t < 60]
         
-        # 분당 5회 제한 체크
-        if len(self._request_times) >= self._max_requests_per_minute:
-            wait_time = 60 - (now - self._request_times[0])
+        # 분당 2회 제한 체크 (매우 보수적)
+        max_requests = min(self._max_requests_per_minute, 2)
+        if len(self._request_times) >= max_requests:
+            wait_time = 60 - (now - self._request_times[0]) + 10  # 10초 여유 추가
             if wait_time > 0:
                 logger.info(f"⏳ {self.client_name} rate limit reached, waiting {wait_time:.1f}s")
                 await asyncio.sleep(wait_time)

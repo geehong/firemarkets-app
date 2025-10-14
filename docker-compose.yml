@@ -241,6 +241,8 @@ services:
       ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY}
       COINBASE_API_KEY: ${COINBASE_API_KEY}
       COINBASE_SECRET_KEY: ${COINBASE_SECRET_KEY}
+      POLYGON_API_KEY: ${POLYGON_API_KEY}
+      TWELVEDATA_API_KEY: ${TWELVEDATA_API_KEY}
       # WebSocket Consumer 활성화 설정
       WEBSOCKET_COINBASE_ENABLED: "1"
       WEBSOCKET_BINANCE_ENABLED: "1"
@@ -251,6 +253,7 @@ services:
         condition: service_healthy
     volumes:
       - ./.env:/app/.env:ro
+      - ./backend:/app
     tmpfs:
       - /app/logs
     command: ["sh", "-c", "cd /app && python -m app.services.run_websocket_orchestrator"]
@@ -306,35 +309,8 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile.dev # 개발용 Dockerfile 사용
-    container_name: fire_markets_frontend
-    restart: unless-stopped
-    ports:
-      - "3000:80" # 포트는 유지하되 개발 서버 사용
-    environment:
-      NODE_ENV: development
-      VITE_API_URL: /api
-      TZ: Asia/Seoul
-    volumes:
-      - ./frontend:/app:delegated
-      - /app/node_modules
-    depends_on:
-      - backend
-    networks:
-      - app_network
-      - shared-network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "10"
-
-  # 새로운 Next.js Frontend
-  frontend-nextjs:
-    build:
-      context: ./newfrontend
       dockerfile: Dockerfile
-    container_name: fire_markets_frontend_nextjs
+    container_name: fire_markets_frontend
     restart: unless-stopped
     ports:
       - "3006:3000" # Next.js 기본 포트 3000을 호스트 3006으로 매핑
@@ -342,7 +318,7 @@ services:
       NODE_ENV: development
       TZ: Asia/Seoul
     volumes:
-      - ./newfrontend:/app:delegated
+      - ./frontend:/app:delegated
       - /app/node_modules
       - /app/.next
     depends_on:
@@ -355,8 +331,6 @@ services:
       options:
         max-size: "100m"
         max-file: "10"
-
-
 
   portainer:
     image: portainer/portainer-ce:latest
@@ -395,9 +369,6 @@ services:
       options:
         max-size: "100m"
         max-file: "10"
-
-
- 
 
 volumes:
   pg_data:  # PostgreSQL 데이터 볼륨

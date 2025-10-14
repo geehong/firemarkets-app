@@ -27,7 +27,7 @@ class SwissquoteWSConsumer(BaseWSConsumer):
         self.base_url = "https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument"
         self._redis = None
         self._redis_url = self._build_redis_url()
-        self._polling_interval = 900  # 15분마다 폴링 (REST API이므로 과도한 요청 방지)
+        self._polling_interval = 300  # 5분마다 폴링 (REST API이므로 과도한 요청 방지)
         # 새로운 로깅 시스템
         self.ws_logger = WebSocketLogger("swissquote")
         # 재연결을 위한 원래 티커 목록 저장
@@ -182,26 +182,54 @@ class SwissquoteWSConsumer(BaseWSConsumer):
             logger.error(f"❌ {self.client_name} polling error: {e}")
     
     async def _fetch_ticker_data(self, ticker: str):
-        """개별 티커 데이터 가져오기"""
-        try:
-            url = f"{self.base_url}/{ticker}"
-            
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.get(url)
-                response.raise_for_status()
-                data = response.json()
+        """개별 티커 데이터 가져오기 (재시도 로직 포함)"""
+        max_retries = 3
+        retry_delay = 5
+        
+        for attempt in range(max_retries):
+            try:
+                url = f"{self.base_url}/{ticker}"
                 
-                if isinstance(data, list) and data:
-                    # 여러 플랫폼 데이터 중 첫 번째 사용
-                    platform_data = data[0]
-                    await self._process_platform_data(ticker, platform_data)
+                async with httpx.AsyncClient(timeout=60) as client:  # 타임아웃 60초로 증가
+                    response = await client.get(url)
+                    response.raise_for_status()
+                    data = response.json()
+                    
+                    if isinstance(data, list) and data:
+                        # 여러 플랫폼 데이터 중 첫 번째 사용
+                        platform_data = data[0]
+                        await self._process_platform_data(ticker, platform_data)
+                        return  # 성공 시 함수 종료
+                    else:
+                        logger.warning(f"⚠️ {self.client_name} unexpected data format for {ticker}: {data}")
+                        return
+                
+            except httpx.HTTPError as e:
+                logger.error(f"❌ {self.client_name} HTTP error for {ticker} (attempt {attempt + 1}/{max_retries}): {e}")
+                logger.error(f"❌ {self.client_name} HTTP error type: {type(e).__name__}")
+                if hasattr(e, 'response') and e.response:
+                    logger.error(f"❌ {self.client_name} HTTP status: {e.response.status_code}")
+                    logger.error(f"❌ {self.client_name} HTTP response: {e.response.text}")
+                
+                # 재시도 전 대기
+                if attempt < max_retries - 1:
+                    logger.info(f"⏳ {self.client_name} waiting {retry_delay}s before retry for {ticker}")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2  # 지수 백오프
                 else:
-                    logger.warning(f"⚠️ {self.client_name} unexpected data format for {ticker}: {data}")
+                    logger.error(f"❌ {self.client_name} failed to fetch {ticker} after {max_retries} attempts")
+                    
+            except Exception as e:
+                logger.error(f"❌ {self.client_name} fetch error for {ticker} (attempt {attempt + 1}/{max_retries}): {e}")
+                logger.error(f"❌ {self.client_name} error type: {type(e).__name__}")
                 
-        except httpx.HTTPError as e:
-            logger.error(f"❌ {self.client_name} HTTP error for {ticker}: {e}")
-        except Exception as e:
-            logger.error(f"❌ {self.client_name} fetch error for {ticker}: {e}")
+                # 재시도 전 대기
+                if attempt < max_retries - 1:
+                    logger.info(f"⏳ {self.client_name} waiting {retry_delay}s before retry for {ticker}")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2  # 지수 백오프
+                else:
+                    logger.error(f"❌ {self.client_name} failed to fetch {ticker} after {max_retries} attempts")
     
     async def _process_platform_data(self, ticker: str, platform_data: dict):
         """플랫폼 데이터 처리"""

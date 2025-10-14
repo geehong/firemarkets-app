@@ -34,6 +34,10 @@ class CoinbaseWSConsumer(BaseWSConsumer):
         # 재연결을 위한 원래 티커 목록 저장
         self.original_tickers = set()
         self.subscribed_tickers = []  # 구독 순서 보장을 위해 List 사용
+        # 동시성 제어를 위한 락
+        self._run_lock = asyncio.Lock()
+        self._recv_lock = asyncio.Lock()
+        self._is_running_task = False
     
     @property
     def client_name(self) -> str:
@@ -45,39 +49,64 @@ class CoinbaseWSConsumer(BaseWSConsumer):
         return None
     
     async def connect(self) -> bool:
-        """WebSocket 연결"""
-        try:
-            logger.info(f"🔌 {self.client_name} attempting connection to {self.ws_url}")
-            self._ws = await asyncio.wait_for(
-                websockets.connect(
-                    self.ws_url,
-                    ping_interval=20,
-                    ping_timeout=10,
-                    close_timeout=10
-                ),
-                timeout=30.0  # 30초 타임아웃
-            )
-            self.is_connected = True
-            self.connection_errors = 0
-            logger.info(f"✅ {self.client_name} connected")
-            return True
-        except asyncio.TimeoutError:
-            logger.error(f"❌ {self.client_name} connection timeout after 30 seconds")
-            self.connection_errors += 1
-            self.is_connected = False
-            self._ws = None
-            return False
-        except Exception as e:
-            logger.error(f"❌ {self.client_name} connection failed: {e}")
-            logger.error(f"❌ {self.client_name} error type: {type(e).__name__}")
-            self.connection_errors += 1
-            self.is_connected = False
-            self._ws = None
-            return False
+        """WebSocket 연결 - 네트워크 안정성 향상"""
+        max_retries = 3
+        retry_delay = 5
+        
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"🔌 {self.client_name} attempting connection to {self.ws_url} (attempt {attempt + 1}/{max_retries})")
+                self._ws = await asyncio.wait_for(
+                    websockets.connect(
+                        self.ws_url,
+                        ping_interval=60,  # ping 간격을 60초로 증가
+                        ping_timeout=30,   # ping 타임아웃을 30초로 증가
+                        close_timeout=15,  # close 타임아웃 증가
+                        max_size=2**20,    # 1MB 메시지 크기 제한
+                        max_queue=16,      # 큐 크기 제한 (더 작게)
+                        compression=None,  # 압축 비활성화로 동시성 문제 방지
+                        read_limit=2**16,  # 읽기 제한 설정
+                        write_limit=2**16  # 쓰기 제한 설정
+                    ),
+                    timeout=30.0  # 30초 타임아웃
+                )
+                self.is_connected = True
+                self.connection_errors = 0
+                logger.info(f"✅ {self.client_name} connected successfully")
+                return True
+                
+            except asyncio.TimeoutError:
+                logger.warning(f"⚠️ {self.client_name} connection timeout (attempt {attempt + 1}/{max_retries})")
+                self.connection_errors += 1
+                self.is_connected = False
+                
+            except OSError as e:
+                logger.warning(f"⚠️ {self.client_name} network error: {e} (attempt {attempt + 1}/{max_retries})")
+                self.connection_errors += 1
+                self.is_connected = False
+                
+            except Exception as e:
+                logger.warning(f"⚠️ {self.client_name} connection error: {e} (attempt {attempt + 1}/{max_retries})")
+                self.connection_errors += 1
+                self.is_connected = False
+            
+            # 재시도 전 대기 (지수 백오프)
+            if attempt < max_retries - 1:
+                wait_time = retry_delay * (2 ** attempt)
+                logger.info(f"⏳ {self.client_name} waiting {wait_time}s before retry")
+                await asyncio.sleep(wait_time)
+        
+        logger.error(f"❌ {self.client_name} connection failed after {max_retries} attempts")
+        self.is_connected = False
+        self._ws = None
+        return False
     
     async def disconnect(self):
         """WebSocket 연결 해제"""
         try:
+            # 연결 상태를 먼저 False로 설정하여 추가 recv() 호출 방지
+            self.is_connected = False
+            
             if self._ws is not None and not self._ws.closed:
                 await self._ws.close()
         except Exception as e:
@@ -86,6 +115,18 @@ class CoinbaseWSConsumer(BaseWSConsumer):
             self._ws = None
             self.is_connected = False
             logger.info(f"🔌 {self.client_name} disconnected")
+    
+    async def _safe_recv(self):
+        """동시성 문제를 방지하는 안전한 recv() 메서드"""
+        async with self._recv_lock:
+            if self._ws is None or self._ws.closed:
+                raise websockets.exceptions.ConnectionClosed(None, None)
+            
+            # 추가적인 연결 상태 확인
+            if not self.is_connected:
+                raise websockets.exceptions.ConnectionClosed(None, None)
+                
+            return await self._ws.recv()
     
     def _normalize_symbol(self, ticker: str) -> str:
         """Coinbase 심볼 규격으로 정규화 (asset_mapping.json 반영)"""
@@ -165,96 +206,129 @@ class CoinbaseWSConsumer(BaseWSConsumer):
     
     async def run(self):
         """메인 실행 루프 - 연결 및 메시지 처리"""
-        self.is_running = True
-        logger.info(f"🚀 {self.client_name} started with {len(self.subscribed_tickers)} tickers")
-        
-        # 수신 주기 설정 (완화: 기본 1초로 단축)
-        self.consumer_interval = int(GLOBAL_APP_CONFIGS.get("WEBSOCKET_CONSUMER_INTERVAL_SECONDS", 1))
-        self.last_save_time = time.time()
-        logger.info(f"⏰ {self.client_name} 저장 주기: {self.consumer_interval}초")
-        
-        max_reconnect_attempts = 5
-        reconnect_attempts = 0
-        reconnect_delay = 5
-        
-        try:
-            while self.is_running and reconnect_attempts < max_reconnect_attempts:
-                try:
-                    # 연결 시도
-                    if not self.is_connected:
-                        if not await self.connect():
-                            logger.error(f"❌ {self.client_name} connection failed")
+        # 동시성 제어: 이미 실행 중이면 중복 실행 방지
+        async with self._run_lock:
+            if self._is_running_task:
+                logger.warning(f"⚠️ {self.client_name} already running, skipping duplicate execution")
+                return
+            
+            self._is_running_task = True
+            self.is_running = True
+            logger.info(f"🚀 {self.client_name} started with {len(self.subscribed_tickers)} tickers")
+            
+            # 수신 주기 설정 (완화: 기본 1초로 단축)
+            self.consumer_interval = int(GLOBAL_APP_CONFIGS.get("WEBSOCKET_CONSUMER_INTERVAL_SECONDS", 1))
+            self.last_save_time = time.time()
+            logger.info(f"⏰ {self.client_name} 저장 주기: {self.consumer_interval}초")
+            
+            max_reconnect_attempts = 5
+            reconnect_attempts = 0
+            reconnect_delay = 30  # 5초 → 30초로 증가
+            
+            try:
+                while self.is_running and reconnect_attempts < max_reconnect_attempts:
+                    try:
+                        # 연결 시도
+                        if not self.is_connected:
+                            if not await self.connect():
+                                logger.error(f"❌ {self.client_name} connection failed")
+                                reconnect_attempts += 1
+                                await asyncio.sleep(reconnect_delay)
+                                continue
+                        
+                        # 구독 시도 (원래 티커 목록이 있는 경우에만)
+                        if self.original_tickers and not await self.subscribe(list(self.original_tickers)):
+                            logger.error(f"❌ {self.client_name} subscription failed")
                             reconnect_attempts += 1
                             await asyncio.sleep(reconnect_delay)
                             continue
-                    
-                    # 구독 시도 (원래 티커 목록이 있는 경우에만)
-                    if self.original_tickers and not await self.subscribe(list(self.original_tickers)):
-                        logger.error(f"❌ {self.client_name} subscription failed")
-                        reconnect_attempts += 1
-                        await asyncio.sleep(reconnect_delay)
-                        continue
-                    elif not self.original_tickers:
-                        logger.warning(f"⚠️ {self.client_name} no tickers to subscribe to")
-                        reconnect_attempts += 1
-                        await asyncio.sleep(reconnect_delay)
-                        continue
-                    
-                    # 연결 및 구독 성공
-                    reconnect_attempts = 0
-                    logger.info(f"✅ {self.client_name} connected and subscribed to {len(self.subscribed_tickers)} tickers")
-                    
-                    # 메시지 수신 루프 - 단일 recv 루프로 변경
-                    while self.is_running and self.is_connected:
-                        try:
-                            # 단일 recv 호출로 동시성 문제 해결
-                            message = await asyncio.wait_for(self._ws.recv(), timeout=30.0)
-                            
+                        elif not self.original_tickers:
+                            logger.warning(f"⚠️ {self.client_name} no tickers to subscribe to")
+                            reconnect_attempts += 1
+                            await asyncio.sleep(reconnect_delay)
+                            continue
+                        
+                        # 연결 및 구독 성공
+                        reconnect_attempts = 0
+                        logger.info(f"✅ {self.client_name} connected and subscribed to {len(self.subscribed_tickers)} tickers")
+                        
+                        # 메시지 수신 루프 - 단일 recv 루프로 변경
+                        while self.is_running and self.is_connected:
                             try:
-                                data = json.loads(message)
-                                await self._handle_message(data)
-                            except json.JSONDecodeError as e:
-                                logger.error(f"❌ {self.client_name} JSON decode error: {e}")
-                            except Exception as e:
-                                logger.error(f"❌ {self.client_name} message handling error: {e}")
+                                # WebSocket 연결 상태 확인
+                                if self._ws is None or self._ws.closed:
+                                    logger.warning(f"⚠️ {self.client_name} WebSocket connection lost")
+                                    self.is_connected = False
+                                    break
                                 
-                        except asyncio.TimeoutError:
-                            # 타임아웃 시 ping으로 연결 상태 확인
-                            try:
-                                await self._ws.ping()
-                                logger.debug(f"🏓 {self.client_name} ping successful")
-                            except Exception as e:
-                                logger.warning(f"⚠️ {self.client_name} ping failed: {e}")
+                                # 안전한 recv 호출로 동시성 문제 해결
+                                message = await asyncio.wait_for(self._safe_recv(), timeout=30.0)
+                                
+                                try:
+                                    data = json.loads(message)
+                                    await self._handle_message(data)
+                                except json.JSONDecodeError as e:
+                                    logger.error(f"❌ {self.client_name} JSON decode error: {e}")
+                                except Exception as e:
+                                    logger.error(f"❌ {self.client_name} message handling error: {e}")
+                                    
+                            except asyncio.TimeoutError:
+                                # 타임아웃 시 ping으로 연결 상태 확인
+                                try:
+                                    if self._ws and not self._ws.closed:
+                                        await asyncio.wait_for(self._ws.ping(), timeout=5.0)
+                                        logger.debug(f"🏓 {self.client_name} ping successful")
+                                    else:
+                                        logger.warning(f"⚠️ {self.client_name} WebSocket connection lost")
+                                        self.is_connected = False
+                                        break
+                                except Exception as e:
+                                    logger.warning(f"⚠️ {self.client_name} ping failed: {e}")
+                                    self.is_connected = False
+                                    break
+                            except websockets.exceptions.ConnectionClosed:
+                                logger.warning(f"⚠️ {self.client_name} connection closed")
                                 self.is_connected = False
+                                # WebSocket 연결 정리
+                                if self._ws and not self._ws.closed:
+                                    try:
+                                        await self._ws.close()
+                                    except Exception:
+                                        pass
+                                    self._ws = None
                                 break
-                        except websockets.exceptions.ConnectionClosed:
-                            logger.warning(f"⚠️ {self.client_name} connection closed")
-                            self.is_connected = False
-                            break
-                        except Exception as e:
-                            logger.error(f"❌ {self.client_name} recv error: {e}")
-                            self.is_connected = False
-                            break
-                            
-                except websockets.exceptions.ConnectionClosed:
-                    logger.warning(f"⚠️ {self.client_name} connection closed")
-                    self.is_connected = False
-                    reconnect_attempts += 1
-                    await asyncio.sleep(reconnect_delay)
-                except Exception as e:
-                    logger.error(f"❌ {self.client_name} run error: {e}")
-                    self.is_connected = False
-                    reconnect_attempts += 1
-                    await asyncio.sleep(reconnect_delay)
-            
-            if reconnect_attempts >= max_reconnect_attempts:
-                logger.error(f"❌ {self.client_name} max reconnection attempts reached")
+                            except Exception as e:
+                                logger.error(f"❌ {self.client_name} recv error: {e}")
+                                self.is_connected = False
+                                # WebSocket 연결 정리
+                                if self._ws and not self._ws.closed:
+                                    try:
+                                        await self._ws.close()
+                                    except Exception:
+                                        pass
+                                    self._ws = None
+                                break
+                                
+                    except websockets.exceptions.ConnectionClosed:
+                        logger.warning(f"⚠️ {self.client_name} connection closed")
+                        self.is_connected = False
+                        reconnect_attempts += 1
+                        await asyncio.sleep(reconnect_delay)
+                    except Exception as e:
+                        logger.error(f"❌ {self.client_name} run error: {e}")
+                        self.is_connected = False
+                        reconnect_attempts += 1
+                        await asyncio.sleep(reconnect_delay)
                 
-        except Exception as e:
-            logger.error(f"❌ {self.client_name} run error: {e}")
-        finally:
-            self.is_running = False
-            logger.info(f"🛑 {self.client_name} stopped")
+                if reconnect_attempts >= max_reconnect_attempts:
+                    logger.error(f"❌ {self.client_name} max reconnection attempts reached")
+                    
+            except Exception as e:
+                logger.error(f"❌ {self.client_name} run error: {e}")
+            finally:
+                self.is_running = False
+                self._is_running_task = False
+                logger.info(f"🛑 {self.client_name} stopped")
     
     async def _handle_message(self, data: dict):
         """메시지 처리 - Coinbase Exchange API 형식"""

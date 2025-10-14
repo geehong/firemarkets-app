@@ -63,8 +63,19 @@ class FinnhubWSConsumer(BaseWSConsumer):
                 # 현재 API 키 정보 가져오기
                 self.current_key_info = self.api_key_manager.get_current_key()
                 if not self.current_key_info:
-                    logger.error("❌ No active Finnhub API keys available")
-                    return False
+                    # 환경 변수에서 직접 읽기
+                    import os
+                    api_key = os.getenv("FINNHUB_API_KEY")
+                    if api_key:
+                        self.current_key_info = {
+                            "key": api_key,
+                            "priority": 1,
+                            "is_active": True
+                        }
+                        logger.info(f"🔑 Using Finnhub API key from environment variables")
+                    else:
+                        logger.error("❌ No active Finnhub API keys available")
+                        return False
                 
                 if not self.api_key:
                     logger.error("❌ Finnhub API key not configured")
@@ -88,10 +99,10 @@ class FinnhubWSConsumer(BaseWSConsumer):
                     self.websocket = None
                     self.is_connected = False
                 
-                # 연결 타임아웃 설정
+                # 연결 타임아웃 설정 (30초 → 60초로 증가)
                 self.websocket = await asyncio.wait_for(
                     websockets.connect(self.ws_url, ping_interval=20, ping_timeout=10),
-                    timeout=30.0
+                    timeout=60.0
                 )
                 self.is_connected = True
                 self.connection_errors = 0
@@ -99,8 +110,20 @@ class FinnhubWSConsumer(BaseWSConsumer):
                 return True
                 
             except asyncio.TimeoutError:
-                logger.error(f"❌ {self.client_name} connection timeout after 30 seconds")
+                logger.error(f"❌ {self.client_name} connection timeout after 60 seconds")
+                failed_key = self.current_key_info.get('key', 'unknown') if self.current_key_info else "unknown"
                 self.api_key_manager.mark_key_failed(self.current_key_info)
+                
+                # API 키 fallback 로그
+                from app.services.websocket_orchestrator import log_api_key_fallback, log_consumer_connection_attempt
+                log_api_key_fallback(
+                    self.client_name, 
+                    failed_key, 
+                    "fallback_attempt", 
+                    "Connection timeout after 60 seconds"
+                )
+                log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries, "Connection timeout after 60 seconds")
+                
                 retry_count += 1
                 continue
             except Exception as e:
@@ -300,13 +323,13 @@ class FinnhubWSConsumer(BaseWSConsumer):
                 
                 # 재연결 대기 (지수 백오프)
                 # HTTP 429 오류 시 더 긴 대기 시간 적용
-                if reconnect_attempts > 1:  # 2번째 시도부터 15분 대기
-                    wait_time = 900  # 15분 대기 (finnhub 무료 플랜 제한 고려)
-                    logger.warning(f"⚠️ {self.client_name} HTTP 429 detected, waiting 15 minutes before retry")
+                if reconnect_attempts > 1:  # 2번째 시도부터 30분 대기
+                    wait_time = 1800  # 30분 대기 (finnhub 무료 플랜 제한 고려)
+                    logger.warning(f"⚠️ {self.client_name} HTTP 429 detected, waiting 30 minutes before retry")
                 else:
-                    wait_time = reconnect_delay * (1.5 ** min(reconnect_attempts - 1, 5))
+                    wait_time = reconnect_delay * (2 ** min(reconnect_attempts - 1, 6))  # 더 긴 지수 백오프
                 
-                await asyncio.sleep(min(wait_time, 900))  # 최대 15분 대기
+                await asyncio.sleep(min(wait_time, 1800))  # 최대 30분 대기
                 
                 # 재연결 시도
                 if await self.connect():
@@ -315,14 +338,14 @@ class FinnhubWSConsumer(BaseWSConsumer):
                         if await self.subscribe(list(self.original_tickers), skip_normalization=True):
                             logger.info(f"✅ {self.client_name} reconnected and resubscribed to {len(self.original_tickers)} tickers")
                             reconnect_attempts = 0  # 성공 시 리셋
-                            reconnect_delay = 5  # 대기 시간 리셋
+                            reconnect_delay = 30  # 대기 시간 리셋 (5초 → 30초)
                         else:
                             logger.error(f"❌ {self.client_name} failed to resubscribe after reconnection")
                             self.is_connected = False
                     else:
                         logger.warning(f"⚠️ {self.client_name} no original tickers to resubscribe")
                         reconnect_attempts = 0  # 성공 시 리셋
-                        reconnect_delay = 5  # 대기 시간 리셋
+                        reconnect_delay = 30  # 대기 시간 리셋 (5초 → 30초)
                 else:
                     logger.error(f"❌ {self.client_name} reconnection failed")
                     # 재연결 실패 시 대기 시간 증가

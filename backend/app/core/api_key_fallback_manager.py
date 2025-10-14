@@ -33,6 +33,7 @@ class APIKeyFallbackManager:
         api_keys = self.get_api_keys_config()
         if not api_keys:
             # Fallback: 기존 방식으로 환경변수에서 읽기
+            logger.info(f"Using fallback API key method for {self.provider}")
             return self._get_fallback_key()
         
         # 활성화된 키들만 필터링하고 우선순위 순으로 정렬

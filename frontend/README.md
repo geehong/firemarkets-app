@@ -1,242 +1,173 @@
-# CoreUI Free React Admin Template [![Tweet](https://img.shields.io/twitter/url/http/shields.io.svg?style=social&logo=twitter)](https://twitter.com/intent/tweet?text=CoreUI%20-%20Free%React%204%20Admin%20Template%20&url=https://coreui.io&hashtags=bootstrap,admin,template,dashboard,panel,free,angular,react,vue)
+# TailAdmin Next.js - Free Next.js Tailwind Admin Dashboard Template
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
-[![@coreui coreui](https://img.shields.io/badge/@coreui%20-coreui-lightgrey.svg?style=flat-square)](https://github.com/coreui/coreui)
-[![npm package][npm-coreui-badge]][npm-coreui]
-[![NPM downloads][npm-coreui-download]][npm-coreui]
-[![@coreui react](https://img.shields.io/badge/@coreui%20-react-lightgrey.svg?style=flat-square)](https://github.com/coreui/react)
-[![npm package][npm-coreui-react-badge]][npm-coreui-react]
-[![NPM downloads][npm-coreui-react-download]][npm-coreui-react]  
+TailAdmin is a free and open-source admin dashboard template built on **Next.js and Tailwind CSS** providing developers with everything they need to create a feature-rich and data-driven: back-end, dashboard, or admin panel solution for any sort of web project.
 
-[npm-coreui]: https://www.npmjs.com/package/@coreui/coreui
-[npm-coreui-badge]: https://img.shields.io/npm/v/@coreui/coreui.png?style=flat-square
-[npm-coreui-download]: https://img.shields.io/npm/dm/@coreui/coreui.svg?style=flat-square
-[npm-coreui-react]: https://www.npmjs.com/package/@coreui/react
-[npm-coreui-react-badge]: https://img.shields.io/npm/v/@coreui/react.png?style=flat-square
-[npm-coreui-react-download]: https://img.shields.io/npm/dm/@coreui/react.svg?style=flat-square
-[npm]: https://www.npmjs.com/package/@coreui/react
+![TailAdmin - Next.js Dashboard Preview](./banner.png)
 
-[![Bootstrap Admin Template](https://assets.coreui.io/products/coreui-free-bootstrap-admin-template-light-dark.webp)](https://coreui.io/product/free-react-admin-template/)
+With TailAdmin Next.js, you get access to all the necessary dashboard UI components, elements, and pages required to build a high-quality and complete dashboard or admin panel. Whether you're building a dashboard or admin panel for a complex web application or a simple website. 
 
-CoreUI is meant to be the UX game changer. Pure & transparent code is devoid of redundant components, so the app is light enough to offer ultimate user experience. This means mobile devices also, where the navigation is just as easy and intuitive as on a desktop or laptop. The CoreUI Layout API lets you customize your project for almost any device – be it Mobile, Web or WebApp – CoreUI covers them all!
+TailAdmin utilizes the powerful features of **Next.js 15** and common features of Next.js such as server-side rendering (SSR), static site generation (SSG), and seamless API route integration. Combined with the advancements of **React 19** and the robustness of **TypeScript**, TailAdmin is the perfect solution to help get your project up and running quickly.
 
-## Table of Contents
+## Overview
 
-* [Versions](#versions)
-* [CoreUI PRO](#coreui-pro)
-* [CoreUI PRO React Admin Templates](#coreui-pro-react-admin-templates)
-* [Quick Start](#quick-start)
-* [Installation](#installation)
-* [Basic usage](#basic-usage)
-* [What's included](#whats-included)
-* [Documentation](#documentation)
-* [Components](#components)
-* [Versioning](#versioning)
-* [Creators](#creators)
-* [Community](#community)
-* [Support CoreUI Development](#support-coreui-development)
-* [Copyright and License](#copyright-and-license)
+TailAdmin provides essential UI components and layouts for building feature-rich, data-driven admin dashboards and control panels. It's built on:
 
-## Versions
+- Next.js 15.x
+- React 19
+- TypeScript
+- Tailwind CSS V4
 
-* [CoreUI Free Bootstrap Admin Template](https://github.com/coreui/coreui-free-bootstrap-admin-template)
-* [CoreUI Free Angular Admin Template](https://github.com/coreui/coreui-free-angular-admin-template)
-* [CoreUI Free React.js Admin Template (Vite)](https://github.com/coreui/coreui-free-react-admin-template)
-* [CoreUI Free React.js Admin Template (Create React App)](https://github.com/coreui/coreui-free-react-admin-template-cra)
-* [CoreUI Free Vue.js Admin Template](https://github.com/coreui/coreui-free-vue-admin-template)
+### Quick Links
+- [✨ Visit Website](https://tailadmin.com)
+- [📄 Documentation](https://tailadmin.com/docs)
+- [⬇️ Download](https://tailadmin.com/download)
+- [🖌️ Figma Design File (Community Edition)](https://www.figma.com/community/file/1463141366275764364)
+- [⚡ Get PRO Version](https://tailadmin.com/pricing)
 
-## CoreUI PRO
+### Demos
+- [Free Version](https://nextjs-free-demo.tailadmin.com)
+- [Pro Version](https://nextjs-demo.tailadmin.com)
 
-* 💪  [CoreUI PRO Angular Admin Template](https://coreui.io/product/angular-dashboard-template/)
-* 💪  [CoreUI PRO Bootstrap Admin Template](https://coreui.io/product/bootstrap-dashboard-template/)
-* 💪  [CoreUI PRO Next.js Admin Template](https://coreui.io/product/next-js-dashboard-template/)
-* 💪  [CoreUI PRO React Admin Template](https://coreui.io/product/react-dashboard-template/)
-* 💪  [CoreUI PRO Vue Admin Template](https://coreui.io/product/vue-dashboard-template/)
+### Other Versions
+- [HTML Version](https://github.com/TailAdmin/tailadmin-free-tailwind-dashboard-template)
+- [React Version](https://github.com/TailAdmin/free-react-tailwind-admin-dashboard)
+- [Vue.js Version](https://github.com/TailAdmin/vue-tailwind-admin-dashboard)
 
-## CoreUI PRO React Admin Templates
+## Installation
 
-| Default Theme | Light Theme |
-| --- | --- |
-| [![CoreUI PRO React Admin Template](https://coreui.io/images/templates/coreui_pro_default_light_dark.webp)](https://coreui.io/product/react-dashboard-template/?theme=default) | [![CoreUI PRO React Admin Template](https://coreui.io/images/templates/coreui_pro_light_light_dark.webp)](https://coreui.io/product/react-dashboard-template/?theme=light)|
+### Prerequisites
+To get started with TailAdmin, ensure you have the following prerequisites installed and set up:
 
-| Modern Theme | Bright Theme |
-| --- | --- |
-| [![CoreUI PRO React Admin Template](https://coreui.io/images/templates/coreui_pro_default_v3_light_dark.webp)](https://coreui.io/product/react-dashboard-template/?theme=modern) | [![CoreUI PRO React Admin Template](https://coreui.io/images/templates/coreui_pro_light_v3_light_dark.webp)](https://coreui.io/product/react-dashboard-template/?theme=bright)|
+- Node.js 18.x or later (recommended to use Node.js 20.x or later)
 
-## Quick Start
-
-- [Download the latest release](https://github.com/coreui/coreui-free-react-admin-template/archive/refs/heads/main.zip)
-- Clone the repo: `git clone https://github.com/coreui/coreui-free-react-admin-template.git`
-
-### Installation
-
-``` bash
-$ npm install
-```
-
-or
-
-``` bash
-$ yarn install
-```
-
-### Basic usage
-
-``` bash
-# dev server with hot reload at http://localhost:3000
-$ npm start 
-```
-
-or 
-
-``` bash
-# dev server with hot reload at http://localhost:3000
-$ yarn start
-```
-
-Navigate to [http://localhost:3000](http://localhost:3000). The app will automatically reload if you change any of the source files.
-
-#### Build
-
-Run `build` to build the project. The build artifacts will be stored in the `build/` directory.
+### Cloning the Repository
+Clone the repository using the following command:
 
 ```bash
-# build for production with minification
-$ npm run build
+git clone https://github.com/TailAdmin/free-nextjs-admin-dashboard.git
 ```
 
-or
+> Windows Users: place the repository near the root of your drive if you face issues while cloning.
 
-```bash
-# build for production with minification
-$ yarn build
-```
+1. Install dependencies:
+    ```bash
+    npm install
+    # or
+    yarn install
+    ```
+    > Use `--legacy-peer-deps` flag if you face peer-dependency error during installation.
 
-## What's included
-
-Within the download you'll find the following directories and files, logically grouping common assets and providing both compiled and minified variations. You'll see something like this:
-
-```
-coreui-free-react-admin-template
-├── public/          # static files
-│   ├── favicon.ico
-│   └── manifest.json
-│
-├── src/             # project root
-│   ├── assets/      # images, icons, etc.
-│   ├── components/  # common components - header, footer, sidebar, etc.
-│   ├── layouts/     # layout containers
-│   ├── scss/        # scss styles
-│   ├── views/       # application views
-│   ├── _nav.js      # sidebar navigation config
-│   ├── App.js
-│   ├── index.js
-│   ├── routes.js    # routes config
-│   └── store.js     # template state example 
-│
-├── index.html       # html template
-├── ...
-├── package.json
-├── ...
-└── vite.config.mjs  # vite config
-```
-
-## Documentation
-
-The documentation for the CoreUI Admin Template is hosted at our website [CoreUI for React](https://coreui.io/react/docs/templates/installation/)
+2. Start the development server:
+    ```bash
+    npm run dev
+    # or
+    yarn dev
+    ```
 
 ## Components
 
-CoreUI React.js Admin Templates are built on top of CoreUI and CoreUI PRO UI components libraries, including all of these components.
+TailAdmin is a pre-designed starting point for building a web-based dashboard using Next.js and Tailwind CSS. The template includes:
 
-- [React Accordion](https://coreui.io/react/docs/components/accordion/)
-- [React Alert](https://coreui.io/react/docs/components/alert/)
-- [React Autocomplete](https://coreui.io/react/docs/forms/autocomplete/) **PRO**
-- [React Avatar](https://coreui.io/react/docs/components/avatar/)
-- [React Badge](https://coreui.io/react/docs/components/badge/)
-- [React Breadcrumb](https://coreui.io/react/docs/components/breadcrumb/)
-- [React Button](https://coreui.io/react/docs/components/button/)
-- [React Button Group](https://coreui.io/react/docs/components/button-group/)
-- [React Callout](https://coreui.io/react/docs/components/callout/)
-- [React Card](https://coreui.io/react/docs/components/card/)
-- [React Carousel](https://coreui.io/react/docs/components/carousel/)
-- [React Checkbox](https://coreui.io/react/docs/forms/checkbox/)
-- [React Close Button](https://coreui.io/react/docs/components/close-button/)
-- [React Collapse](https://coreui.io/react/docs/components/collapse/)
-- [React Date Picker](https://coreui.io/react/docs/forms/date-picker/) **PRO**
-- [React Date Range Picker](https://coreui.io/react/docs/forms/date-range-picker/) **PRO**
-- [React Dropdown](https://coreui.io/react/docs/components/dropdown/)
-- [React Floating Labels](https://coreui.io/react/docs/forms/floating-labels/)
-- [React Footer](https://coreui.io/react/docs/components/footer/)
-- [React Header](https://coreui.io/react/docs/components/header/)
-- [React Image](https://coreui.io/react/docs/components/image/)
-- [React Input](https://coreui.io/react/docs/forms/input/)
-- [React Input Group](https://coreui.io/react/docs/forms/input-group/)
-- [React List Group](https://coreui.io/react/docs/components/list-group/)
-- [React Loading Button](https://coreui.io/react/docs/components/loading-button/) **PRO**
-- [React Modal](https://coreui.io/react/docs/components/modal/)
-- [React Multi Select](https://coreui.io/react/docs/forms/multi-select/) **PRO**
-- [React Navs & Tabs](https://coreui.io/react/docs/components/navs-tabs/)
-- [React Navbar](https://coreui.io/react/docs/components/navbar/)
-- [React Offcanvas](https://coreui.io/react/docs/components/offcanvas/)
-- [React Pagination](https://coreui.io/react/docs/components/pagination/)
-- [React Password Input](https://coreui.io/react/docs/forms/password-input/) **PRO**
-- [React Placeholder](https://coreui.io/react/docs/components/placeholder/)
-- [React Popover](https://coreui.io/react/docs/components/popover/)
-- [React Progress](https://coreui.io/react/docs/components/progress/)
-- [React Radio](https://coreui.io/react/docs/forms/radio/)
-- [React Range](https://coreui.io/react/docs/forms/range/)
-- [React Range Slider](https://coreui.io/react/docs/forms/range-slider/) **PRO**
-- [React Rating](https://coreui.io/react/docs/forms/rating/)
-- [React Select](https://coreui.io/react/docs/forms/select/)
-- [React Sidebar](https://coreui.io/react/docs/components/sidebar/)
-- [React Smart Pagination](https://coreui.io/react/docs/components/smart-pagination/) **PRO**
-- [React Smart Table](https://coreui.io/react/docs/components/smart-table/) **PRO**
-- [React Spinner](https://coreui.io/react/docs/components/spinner/)
-- [React Stepper](https://coreui.io/react/docs/forms/stepper/) **PRO**
-- [React Switch](https://coreui.io/react/docs/forms/switch/)
-- [React Table](https://coreui.io/react/docs/components/table/)
-- [React Textarea](https://coreui.io/react/docs/forms/textarea/)
-- [React Time Picker](https://coreui.io/react/docs/forms/time-picker/) **PRO**
-- [React Toast](https://coreui.io/react/docs/components/toast/)
-- [React Tooltip](https://coreui.io/react/docs/components/tooltip/)
+- Sophisticated and accessible sidebar
+- Data visualization components
+- Profile management and custom 404 page
+- Tables and Charts(Line and Bar)
+- Authentication forms and input elements
+- Alerts, Dropdowns, Modals, Buttons and more
+- Can't forget Dark Mode 🕶️
 
-## Versioning
+All components are built with React and styled using Tailwind CSS for easy customization.
 
-For transparency into our release cycle and in striving to maintain backward compatibility, CoreUI Free Admin Template is maintained under [the Semantic Versioning guidelines](http://semver.org/).
+## Feature Comparison
 
-See [the Releases section of our project](https://github.com/coreui/coreui-free-react-admin-template/releases) for changelogs for each release version.
+### Free Version
+- 1 Unique Dashboard
+- 30+ dashboard components
+- 50+ UI elements
+- Basic Figma design files
+- Community support
 
-## Creators
+### Pro Version
+- 5 Unique Dashboards: Analytics, Ecommerce, Marketing, CRM, Stocks (more coming soon)
+- 400+ dashboard components and UI elements
+- Complete Figma design file
+- Email support
 
-**Łukasz Holeczek**
+To learn more about pro version features and pricing, visit our [pricing page](https://tailadmin.com/pricing).
 
-* <https://twitter.com/lukaszholeczek>
-* <https://github.com/mrholek>
+## Changelog
 
-**Andrzej Kopański**
+### Version 2.0.2 - [March 25, 2025]
 
-* <https://github.com/xidedix>
+- Upgraded to Next v15.2.3 for [CVE-2025-29927](https://nextjs.org/blog/cve-2025-29927) concerns
+- Included overrides vectormap for packages to prevent peer dependency errors during installation.
+- Migrated from react-flatpickr to flatpickr package for React 19 support
 
-**CoreUI Team**
+### Version 2.0.1 - [February 27, 2025]
 
-* <https://twitter.com/core_ui>
-* <https://github.com/coreui>
-* <https://github.com/orgs/coreui/people>
+#### Update Overview
 
-## Community
+- Upgraded to Tailwind CSS v4 for better performance and efficiency.
+- Updated class usage to match the latest syntax and features.
+- Replaced deprecated class and optimized styles.
 
-Get updates on CoreUI's development and chat with the project maintainers and community members.
+#### Next Steps
 
-- Follow [@core_ui on Twitter](https://twitter.com/core_ui).
-- Read and subscribe to [CoreUI Blog](https://coreui.ui/blog/).
+- Run npm install or yarn install to update dependencies.
+- Check for any style changes or compatibility issues.
+- Refer to the Tailwind CSS v4 [Migration Guide](https://tailwindcss.com/docs/upgrade-guide) on this release. if needed.
+- This update keeps the project up to date with the latest Tailwind improvements. 🚀
 
-## Support CoreUI Development
+### v2.0.0 (February 2025)
+A major update focused on Next.js 15 implementation and comprehensive redesign.
 
-CoreUI is an MIT-licensed open source project and is completely free to use. However, the amount of effort needed to maintain and develop new features for the project is not sustainable without proper financial backing. You can support development by buying the [CoreUI PRO](https://coreui.io/pricing/?framework=react&src=github-coreui-free-react-admin-template) or by becoming a sponsor via [Open Collective](https://opencollective.com/coreui/).
+#### Major Improvements
+- Complete redesign using Next.js 15 App Router and React Server Components
+- Enhanced user interface with Next.js-optimized components
+- Improved responsiveness and accessibility
+- New features including collapsible sidebar, chat screens, and calendar
+- Redesigned authentication using Next.js App Router and server actions
+- Updated data visualization using ApexCharts for React
 
-## Copyright and License
+#### Breaking Changes
 
-copyright 2025 creativeLabs Łukasz Holeczek.   
+- Migrated from Next.js 14 to Next.js 15
+- Chart components now use ApexCharts for React
+- Authentication flow updated to use Server Actions and middleware
 
-Code released under [the MIT license](https://github.com/coreui/coreui-free-react-admin-template/blob/main/LICENSE).
+[Read more](https://tailadmin.com/docs/update-logs/nextjs) on this release.
+
+#### Breaking Changes
+- Migrated from Next.js 14 to Next.js 15
+- Chart components now use ApexCharts for React
+- Authentication flow updated to use Server Actions and middleware
+
+### v1.3.4 (July 01, 2024)
+- Fixed JSvectormap rendering issues
+
+### v1.3.3 (June 20, 2024)
+- Fixed build error related to Loader component
+
+### v1.3.2 (June 19, 2024)
+- Added ClickOutside component for dropdown menus
+- Refactored sidebar components
+- Updated Jsvectormap package
+
+### v1.3.1 (Feb 12, 2024)
+- Fixed layout naming consistency
+- Updated styles
+
+### v1.3.0 (Feb 05, 2024)
+- Upgraded to Next.js 14
+- Added Flatpickr integration
+- Improved form elements
+- Enhanced multiselect functionality
+- Added default layout component
+
+## License
+
+TailAdmin Next.js Free Version is released under the MIT License.
+
+## Support
+
+If you find this project helpful, please consider giving it a star on GitHub. Your support helps us continue developing and maintaining this template.
