@@ -63,6 +63,17 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
   const [chartData, setChartData] = useState<number[][] | null>(null)
   const [volumeData, setVolumeData] = useState<number[][] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false)
+
+  // 모바일 감지
+  useEffect(() => {
+    const checkIsMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+
+    window.addEventListener('resize', checkIsMobile)
+    return () => window.removeEventListener('resize', checkIsMobile)
+  }, [])
 
   // 데이터 소스에 따른 API 선택 로직
   const isTimeData = useIntradayData // 시간 데이터 (15m, 1h, 4h)
@@ -222,7 +233,14 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
       spacingLeft: 10,
       style: {
         fontFamily: 'Arial, sans-serif'
-      }
+      },
+      // 모바일 설정
+      zoomType: 'xy',
+      panning: {
+        enabled: true,
+        type: 'xy'
+      },
+      pinchType: 'xy'
     },
     title: {
       text: title || `${assetIdentifier} Price Chart`,
@@ -235,26 +253,48 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
     },
     yAxis: [
       {
-        labels: { align: 'left', format: '{value:.2f}' },
+        labels: { 
+          align: 'left', 
+          format: '{value:.2f}',
+          style: {
+            fontSize: isMobile ? '0px' : '12px' // 모바일에서 라벨 숨김
+          }
+        },
         height: showVolume ? '70%' : '100%',
         resize: { enabled: true },
-        title: { text: 'Price' },
+        title: { 
+          text: 'Price',
+          style: {
+            fontSize: isMobile ? '0px' : '12px' // 모바일에서 제목 숨김
+          }
+        },
       },
       ...(showVolume
         ? [
             {
-              labels: { align: 'left', format: '{value:.0f}' },
+              labels: { 
+                align: 'left', 
+                format: '{value:.0f}',
+                style: {
+                  fontSize: isMobile ? '0px' : '12px' // 모바일에서 라벨 숨김
+                }
+              },
               top: '70%',
               height: '30%',
               offset: 0,
-              title: { text: 'Volume' },
+              title: { 
+                text: 'Volume',
+                style: {
+                  fontSize: isMobile ? '0px' : '12px' // 모바일에서 제목 숨김
+                }
+              },
             },
           ]
         : []),
     ],
     rangeSelector: {
-      selected: showRangeSelector ? 4 : undefined,
-      enabled: showRangeSelector,
+      selected: showRangeSelector && !isMobile ? 4 : undefined,
+      enabled: showRangeSelector && !isMobile,
       buttons: [{
         type: 'month',
         count: 1,
@@ -314,6 +354,31 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
     },
     exporting: {
       enabled: showExporting,
+    },
+    // 모바일 최적화 설정
+    responsive: {
+      rules: [{
+        condition: {
+          maxWidth: 768
+        },
+        chartOptions: {
+          chart: {
+            height: Math.min(height, 800),
+            spacing: [10, 10, 10, 10]
+          },
+          rangeSelector: {
+            inputEnabled: false
+          },
+          tooltip: {
+            positioner: function (labelWidth: number, labelHeight: number, point: any) {
+              return {
+                x: Math.min(point.plotX + this.chart.plotLeft, this.chart.chartWidth - labelWidth - 10),
+                y: Math.max(point.plotY + this.chart.plotTop - labelHeight - 10, 10)
+              };
+            }
+          }
+        }
+      }]
     },
     ...customOptions,
   }

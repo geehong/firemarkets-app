@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useMemo, useRef, useState } from "react"
-import { useAPI } from "@/hooks/useAPI"
+import { useDelayedQuotes } from "@/hooks/useRealtime"
 import { useRealtimePrices } from "@/hooks/useSocket"
 // CSS는 globals.css에서 글로벌로 로드됨
 
@@ -45,6 +45,7 @@ type MiniPriceChartProps = {
   useWebSocket?: boolean
   apiInterval?: string | null
   marketHours?: boolean
+  title?: string
 }
 
 type ApiResponse = {
@@ -74,6 +75,7 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
   useWebSocket = true,
   apiInterval = null,
   marketHours = null,
+  title,
 }) => {
   const chartRef = useRef<HTMLDivElement | null>(null)
   const [chart, setChart] = useState<any>(null)
@@ -132,7 +134,7 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
           
           // Highcharts Stock 모듈 초기화
           if (typeof HighchartsStock === 'function') {
-            HighchartsStock(Highcharts)
+            (HighchartsStock as any)(Highcharts)
           }
           
           // 전역에 Highcharts 설정
@@ -154,18 +156,28 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
   }, [])
 
   // API 데이터 로드 (지연 데이터 기반 시계열)
-  const { data: apiResponse, loading: isLoading, error } = useAPI.realtime.pricesPg({
-    asset_identifier: assetIdentifier,
-    data_interval: "15m",
-    days: 1,
-  } as any)
+  const { data: apiResponse, isLoading, error } = useDelayedQuotes([assetIdentifier])
 
   // 시계열 데이터로 변환 (API 데이터 + 실시간 데이터)
   const chartData: [number, number][] = useMemo(() => {
     let baseData: [number, number][] = []
     
-    // API 데이터 추가
-    if (apiResponse?.quotes && apiResponse.quotes.length > 0) {
+    // API 데이터 추가 (quotes-delay-price 응답 구조에 맞게)
+    if (apiResponse && Array.isArray(apiResponse)) {
+      // apiResponse가 배열인 경우 (여러 자산)
+      const assetData = apiResponse.find((item: any) => item.asset_identifier === assetIdentifier)
+      if (assetData?.quotes && assetData.quotes.length > 0) {
+        baseData = assetData.quotes
+          .map((q: any) => {
+            const ts = new Date(q.timestamp_utc).getTime()
+            if (!ts || !isFinite(ts)) return null
+            return [ts, parseFloat(q.price)] as [number, number]
+          })
+          .filter((p: any): p is [number, number] => p !== null)
+          .sort((a: [number, number], b: [number, number]) => a[0] - b[0])
+      }
+    } else if (apiResponse?.quotes && apiResponse.quotes.length > 0) {
+      // apiResponse가 단일 객체인 경우
       baseData = apiResponse.quotes
         .map((q: any) => {
           const ts = new Date(q.timestamp_utc).getTime()
@@ -245,8 +257,53 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
     const lineColor = isRising === null ? "#999999" : (isRising ? "#18c58f" : "#ff4d4f")
 
     const options: any = {
+      chart: {
+        height: 192, // 부모 컨테이너 높이와 동일하게 설정
+        backgroundColor: "#1a1a1a", 
+        animation: false,
+        scrollablePlotArea: { minHeight: 0 },
+        zoomType: null,
+        panning: { enabled: false },
+        panKey: 'shift',
+        events: {
+          wheel: function(e: any) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+          },
+          load: function() {
+            // 차트 로드 후 휠 이벤트 완전 차단
+            const chartAny = this as any;
+            const container = chartAny && chartAny.container ? chartAny.container : null;
+            
+            // 모든 휠 이벤트 차단
+            const preventWheel = (e: any) => {
+              e.preventDefault();
+              e.stopPropagation();
+              e.stopImmediatePropagation();
+              return false;
+            };
+            
+            // 다양한 이벤트 타입에 대해 차단
+            if (container) {
+              ['wheel', 'mousewheel', 'DOMMouseScroll'].forEach(eventType => {
+                container.addEventListener(eventType, preventWheel, { passive: false, capture: true });
+              });
+            }
+          }
+        }
+      },
       title: {
-        text: null, // 차트 내부 타이틀 제거
+        text: title || null, // 차트 내부 타이틀 설정
+        style: {
+          color: '#ffffff',
+          fontSize: '14px',
+          fontWeight: 'bold'
+        },
+        align: 'center',
+        verticalAlign: 'top',
+        y: 10,
+        x: 0
       },
       xAxis: {
         type: "datetime",
@@ -302,41 +359,6 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
       credits: { enabled: false },
       exporting: { enabled: false },
       accessibility: { enabled: false },
-      chart: { 
-        backgroundColor: "#1a1a1a", 
-        animation: false,
-        scrollablePlotArea: { minHeight: 0 },
-        zoomType: null,
-        panning: { enabled: false },
-        panKey: 'shift',
-        events: {
-          wheel: function(e: any) {
-            e.preventDefault();
-            e.stopPropagation();
-            return false;
-          },
-          load: function() {
-            // 차트 로드 후 휠 이벤트 완전 차단
-            const chartAny = this as any;
-            const container = chartAny && chartAny.container ? chartAny.container : null;
-            
-            // 모든 휠 이벤트 차단
-            const preventWheel = (e: any) => {
-              e.preventDefault();
-              e.stopPropagation();
-              e.stopImmediatePropagation();
-              return false;
-            };
-            
-            // 다양한 이벤트 타입에 대해 차단
-            if (container) {
-              ['wheel', 'mousewheel', 'DOMMouseScroll'].forEach(eventType => {
-                container.addEventListener(eventType, preventWheel, { passive: false, capture: true });
-              });
-            }
-          }
-        }
-      },
       series: [
         { type: "line", name: "Price", color: "#00d4ff", lineWidth: 2, marker: { enabled: false }, data: chartData },
         {
@@ -510,15 +532,23 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
   return (
     <div 
       className="mini-price-chart-container" 
-      style={{ position: 'relative' }}
+      style={{ 
+        position: 'relative',
+        height: '100%',
+        width: '100%',
+        overflow: 'hidden'
+      }}
     >
-      
-      
       <div
         ref={chartRef}
         id={containerId}
         className={`mini-price-chart ${isLoading ? "loading" : ""} ${error ? "error" : ""}`}
-        style={{ height: chartHeight }}
+        style={{ 
+          height: '100%',
+          width: '100%',
+          minHeight: '192px',
+          maxHeight: '192px'
+        }}
       />
     </div>
   )

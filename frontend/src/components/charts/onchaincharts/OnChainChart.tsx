@@ -348,6 +348,13 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
       style: {
         fontFamily: 'Inter, system-ui, sans-serif'
       },
+      // 모바일 설정
+      zoomType: 'xy',
+      panning: {
+        enabled: true,
+        type: 'xy'
+      },
+      pinchType: 'xy',
       events: {
         load: function() {
           console.log('차트 로드 완료');
@@ -374,7 +381,14 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
     subtitle: {
       text: currentCorrelation ? `상관계수: ${currentCorrelation.correlation} (${currentCorrelation.interpretation})` : '데이터 로딩 중...',
       style: {
-        color: '#6b7280'
+        color: currentCorrelation ? (
+          Math.abs(currentCorrelation.correlation) >= 0.7 ? '#dc2626' :
+          Math.abs(currentCorrelation.correlation) >= 0.5 ? '#ea580c' :
+          Math.abs(currentCorrelation.correlation) >= 0.3 ? '#d97706' :
+          '#6b7280'
+        ) : '#6b7280',
+        fontSize: '14px',
+        fontWeight: 'bold'
       }
     },
     xAxis: {
@@ -406,12 +420,14 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
         title: {
           text: 'Bitcoin Price (USD)',
           style: {
-            color: '#1f2937'
+            color: '#1f2937',
+            fontSize: isMobile ? '0px' : '12px' // 모바일에서 제목 숨김
           }
         },
         labels: {
           style: {
-            color: '#374151'
+            color: '#374151',
+            fontSize: isMobile ? '0px' : '12px' // 모바일에서 라벨 숨김
           },
           formatter: function() {
             return '$' + this.value.toLocaleString();
@@ -425,12 +441,14 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
         title: {
           text: 'MVRV Z-Score',
           style: {
-            color: '#1f2937'
+            color: '#1f2937',
+            fontSize: isMobile ? '0px' : '12px' // 모바일에서 제목 숨김
           }
         },
         labels: {
           style: {
-            color: '#374151'
+            color: '#374151',
+            fontSize: isMobile ? '0px' : '12px' // 모바일에서 라벨 숨김
           }
         },
         gridLineColor: '#e5e7eb',
@@ -472,7 +490,10 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
       series: {
         marker: {
           enabled: false
-        }
+        },
+        // 모바일 터치 설정
+        stickyTracking: false,
+        enableMouseTracking: true
       }
     },
     series: [
@@ -482,6 +503,24 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
         data: priceData,
         color: '#3b82f6',
         yAxis: 0,
+        // Area 차트일 때 그라데이션 효과 추가
+        ...(chartType === 'area' || chartType === 'areaspline') && {
+          fillColor: {
+            linearGradient: {
+              x1: 0,
+              y1: 0,
+              x2: 0,
+              y2: 1
+            },
+            stops: [
+              [0, 'rgba(59, 130, 246, 0.7)'],
+              [0.5, 'rgba(59, 130, 246, 0.35)'],
+              [0.8, 'rgba(59, 130, 246, 0.05)'],
+              [0.9, 'rgba(59, 130, 246, 0.02)'],
+              [1, 'rgba(59, 130, 246, 0.01)']
+            ]
+          }
+        },
         tooltip: {
           valueDecimals: 2,
           valuePrefix: '$'
@@ -493,12 +532,30 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
         data: mvrvData,
         color: '#f59e0b',
         yAxis: 1,
+        // Area 차트일 때 그라데이션 효과 추가
+        ...(chartType === 'area' || chartType === 'areaspline') && {
+          fillColor: {
+            linearGradient: {
+              x1: 0,
+              y1: 0,
+              x2: 0,
+              y2: 1
+            },
+            stops: [
+              [0, 'rgba(245, 158, 11, 0.7)'],
+              [0.5, 'rgba(245, 158, 11, 0.35)'],
+              [0.8, 'rgba(245, 158, 11, 0.05)'],
+              [0.9, 'rgba(245, 158, 11, 0.02)'],
+              [1, 'rgba(245, 158, 11, 0.01)']
+            ]
+          }
+        },
         tooltip: {
           valueDecimals: 3
         }
       }
     ],
-    rangeSelector: showRangeSelector ? {
+    rangeSelector: showRangeSelector && !isMobile ? {
       enabled: true,
       buttonTheme: {
         fill: '#f3f4f6',
@@ -529,7 +586,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
       enabled: false
     },
     navigator: {
-      enabled: showRangeSelector,
+      enabled: showRangeSelector && !isMobile,
       handles: {
         backgroundColor: '#3b82f6',
         borderColor: '#1d4ed8'
@@ -541,7 +598,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
       }
     },
     scrollbar: {
-      enabled: showRangeSelector,
+      enabled: showRangeSelector && !isMobile,
       barBackgroundColor: '#f3f4f6',
       barBorderRadius: 7,
       barBorderWidth: 0,
@@ -567,6 +624,31 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
           }
         }
       }
+    },
+    // 모바일 최적화 설정
+    responsive: {
+      rules: [{
+        condition: {
+          maxWidth: 768
+        },
+        chartOptions: {
+          chart: {
+            height: Math.min(height, 800),
+            spacing: [10, 10, 10, 10]
+          },
+          rangeSelector: {
+            inputEnabled: false
+          },
+          tooltip: {
+            positioner: function (labelWidth: number, labelHeight: number, point: any) {
+              return {
+                x: Math.min(point.plotX + this.chart.plotLeft, this.chart.chartWidth - labelWidth - 10),
+                y: Math.max(point.plotY + this.chart.plotTop - labelHeight - 10, 10)
+              };
+            }
+          }
+        }
+      }]
     }
   };
 
@@ -618,51 +700,6 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
         onColorModeChange={setColorMode}
         showFlagsButton={false}
       />
-      {/* 현재 선택 범위 상관관계 표시 */}
-      {currentCorrelation && (
-        <div className="mb-4 p-4 bg-gray-50 rounded-lg border">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="flex items-center">
-              <div className={`w-4 h-4 rounded-full mr-3 ${
-                Math.abs(currentCorrelation.correlation) >= 0.7 ? 'bg-red-500' :
-                Math.abs(currentCorrelation.correlation) >= 0.5 ? 'bg-orange-500' :
-                Math.abs(currentCorrelation.correlation) >= 0.3 ? 'bg-yellow-500' :
-                'bg-gray-400'
-              }`}></div>
-              <div>
-                <strong className={`text-lg ${
-                  Math.abs(currentCorrelation.correlation) >= 0.7 ? 'text-red-600' :
-                  Math.abs(currentCorrelation.correlation) >= 0.5 ? 'text-orange-600' :
-                  Math.abs(currentCorrelation.correlation) >= 0.3 ? 'text-yellow-600' :
-                  'text-gray-600'
-                }`}>
-                  상관계수: {currentCorrelation.correlation}
-                </strong>
-              </div>
-            </div>
-            <div className="flex items-center">
-              <strong className={`text-lg ${
-                Math.abs(currentCorrelation.correlation) >= 0.7 ? 'text-red-600' :
-                Math.abs(currentCorrelation.correlation) >= 0.5 ? 'text-orange-600' :
-                Math.abs(currentCorrelation.correlation) >= 0.3 ? 'text-yellow-600' :
-                'text-gray-600'
-              }`}>
-                {currentCorrelation.interpretation}
-              </strong>
-            </div>
-            <div className="flex items-center">
-              <strong className={`text-lg ${
-                Math.abs(currentCorrelation.correlation) >= 0.7 ? 'text-red-600' :
-                Math.abs(currentCorrelation.correlation) >= 0.5 ? 'text-orange-600' :
-                Math.abs(currentCorrelation.correlation) >= 0.3 ? 'text-yellow-600' :
-                'text-gray-600'
-              }`}>
-                사용 포인트: {currentCorrelation.data_points}
-              </strong>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div style={{ height: `${height}px` }}>
         <HighchartsReact

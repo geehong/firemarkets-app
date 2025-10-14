@@ -13,7 +13,10 @@ const OHLCVChartPage: React.FC = () => {
     { value: 'ETHUSDT', label: 'Ethereum (ETHUSDT)' },
     { value: 'ADAUSDT', label: 'Cardano (ADAUSDT)' },
     { value: 'DOTUSDT', label: 'Polkadot (DOTUSDT)' },
-    { value: 'LINKUSDT', label: 'Chainlink (LINKUSDT)' },
+    { value: 'XRPUSDT', label: 'XRP (XRPUSDT)' },
+    { value: 'DOGEUSDT', label: 'Dogecoin (DOGEUSDT)' },
+    { value: 'LTCUSDT', label: 'Litecoin (LTCUSDT)' },
+    { value: 'BCHUSDT', label: 'Bitcoin Cash (BCHUSDT)' },
   ]
 
   const timeIntervals = [

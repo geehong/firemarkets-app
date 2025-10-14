@@ -528,7 +528,10 @@ const HalvingChart: React.FC<HalvingChartProps> = ({
       },
       yAxis: {
         title: {
-          text: 'Bitcoin Price (USD)'
+          text: 'Bitcoin Price (USD)',
+          style: {
+            fontSize: isMobile ? '0px' : '12px' // 모바일에서 제목 숨김
+          }
         },
         labels: {
           formatter: function() {
@@ -542,7 +545,7 @@ const HalvingChart: React.FC<HalvingChartProps> = ({
             }
           },
           style: {
-            fontSize: '12px'
+            fontSize: isMobile ? '0px' : '12px' // 모바일에서 라벨 숨김
           }
         },
         crosshair: true,
@@ -593,7 +596,7 @@ const HalvingChart: React.FC<HalvingChartProps> = ({
         enabled: showExporting
       },
       navigator: {
-        enabled: true,
+        enabled: !isMobile,
         xAxis: {
           labels: {
             formatter: function() {

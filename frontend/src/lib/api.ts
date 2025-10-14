@@ -78,6 +78,9 @@ export class ApiClient {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     }
+    // Debug: log outgoing request URL and method
+    // eslint-disable-next-line no-console
+    console.log('[API REQUEST]', (init?.method ?? 'GET'), url)
     const res = await fetch(url, {
       ...init,
       headers: { ...defaultHeaders, ...(init?.headers as Record<string, string> | undefined) },
@@ -267,6 +270,11 @@ export class ApiClient {
   // Global Crypto Metrics
   getGlobalCryptoMetrics() {
     return this.request('/crypto/global-metrics');
+  }
+
+  // TreeMap Live Data
+  getTreemapLiveData() {
+    return this.request('/assets/treemap/live');
   }
 }
 

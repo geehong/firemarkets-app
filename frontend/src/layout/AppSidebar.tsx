@@ -80,6 +80,17 @@ const othersItems: NavItem[] = [
       { name: "OHLCV Chart", path: "/ohlcv-chart", pro: false },
       { name: "Halving Chart", path: "/halving-chart", pro: false },
       { name: "On-Chain Chart", path: "/onchain-chart", pro: false },
+      { name: "Mini Chart", path: "/minichart", pro: false },
+      { name: "TreeMap Chart", path: "/treemap-chart", pro: false },
+    ],
+  },
+  {
+    icon: <TableIcon />,
+    name: "Tables",
+    subItems: [
+      { name: "Assets List", path: "/assets-list", pro: false },
+      { name: "History Table", path: "/history-table", pro: false },
+      
     ],
   },
   {

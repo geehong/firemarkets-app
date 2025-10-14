@@ -16,6 +16,38 @@ export interface Asset {
   market_cap?: number
 }
 
+export interface TreemapLiveItem {
+  asset_id: number
+  ticker: string
+  name: string
+  asset_type: string
+  market_cap: number | null
+  logo_url?: string
+  price_change_percentage_24h: number | null
+  current_price: number | null
+  market_status: string
+  realtime_updated_at?: string
+  daily_data_updated_at?: string
+}
+
+export interface TreemapLiveResponse {
+  data: TreemapLiveItem[]
+  total_count: number
+}
+
+// Treemap live data hook for tables
+export const useTreemapLive = (
+  queryOptions?: UseQueryOptions
+) => {
+  return useQuery({
+    queryKey: ['treemap-live-table'],
+    queryFn: () => apiClient.getTreemapLiveData(),
+    staleTime: 5 * 60 * 1000,
+    refetchInterval: 15 * 60 * 1000,
+    ...queryOptions,
+  })
+}
+
 export interface OHLCVData {
   timestamp_utc: string
   open_price: string | number
@@ -85,7 +117,10 @@ export const useOhlcvData = (
     queryKey: ['ohlcv', assetIdentifier, options],
     queryFn: () => apiClient.getAssetsOhlcv({
       asset_identifier: assetIdentifier,
-      ...options
+      data_interval: options?.dataInterval,
+      start_date: options?.startDate,
+      end_date: options?.endDate,
+      limit: options?.limit,
     }),
     enabled: !!assetIdentifier,
     staleTime: 1 * 60 * 1000, // 1분
@@ -118,6 +153,19 @@ export const useMarketCaps = (
   return useQuery({
     queryKey: ['market-caps', options],
     queryFn: () => apiClient.getMarketCaps(options),
+    ...queryOptions,
+  })
+}
+
+// TreeMap Live Data Hook
+export const useTreemapLiveData = (
+  queryOptions?: UseQueryOptions
+) => {
+  return useQuery({
+    queryKey: ['treemap-live'],
+    queryFn: () => apiClient.getTreemapLiveData(),
+    staleTime: 5 * 60 * 1000, // 5분
+    refetchInterval: 15 * 60 * 1000, // 15분마다 자동 새로고침
     ...queryOptions,
   })
 }

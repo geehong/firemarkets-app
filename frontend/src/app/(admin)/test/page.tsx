@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRealtimePrices, useBroadcastData } from '../../../hooks/useSocket';
+import SocketDebugger from '../../../components/debug/SocketDebugger';
+import NetworkTester from '../../../components/debug/NetworkTester';
 
 // 컴포넌트 타입 정의
 interface ChartComponent {
@@ -40,7 +42,7 @@ const MiniPriceCommoditiesChart: ChartComponent = ({ ticker, price, volume, time
 const groupDefs = [
   {
     title: 'Crypto (Live Broadcasting)',
-    items: ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'DOGEUSDT', 'AVAXUSDT', 'USDCUSDT', 'FETUSDT', 'ARUSDT'],
+    items: ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'DOGEUSDT', 'ADAUSDT', 'DOTUSDT', 'LTCUSDT', 'BCHUSDT'],
     comp: MiniPriceCryptoChart
   },
   {
@@ -87,6 +89,8 @@ const TickerCard: React.FC<{
 const TestPage: React.FC = () => {
   const { broadcastData, isConnected, isUsingDummyData } = useBroadcastData();
   const [selectedGroup, setSelectedGroup] = useState(0);
+
+  // 디버그 컴포넌트 비활성화
 
   return (
     <div className="p-6">
@@ -171,6 +175,8 @@ const TestPage: React.FC = () => {
           )}
         </div>
       </div>
+      
+      {/* 디버그 컴포넌트들 비활성화 */}
     </div>
   );
 };
