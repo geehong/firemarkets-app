@@ -4,12 +4,10 @@ import React, { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { useAssetOverview } from '@/hooks/useAssetOverview'
 import { useRealtimePrices } from '@/hooks/useSocket'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { TrendingUp, TrendingDown, DollarSign, BarChart3, Globe, Building2 } from 'lucide-react'
+import ComponentCard from '@/components/common/ComponentCard'
+import Badge from '@/components/ui/badge/Badge'
+import Alert from '@/components/ui/alert/Alert'
+import { ArrowUpIcon, ArrowDownIcon, DollarLineIcon, PieChartIcon, UserIcon } from '@/icons'
 import OHLCVChart from '@/components/charts/ohlcvcharts/OHLCVChart'
 import HistoryTable from '@/components/tables/HistoryTable'
 
@@ -18,14 +16,22 @@ interface AssetOverviewProps {
 }
 
 const AssetOverview: React.FC<AssetOverviewProps> = ({ className }) => {
-  const { assetId } = useParams()
+  const { assetIdentifier } = useParams()
   const [isMobile, setIsMobile] = useState(false)
   
   // 자산 개요 데이터 fetching
-  const { data: overviewData, loading: overviewLoading, error: overviewError } = useAssetOverview(assetId as string)
+  const { data: overviewData, loading: overviewLoading, error: overviewError } = useAssetOverview(assetIdentifier as string)
+  
+  // 디버깅을 위한 로그
+  console.log('🔍 AssetOverview Debug:', {
+    assetIdentifier,
+    overviewData,
+    overviewLoading,
+    overviewError
+  })
   
   // 실시간 가격 데이터
-  const { latestPrice, isConnected } = useRealtimePrices(assetId as string)
+  const { latestPrice, isConnected } = useRealtimePrices(assetIdentifier as string)
 
   // 모바일 감지
   useEffect(() => {
@@ -42,19 +48,16 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className }) => {
   if (overviewLoading) {
     return (
       <div className={`space-y-6 ${className}`}>
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-8 w-64" />
-            <Skeleton className="h-4 w-32" />
-          </CardHeader>
-          <CardContent>
+        <ComponentCard title="Loading...">
+          <div className="animate-pulse">
+            <div className="h-4 bg-gray-200 rounded w-3/4 mb-4"></div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Skeleton className="h-20 w-full" />
-              <Skeleton className="h-20 w-full" />
-              <Skeleton className="h-20 w-full" />
+              <div className="h-20 bg-gray-200 rounded"></div>
+              <div className="h-20 bg-gray-200 rounded"></div>
+              <div className="h-20 bg-gray-200 rounded"></div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </ComponentCard>
       </div>
     )
   }
@@ -62,11 +65,11 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className }) => {
   if (overviewError) {
     return (
       <div className={className}>
-        <Alert variant="destructive">
-          <AlertDescription>
-            Failed to load asset overview: {overviewError.message}
-          </AlertDescription>
-        </Alert>
+        <Alert 
+          variant="error"
+          title="Error"
+          message={`Failed to load asset overview: ${overviewError.message}`}
+        />
       </div>
     )
   }
@@ -74,11 +77,11 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className }) => {
   if (!overviewData) {
     return (
       <div className={className}>
-        <Alert>
-          <AlertDescription>
-            No asset data available for the selected asset.
-          </AlertDescription>
-        </Alert>
+        <Alert 
+          variant="warning"
+          title="No Data"
+          message="No asset data available for the selected asset."
+        />
       </div>
     )
   }
@@ -88,68 +91,61 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className }) => {
   return (
     <div className={`space-y-6 ${className}`}>
       {/* 자산 헤더 정보 */}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <CardTitle className="text-2xl font-bold flex items-center gap-2">
-                {asset.name}
-                <Badge variant="secondary">{asset.ticker}</Badge>
-              </CardTitle>
-              <p className="text-muted-foreground mt-1">
-                {asset.type_name} • {asset.exchange}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant={asset.is_active ? "default" : "secondary"}>
-                {asset.is_active ? "Active" : "Inactive"}
-              </Badge>
-              {asset.currency && (
-                <Badge variant="outline">{asset.currency}</Badge>
-              )}
-              {isConnected && (
-                <Badge variant="outline" className="text-green-600">
-                  Live
-                </Badge>
-              )}
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {asset.description && (
-            <p className="text-sm text-muted-foreground mb-4">
-              {asset.description}
+      <ComponentCard title={`${asset.name} (${asset.ticker})`}>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+          <div>
+            <p className="text-gray-500">
+              {asset.type_name} • {asset.exchange}
             </p>
-          )}
-          
-          {/* 자산 타입별 추가 정보 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge color={asset.is_active ? "success" : "light"}>
+              {asset.is_active ? "Active" : "Inactive"}
+            </Badge>
+            {asset.currency && (
+              <Badge color="info">{asset.currency}</Badge>
+            )}
+            {isConnected && (
+              <Badge color="success">
+                Live
+              </Badge>
+            )}
+          </div>
+        </div>
+        {asset.description && (
+          <p className="text-sm text-gray-500 mb-4">
+            {asset.description}
+          </p>
+        )}
+        
+        {/* 자산 타입별 추가 정보 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {asset.type_name === 'Stocks' && (
               <>
                 {asset.company_name && (
                   <div className="flex items-center gap-2">
-                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                    <UserIcon className="h-4 w-4 text-gray-500" />
                     <span className="text-sm font-medium">Company:</span>
                     <span className="text-sm">{asset.company_name}</span>
                   </div>
                 )}
                 {asset.sector && (
                   <div className="flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                    <PieChartIcon className="h-4 w-4 text-gray-500" />
                     <span className="text-sm font-medium">Sector:</span>
                     <span className="text-sm">{asset.sector}</span>
                   </div>
                 )}
                 {asset.industry && (
                   <div className="flex items-center gap-2">
-                    <Globe className="h-4 w-4 text-muted-foreground" />
+                    <UserIcon className="h-4 w-4 text-gray-500" />
                     <span className="text-sm font-medium">Industry:</span>
                     <span className="text-sm">{asset.industry}</span>
                   </div>
                 )}
                 {asset.country && (
                   <div className="flex items-center gap-2">
-                    <Globe className="h-4 w-4 text-muted-foreground" />
+                    <UserIcon className="h-4 w-4 text-gray-500" />
                     <span className="text-sm font-medium">Country:</span>
                     <span className="text-sm">{asset.country}</span>
                   </div>
@@ -161,7 +157,7 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className }) => {
               <>
                 {asset.symbol && (
                   <div className="flex items-center gap-2">
-                    <DollarSign className="h-4 w-4 text-muted-foreground" />
+                    <DollarLineIcon className="h-4 w-4 text-gray-500" />
                     <span className="text-sm font-medium">Symbol:</span>
                     <span className="text-sm">{asset.symbol}</span>
                   </div>
@@ -183,14 +179,14 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className }) => {
               <>
                 {asset.etf_name && (
                   <div className="flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                    <ArrowUpIcon className="h-4 w-4 text-gray-500" />
                     <span className="text-sm font-medium">ETF Name:</span>
                     <span className="text-sm">{asset.etf_name}</span>
                   </div>
                 )}
                 {asset.expense_ratio && (
                   <div className="flex items-center gap-2">
-                    <DollarSign className="h-4 w-4 text-muted-foreground" />
+                    <DollarLineIcon className="h-4 w-4 text-gray-500" />
                     <span className="text-sm font-medium">Expense Ratio:</span>
                     <span className="text-sm">{(asset.expense_ratio * 100).toFixed(2)}%</span>
                   </div>
@@ -202,34 +198,26 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className }) => {
               <>
                 {asset.commodity_type && (
                   <div className="flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                    <PieChartIcon className="h-4 w-4 text-gray-500" />
                     <span className="text-sm font-medium">Type:</span>
                     <span className="text-sm">{asset.commodity_type}</span>
                   </div>
                 )}
                 {asset.unit && (
                   <div className="flex items-center gap-2">
-                    <DollarSign className="h-4 w-4 text-muted-foreground" />
+                    <DollarLineIcon className="h-4 w-4 text-gray-500" />
                     <span className="text-sm font-medium">Unit:</span>
                     <span className="text-sm">{asset.unit}</span>
                   </div>
                 )}
               </>
             )}
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+      </ComponentCard>
 
       {/* 실시간 가격 정보 */}
       {latestPrice && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5" />
-              Real-time Price
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <ComponentCard title="Real-time Price">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="text-center p-4 border rounded-lg">
                 <div className="text-2xl font-bold text-green-600">
@@ -238,7 +226,7 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className }) => {
                     maximumFractionDigits: 6 
                   })}
                 </div>
-                <div className="text-sm text-muted-foreground">Current Price</div>
+                <div className="text-sm text-gray-500">Current Price</div>
               </div>
               {latestPrice.volume && (
                 <div className="text-center p-4 border rounded-lg">
@@ -248,111 +236,83 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className }) => {
                       maximumFractionDigits: 2 
                     })}
                   </div>
-                  <div className="text-sm text-muted-foreground">Volume</div>
+                  <div className="text-sm text-gray-500">Volume</div>
                 </div>
               )}
               <div className="text-center p-4 border rounded-lg">
                 <div className="text-sm font-medium">
                   {new Date(latestPrice.timestamp).toLocaleTimeString()}
                 </div>
-                <div className="text-sm text-muted-foreground">Last Updated</div>
+                <div className="text-sm text-gray-500">Last Updated</div>
               </div>
             </div>
-          </CardContent>
-        </Card>
+        </ComponentCard>
       )}
 
-      {/* 자산 상세 정보 탭 */}
-      <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="charts">Charts</TabsTrigger>
-          <TabsTrigger value="data">Data</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="overview" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Asset Information</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <h4 className="font-medium mb-2">Basic Information</h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Asset ID:</span>
-                      <span>{asset.asset_id}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Type:</span>
-                      <span>{asset.type_name}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Exchange:</span>
-                      <span>{asset.exchange}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Currency:</span>
-                      <span>{asset.currency}</span>
-                    </div>
-                  </div>
-                </div>
-                <div>
-                  <h4 className="font-medium mb-2">Timestamps</h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Created:</span>
-                      <span>{new Date(asset.created_at).toLocaleDateString()}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Updated:</span>
-                      <span>{new Date(asset.updated_at).toLocaleDateString()}</span>
-                    </div>
-                  </div>
-                </div>
+      {/* 자산 상세 정보 */}
+      <ComponentCard title="Asset Information">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <h4 className="font-medium mb-2">Basic Information</h4>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Asset ID:</span>
+                <span>{asset.asset_id}</span>
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="charts" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Price Charts</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <OHLCVChart
-                assetIdentifier={assetId as string}
-                dataInterval="1d"
-                height={600}
-                showVolume={true}
-                showRangeSelector={true}
-                showExporting={true}
-                title={`${asset.name} Price Chart`}
-                subtitle={`${asset.exchange} • ${asset.currency}`}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="data" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Historical Data</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <HistoryTable
-                assetIdentifier={assetId as string}
-                initialInterval="1d"
-                showVolume={true}
-                showChangePercent={true}
-                height={400}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Type:</span>
+                <span>{asset.type_name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Exchange:</span>
+                <span>{asset.exchange}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Currency:</span>
+                <span>{asset.currency}</span>
+              </div>
+            </div>
+          </div>
+          <div>
+            <h4 className="font-medium mb-2">Timestamps</h4>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Created:</span>
+                <span>{new Date(asset.created_at).toLocaleDateString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Updated:</span>
+                <span>{new Date(asset.updated_at).toLocaleDateString()}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </ComponentCard>
+
+      {/* 가격 차트 */}
+      <ComponentCard title="Price Charts">
+        <OHLCVChart
+          assetIdentifier={assetIdentifier as string}
+          dataInterval="1d"
+          height={600}
+          showVolume={true}
+          showRangeSelector={true}
+          showExporting={true}
+          title={`${asset.name} Price Chart`}
+          subtitle={`${asset.exchange} • ${asset.currency}`}
+        />
+      </ComponentCard>
+
+      {/* 히스토리 데이터 */}
+      <ComponentCard title="Historical Data">
+        <HistoryTable
+          assetIdentifier={assetIdentifier as string}
+          initialInterval="1d"
+          showVolume={true}
+          showChangePercent={true}
+          height={400}
+        />
+      </ComponentCard>
     </div>
   )
 }

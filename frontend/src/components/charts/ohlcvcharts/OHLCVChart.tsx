@@ -1,16 +1,7 @@
 "use client"
 
 import React, { useEffect, useState } from 'react'
-import HighchartsReact from 'highcharts-react-official'
 import { useOhlcv, useIntraday, useDelayedQuotes } from '@/hooks'
-
-// Highcharts 모듈들을 import 및 초기화
-import Highcharts from 'highcharts/highstock'
-import 'highcharts/modules/exporting'
-import 'highcharts/modules/accessibility'
-import 'highcharts/modules/full-screen'
-import 'highcharts/modules/annotations-advanced'
-import 'highcharts/modules/price-indicator'
 
 interface OHLCVData {
   timestamp_utc: string
@@ -64,16 +55,54 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
   const [volumeData, setVolumeData] = useState<number[][] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false)
+  const [isClient, setIsClient] = useState(false)
+  const [HighchartsReact, setHighchartsReact] = useState<any>(null)
+  const [Highcharts, setHighcharts] = useState<any>(null)
+
+  // 클라이언트 사이드에서 Highcharts 동적 로드
+  useEffect(() => {
+    const loadHighcharts = async () => {
+      try {
+        const [
+          { default: HighchartsReactComponent },
+          { default: HighchartsCore }
+        ] = await Promise.all([
+          import('highcharts-react-official'),
+          import('highcharts/highstock')
+        ])
+
+        // Highcharts 모듈들 동적 로드
+        await Promise.all([
+          import('highcharts/modules/exporting'),
+          import('highcharts/modules/accessibility'),
+          import('highcharts/modules/full-screen'),
+          import('highcharts/modules/annotations-advanced'),
+          import('highcharts/modules/price-indicator')
+        ])
+
+        setHighchartsReact(() => HighchartsReactComponent)
+        setHighcharts(HighchartsCore)
+        setIsClient(true)
+      } catch (error) {
+        console.error('Failed to load Highcharts:', error)
+        setError('Failed to load chart library')
+      }
+    }
+
+    loadHighcharts()
+  }, [])
 
   // 모바일 감지
   useEffect(() => {
+    if (!isClient) return
+
     const checkIsMobile = () => {
       setIsMobile(window.innerWidth < 768)
     }
 
     window.addEventListener('resize', checkIsMobile)
     return () => window.removeEventListener('resize', checkIsMobile)
-  }, [])
+  }, [isClient])
 
   // 데이터 소스에 따른 API 선택 로직
   const isTimeData = useIntradayData // 시간 데이터 (15m, 1h, 4h)
@@ -381,6 +410,16 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
       }]
     },
     ...customOptions,
+  }
+
+  // 클라이언트 사이드에서만 차트 렌더링
+  if (!isClient || !HighchartsReact || !Highcharts) {
+    return (
+      <div className="flex justify-center items-center h-[200px]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <span className="ml-3 text-sm text-gray-600">Loading chart library...</span>
+      </div>
+    )
   }
 
   if (apiLoading) return (

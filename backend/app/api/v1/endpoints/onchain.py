@@ -129,7 +129,8 @@ def get_metric_data_range(metric_def: OnchainMetricsInfo, db: Session, ticker: O
         'true_market_mean': 'true_market_mean',
         'nrpl_btc': 'nrpl_btc',
         'thermo_cap': 'thermo_cap',
-        'hodl_waves_supply': 'hodl_waves_supply'
+        'hodl_waves_supply': 'hodl_waves_supply',
+        'aviv': 'aviv'
     }
     
     db_field = db_field_map.get(metric_def.metric_id)
@@ -200,7 +201,8 @@ def create_data_points(records: List, metric_def: OnchainMetricsInfo) -> List[Me
         'true_market_mean': 'true_market_mean',
         'nrpl_btc': 'nrpl_btc',
         'thermo_cap': 'thermo_cap',
-        'hodl_waves_supply': 'hodl_waves_supply'
+        'hodl_waves_supply': 'hodl_waves_supply',
+        'aviv': 'aviv'
     }
     
     db_field = db_field_map.get(metric_def.metric_id)
@@ -346,7 +348,8 @@ async def get_metric_data(
         'true_market_mean': 'true_market_mean',
         'nrpl_btc': 'nrpl_btc',
         'thermo_cap': 'thermo_cap',
-        'hodl_waves_supply': 'hodl_waves_supply'
+        'hodl_waves_supply': 'hodl_waves_supply',
+        'aviv': 'aviv'
     }
     
     db_field = db_field_map.get(metric_id)

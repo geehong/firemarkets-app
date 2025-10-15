@@ -1403,7 +1403,7 @@ SELECT
     a.ticker,
     a.name,
     at.type_name AS asset_type,
-    COALESCE(war.market_cap_usd, ohlcv_daily.market_cap_usd, ohlcv_intraday.market_cap_usd) AS market_cap,
+    war.market_cap_usd AS market_cap,
     COALESCE(sp.logo_image_url, cd.logo_url) AS logo_url,
     COALESCE(
         CASE WHEN war.last_updated > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' THEN war.price_usd END,
@@ -1432,7 +1432,7 @@ SELECT
     rq.timestamp_utc AS realtime_updated_at,
     ohlcv_daily.timestamp_utc AS daily_data_updated_at
 FROM assets a
-JOIN asset_types at ON a.asset_type_id = at.asset_id
+JOIN asset_types at ON a.asset_type_id = at.asset_type_id
 LEFT JOIN LATERAL (
     SELECT r.timestamp_utc, r.price, r.change_percent
     FROM realtime_quotes r
@@ -1448,14 +1448,14 @@ LEFT JOIN LATERAL (
     LIMIT 1
 ) war ON true
 LEFT JOIN LATERAL (
-    SELECT o.timestamp_utc, o.close_price, o.change_percent, o.market_cap_usd
+    SELECT o.timestamp_utc, o.close_price, o.change_percent
     FROM ohlcv_day_data o
     WHERE o.asset_id = a.asset_id
     ORDER BY o.timestamp_utc DESC
     LIMIT 1
 ) ohlcv_daily ON true
 LEFT JOIN LATERAL (
-    SELECT o.timestamp_utc, o.close_price, o.change_percent, o.market_cap_usd
+    SELECT o.timestamp_utc, o.close_price, o.change_percent
     FROM ohlcv_intraday_data o
     WHERE o.asset_id = a.asset_id
     ORDER BY o.timestamp_utc DESC
@@ -1469,23 +1469,76 @@ WHERE a.is_active = true AND (war.market_cap_usd IS NOT NULL OR ohlcv_daily.clos
 
 @router.get("/treemap/live", response_model=TreemapLiveResponse)
 def get_treemap_live(
-    db: Session = Depends(get_postgres_db)
+    db: Session = Depends(get_postgres_db),
+    asset_type_id: Optional[int] = Query(None, description="Filter by asset_type_id"),
+    type_name: Optional[str] = Query(None, description="Filter by asset type name (type_name)")
 ):
     """트리맵 실시간 뷰 데이터 조회 (뷰 없으면 생성 후 조회)"""
     try:
         # 먼저 조회 시도
-        rows = db.execute(text(
+        # --- Normalize filters: allow either asset_type_id or type_name ---
+        # Static mapping as a fallback; in future, fetch dynamically from asset_types
+        id_to_name_map = {
+            1: 'Indices',
+            2: 'Stocks',
+            3: 'Commodities',
+            4: 'Currencies',
+            5: 'ETFs',
+            6: 'Bonds',
+            7: 'Funds',
+            8: 'Crypto',
+        }
+        name_to_id_map = {v.lower(): k for k, v in id_to_name_map.items()}
+
+        # Trim and lowercase for name matching
+        type_name_norm = type_name.strip() if isinstance(type_name, str) else None
+        type_name_lower = type_name_norm.lower() if type_name_norm else None
+
+        # Derive missing counterpart if only one provided
+        if asset_type_id is None and type_name_lower:
+            asset_type_id = name_to_id_map.get(type_name_lower)
+        if type_name_norm is None and asset_type_id is not None:
+            mapped_name = id_to_name_map.get(asset_type_id)
+            type_name_norm = mapped_name
+            type_name_lower = mapped_name.lower() if mapped_name else None
+
+        base_sql = (
             """
             SELECT asset_id, ticker, name, asset_type, market_cap, logo_url,
                    price_change_percentage_24h, current_price,
                    market_status, realtime_updated_at, daily_data_updated_at
             FROM treemap_live_view
             """
-        )).fetchall()
+        )
+        conditions = []
+        params: Dict[str, Any] = {}
+        if asset_type_id is not None:
+            # Filter by asset_type_id using assets table since the view may not expose asset_type_id
+            conditions.append("asset_id IN (SELECT asset_id FROM assets WHERE asset_type_id = :asset_type_id)")
+            params["asset_type_id"] = asset_type_id
+        if type_name_norm is not None:
+            # Case-insensitive match for type name
+            conditions.append("LOWER(asset_type) = :type_name_lower")
+            params["type_name_lower"] = type_name_lower
+        if conditions:
+            base_sql += " WHERE " + " AND ".join(conditions)
+        rows = db.execute(text(base_sql), params).fetchall()
     except Exception as e:
         # 뷰가 없거나 스키마 이슈일 수 있으므로 생성 후 1회 재시도
         logger.warning(f"treemap_live_view select failed, creating view. error={e}")
         try:
+            # 이전 에러로 인해 트랜잭션이 실패 상태일 수 있으므로 롤백
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            # 기존 뷰를 드롭 후 재생성하여 스키마 차이를 확실히 반영
+            try:
+                db.execute(text("DROP VIEW IF EXISTS treemap_live_view"))
+                db.commit()
+            except Exception:
+                db.rollback()
+                # 드롭 실패는 무시하고 재생성을 시도
             db.execute(text(TREEMAP_VIEW_SQL))
             db.commit()
         except Exception:
@@ -1494,14 +1547,25 @@ def get_treemap_live(
             raise HTTPException(status_code=500, detail="Failed to create treemap view")
         # 재조회
         try:
-            rows = db.execute(text(
+            base_sql = (
                 """
                 SELECT asset_id, ticker, name, asset_type, market_cap, logo_url,
                        price_change_percentage_24h, current_price,
                        market_status, realtime_updated_at, daily_data_updated_at
                 FROM treemap_live_view
                 """
-            )).fetchall()
+            )
+            conditions = []
+            params = {}
+            if asset_type_id is not None:
+                conditions.append("asset_id IN (SELECT asset_id FROM assets WHERE asset_type_id = :asset_type_id)")
+                params["asset_type_id"] = asset_type_id
+            if type_name_norm is not None:
+                conditions.append("LOWER(asset_type) = :type_name_lower")
+                params["type_name_lower"] = type_name_lower
+            if conditions:
+                base_sql += " WHERE " + " AND ".join(conditions)
+            rows = db.execute(text(base_sql), params).fetchall()
         except Exception as e2:
             logger.exception("treemap_live_view select failed after create")
             raise HTTPException(status_code=500, detail=f"Failed to query treemap view: {str(e2)}")

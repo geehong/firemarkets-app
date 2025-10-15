@@ -1,15 +1,15 @@
 import { Metadata } from 'next'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import ComponentCard from '@/components/common/ComponentCard'
+import Badge from '@/components/ui/badge/Badge'
+import Button from '@/components/ui/button/Button'
 import { 
-  Activity, 
-  BarChart3, 
-  TrendingUp, 
-  Info,
-  ArrowRight,
-  Bitcoin
-} from 'lucide-react'
+  BoltIcon, 
+  PieChartIcon, 
+  ArrowUpIcon, 
+  InfoIcon,
+  ArrowRightIcon,
+  DollarLineIcon
+} from '@/icons'
 import Link from 'next/link'
 
 // 정적 메타데이터
@@ -140,7 +140,7 @@ export default function OnchainPage() {
           {/* 헤더 */}
           <div className="text-center space-y-4">
             <div className="flex items-center justify-center gap-3">
-              <Bitcoin className="h-8 w-8 text-orange-500" />
+              <DollarLineIcon className="h-8 w-8 text-orange-500" />
               <h1 className="text-4xl font-bold">Bitcoin Onchain Analysis</h1>
             </div>
             <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
@@ -152,106 +152,94 @@ export default function OnchainPage() {
           {/* 주요 메트릭 카드들 */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {popularMetrics.map((metric) => (
-              <Card key={metric.id} className="hover:shadow-lg transition-shadow">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg">{metric.name}</CardTitle>
-                    <div className={`w-3 h-3 rounded-full ${metric.color}`} />
-                  </div>
-                  <Badge variant="secondary">{metric.category}</Badge>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    {metric.description}
-                  </p>
-                  <Link href={`/onchain/${metric.id}`}>
-                    <Button className="w-full" variant="outline">
-                      View Analysis
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </Link>
-                </CardContent>
-              </Card>
+              <ComponentCard key={metric.id} title={metric.name}>
+                <div className="flex items-center justify-between mb-2">
+                  <Badge color="info">{metric.category}</Badge>
+                  <div className={`w-3 h-3 rounded-full ${metric.color}`} />
+                </div>
+                <p className="text-sm text-gray-500 mb-4">
+                  {metric.description}
+                </p>
+                <Link href={`/onchain/${metric.id}`}>
+                  <Button className="w-full" variant="outline">
+                    View Analysis
+                    <ArrowRightIcon className="ml-2 h-4 w-4" />
+                  </Button>
+                </Link>
+              </ComponentCard>
             ))}
           </div>
 
           {/* 특별 기능 섹션 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* 반감기 분석 */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5" />
-                  Bitcoin Halving Analysis
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground mb-4">
-                  Explore historical Bitcoin halving cycles and their impact on price movements. 
-                  Compare different halving periods and analyze market behavior.
-                </p>
-                <Link href="/onchain/halving">
-                  <Button className="w-full">
-                    View Halving Analysis
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
+            <ComponentCard title="Bitcoin Halving Analysis">
+              <p className="text-gray-500 mb-4">
+                Explore historical Bitcoin halving cycles and their impact on price movements. 
+                Compare different halving periods and analyze market behavior.
+              </p>
+              <Link href="/onchain/halving">
+                <Button className="w-full">
+                  View Halving Analysis
+                  <ArrowRightIcon className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+            </ComponentCard>
 
             {/* 상관관계 분석 */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5" />
-                  Correlation Analysis
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground mb-4">
-                  Analyze the correlation between Bitcoin price and various onchain metrics. 
-                  Understand market dynamics through statistical analysis.
-                </p>
-                <Link href="/onchain/mvrv_z_score">
-                  <Button className="w-full" variant="outline">
-                    Start Analysis
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
+            <ComponentCard title="Correlation Analysis">
+              <p className="text-gray-500 mb-4">
+                Analyze the correlation between Bitcoin price and various onchain metrics. 
+                Understand market dynamics through statistical analysis.
+              </p>
+              <Link href="/onchain/mvrv_z_score">
+                <Button className="w-full" variant="outline">
+                  Start Analysis
+                  <ArrowRightIcon className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+            </ComponentCard>
           </div>
 
           {/* 정보 섹션 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Info className="h-5 w-5" />
-                About Onchain Analysis
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <h4 className="font-medium mb-2">What is Onchain Analysis?</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Onchain analysis examines blockchain data to understand market behavior, 
-                    network health, and price movements. It provides insights that traditional 
-                    market analysis cannot capture.
-                  </p>
-                </div>
-                <div>
-                  <h4 className="font-medium mb-2">Key Benefits</h4>
-                  <ul className="text-sm text-muted-foreground space-y-1">
-                    <li>• Real-time network activity monitoring</li>
-                    <li>• Market sentiment analysis</li>
-                    <li>• Price prediction insights</li>
-                    <li>• Risk assessment tools</li>
-                  </ul>
-                </div>
+          <ComponentCard title="About Onchain Analysis">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h4 className="font-medium mb-2">What is Onchain Analysis?</h4>
+                <p className="text-sm text-gray-500">
+                  Onchain analysis examines blockchain data to understand market behavior, 
+                  network health, and price movements. It provides insights that traditional 
+                  market analysis cannot capture.
+                </p>
               </div>
-            </CardContent>
-          </Card>
+              <div>
+                <h4 className="font-medium mb-2">Key Benefits</h4>
+                <ul className="text-sm text-gray-500 space-y-1">
+                  <li>• Real-time network activity monitoring</li>
+                  <li>• Market sentiment analysis</li>
+                  <li>• Price prediction insights</li>
+                  <li>• Risk assessment tools</li>
+                </ul>
+              </div>
+            </div>
+          </ComponentCard>
+
+          {/* Halving Bull Chart 바로가기 */}
+          <ComponentCard title="Halving Bull Chart">
+            <div className="grid grid-cols-1 gap-6">
+              <div>
+                <p className="text-sm text-gray-500 mb-4">
+                  Explore a dedicated visualization focused on bull market structures across Bitcoin halving cycles.
+                </p>
+                <Link href="/onchain/halving/halving-bull-chart">
+                  <Button className="w-full">
+                    Open Halving Bull Chart
+                    <ArrowRightIcon className="ml-2 h-4 w-4" />
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </ComponentCard>
         </div>
       </main>
     </>

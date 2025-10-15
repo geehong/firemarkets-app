@@ -12,7 +12,8 @@ export async function generateMetadata({
   params 
 }: AssetPageProps): Promise<Metadata> {
   try {
-    const asset = await apiClient.getAssetOverview(params.assetIdentifier)
+    const { assetIdentifier } = await params
+    const asset = await apiClient.getAssetOverview(assetIdentifier)
     
     if (!asset) {
       return {
@@ -34,7 +35,7 @@ export async function generateMetadata({
         description: `Live price and market data for ${asset.name}.`,
         images: asset.logo_url ? [asset.logo_url] : ['/default-logo.png'],
         type: 'website',
-        url: `/assets/${params.assetIdentifier}`,
+        url: `/assets/${assetIdentifier}`,
       },
       twitter: {
         card: 'summary_large_image',
@@ -43,7 +44,7 @@ export async function generateMetadata({
         images: asset.logo_url ? [asset.logo_url] : ['/default-logo.png'],
       },
       alternates: {
-        canonical: `/assets/${params.assetIdentifier}`,
+        canonical: `/assets/${assetIdentifier}`,
       },
       other: {
         'asset-type': asset.type_name,
@@ -97,10 +98,11 @@ function generateStructuredData(asset: any, assetIdentifier: string) {
 }
 
 export default async function AssetPage({ params }: AssetPageProps) {
+  const { assetIdentifier } = await params
   let asset
   
   try {
-    asset = await apiClient.getAssetOverview(params.assetIdentifier)
+    asset = await apiClient.getAssetOverview(assetIdentifier)
   } catch (error) {
     console.error('Failed to fetch asset:', error)
     notFound()
@@ -110,7 +112,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
     notFound()
   }
 
-  const structuredData = generateStructuredData(asset, params.assetIdentifier)
+  const structuredData = generateStructuredData(asset, assetIdentifier)
 
   return (
     <>

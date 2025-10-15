@@ -1,19 +1,10 @@
 "use client"
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import Highcharts from 'highcharts/highstock';
-import HighchartsReact from 'highcharts-react-official';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
 import ChartControls from '@/components/common/ChartControls';
 import { getColorMode } from '@/constants/colorModes';
-
-// Load Highcharts modules in correct order
-import 'highcharts/modules/stock';
-import 'highcharts/modules/exporting';
-import 'highcharts/modules/accessibility';
-import 'highcharts/modules/drag-panes';
-import 'highcharts/modules/navigator';
 
 interface OnChainChartProps {
   assetId?: string;
@@ -55,7 +46,10 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
     end_date: string;
   } | null>(null);
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
-  const chartRef = useRef<HighchartsReact.RefObject>(null);
+  const [isClient, setIsClient] = useState(false);
+  const [HighchartsReact, setHighchartsReact] = useState<any>(null);
+  const [Highcharts, setHighcharts] = useState<any>(null);
+  const chartRef = useRef<any>(null);
   const previousCorrelationRef = useRef<{
     correlation: number;
     interpretation: string;
@@ -64,15 +58,50 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
     end_date: string;
   } | null>(null);
 
+  // 클라이언트 사이드에서 Highcharts 동적 로드
+  useEffect(() => {
+    const loadHighcharts = async () => {
+      try {
+        const [
+          { default: HighchartsReactComponent },
+          { default: HighchartsCore }
+        ] = await Promise.all([
+          import('highcharts-react-official'),
+          import('highcharts/highstock')
+        ])
+
+        // Highcharts 모듈들 동적 로드
+        await Promise.all([
+          import('highcharts/modules/stock'),
+          import('highcharts/modules/exporting'),
+          import('highcharts/modules/accessibility'),
+          import('highcharts/modules/drag-panes'),
+          import('highcharts/modules/navigator')
+        ])
+
+        setHighchartsReact(() => HighchartsReactComponent)
+        setHighcharts(HighchartsCore)
+        setIsClient(true)
+      } catch (error) {
+        console.error('Failed to load Highcharts:', error)
+        setError('Failed to load chart library')
+      }
+    }
+
+    loadHighcharts()
+  }, [])
+
   // 모바일 감지
   useEffect(() => {
+    if (!isClient) return
+
     const checkIsMobile = () => {
       setIsMobile(window.innerWidth < 768);
     };
 
     window.addEventListener('resize', checkIsMobile);
     return () => window.removeEventListener('resize', checkIsMobile);
-  }, []);
+  }, [isClient]);
 
   // 차트 타입 변경 핸들러
   const handleChartTypeChange = (type: 'line' | 'spline' | 'area' | 'areaspline') => {
@@ -669,6 +698,18 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
         <div className="text-center">
           <div className="text-red-600 mb-2">⚠️ 오류 발생</div>
           <div className="text-gray-700 text-sm">{error}</div>
+        </div>
+      </div>
+    );
+  }
+
+  // 클라이언트 사이드에서만 차트 렌더링
+  if (!isClient || !HighchartsReact || !Highcharts) {
+    return (
+      <div className="bg-white rounded-lg p-6 flex items-center justify-center" style={{ height: `${height}px` }}>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+          <div className="text-gray-700">Loading chart library...</div>
         </div>
       </div>
     );

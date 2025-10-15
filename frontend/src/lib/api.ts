@@ -272,9 +272,13 @@ export class ApiClient {
     return this.request('/crypto/global-metrics');
   }
 
-  // TreeMap Live Data
-  getTreemapLiveData() {
-    return this.request('/assets/treemap/live');
+  // TreeMap Live Data (optional filters)
+  getTreemapLiveData(params?: { asset_type_id?: number; type_name?: string }) {
+    const search = new URLSearchParams();
+    if (typeof params?.asset_type_id === 'number') search.append('asset_type_id', String(params.asset_type_id));
+    if (params?.type_name) search.append('type_name', params.type_name);
+    const qs = search.toString();
+    return this.request(`/assets/treemap/live${qs ? `?${qs}` : ''}`);
   }
 
   // Assets Overview - 통합 자산 개요 데이터
@@ -322,8 +326,12 @@ export class ApiClient {
   }
 
   // Performance TreeMap Data (for AssetsList)
-  getPerformanceTreeMap() {
-    return this.request('/realtime/performance-treemap');
+  getPerformanceTreeMap(params?: { asset_type_id?: number; type_name?: string }) {
+    const search = new URLSearchParams();
+    if (typeof params?.asset_type_id === 'number') search.append('asset_type_id', String(params.asset_type_id));
+    if (params?.type_name) search.append('type_name', params.type_name);
+    const qs = search.toString();
+    return this.request(`/assets/treemap/live${qs ? `?${qs}` : ''}`);
   }
 }
 

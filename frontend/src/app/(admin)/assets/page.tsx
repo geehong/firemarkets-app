@@ -9,7 +9,7 @@ interface AssetsPageProps {
 export async function generateMetadata({ 
   searchParams 
 }: AssetsPageProps): Promise<Metadata> {
-  const typeName = searchParams.type_name
+  const { type_name: typeName } = await searchParams
   
   if (typeName) {
     return {
@@ -81,8 +81,9 @@ function generateStructuredData(typeName?: string) {
   return baseData
 }
 
-export default function AssetsPage({ searchParams }: AssetsPageProps) {
-  const structuredData = generateStructuredData(searchParams.type_name)
+export default async function AssetsPage({ searchParams }: AssetsPageProps) {
+  const { type_name: typeName } = await searchParams
+  const structuredData = generateStructuredData(typeName)
 
   return (
     <>

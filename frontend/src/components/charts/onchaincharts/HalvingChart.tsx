@@ -1,18 +1,9 @@
 "use client"
 
 import React, { useState, useRef, useEffect } from 'react';
-import Highcharts from 'highcharts/highstock';
-import HighchartsReact from 'highcharts-react-official';
 import { useMultipleHalvingData } from '@/hooks/useCrypto';
 import ChartControls from '@/components/common/ChartControls';
 import { getColorMode } from '@/constants/colorModes';
-
-// Load Highcharts modules in correct order
-import 'highcharts/modules/stock';
-import 'highcharts/modules/exporting';
-import 'highcharts/modules/accessibility';
-import 'highcharts/modules/drag-panes';
-import 'highcharts/modules/navigator';
 
 interface HalvingChartProps {
   title?: string;
@@ -52,7 +43,10 @@ const HalvingChart: React.FC<HalvingChartProps> = ({
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
   const [colorMode, setColorMode] = useState<'dark' | 'vivid' | 'high-contrast' | 'simple'>('vivid'); // 다크모드 제거
   const [showSettings, setShowSettings] = useState(false);
-  const chartRef = useRef<HighchartsReact.RefObject>(null);
+  const [isClient, setIsClient] = useState(false);
+  const [HighchartsReact, setHighchartsReact] = useState<any>(null);
+  const [Highcharts, setHighcharts] = useState<any>(null);
+  const chartRef = useRef<any>(null);
 
   // 4차 반감기 시작가격 기본값
   const isLoadingStartPrice = false;
@@ -69,15 +63,49 @@ const HalvingChart: React.FC<HalvingChartProps> = ({
   // 에러 확인
   const error = errors.length > 0 ? errors[0] : null;
 
+  // 클라이언트 사이드에서 Highcharts 동적 로드
+  useEffect(() => {
+    const loadHighcharts = async () => {
+      try {
+        const [
+          { default: HighchartsReactComponent },
+          { default: HighchartsCore }
+        ] = await Promise.all([
+          import('highcharts-react-official'),
+          import('highcharts/highstock')
+        ])
+
+        // Highcharts 모듈들 동적 로드
+        await Promise.all([
+          import('highcharts/modules/stock'),
+          import('highcharts/modules/exporting'),
+          import('highcharts/modules/accessibility'),
+          import('highcharts/modules/drag-panes'),
+          import('highcharts/modules/navigator')
+        ])
+
+        setHighchartsReact(() => HighchartsReactComponent)
+        setHighcharts(HighchartsCore)
+        setIsClient(true)
+      } catch (error) {
+        console.error('Failed to load Highcharts:', error)
+      }
+    }
+
+    loadHighcharts()
+  }, [])
+
   // 화면 크기 변경 감지
   useEffect(() => {
+    if (!isClient) return
+
     const handleResize = () => {
       setIsMobile(window.innerWidth < 768);
     };
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [isClient]);
 
   // 차트 타입 변경 핸들러
   const handleChartTypeChange = (type: string) => {
@@ -641,6 +669,18 @@ const HalvingChart: React.FC<HalvingChartProps> = ({
       }
     };
   };
+
+  // 클라이언트 사이드에서만 차트 렌더링
+  if (!isClient || !HighchartsReact || !Highcharts) {
+    return (
+      <div className="d-flex justify-content-center align-items-center" style={{ height: '200px' }}>
+        <div className="spinner-border text-primary" role="status">
+          <span className="visually-hidden">Loading...</span>
+        </div>
+        <span className="ms-3">Loading chart library...</span>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

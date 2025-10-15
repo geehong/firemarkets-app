@@ -12,8 +12,9 @@ export async function generateMetadata({
   params 
 }: OnchainMetricPageProps): Promise<Metadata> {
   try {
+    const { metric } = await params
     const metrics = await apiClient.getOnchainMetrics()
-    const metricConfig = metrics.find(m => m.id === params.metric)
+    const metricConfig = metrics.find(m => m.id === metric)
     
     if (!metricConfig) {
       return {
@@ -35,7 +36,7 @@ export async function generateMetadata({
         title: `${cleanMetricName} Analysis | FireMarkets`,
         description: `Bitcoin ${cleanMetricName} analysis and market correlation.`,
         type: 'website',
-        url: `/onchain/${params.metric}`,
+        url: `/onchain/${metric}`,
       },
       twitter: {
         card: 'summary_large_image',
@@ -43,10 +44,10 @@ export async function generateMetadata({
         description: `Bitcoin ${cleanMetricName} analysis and market correlation.`,
       },
       alternates: {
-        canonical: `/onchain/${params.metric}`,
+        canonical: `/onchain/${metric}`,
       },
       other: {
-        'metric-id': params.metric,
+        'metric-id': metric,
         'metric-name': cleanMetricName,
         'analysis-type': 'onchain',
       },
@@ -95,11 +96,12 @@ function generateStructuredData(metricConfig: any, metric: string) {
 }
 
 export default async function OnchainMetricPage({ params }: OnchainMetricPageProps) {
+  const { metric } = await params
   let metricConfig
   
   try {
     const metrics = await apiClient.getOnchainMetrics()
-    metricConfig = metrics.find(m => m.id === params.metric)
+    metricConfig = metrics.find(m => m.id === metric)
   } catch (error) {
     console.error('Failed to fetch onchain metrics:', error)
     notFound()
@@ -109,7 +111,7 @@ export default async function OnchainMetricPage({ params }: OnchainMetricPagePro
     notFound()
   }
 
-  const structuredData = generateStructuredData(metricConfig, params.metric)
+  const structuredData = generateStructuredData(metricConfig, metric)
 
   return (
     <>

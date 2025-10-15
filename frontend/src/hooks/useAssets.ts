@@ -37,11 +37,12 @@ export interface TreemapLiveResponse {
 
 // Treemap live data hook for tables
 export const useTreemapLive = (
+  params?: { asset_type_id?: number; type_name?: string },
   queryOptions?: UseQueryOptions
 ) => {
   return useQuery({
-    queryKey: ['treemap-live-table'],
-    queryFn: () => apiClient.getTreemapLiveData(),
+    queryKey: ['treemap-live-table', params],
+    queryFn: () => apiClient.getTreemapLiveData(params),
     staleTime: 5 * 60 * 1000,
     refetchInterval: 15 * 60 * 1000,
     ...queryOptions,
@@ -159,11 +160,12 @@ export const useMarketCaps = (
 
 // TreeMap Live Data Hook
 export const useTreemapLiveData = (
+  params?: { asset_type_id?: number; type_name?: string },
   queryOptions?: UseQueryOptions
 ) => {
   return useQuery({
-    queryKey: ['treemap-live'],
-    queryFn: () => apiClient.getTreemapLiveData(),
+    queryKey: ['treemap-live', params],
+    queryFn: () => apiClient.getTreemapLiveData(params),
     staleTime: 5 * 60 * 1000, // 5분
     refetchInterval: 15 * 60 * 1000, // 15분마다 자동 새로고침
     ...queryOptions,

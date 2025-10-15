@@ -55,7 +55,14 @@ export const useAssetOverview = (assetIdentifier?: string) => {
       console.log('🔍 useAssetOverview: Fetching overview data for:', assetIdentifier)
       const response = await apiClient.getAssetOverview(assetIdentifier)
       console.log('✅ useAssetOverview: API response:', response)
-      setData(response)
+      
+      // API 응답이 객체인지 확인하고 적절히 처리
+      if (response && typeof response === 'object') {
+        setData(response)
+      } else {
+        console.error('❌ useAssetOverview: Invalid response format:', response)
+        setError(new Error('Invalid response format from API'))
+      }
     } catch (err) {
       console.error('❌ useAssetOverview: API error:', err)
       setError(err instanceof Error ? err : new Error('Failed to fetch asset overview'))
