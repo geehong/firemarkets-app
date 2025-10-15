@@ -33,6 +33,28 @@ const navItems: NavItem[] = [
     subItems: [{ name: "Ecommerce", path: "/", pro: false }],
   },
   {
+    icon: <PieChartIcon />,
+    name: "Assets",
+    subItems: [
+      { name: "All Assets", path: "/assets", pro: false },
+      { name: "Stocks", path: "/assets?type_name=Stocks", pro: false },
+      { name: "Cryptocurrency", path: "/assets?type_name=Cryptocurrency", pro: false },
+      { name: "ETFs", path: "/assets?type_name=ETF", pro: false },
+      { name: "Commodities", path: "/assets?type_name=Commodity", pro: false },
+    ],
+  },
+  {
+    icon: <PlugInIcon />,
+    name: "Onchain Analysis",
+    subItems: [
+      { name: "Overview", path: "/onchain", pro: false },
+      { name: "MVRV Z-Score", path: "/onchain/mvrv_z_score", pro: false },
+      { name: "NVT Ratio", path: "/onchain/nvt_ratio", pro: false },
+      { name: "Realized Price", path: "/onchain/realized_price", pro: false },
+      { name: "Halving Analysis", path: "/onchain/halving", pro: false },
+    ],
+  },
+  {
     icon: <CalenderIcon />,
     name: "Calendar",
     path: "/calendar",
@@ -111,6 +133,14 @@ const othersItems: NavItem[] = [
     subItems: [
       { name: "Sign In", path: "/signin", pro: false },
       { name: "Sign Up", path: "/signup", pro: false },
+      { name: "Auth Test", path: "/auth-test", pro: false },
+    ],
+  },
+  {
+    icon: <UserCircleIcon />,
+    name: "Admin Management",
+    subItems: [
+      { name: "App Config", path: "/admin", pro: false },
     ],
   },
 ];

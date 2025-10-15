@@ -8,6 +8,8 @@ import {
   GridIcon,
   ListIcon,
   PageIcon,
+  PieChartIcon,
+  PlugInIcon,
   TableIcon,
   UserCircleIcon,
 } from "../icons/index";
@@ -18,6 +20,16 @@ const navItems = [
     icon: <GridIcon />,
     name: "Dashboard",
     path: "/",
+  },
+  {
+    icon: <PieChartIcon />,
+    name: "Assets",
+    path: "/assets",
+  },
+  {
+    icon: <PlugInIcon />,
+    name: "Onchain",
+    path: "/onchain",
   },
   {
     icon: <CalenderIcon />,

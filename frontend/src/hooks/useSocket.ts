@@ -43,10 +43,7 @@ const getSocketURL = () => {
   return `${protocol}//${hostname}:8001`
 }
 
-// 환경에 따른 Socket URL 동적 설정
-const SOCKET_URL = getSocketURL()
-
-// 전역 Socket 인스턴스 관리
+// 전역 Socket 인스턴스 관리 (클라이언트 측에서만)
 let globalSocket: Socket | null = null
 let connectionCount = 0
 let globalSubscriptions: Set<string> | null = null
@@ -56,16 +53,24 @@ export const useSocket = () => {
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [transport, setTransport] = useState<string>('unknown')
 
-  // 동적 URL 가져오기 (메모이제이션)
-  const socketURL = useMemo(() => getSocketURL(), [])
+  // 동적 URL 가져오기 (메모이제이션) - 클라이언트에서만 실행
+  const socketURL = useMemo(() => {
+    if (typeof window === 'undefined') return 'http://localhost:8001'
+    return getSocketURL()
+  }, [])
   
-  // 모바일 감지 (메모이제이션)
+  // 모바일 감지 (메모이제이션) - 클라이언트에서만 실행
   const isMobile = useMemo(() => {
     if (typeof window === 'undefined') return false
     return window.innerWidth <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
   }, [])
 
   useEffect(() => {
+    // 클라이언트 사이드에서만 실행
+    if (typeof window === 'undefined') {
+      return
+    }
+
     // 전역 Socket 인스턴스 사용
     if (!globalSocket) {
       console.log('🔗 Socket 연결 시도:', socketURL, '모바일:', isMobile)
@@ -225,22 +230,39 @@ export const useRealtimePrices = (assetIdentifier: string) => {
   const [latestPrice, setLatestPrice] = useState<RealtimePrice | null>(null)
   const [priceHistory, setPriceHistory] = useState<RealtimePrice[]>([])
   
-  // 전역 구독 관리 초기화
-  if (!globalSubscriptions) {
-    globalSubscriptions = new Set<string>()
-  }
+  // 구독 상태를 관리하기 위한 Ref
+  const subscriptionsRef = useRef<Set<string>>(new Set())
+  
+  // 컴포넌트별 연결 카운트를 위한 Ref
+  const connectionCountRef = useRef(0)
+  
+  // 전역 구독 관리 초기화 (클라이언트에서만)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    
+    if (!globalSubscriptions) {
+      globalSubscriptions = new Set<string>()
+    }
+  }, [])
 
   useEffect(() => {
+    // 클라이언트 사이드에서만 실행
+    if (typeof window === 'undefined') {
+      return
+    }
+
     if (!socket || !assetIdentifier) {
       return
     }
 
     // 전역 구독 세트 초기화
     if (!globalSubscriptions) globalSubscriptions = new Set<string>()
+    if (!subscriptionsRef.current) subscriptionsRef.current = new Set<string>()
 
     // 항상 구독 요청 (idempotent 처리 가정)
     socket.emit('subscribe_prices', { symbols: [assetIdentifier] })
     globalSubscriptions.add(assetIdentifier)
+    subscriptionsRef.current.add(assetIdentifier)
 
     // 구독 확인 수신
     const handleSubscriptionConfirmed = (data: any) => {
@@ -279,7 +301,8 @@ export const useRealtimePrices = (assetIdentifier: string) => {
       // 전역 구독 해제 (실제로는 다른 컴포넌트에서 사용 중일 수 있으므로 해제하지 않음)
       // socket.emit('unsubscribe_prices', { symbols: [assetIdentifier] })
       // globalSubscriptions?.delete(assetIdentifier)
-      
+      // subscriptionsRef.current?.delete(assetIdentifier)
+
       socket.off('subscription_confirmed', handleSubscriptionConfirmed)
       socket.off('realtime_quote', handleRealtimeQuote)
     }

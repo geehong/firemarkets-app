@@ -276,6 +276,55 @@ export class ApiClient {
   getTreemapLiveData() {
     return this.request('/assets/treemap/live');
   }
+
+  // Assets Overview - 통합 자산 개요 데이터
+  getAssetOverview(assetIdentifier: string) {
+    return this.request(`/assets/overview/${assetIdentifier}`);
+  }
+
+  // Assets List with filters
+  getAssetsList(params?: { 
+    type_name?: string; 
+    has_ohlcv_data?: boolean; 
+    limit?: number; 
+    offset?: number;
+    search?: string;
+  }) {
+    const search = new URLSearchParams();
+    if (params?.type_name) search.append('type_name', params.type_name);
+    if (params?.has_ohlcv_data !== undefined) search.append('has_ohlcv_data', String(params.has_ohlcv_data));
+    if (params?.limit) search.append('limit', String(params.limit));
+    if (params?.offset) search.append('offset', String(params.offset));
+    if (params?.search) search.append('search', params.search);
+    const qs = search.toString();
+    return this.request(`/assets/assets${qs ? `?${qs}` : ''}`);
+  }
+
+  // Onchain Metrics List
+  getOnchainMetrics() {
+    return this.request('/onchain/metrics');
+  }
+
+  // Onchain Metric Data
+  getOnchainMetricData(metric: string, params?: { 
+    time_range?: string; 
+    limit?: number;
+    start_date?: string;
+    end_date?: string;
+  }) {
+    const search = new URLSearchParams();
+    if (params?.time_range) search.append('time_range', params.time_range);
+    if (params?.limit) search.append('limit', String(params.limit));
+    if (params?.start_date) search.append('start_date', params.start_date);
+    if (params?.end_date) search.append('end_date', params.end_date);
+    const qs = search.toString();
+    return this.request(`/onchain/metrics/${metric}/data${qs ? `?${qs}` : ''}`);
+  }
+
+  // Performance TreeMap Data (for AssetsList)
+  getPerformanceTreeMap() {
+    return this.request('/realtime/performance-treemap');
+  }
 }
 
 export const apiClient = new ApiClient()

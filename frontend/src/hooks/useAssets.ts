@@ -169,3 +169,35 @@ export const useTreemapLiveData = (
     ...queryOptions,
   })
 }
+
+// Assets List with Filters Hook (for overviews migration)
+export const useAssetsList = (
+  options?: {
+    type_name?: string
+    has_ohlcv_data?: boolean
+    limit?: number
+    offset?: number
+    search?: string
+  },
+  queryOptions?: UseQueryOptions
+) => {
+  return useQuery({
+    queryKey: ['assets-list', options],
+    queryFn: () => apiClient.getAssetsList(options),
+    staleTime: 5 * 60 * 1000, // 5분
+    ...queryOptions,
+  })
+}
+
+// Performance TreeMap Hook (for AssetsList component)
+export const usePerformanceTreeMap = (
+  queryOptions?: UseQueryOptions
+) => {
+  return useQuery({
+    queryKey: ['performance-treemap'],
+    queryFn: () => apiClient.getPerformanceTreeMap(),
+    staleTime: 5 * 60 * 1000, // 5분
+    refetchInterval: 15 * 60 * 1000, // 15분마다 자동 새로고침
+    ...queryOptions,
+  })
+}
