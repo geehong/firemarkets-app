@@ -22,6 +22,7 @@ import {
 import SidebarWidget from "./SidebarWidget";
 import { useNavigation } from "../hooks/useNavigation";
 import { getIconComponent } from "../utils/iconMapper";
+import MobileTopMenu from "../components/MobileTopMenu";
 
 type NavItem = {
   name: string;
@@ -37,64 +38,11 @@ type NavItem = {
 };
 
 const navItems: NavItem[] = [
-  // Removed static Assets and Onchain menus (provided dynamically)
-  {
-    icon: <CalenderIcon />,
-    name: "Calendar",
-    path: "/calendar",
-  },
-  {
-    icon: <UserCircleIcon />,
-    name: "User Profile",
-    path: "/profile",
-  },
-
-  {
-    name: "Forms",
-    icon: <ListIcon />,
-    subItems: [{ name: "Form Elements", path: "/form-elements", pro: false }],
-  },
-  {
-    name: "Pages",
-    icon: <PageIcon />,
-    subItems: [
-      { name: "Blank Page", path: "/blank", pro: false },
-      { name: "404 Error", path: "/error-404", pro: false },
-    ],
-  },
-  {
-    name: "Test",
-    icon: <PlugInIcon />,
-    subItems: [
-      { name: "WebSocket", path: "/test", pro: false },
-    ],
-  }
+  // 모든 메뉴가 이제 동적으로 데이터베이스에서 제공됨
 ];
 
 const othersItems: NavItem[] = [
-  // Removed static Charts (provided dynamically)
-  {
-    icon: <TableIcon />,
-    name: "Tables",
-    subItems: [
-      { name: "Basic Tables", path: "/basic-tables", pro: false },
-      { name: "Assets List", path: "/assets-list", pro: false },
-      { name: "History Table", path: "/history-table", pro: false },
-      
-    ],
-  },
-  {
-    icon: <BoxCubeIcon />,
-    name: "UI Elements",
-    subItems: [
-      { name: "Alerts", path: "/alerts", pro: false },
-      { name: "Avatar", path: "/avatars", pro: false },
-      { name: "Badge", path: "/badge", pro: false },
-      { name: "Buttons", path: "/buttons", pro: false },
-      { name: "Images", path: "/images", pro: false },
-      { name: "Videos", path: "/videos", pro: false },
-    ],
-  }
+  // 모든 메뉴가 이제 동적으로 데이터베이스에서 제공됨
   // {
   //   icon: <PlugInIcon />,
   //   name: "Authentication",
@@ -139,16 +87,29 @@ const AppSidebar: React.FC = () => {
       }
       
       return {
-        name: item.name,
+        name: (item.name && typeof item.name === 'string' && item.name.trim() !== '') 
+          ? item.name.trim() 
+          : 'Unnamed Menu',
         icon: typeof item.icon === 'string' ? getIconComponent(item.icon) : <PlugInIcon />,
         path: processedPath,
         subItems: item.children && item.children.length > 0 
-          ? item.children.map((child: any) => convertItem(child))
+          ? item.children
+              .filter((child: any) => child && child.name && child.name.trim() !== '')
+              .map((child: any) => convertItem(child))
           : undefined
       };
     };
     
-    return dynamicItems.map(convertItem);
+    return dynamicItems
+      .filter(item => {
+        // 더 강력한 필터링
+        if (!item || typeof item !== 'object') return false;
+        if (!item.name || typeof item.name !== 'string') return false;
+        if (item.name.trim() === '') return false;
+        if (item.name === 'null' || item.name === 'undefined') return false;
+        return true;
+      })
+      .map(convertItem);
   };
 
   // 모든 메뉴 통합 (동적 메뉴 + 정적 메뉴)
@@ -185,7 +146,16 @@ const AppSidebar: React.FC = () => {
     menuType: string
   ) => (
     <ul className="flex flex-col gap-4">
-      {navItems.map((nav, index) => (
+      {navItems
+        .filter(nav => {
+          // 더 강력한 필터링
+          if (!nav || typeof nav !== 'object') return false;
+          if (!nav.name || typeof nav.name !== 'string') return false;
+          if (nav.name.trim() === '') return false;
+          if (nav.name === 'null' || nav.name === 'undefined') return false;
+          return true;
+        })
+        .map((nav, index) => (
         <li key={`${menuType}-${index}-${nav.name}`}>
           {nav.subItems ? (
             <Disclosure as="div" key={`${menuType}-disc-${index}-${submenuResetKey}`} defaultOpen={getDefaultOpen(nav.subItems)}>
@@ -408,22 +378,34 @@ const AppSidebar: React.FC = () => {
     return null;
   }
 
+  // 모바일용 주요 메뉴만 필터링 (주요 네비게이션 메뉴만)
+  const mobileMenuItems = allMenuItems.filter(item => {
+    // 주요 메뉴만 포함
+    const mainMenus = ['Dashboard', 'Assets', 'OnChain', 'Calendar', 'Charts', 'Widgets'];
+    return mainMenus.includes(item.name) && item.path;
+  });
+
   return (
-    <aside
-      className={`fixed mt-16 flex flex-col lg:mt-0 top-0 px-1 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 border-r border-gray-200 
-        ${
-          isExpanded || isMobileOpen
-            ? "w-[290px]"
-            : isHovered
-            ? "w-[290px]"
-            : "w-[70px]"
-        }
-        ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}
-        lg:translate-x-0`}
-      onMouseEnter={() => !isExpanded && setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      suppressHydrationWarning
-    >
+    <>
+      {/* 모바일 상단 메뉴 */}
+      <MobileTopMenu menuItems={mobileMenuItems} />
+      
+      {/* 사이드바 (모바일 + 데스크톱) */}
+      <aside
+        className={`fixed flex flex-col top-0 px-1 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 border-r border-gray-200 
+          ${
+            isExpanded || isMobileOpen
+              ? "w-[290px]"
+              : isHovered
+              ? "w-[290px]"
+              : "w-[70px]"
+          }
+          ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}
+          lg:translate-x-0 lg:mt-0 mt-16`}
+        onMouseEnter={() => !isExpanded && setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        suppressHydrationWarning
+      >
       <div
         className={`py-8 flex items-center h-16 ${
           !isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
@@ -498,7 +480,8 @@ const AppSidebar: React.FC = () => {
         </nav>
         {isExpanded || isHovered || isMobileOpen ? <SidebarWidget /> : null}
       </div>
-    </aside>
+      </aside>
+    </>
   );
 };
 

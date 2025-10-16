@@ -147,7 +147,7 @@ export function useAuth() {
         error: null,
       })
       
-      router.push('/signin')
+      router.push('/admin/signin')
       router.refresh()
     } catch (error) {
       console.error('Logout error:', error)

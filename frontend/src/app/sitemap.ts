@@ -32,7 +32,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // UI Elements
     '/admin/videos',
     // Auth pages
-    '/signin',
+    '/admin/signin',
     // Error pages
     '/error-404',
   ].map((route) => ({

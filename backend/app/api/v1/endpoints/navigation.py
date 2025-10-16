@@ -2,11 +2,52 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import asc, text
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from ....core.database import get_postgres_db
 from ....models.navigation import Menu
+from ....dependencies.auth_deps import get_current_user
+from ....models.asset import User
 
 router = APIRouter()
+
+
+def check_menu_permissions(menu_dict: Dict[str, Any], user_role: str) -> bool:
+    """메뉴의 권한을 확인합니다."""
+    menu_metadata = menu_dict.get('menu_metadata', {})
+    if not menu_metadata:
+        return True  # 권한 설정이 없으면 모든 사용자에게 허용
+    
+    permissions = menu_metadata.get('permissions', [])
+    if not permissions:
+        return True  # 권한 설정이 없으면 모든 사용자에게 허용
+    
+    # super_admin은 모든 권한 통과
+    if user_role == 'super_admin':
+        return True
+    
+    # 사용자 role이 permissions에 포함되어 있는지 확인
+    return user_role in permissions
+
+
+def filter_menus_by_permissions(menus: List[Dict[str, Any]], user_role: str) -> List[Dict[str, Any]]:
+    """사용자 권한에 따라 메뉴를 필터링합니다."""
+    filtered_menus = []
+    
+    for menu in menus:
+        # 현재 메뉴의 권한 확인
+        if not check_menu_permissions(menu, user_role):
+            continue
+        
+        # 하위 메뉴들도 재귀적으로 필터링
+        if 'children' in menu and menu['children']:
+            filtered_children = filter_menus_by_permissions(menu['children'], user_role)
+            if filtered_children:  # 하위 메뉴가 하나라도 있으면 부모 메뉴도 유지
+                menu['children'] = filtered_children
+                filtered_menus.append(menu)
+        else:
+            filtered_menus.append(menu)
+    
+    return filtered_menus
 
 
 def build_menu_tree(menus: List[Menu]) -> List[Dict[str, Any]]:
@@ -42,17 +83,25 @@ def build_menu_tree(menus: List[Menu]) -> List[Dict[str, Any]]:
 
 
 @router.get("/menu", response_model=List[Dict[str, Any]])
-def get_menu_structure(db: Session = Depends(get_postgres_db)):
+def get_menu_structure(
+    db: Session = Depends(get_postgres_db),
+    current_user: Optional[User] = Depends(get_current_user)
+):
     """
-    미리 생성된 menus 테이블에서 전체 메뉴 구조를 가져옵니다.
+    미리 생성된 menus 테이블에서 사용자 권한에 맞는 메뉴 구조를 가져옵니다.
     """
     try:
         # is_active가 true인 모든 메뉴를 플랫하게 조회
         all_menus = db.query(Menu).filter(Menu.is_active == True).order_by(asc(Menu.order)).all()
         
-        # 계층 구조로 변환하여 반환
+        # 계층 구조로 변환
         menu_tree = build_menu_tree(all_menus)
-        return menu_tree
+        
+        # 사용자 권한에 따라 메뉴 필터링
+        user_role = getattr(current_user, 'role', 'user') if current_user else 'user'
+        filtered_menu_tree = filter_menus_by_permissions(menu_tree, user_role)
+        
+        return filtered_menu_tree
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get menu structure: {str(e)}")

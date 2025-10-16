@@ -45,7 +45,7 @@ export function useAuthGuard() {
           loading: false,
           error: data.message,
         })
-        router.push('/signin')
+        router.push('/admin/signin')
       }
     } catch (error) {
       setAuthState({
@@ -69,7 +69,7 @@ export function useAuthGuard() {
           loading: false,
           error: null,
         })
-        router.push('/signin')
+        router.push('/admin/signin')
         router.refresh()
       }
     } catch (error) {

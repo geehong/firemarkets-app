@@ -20,7 +20,7 @@ export default function robots(): MetadataRoute.Robots {
         '/api/*',
         '/_next',
         '/_next/*',
-        '/signin',
+        '/admin/signin',
         '/error-*',
       ],
     },
