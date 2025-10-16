@@ -416,29 +416,32 @@ const AppSidebar: React.FC = () => {
       >
         <Link href="/">
           {isExpanded || isHovered || isMobileOpen ? (
-            <>
+            <div className="flex items-center gap-2">
               <Image
-                className="dark:hidden h-8 w-auto"
+                className="h-8 w-8"
+                src="/images/logo/logo-icon.svg"
+                alt="FireMarkets Icon"
+                width={32}
+                height={32}
+                priority
+              />
+              <Image
+                className="h-12 w-auto max-w-full"
                 src="/images/logo/logo.svg"
-                alt="Logo"
-                width={150}
-                height={32}
+                alt="FireMarkets Logo"
+                width={200}
+                height={48}
+                priority
               />
-              <Image
-                className="hidden dark:block h-8 w-auto"
-                src="/images/logo/logo-dark.svg"
-                alt="Logo"
-                width={150}
-                height={32}
-              />
-            </>
+            </div>
           ) : (
             <Image
-              className="h-8 w-8"
+              className="h-10 w-10"
               src="/images/logo/logo-icon.svg"
-              alt="Logo"
-              width={32}
-              height={32}
+              alt="FireMarkets Icon"
+              width={40}
+              height={40}
+              priority
             />
           )}
         </Link>
@@ -449,19 +452,6 @@ const AppSidebar: React.FC = () => {
             {/* 통합된 메뉴 섹션 */}
             {!dynamicMenuLoading && !dynamicMenuError && (
               <div>
-                <h2
-                  className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
-                    !isExpanded && !isHovered
-                      ? "lg:justify-center"
-                      : "justify-start"
-                  }`}
-                >
-                  {isExpanded || isHovered || isMobileOpen ? (
-                    "Menu"
-                  ) : (
-                    <HorizontaLDots />
-                  )}
-                </h2>
                 {renderMenuItems(allMenuItems, "all")}
               </div>
             )}

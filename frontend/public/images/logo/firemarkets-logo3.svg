@@ -110,7 +110,7 @@
           letter-spacing="-3">FIRE</text>
     
     <!-- Markets text - Top right (32px) -->
-    <text x="230" y="-16" dominant-baseline="middle"
+    <text x="200" y="-16" dominant-baseline="middle"
           font-family="'Arial Black', sans-serif" 
           font-size="32" 
           font-weight="900" 
@@ -118,7 +118,7 @@
           letter-spacing="-1">MARKETS</text>
     
     <!-- Decorative line under Markets -->
-    <rect x="250" y="-1" width="285" height="2" fill="url(#fireGrad)" opacity="0.5">
+    <rect x="200" y="-1" width="285" height="2" fill="url(#fireGrad)" opacity="0.5">
       <animate attributeName="opacity" values="0.3;0.7;0.3" dur="2s" repeatCount="indefinite"/>
     </rect>
     

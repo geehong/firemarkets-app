@@ -85,18 +85,12 @@ const AppHeader: React.FC = () => {
 
           <Link href="/" className="lg:hidden">
             <Image
-              width={154}
-              height={32}
-              className="dark:hidden"
-              src="./images/logo/logo.svg"
-              alt="Logo"
-            />
-            <Image
-              width={154}
-              height={32}
-              className="hidden dark:block"
-              src="./images/logo/logo-dark.svg"
-              alt="Logo"
+              width={200}
+              height={48}
+              className="h-10 w-auto max-w-full"
+              src="/images/logo/logo.svg"
+              alt="FireMarkets Logo"
+              priority
             />
           </Link>
 
