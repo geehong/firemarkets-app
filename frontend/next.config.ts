@@ -13,6 +13,47 @@ const nextConfig: NextConfig = {
   experimental: {
     // HMR 관련 설정
   },
+  // 캐시 설정
+  async headers() {
+    return [
+      {
+        source: '/static/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
+        source: '/_next/static/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
+        source: '/images/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=86400',
+          },
+        ],
+      },
+      {
+        source: '/api/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, no-store, must-revalidate',
+          },
+        ],
+      },
+    ];
+  },
   // Cross-origin 요청 허용
   allowedDevOrigins: ['firemarkets.net', 'www.firemarkets.net', '.firemarkets.net'],
   // Socket.IO 프록시 설정 (Docker 환경 감지) - 임시 비활성화

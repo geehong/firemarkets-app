@@ -61,7 +61,7 @@ const AppSidebar: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
   const [submenuResetKey, setSubmenuResetKey] = useState(0);
   
-  // 동적 메뉴 훅 사용
+  // 동적 메뉴 훅 사용 (항상 호출)
   const { menuItems: dynamicMenuItems, loading: dynamicMenuLoading, error: dynamicMenuError } = useNavigation();
   
   
@@ -122,7 +122,10 @@ const AppSidebar: React.FC = () => {
   
 
   useEffect(() => {
-    setIsClient(true);
+    // 클라이언트 사이드에서만 실행
+    if (typeof window !== 'undefined') {
+      setIsClient(true);
+    }
   }, []);
 
   // 사이드바가 접힌 상태로 전환될 때 모든 서브메뉴를 닫기 위해 리셋 키 증가

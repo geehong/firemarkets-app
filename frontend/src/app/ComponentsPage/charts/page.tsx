@@ -7,10 +7,11 @@ import MiniPriceChart from '@/components/charts/minicharts/MiniPriceChart'
 import MiniPriceCryptoChart from '@/components/charts/minicharts/MiniPriceCryptoChart'
 import MiniPriceStocksEtfChart from '@/components/charts/minicharts/MiniPriceStocksEtfChart'
 import MiniPriceCommoditiesChart from '@/components/charts/minicharts/MiniPriceCommoditiesChart'
-import InteractiveOhlcvChart from '@/components/charts/ohlcvcharts/InteractiveOhlcvChart'
 
 export default function ChartsPage() {
   const [activeChart, setActiveChart] = useState('line')
+  
+  console.log('📈 ChartsPage 렌더링:', { activeChart });
 
   return (
     <main className="container mx-auto px-4 py-8">
@@ -56,22 +57,12 @@ export default function ChartsPage() {
           >
             Mini Charts
           </button>
-          <button
-            onClick={() => setActiveChart('tradingview')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              activeChart === 'tradingview'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            TradingView Chart
-          </button>
         </div>
       </div>
 
       {/* Chart Display */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-8">
-        <div className={activeChart === 'tradingview' ? 'h-[600px]' : 'h-96'}>
+        <div className="h-96">
           {activeChart === 'line' && <LineChartOne />}
           {activeChart === 'bar' && <BarChartOne />}
           {activeChart === 'mini' && (
@@ -88,18 +79,6 @@ export default function ChartsPage() {
               <div className="h-32">
                 <MiniPriceCommoditiesChart />
               </div>
-            </div>
-          )}
-          {activeChart === 'tradingview' && (
-            <div className="w-full h-full">
-              <InteractiveOhlcvChart 
-                symbol="AAPL"
-                interval="1D"
-                theme="light"
-                height={600}
-                onSymbolChange={(symbol) => console.log('Symbol changed:', symbol)}
-                onIntervalChange={(interval) => console.log('Interval changed:', interval)}
-              />
             </div>
           )}
         </div>
@@ -142,20 +121,6 @@ export default function ChartsPage() {
           </div>
         </div>
         
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold mb-4">TradingView Chart</h3>
-          <p className="text-gray-600 dark:text-gray-400 mb-4">
-            Professional OHLCV chart with TradingView Advanced Charts library.
-          </p>
-          <div className="h-48">
-            <InteractiveOhlcvChart 
-              symbol="BTCUSDT"
-              interval="1H"
-              theme="light"
-              height={200}
-            />
-          </div>
-        </div>
       </div>
     </main>
   )

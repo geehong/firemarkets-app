@@ -22,10 +22,22 @@ export const useNavigation = () => {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    loadMenuItems();
+    // 클라이언트 사이드 감지
+    setIsClient(typeof window !== 'undefined');
   }, []);
+
+  useEffect(() => {
+    // 클라이언트 사이드에서만 메뉴 로드
+    if (isClient) {
+      loadMenuItems();
+    } else {
+      // 서버 사이드에서는 로딩 상태 해제
+      setLoading(false);
+    }
+  }, [isClient]);
 
   const loadMenuItems = async () => {
     try {
