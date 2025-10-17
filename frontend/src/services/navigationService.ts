@@ -48,13 +48,19 @@ class NavigationService {
       return [];
     }
 
+    // 로컬 개발 환경에서는 정적 메뉴 반환
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      console.log('navigationService - Local development, returning static menu');
+      return this.getStaticMenu();
+    }
+
     try {
       const currentAPIURL = getAPIBaseURL();
       
-      // API URL이 없으면 빈 배열 반환
+      // API URL이 없으면 정적 메뉴 반환
       if (!currentAPIURL) {
-        console.log('navigationService - No API URL, returning empty array');
-        return [];
+        console.log('navigationService - No API URL, returning static menu');
+        return this.getStaticMenu();
       }
       
       console.log('navigationService - API_BASE_URL:', currentAPIURL);
@@ -98,16 +104,22 @@ class NavigationService {
       
       // 권한 관련 에러 처리
       if (error.response?.status === 401) {
-        throw new Error('인증이 필요합니다. 로그인해주세요.');
+        console.log('navigationService - 401 error, returning static menu');
+        return this.getStaticMenu();
       } else if (error.response?.status === 403) {
-        throw new Error('접근 권한이 없습니다.');
+        console.log('navigationService - 403 error, returning static menu');
+        return this.getStaticMenu();
       } else if (error.response?.status === 404) {
-        throw new Error('메뉴 API를 찾을 수 없습니다.');
+        console.log('navigationService - 404 error, returning static menu');
+        return this.getStaticMenu();
       } else if (error.response?.status >= 500) {
-        throw new Error('서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+        console.log('navigationService - 5xx error, returning static menu');
+        return this.getStaticMenu();
       }
       
-      throw new Error('메뉴 구조를 가져오는데 실패했습니다.');
+      // 기타 에러의 경우에도 정적 메뉴 반환
+      console.log('navigationService - Other error, returning static menu');
+      return this.getStaticMenu();
     }
   }
 
@@ -117,7 +129,8 @@ class NavigationService {
   async refreshDynamicMenus() {
     try {
       const headers = this.getAuthHeaders();
-      const response = await axios.post(`${API_BASE_URL}/api/v1/navigation/menu/refresh`, {}, {
+      const currentAPIURL = getAPIBaseURL();
+      const response = await axios.post(`${currentAPIURL}/api/v1/navigation/menu/refresh`, {}, {
         headers
       });
       return response.data;
@@ -140,7 +153,8 @@ class NavigationService {
   async getMenuStatus() {
     try {
       const headers = this.getAuthHeaders();
-      const response = await axios.get(`${API_BASE_URL}/api/v1/navigation/menu/status`, {
+      const currentAPIURL = getAPIBaseURL();
+      const response = await axios.get(`${currentAPIURL}/api/v1/navigation/menu/status`, {
         headers
       });
       return response.data;
@@ -155,6 +169,95 @@ class NavigationService {
       
       throw new Error('메뉴 상태를 가져오는데 실패했습니다.');
     }
+  }
+
+  /**
+   * 로컬 개발 환경용 정적 메뉴를 반환합니다
+   */
+  private getStaticMenu() {
+    return [
+      {
+        id: 1,
+        name: "Dashboard",
+        path: "/",
+        icon: "cilSpeedometer",
+        order: 1,
+        is_active: true,
+        source_type: "static",
+        children: []
+      },
+      {
+        id: 2,
+        name: "Assets",
+        path: "/assets",
+        icon: "cilChartPie",
+        order: 2,
+        is_active: true,
+        source_type: "static",
+        children: []
+      },
+      {
+        id: 3,
+        name: "Onchain",
+        path: "/onchain",
+        icon: "cilPuzzle",
+        order: 3,
+        is_active: true,
+        source_type: "static",
+        children: []
+      },
+      {
+        id: 4,
+        name: "Blog",
+        path: "/blog",
+        icon: "cilDescription",
+        order: 4,
+        is_active: true,
+        source_type: "static",
+        children: []
+      },
+      {
+        id: 5,
+        name: "Calendar",
+        path: "/calendar",
+        icon: "cilCalendar",
+        order: 5,
+        is_active: true,
+        source_type: "static",
+        children: []
+      },
+      {
+        id: 6,
+        name: "User Profile",
+        path: "/profile",
+        icon: "cilShieldAlt",
+        order: 6,
+        is_active: true,
+        source_type: "static",
+        children: []
+      },
+      {
+        id: 7,
+        name: "Admin Management",
+        path: "/admin",
+        icon: "cilSettings",
+        order: 7,
+        is_active: true,
+        source_type: "static",
+        children: [
+          {
+            id: 71,
+            name: "App Config",
+            path: "/admin/appconfig",
+            icon: "cilCog",
+            order: 1,
+            is_active: true,
+            source_type: "static",
+            children: []
+          }
+        ]
+      }
+    ];
   }
 }
 

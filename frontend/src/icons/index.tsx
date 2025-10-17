@@ -37,6 +37,7 @@ import EyeCloseIcon from "./eye-close.svg";
 import TimeIcon from "./time.svg";
 import CopyIcon from "./copy.svg";
 import ChevronLeftIcon from "./chevron-left.svg";
+import ChevronRightIcon from "./chevron-right.svg";
 import UserCircleIcon from "./user-circle.svg";
 import TaskIcon from "./task-icon.svg";
 import ListIcon from "./list.svg";
@@ -94,6 +95,7 @@ export {
   TimeIcon,
   CopyIcon,
   ChevronLeftIcon,
+  ChevronRightIcon,
   UserCircleIcon,
   ListIcon,
   TableIcon,

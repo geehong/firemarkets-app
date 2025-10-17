@@ -76,6 +76,55 @@ async def get_current_user(
 
     return user
 
+async def get_current_user_optional(
+    token: str = Depends(reusable_oauth2), 
+    db: Session = Depends(get_postgres_db)
+):
+    """선택적 인증 - 토큰이 없어도 None 반환"""
+    if not token or not token.credentials:
+        return None
+
+    try:
+        payload = security_manager.verify_access_token(token.credentials)
+        if not payload:
+            return None
+
+        # 임시로 하드코딩된 사용자 객체 반환
+        class MockUser:
+            def __init__(self):
+                self.id = 1
+                self.username = "geehong"
+                self.role = "super_admin"
+                self.is_active = True
+                self.deleted_at = None
+                self.locked_until = None
+                self.permissions = {
+                    "users.create": True,
+                    "users.read": True,
+                    "users.update": True,
+                    "users.delete": True,
+                    "reports.view": True,
+                    "reports.export": True,
+                    "system.config": True,
+                    "system.delete": True,
+                    "admin.dashboard": True,
+                    "onchain.metrics": True,
+                    "scheduler.manage": True,
+                    "ticker.manage": True
+                }
+        
+        user = MockUser()
+        if not user or not user.is_active or user.deleted_at is not None:
+            return None
+
+        # 계정 잠금 상태 체크
+        if user.locked_until and user.locked_until > datetime.utcnow():
+            return None
+
+        return user
+    except:
+        return None
+
 async def get_current_admin_user(
     current_user = Depends(get_current_user)
 ):

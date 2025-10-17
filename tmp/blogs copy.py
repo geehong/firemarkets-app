@@ -1,3 +1,4 @@
+# backend/app/api/v1/endpoints/blogs.py
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from sqlalchemy.orm import Session
@@ -11,6 +12,8 @@ from app.schemas.blog import (
     BlogSyncRequest, BlogSyncResponse, BlogStatsResponse
 )
 from app.models.blog import Blog, BlogCategory, BlogTag, BlogComment
+from app.models.asset import Asset
+from app.models.user import User
 
 router = APIRouter()
 
@@ -19,7 +22,6 @@ router = APIRouter()
 async def test_blogs():
     """블로그 API 테스트"""
     return {"message": "Blog API is working", "status": "success"}
-
 
 @router.get("/")
 async def get_blogs(
@@ -30,11 +32,11 @@ async def get_blogs(
     """블로그 목록 조회 (단순화된 버전)"""
     try:
         skip = (page - 1) * page_size
-
+        
         # 간단한 쿼리로 시작
         blogs_list = db.query(Blog).offset(skip).limit(page_size).all()
         total = db.query(Blog).count()
-
+        
         # 간단한 응답
         blogs_data = []
         for blog_obj in blogs_list:
@@ -48,9 +50,9 @@ async def get_blogs(
                 "updated_at": blog_obj.updated_at
             }
             blogs_data.append(blog_dict)
-
+        
         total_pages = (total + page_size - 1) // page_size
-
+        
         return {
             "blogs": blogs_data,
             "total": total,
@@ -71,10 +73,10 @@ async def get_blog(
     blog_obj = blog.get(db=db, id=blog_id)
     if not blog_obj:
         raise HTTPException(status_code=404, detail="Blog not found")
-
+    
     # 조회수 증가
     blog.increment_view_count(db=db, blog_id=blog_id)
-
+    
     return blog_obj
 
 
@@ -87,10 +89,10 @@ async def get_blog_by_slug(
     blog_obj = blog.get_by_slug(db=db, slug=slug)
     if not blog_obj:
         raise HTTPException(status_code=404, detail="Blog not found")
-
+    
     # 조회수 증가
     blog.increment_view_count(db=db, blog_id=blog_obj.id)
-
+    
     return blog_obj
 
 
@@ -104,7 +106,7 @@ async def create_blog(
     existing_blog = blog.get_by_slug(db=db, slug=blog_data.slug)
     if existing_blog:
         raise HTTPException(status_code=400, detail="Slug already exists")
-
+    
     blog_obj = blog.create(db=db, obj_in=blog_data)
     return blog_obj
 
@@ -119,13 +121,13 @@ async def update_blog(
     blog_obj = blog.get(db=db, id=blog_id)
     if not blog_obj:
         raise HTTPException(status_code=404, detail="Blog not found")
-
+    
     # 슬러그 중복 확인 (다른 블로그와 중복되지 않는지)
     if blog_data.slug and blog_data.slug != blog_obj.slug:
         existing_blog = blog.get_by_slug(db=db, slug=blog_data.slug)
         if existing_blog:
             raise HTTPException(status_code=400, detail="Slug already exists")
-
+    
     blog_obj = blog.update(db=db, db_obj=blog_obj, obj_in=blog_data)
     return blog_obj
 
@@ -139,7 +141,7 @@ async def delete_blog(
     blog_obj = blog.get(db=db, id=blog_id)
     if not blog_obj:
         raise HTTPException(status_code=404, detail="Blog not found")
-
+    
     blog.remove(db=db, id=blog_id)
     return {"message": "Blog deleted successfully"}
 
@@ -181,11 +183,11 @@ async def sync_blog_with_asset(
 ):
     """블로그와 Asset 동기화"""
     success = blog.sync_with_asset(
-        db=db,
-        blog_id=sync_request.blog_id,
+        db=db, 
+        blog_id=sync_request.blog_id, 
         direction=sync_request.sync_direction
     )
-
+    
     if success:
         blog_obj = blog.get(db=db, id=sync_request.blog_id)
         return BlogSyncResponse(
@@ -214,20 +216,20 @@ async def get_blog_stats(
     total_views = db.query(Blog).with_entities(Blog.view_count).all()
     total_views = sum(view[0] for view in total_views)
     total_comments = db.query(BlogComment).count()
-
+    
     # 이번 달 블로그 수
-    from datetime import datetime
+    from datetime import datetime, timedelta
     this_month = datetime.now().replace(day=1)
     monthly_blogs = db.query(Blog).filter(
         Blog.created_at >= this_month
     ).count()
-
+    
     # 인기 카테고리
     popular_categories = blog_category.get_categories_with_blog_count(db=db)
-
+    
     # 최근 블로그
     recent_blogs = blog.get_recent_blogs(db=db, limit=5)
-
+    
     return BlogStatsResponse(
         total_blogs=total_blogs,
         published_blogs=published_blogs,
@@ -316,7 +318,7 @@ async def create_comment(
     blog_obj = blog.get(db=db, id=blog_id)
     if not blog_obj:
         raise HTTPException(status_code=404, detail="Blog not found")
-
+    
     comment_data.blog_id = blog_id
     comment = blog_comment.create(db=db, obj_in=comment_data)
     return comment

@@ -39,59 +39,103 @@ export async function apiFetch<T>(path: string, opts: FetchOptions = {}): Promis
 }
 
 // ---- High-level API client (TS) ----
+
 function resolveApiBaseUrl(): string {
-  const envUrl = process.env.NEXT_PUBLIC_API_URL
+  // 환경 변수가 명시적으로 설정된 경우 우선 사용
+  const envUrl = process.env.NEXT_PUBLIC_API_URL;
   if (envUrl) {
-    console.log('Using NEXT_PUBLIC_API_URL:', envUrl)
-    return envUrl
+    console.log('🔧 Using NEXT_PUBLIC_API_URL:', envUrl);
+    return envUrl;
   }
-  
-  // 하드코딩된 백엔드 URL 사용 (HTTPS)
-  const hardcodedUrl = 'https://backend.firemarkets.net/api/v1'
-  console.log('Using hardcoded API URL:', hardcodedUrl)
-  return hardcodedUrl
-  
-  // 기존 로직 (백업용)
-  // if (typeof window !== 'undefined') {
-  //   try {
-  //     const { protocol, hostname, port } = window.location
-  //     const apiUrl = `${protocol}//${hostname}:8001/api/v1`
-  //     console.log('Resolved API URL:', apiUrl, 'from window.location:', { protocol, hostname, port })
-  //     return apiUrl
-  //   } catch (_) {}
-  // }
-  // const fallbackUrl = 'http://localhost:8001/api/v1'
-  // console.log('Using fallback API URL:', fallbackUrl)
-  // return fallbackUrl
+
+  // 브라우저 환경에서 호스트 기반으로 결정
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    console.log('🔍 Current hostname:', hostname);
+    
+    // 프로덕션 도메인인 경우 강제로 HTTPS 사용
+    if (hostname.includes('firemarkets.net')) {
+      const prodUrl = 'https://backend.firemarkets.net/api/v1';
+      console.log('🌐 Production domain detected, forcing HTTPS:', prodUrl);
+      return prodUrl;
+    }
+    
+    // 로컬 개발 환경
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      const localUrl = 'http://localhost:8001/api/v1';
+      console.log('🏠 Local development detected:', localUrl);
+      return localUrl;
+    }
+  }
+
+  // 서버사이드 렌더링 시 기본값 (프로덕션 환경에서는 HTTPS 사용)
+  const defaultUrl = typeof window !== 'undefined' && window.location.hostname.includes('firemarkets.net') 
+    ? 'https://backend.firemarkets.net/api/v1'
+    : 'http://localhost:8001/api/v1';
+  console.log('⚙️ Server-side rendering, using default:', defaultUrl);
+  return defaultUrl;
 }
+
 
 export class ApiClient {
   private readonly baseURL: string
 
   constructor(baseURL: string = resolveApiBaseUrl()) {
     this.baseURL = baseURL
+    console.log('🚀 ApiClient initialized with baseURL:', this.baseURL)
+    
+    // 프로덕션 환경에서 HTTP URL이 감지되면 강제로 HTTPS로 변경
+    if (typeof window !== 'undefined' && 
+        window.location.hostname.includes('firemarkets.net') && 
+        this.baseURL.startsWith('http://')) {
+      this.baseURL = this.baseURL.replace('http://', 'https://')
+      console.log('⚠️ Forced HTTPS conversion:', this.baseURL)
+    }
   }
 
   private async request<T = any>(endpoint: string, init?: RequestInit): Promise<T> {
-    const url = `${this.baseURL}${endpoint}`
+    let url = `${this.baseURL}${endpoint}`
+    
+    // 프로덕션 환경에서 HTTP URL이 감지되면 강제로 HTTPS로 변경
+    if (typeof window !== 'undefined' && 
+        window.location.hostname.includes('firemarkets.net') && 
+        url.startsWith('http://')) {
+      url = url.replace('http://', 'https://')
+      console.log('🔄 Request URL forced to HTTPS:', url)
+    }
+    
+    console.log('📡 Making request to:', url)
+    
     const defaultHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     }
-    // Debug: log outgoing request URL and method
-    // eslint-disable-next-line no-console
-    console.log('[API REQUEST]', (init?.method ?? 'GET'), url)
-    const res = await fetch(url, {
-      ...init,
-      headers: { ...defaultHeaders, ...(init?.headers as Record<string, string> | undefined) },
-      mode: 'cors',
-      credentials: 'omit',
-    })
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      throw new Error(`API Error: ${res.status} ${res.statusText} ${text}`)
+    try {
+      const fetchOptions: RequestInit = {
+        ...init,
+        headers: { ...defaultHeaders, ...(init?.headers as Record<string, string> | undefined) },
+        mode: 'cors',
+        credentials: 'omit'
+      }
+      
+      const res = await fetch(url, fetchOptions)
+      
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        console.error(`[API ERROR] ${res.status} ${res.statusText}:`, text)
+        throw new Error(`API Error: ${res.status} ${res.statusText} ${text}`)
+      }
+      
+      return res.json() as Promise<T>
+    } catch (error) {
+      console.error('[API REQUEST FAILED]', {
+        url,
+        method: init?.method ?? 'GET',
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      })
+      throw error
     }
-    return res.json() as Promise<T>
   }
 
   // Assets
@@ -333,6 +377,64 @@ export class ApiClient {
     const qs = search.toString();
     return this.request(`/assets/treemap/live${qs ? `?${qs}` : ''}`);
   }
+
+  // Blog APIs
+  getBlogs(params?: { 
+    page?: number; 
+    page_size?: number; 
+    status?: string; 
+    search?: string; 
+    category?: string; 
+    tag?: string; 
+  }) {
+    const search = new URLSearchParams();
+    if (params?.page) search.append('page', String(params.page));
+    if (params?.page_size) search.append('page_size', String(params.page_size));
+    if (params?.status) search.append('status', params.status);
+    if (params?.search) search.append('search', params.search);
+    if (params?.category) search.append('category', params.category);
+    if (params?.tag) search.append('tag', params.tag);
+    const qs = search.toString();
+    
+    // trailing slash로 리다이렉트 방지
+    return this.request(`/blogs/${qs ? `?${qs}` : ''}`);
+  }
+
+  getBlog(slug: string) {
+    // 슬러그 전용 엔드포인트 사용 및 리다이렉트 방지
+    return this.request(`/blogs/slug/${slug}`);
+  }
+
+  getBlogCategories() {
+    // backend route: /api/v1/blogs/categories/
+    return this.request('/blogs/categories/');
+  }
+
+  getBlogTags() {
+    // backend route: /api/v1/blogs/tags/
+    return this.request('/blogs/tags/');
+  }
+
+  createBlog(data: any) {
+    return this.request('/blogs/', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  updateBlog(id: number, data: any) {
+    return this.request(`/blogs/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+  }
+
+  deleteBlog(id: number) {
+    return this.request(`/blogs/${id}`, {
+      method: 'DELETE'
+    });
+  }
 }
 
+// API 클라이언트 인스턴스 생성
 export const apiClient = new ApiClient()

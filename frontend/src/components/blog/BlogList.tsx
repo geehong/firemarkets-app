@@ -1,11 +1,11 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import BlogCard from './BlogCard'
 import BlogPagination from './BlogPagination'
 import BlogSearch from './BlogSearch'
 import BlogCategories from './BlogCategories'
-import { MagnifyingGlassIcon, FunnelIcon } from '@heroicons/react/24/outline'
+// Removed heroicons dependency to avoid build errors
 
 interface Blog {
   id: number
@@ -69,7 +69,8 @@ const BlogList: React.FC<BlogListProps> = ({
   })
   const [showMobileFilters, setShowMobileFilters] = useState(false)
 
-  const fetchBlogs = async (page: number = 1) => {
+  const fetchBlogs = useCallback(async (page: number = 1) => {
+    console.log('[BlogList] fetchBlogs called', { page, filters })
     setLoading(true)
     setError(null)
     
@@ -82,29 +83,51 @@ const BlogList: React.FC<BlogListProps> = ({
         ...(filters.tag && { tag: filters.tag }),
         ...(filters.status && { status: filters.status })
       })
-
-      const response = await fetch(`/api/v1/blogs/?${params}`)
+      const url = `/api/v1/blogs/?${params}`
+      console.log('[BlogList] requesting URL:', url)
+      const response = await fetch(url)
       
       if (!response.ok) {
+        console.error('[BlogList] response not ok', { status: response.status })
         throw new Error('Failed to fetch blogs')
       }
 
       const data = await response.json()
+      console.log('[BlogList] response data summary', {
+        count: data?.blogs?.length,
+        total: data?.total,
+        page: data?.page,
+        total_pages: data?.total_pages
+      })
       setBlogs(data.blogs || [])
       setTotalPages(data.total_pages || 1)
       setTotalBlogs(data.total || 0)
-      setCurrentPage(page)
+      setCurrentPage(prev => {
+        const next = prev === page ? prev : page
+        if (prev !== next) console.log('[BlogList] currentPage updated', { prev, next })
+        return next
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
       console.error('Error fetching blogs:', err)
     } finally {
+      console.log('[BlogList] fetchBlogs finished', { page })
       setLoading(false)
     }
-  }
+  }, [filters.search, filters.category, filters.tag, filters.status])
 
+  const firstRunRef = useRef(true)
   useEffect(() => {
+    console.log('[BlogList] useEffect triggered by filters primitives', {
+      search: filters.search, category: filters.category, tag: filters.tag, status: filters.status
+    })
+    // Avoid StrictMode initial double-invoke
+    if (firstRunRef.current) {
+      firstRunRef.current = false
+      return
+    }
     fetchBlogs(1)
-  }, [filters])
+  }, [filters.search, filters.category, filters.tag, filters.status, fetchBlogs])
 
   const handleSearch = (searchTerm: string) => {
     setFilters(prev => ({ ...prev, search: searchTerm }))
@@ -199,7 +222,7 @@ const BlogList: React.FC<BlogListProps> = ({
                   </div>
                   <div className="flex gap-4">
                     <BlogCategories
-                      selectedCategory={filters.category}
+                      activeCategorySlug={filters.category}
                       onCategorySelect={handleCategoryFilter}
                     />
                     {/* 태그 필터는 추후 구현 */}
@@ -212,14 +235,16 @@ const BlogList: React.FC<BlogListProps> = ({
                     onClick={() => setShowMobileFilters(!showMobileFilters)}
                     className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
                   >
-                    <FunnelIcon className="w-5 h-5" />
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M3 5h18M6 12h12M10 19h4" />
+                    </svg>
                     필터
                   </button>
                   
                   {showMobileFilters && (
                     <div className="mt-4 space-y-4">
                       <BlogCategories
-                        selectedCategory={filters.category}
+                        activeCategorySlug={filters.category}
                         onCategorySelect={handleCategoryFilter}
                       />
                     </div>

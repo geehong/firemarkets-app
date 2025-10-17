@@ -8,6 +8,7 @@ export * from './useGoBack'
 export * from './useModal'
 export * from './useAssetOverview'
 export * from './useOnchain'
+export * from './useBlog'
 
 // Re-export commonly used hooks with shorter names
 export { useOhlcvData as useOhlcv } from './useAssets'

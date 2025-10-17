@@ -3,7 +3,7 @@
 import React from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { CalendarIcon, EyeIcon, UserIcon, TagIcon } from '@heroicons/react/24/outline'
+import { CalenderIcon, EyeIcon, UserIcon, ListIcon } from '@/icons/index'
 
 interface BlogCardProps {
   blog: {
@@ -73,7 +73,7 @@ const BlogCard: React.FC<BlogCardProps> = ({ blog, featured = false }) => {
               {/* 메타 정보 */}
               <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400 mb-3">
                 <div className="flex items-center">
-                  <CalendarIcon className="w-4 h-4 mr-1" />
+                  <CalenderIcon className="w-4 h-4 mr-1" />
                   {formatDate(blog.created_at)}
                 </div>
                 {blog.view_count && (
@@ -107,9 +107,12 @@ const BlogCard: React.FC<BlogCardProps> = ({ blog, featured = false }) => {
           {/* 카테고리 */}
           {blog.category && (
             <div className="mb-3">
-              <span className="inline-block px-3 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full">
+              <Link
+                href={`/blog/category/${blog.category.slug}`}
+                className="inline-block px-3 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600"
+              >
                 {blog.category.name}
-              </span>
+              </Link>
             </div>
           )}
 
@@ -121,7 +124,7 @@ const BlogCard: React.FC<BlogCardProps> = ({ blog, featured = false }) => {
           {/* 태그 */}
           {blog.tags && blog.tags.length > 0 && (
             <div className="flex items-center flex-wrap gap-2">
-              <TagIcon className="w-4 h-4 text-gray-400" />
+              <ListIcon className="w-4 h-4 text-gray-400" />
               {blog.tags.slice(0, 3).map((tag) => (
                 <Link
                   key={tag.id}
@@ -150,6 +153,13 @@ const BlogCard: React.FC<BlogCardProps> = ({ blog, featured = false }) => {
               </span>
             </div>
           )}
+
+          {/* 명시적 링크 표시 */}
+          <div className="mt-6">
+            <span className="text-blue-600 dark:text-blue-400 hover:underline">
+              자세히 보기 →
+            </span>
+          </div>
         </div>
       </Link>
     </article>

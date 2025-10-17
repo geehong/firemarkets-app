@@ -16,10 +16,17 @@ import {
 } from "../icons/index";
 
 // 사이드메뉴의 메인메뉴 아이템들
-const navItems = [
+type NavItem = {
+  icon?: React.ReactNode;
+  name: string;
+  path: string;
+  subItems?: { name: string; path: string }[];
+};
+
+const navItems: NavItem[] = [
   {
     icon: <GridIcon />,
-    name: "Dashboard",
+    name: "Home",
     path: "/",
   },
   {
@@ -36,32 +43,13 @@ const navItems = [
     icon: <BookIcon />,
     name: "Blog",
     path: "/blog",
+    subItems: [
+      { name: "All Posts", path: "/blog" },
+      { name: "Admin", path: "/blog/admin" },
+      { name: "New Post", path: "/blog/admin/create" },
+    ],
   },
-  {
-    icon: <CalenderIcon />,
-    name: "Calendar",
-    path: "/calendar",
-  },
-  {
-    icon: <UserCircleIcon />,
-    name: "User Profile",
-    path: "/profile",
-  },
-  {
-    name: "Forms",
-    icon: <ListIcon />,
-    path: "/form-elements",
-  },
-  {
-    name: "Tables",
-    icon: <TableIcon />,
-    path: "/basic-tables",
-  },
-  {
-    name: "Pages",
-    icon: <PageIcon />,
-    path: "/blank",
-  },
+
 ];
 
 const AppHeader: React.FC = () => {
@@ -129,13 +117,27 @@ const AppHeader: React.FC = () => {
         {/* 메인 메뉴 네비게이션 - 중앙 정렬 */}
         <nav className="hidden lg:flex items-center justify-center flex-1 space-x-6">
           {navItems.map((item, index) => (
-            <Link
-              key={index}
-              href={item.path}
-              className="px-3 py-2 text-sm font-medium text-gray-700 rounded-md hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white transition-colors duration-200"
-            >
-              {item.name}
-            </Link>
+            <div key={index} className="relative group">
+              <Link
+                href={item.path}
+                className="px-3 py-2 text-sm font-medium text-gray-700 rounded-md hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white transition-colors duration-200"
+              >
+                {item.name}
+              </Link>
+              {item.subItems && item.subItems.length > 0 && (
+                <div className="absolute left-0 mt-2 hidden group-hover:block bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-md shadow-lg min-w-[160px] py-2 z-[100000]">
+                  {item.subItems.map((sub, i) => (
+                    <Link
+                      key={i}
+                      href={sub.path}
+                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                    >
+                      {sub.name}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
         </nav>
 

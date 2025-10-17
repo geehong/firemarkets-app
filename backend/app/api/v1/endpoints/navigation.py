@@ -5,7 +5,7 @@ from sqlalchemy import asc, text
 from typing import List, Dict, Any, Optional
 from ....core.database import get_postgres_db
 from ....models.navigation import Menu
-from ....dependencies.auth_deps import get_current_user
+from ....dependencies.auth_deps import get_current_user_optional
 from ....models.asset import User
 
 router = APIRouter()
@@ -84,8 +84,7 @@ def build_menu_tree(menus: List[Menu]) -> List[Dict[str, Any]]:
 
 @router.get("/menu", response_model=List[Dict[str, Any]])
 def get_menu_structure(
-    db: Session = Depends(get_postgres_db),
-    current_user: Optional[User] = Depends(get_current_user)
+    db: Session = Depends(get_postgres_db)
 ):
     """
     미리 생성된 menus 테이블에서 사용자 권한에 맞는 메뉴 구조를 가져옵니다.
@@ -97,11 +96,8 @@ def get_menu_structure(
         # 계층 구조로 변환
         menu_tree = build_menu_tree(all_menus)
         
-        # 사용자 권한에 따라 메뉴 필터링
-        user_role = getattr(current_user, 'role', 'user') if current_user else 'user'
-        filtered_menu_tree = filter_menus_by_permissions(menu_tree, user_role)
-        
-        return filtered_menu_tree
+        # 모든 사용자에게 모든 메뉴 표시 (공개 API)
+        return menu_tree
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get menu structure: {str(e)}")
