@@ -7,7 +7,7 @@ import { getColorMode } from '@/constants/colorModes';
 
 interface HalvingChartProps {
   title?: string;
-  height?: number;
+  height: number; // 필수 prop으로 변경
   showRangeSelector?: boolean;
   showExporting?: boolean;
   singlePeriod?: number | null;
@@ -15,7 +15,7 @@ interface HalvingChartProps {
 
 const HalvingChart: React.FC<HalvingChartProps> = ({
   title = 'Bitcoin Halving Price Analysis',
-  height = 1500,
+  height,
   showRangeSelector = false,
   showExporting = true,
   singlePeriod = null

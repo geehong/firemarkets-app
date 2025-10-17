@@ -31,6 +31,17 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setIsClient(true);
+    
+    // 파비콘 설정
+    const setFavicon = () => {
+      const link = document.querySelector("link[rel*='icon']") as HTMLLinkElement || document.createElement('link');
+      link.type = 'image/png';
+      link.rel = 'shortcut icon';
+      link.href = '/favicon.png';
+      document.getElementsByTagName('head')[0].appendChild(link);
+    };
+    
+    setFavicon();
   }, []);
 
   // Dynamic class for main content margin based on sidebar state

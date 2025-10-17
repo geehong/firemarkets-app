@@ -56,6 +56,17 @@ from .asset import (
     AuditLog,
 )
 
+# Blog models
+from .blog import (
+    Blog,
+    BlogCategory,
+    BlogTag,
+    BlogComment,
+    BlogProduct,
+    BlogChart,
+    BlogPostTag,
+)
+
 # Export all models
 __all__ = [
     # Core models
@@ -104,4 +115,13 @@ __all__ = [
     "UserSession",
     "TokenBlacklist",
     "AuditLog",
+    
+    # Blog models
+    "Blog",
+    "BlogCategory",
+    "BlogTag",
+    "BlogComment",
+    "BlogProduct",
+    "BlogChart",
+    "BlogPostTag",
 ]

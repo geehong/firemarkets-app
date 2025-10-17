@@ -51,6 +51,7 @@ import HorizontaLDots from "./horizontal-dots.svg";
 import ChatIcon from "./chat.svg";
 import MoreDotIcon from "./more-dot.svg";
 import BellIcon from "./bell.svg";
+import BookIcon from "./docs.svg"; // 블로그 아이콘으로 docs 아이콘 재사용
 
 export {
   DownloadIcon,
@@ -106,4 +107,5 @@ export {
   HorizontaLDots,
   ChevronUpIcon,
   ChatIcon,
+  BookIcon,
 };

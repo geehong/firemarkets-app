@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 export default function HalvingBullChartPage() {
   return (
     <main className="container mx-auto px-4 py-8">
-      <HalvingChart title="Bitcoin Halving Bull Chart" height={900} />
+      <HalvingChart title="Bitcoin Halving Bull Chart" height={600} />
     </main>
   )
 }

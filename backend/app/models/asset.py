@@ -36,6 +36,9 @@ class Asset(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
     asset_type = relationship("AssetType", back_populates="assets")
+    
+    # 블로그 관계 추가
+    blogs = relationship("Blog", back_populates="asset")
 
     # JSON 설정에 대한 편의 메서드들
     def get_setting(self, key: str, default=None):
@@ -65,6 +68,20 @@ class Asset(Base):
             self.last_collections[collection_type] = timestamp.isoformat()
         else:
             self.last_collections[collection_type] = timestamp
+    
+    def get_latest_blog(self):
+        """가장 최근 블로그 포스트 반환"""
+        if self.blogs:
+            return max(self.blogs, key=lambda x: x.updated_at)
+        return None
+    
+    def sync_description_with_blog(self, db_session):
+        """가장 최근 블로그의 content를 description으로 동기화"""
+        latest_blog = self.get_latest_blog()
+        if latest_blog and latest_blog.auto_sync_content:
+            self.description = latest_blog.content
+            return True
+        return False
     
     # 편의 메서드들
     def get_collect_price(self):

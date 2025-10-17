@@ -12,6 +12,7 @@ import {
   PlugInIcon,
   TableIcon,
   UserCircleIcon,
+  BookIcon,
 } from "../icons/index";
 
 // 사이드메뉴의 메인메뉴 아이템들
@@ -30,6 +31,11 @@ const navItems = [
     icon: <PlugInIcon />,
     name: "Onchain",
     path: "/onchain",
+  },
+  {
+    icon: <BookIcon />,
+    name: "Blog",
+    path: "/blog",
   },
   {
     icon: <CalenderIcon />,
