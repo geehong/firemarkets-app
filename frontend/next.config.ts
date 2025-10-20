@@ -56,6 +56,15 @@ const nextConfig: NextConfig = {
   },
   // Cross-origin 요청 허용
   allowedDevOrigins: ['firemarkets.net', 'www.firemarkets.net', '.firemarkets.net'],
+  // 라이브러리 경로 처리
+  async rewrites() {
+    return [
+      {
+        source: '/map',
+        destination: '/api/map-fallback',
+      },
+    ];
+  },
   // Socket.IO 프록시 설정 (Docker 환경 감지) - 임시 비활성화
   // async rewrites() {
   //   // Docker 환경에서는 컨테이너 이름 사용, 로컬에서는 localhost 사용

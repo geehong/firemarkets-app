@@ -1,7 +1,12 @@
 import { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { apiClient } from '@/lib/api'
+import { getAssetOverview } from '@/lib/data/assets'
 import AssetOverview from '@/components/overviews/AssetOverview'
+import ClientLayout from '@/components/layout/ClientLayout'
+
+// 동적 렌더링 강제 설정
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 interface AssetPageProps {
   params: { assetIdentifier: string }
@@ -13,7 +18,9 @@ export async function generateMetadata({
 }: AssetPageProps): Promise<Metadata> {
   try {
     const { assetIdentifier } = await params
-    const asset = await apiClient.getAssetOverview(assetIdentifier)
+    
+    // 중앙화된 데이터 페칭 함수 사용
+    const asset = await getAssetOverview(assetIdentifier)
     
     if (!asset) {
       return {
@@ -99,37 +106,37 @@ function generateStructuredData(asset: any, assetIdentifier: string) {
 
 export default async function AssetPage({ params }: AssetPageProps) {
   const { assetIdentifier } = await params
-  let asset
   
   try {
-    asset = await apiClient.getAssetOverview(assetIdentifier)
+    // 중앙화된 데이터 페칭 함수 사용
+    const asset = await getAssetOverview(assetIdentifier)
+    
+    if (!asset) {
+      notFound()
+    }
+
+    const structuredData = generateStructuredData(asset, assetIdentifier)
+
+    return (
+      <ClientLayout>
+        {/* 구조화된 데이터 */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(structuredData),
+          }}
+        />
+        
+        {/* 메인 콘텐츠 */}
+        <main className="container mx-auto px-4 py-8">
+          <AssetOverview initialData={asset} />
+        </main>
+      </ClientLayout>
+    )
   } catch (error) {
     console.error('Failed to fetch asset:', error)
     notFound()
   }
-
-  if (!asset) {
-    notFound()
-  }
-
-  const structuredData = generateStructuredData(asset, assetIdentifier)
-
-  return (
-    <>
-      {/* 구조화된 데이터 */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify(structuredData),
-        }}
-      />
-      
-      {/* 메인 콘텐츠 */}
-      <main className="container mx-auto px-4 py-8">
-        <AssetOverview />
-      </main>
-    </>
-  )
 }
 
 // 정적 생성 가능한 경로들 (선택사항)

@@ -1,106 +1,88 @@
-"use client";
+import { Metadata } from 'next'
+import { Inter } from 'next/font/google'
+import './globals.css'
 
-import { useSidebar, SidebarProvider } from "@/context/SidebarContext";
-import AppHeader from "@/layout/AppHeader";
-import AppSidebar from "@/layout/AppSidebar";
-import Backdrop from "@/layout/Backdrop";
-import React, { useState, useEffect } from "react";
-import dynamic from "next/dynamic";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import "./globals.css";
+const inter = Inter({ subsets: ['latin'] })
 
-// QueryClient 인스턴스 생성
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 5 * 60 * 1000, // 5분
-      retry: 1,
+export const metadata: Metadata = {
+  title: {
+    default: 'FireMarkets - Advanced Financial Data Platform',
+    template: '%s | FireMarkets'
+  },
+  description: 'Comprehensive financial data platform with real-time market data, advanced analytics, and onchain insights for informed trading decisions.',
+  keywords: 'financial data, market analysis, trading, cryptocurrency, stocks, ETFs, onchain analysis, blockchain metrics',
+  authors: [{ name: 'FireMarkets Team' }],
+  creator: 'FireMarkets',
+  publisher: 'FireMarkets',
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
+  metadataBase: new URL('https://firemarkets.net'),
+  alternates: {
+    canonical: '/',
+  },
+  openGraph: {
+    type: 'website',
+    locale: 'ko_KR',
+    url: 'https://firemarkets.net',
+    siteName: 'FireMarkets',
+    title: 'FireMarkets - Advanced Financial Data Platform',
+    description: 'Comprehensive financial data platform with real-time market data and advanced analytics.',
+    images: [
+      {
+        url: '/og-image.png',
+        width: 1200,
+        height: 630,
+        alt: 'FireMarkets - Financial Data Platform',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'FireMarkets - Advanced Financial Data Platform',
+    description: 'Comprehensive financial data platform with real-time market data and advanced analytics.',
+    images: ['/og-image.png'],
+    creator: '@firemarkets',
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
     },
   },
-});
-
-// SSR 비활성화된 컴포넌트들
-const NoSSRSidebar = dynamic(() => import("@/layout/AppSidebar"), { ssr: false });
-const NoSSRHeader = dynamic(() => import("@/layout/AppHeader"), { ssr: false });
-const NoSSRBackdrop = dynamic(() => import("@/layout/Backdrop"), { ssr: false });
-
-// 내부 레이아웃 컴포넌트 (SidebarProvider 내부에서 사용)
-function AdminLayoutContent({ children }: { children: React.ReactNode }) {
-  const { isExpanded, isHovered, isMobileOpen } = useSidebar();
-  const [isClient, setIsClient] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-    
-    // 파비콘 설정
-    const setFavicon = () => {
-      const link = document.querySelector("link[rel*='icon']") as HTMLLinkElement || document.createElement('link');
-      link.type = 'image/png';
-      link.rel = 'shortcut icon';
-      link.href = '/favicon.png';
-      document.getElementsByTagName('head')[0].appendChild(link);
-    };
-    
-    setFavicon();
-  }, []);
-
-  // Dynamic class for main content margin based on sidebar state
-  const mainContentMargin = isMobileOpen
-    ? "ml-0"
-    : isExpanded || isHovered
-    ? "lg:ml-[290px]"
-    : "lg:ml-[90px]";
-  
-  // Mobile top menu padding
-  const mobileTopPadding = "pt-16 lg:pt-0";
-
-  if (!isClient) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" suppressHydrationWarning>
-        <div className="flex flex-col items-center" suppressHydrationWarning>
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" suppressHydrationWarning></div>
-          <div className="mt-3 text-sm text-gray-600" suppressHydrationWarning>Loading...</div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen xl:flex" suppressHydrationWarning>
-      {/* Sidebar and Backdrop */}
-      <NoSSRSidebar />
-      <NoSSRBackdrop />
-      {/* Main Content Area */}
-      <div
-        className={`flex-1 transition-all duration-300 ease-in-out ${mainContentMargin} ${mobileTopPadding}`}
-        suppressHydrationWarning
-      >
-        {/* Header */}
-        <NoSSRHeader />
-        {/* Page Content */}
-        <div className="p-1 mx-auto max-w-(--breakpoint-2xl) md:p-1" suppressHydrationWarning>
-          {children}
-        </div>
-      </div>
-    </div>
-  );
+  verification: {
+    google: 'your-google-verification-code',
+  },
 }
 
-export default function RootLayout({
+import { getNavigationMenu } from '@/lib/data/menus'
+
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const navigationData = await getNavigationMenu()
+
   return (
     <html lang="ko">
-      <body>
-        <QueryClientProvider client={queryClient}>
-          <SidebarProvider>
-            <AdminLayoutContent>
-              {children}
-            </AdminLayoutContent>
-          </SidebarProvider>
-        </QueryClientProvider>
+      <head>
+        <link rel="icon" href="/favicon.ico" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <meta name="theme-color" content="#1f2937" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+      </head>
+      <body className={inter.className}>
+        <div className="min-h-screen">
+          {children}
+        </div>
       </body>
     </html>
   );

@@ -81,8 +81,36 @@ function generateStructuredData(typeName?: string) {
   return baseData
 }
 
+// SSR로 자산 데이터 가져오기
+async function getAssets(typeName?: string) {
+  try {
+    const params = new URLSearchParams()
+    if (typeName) {
+      params.append('type_name', typeName)
+    }
+    params.append('limit', '100')
+    params.append('offset', '0')
+    
+    // 서버사이드에서는 백엔드 직접 호출
+    const BACKEND_BASE = process.env.BACKEND_API_BASE || 'http://fire_markets_backend:8000/api/v1'
+    const res = await fetch(`${BACKEND_BASE}/assets/assets?${params}`, {
+      cache: 'no-store'
+    })
+    
+    if (!res.ok) {
+      throw new Error('Failed to fetch assets')
+    }
+    
+    return await res.json()
+  } catch (error) {
+    console.error('Error fetching assets:', error)
+    return { data: [], total_count: 0 }
+  }
+}
+
 export default async function AssetsPage({ searchParams }: AssetsPageProps) {
   const { type_name: typeName } = await searchParams
+  const assetsData = await getAssets(typeName)
   const structuredData = generateStructuredData(typeName)
 
   return (
@@ -97,7 +125,7 @@ export default async function AssetsPage({ searchParams }: AssetsPageProps) {
       
       {/* 메인 콘텐츠 */}
       <main className="container mx-auto px-4 py-8">
-        <AssetsList />
+        <AssetsList initialData={assetsData} />
       </main>
     </>
   )

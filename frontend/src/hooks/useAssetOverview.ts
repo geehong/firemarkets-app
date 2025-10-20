@@ -38,14 +38,22 @@ export interface AssetOverviewData {
  * 새로운 /api/v1/assets/overview/{asset_identifier} 엔드포인트를 사용하여
  * 모든 자산 데이터를 단일 API 호출로 가져옵니다.
  */
-export const useAssetOverview = (assetIdentifier?: string) => {
-  const [data, setData] = useState<AssetOverviewData | null>(null)
-  const [loading, setLoading] = useState(true)
+export const useAssetOverview = (assetIdentifier?: string, options: { initialData?: AssetOverviewData | null } = {}) => {
+  const { initialData = null } = options;
+  const [data, setData] = useState<AssetOverviewData | null>(initialData)
+  const [loading, setLoading] = useState(!initialData)
   const [error, setError] = useState<Error | null>(null)
 
   const fetchData = useCallback(async () => {
     if (!assetIdentifier) {
       setData(null)
+      setLoading(false)
+      return
+    }
+
+    // initialData가 있으면 API 호출 건너뛰기
+    if (initialData) {
+      console.log('🔍 useAssetOverview: Using initialData, skipping API call')
       setLoading(false)
       return
     }
@@ -71,11 +79,13 @@ export const useAssetOverview = (assetIdentifier?: string) => {
     } finally {
       setLoading(false)
     }
-  }, [assetIdentifier])
+  }, [assetIdentifier, initialData])
 
   useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    if (!initialData) {
+      fetchData()
+    }
+  }, [fetchData, initialData])
 
   return { 
     data, 

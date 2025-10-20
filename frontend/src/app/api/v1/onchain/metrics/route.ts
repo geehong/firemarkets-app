@@ -5,7 +5,7 @@ const BACKEND_BASE = (process.env.BACKEND_API_BASE || 'https://backend.firemarke
 export async function GET(req: Request) {
   const u = new URL(req.url)
   const qs = u.search
-  const url = `${BACKEND_BASE}/blogs${qs}`
+  const url = `${BACKEND_BASE}/onchain/metrics${qs}`
   
   try {
     const res = await fetch(url, { 
@@ -25,11 +25,11 @@ export async function GET(req: Request) {
       status: 200, 
       headers: { 
         'content-type': 'application/json',
-        'Cache-Control': 'public, max-age=300' // 5분 캐싱
+        'Cache-Control': 'public, max-age=1800' // 30분 캐싱 (온체인 메트릭 목록은 자주 변경되지 않음)
       } 
     })
   } catch (e: any) {
-    console.error('Blogs API proxy error:', e)
+    console.error('Onchain metrics API proxy error:', e)
     return NextResponse.json({ error: e?.message || 'Proxy failed' }, { status: 500 })
   }
 }

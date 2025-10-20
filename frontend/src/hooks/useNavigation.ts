@@ -1,5 +1,6 @@
 // frontend/src/hooks/useNavigation.ts
 import { useState, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import navigationService from '../services/navigationService';
 
 export interface MenuItem {
@@ -23,6 +24,7 @@ export const useNavigation = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
+  const pathname = usePathname();
 
   useEffect(() => {
     // 클라이언트 사이드 감지
@@ -65,8 +67,34 @@ export const useNavigation = () => {
     }
   };
 
+  // 현재 경로에 해당하는 메뉴 아이템 찾기
+  const findCurrentMenuItem = (): MenuItem | null => {
+    if (!menuItems || menuItems.length === 0) return null;
+
+    const findInMenu = (items: MenuItem[]): MenuItem | null => {
+      for (const item of items) {
+        // 정확한 경로 매치
+        if (item.path === pathname) {
+          return item;
+        }
+        
+        // 하위 메뉴에서 재귀 검색
+        if (item.children && item.children.length > 0) {
+          const found = findInMenu(item.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    return findInMenu(menuItems);
+  };
+
+  const currentMenuItem = findCurrentMenuItem();
+
   return {
     menuItems,
+    currentMenuItem,
     loading,
     error,
     refreshMenus,

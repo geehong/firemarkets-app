@@ -16,5 +16,5 @@ COPY . .
 # Expose port 3000 (Next.js default)
 EXPOSE 3000
 
-# Start development server
+# Start development server (no build required)
 CMD ["npm", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", "3000"]

@@ -18,10 +18,20 @@ export default function SidebarWidget() {
     let mounted = true;
     const load = async () => {
       try {
+        console.log('🔍 [SidebarWidget] Starting to load blogs...');
         const data = await apiClient.getBlogs({ page: 1, page_size: 5, status: "published" });
+        console.log('🔍 [SidebarWidget] Blogs loaded successfully:', data);
         if (!mounted) return;
         setLatest((data?.blogs || []).map((b: any) => ({ id: b.id, title: b.title, slug: b.slug })));
       } catch (e: any) {
+        console.error('❌ [SidebarWidget] Error loading blogs:', e);
+        console.error('❌ [SidebarWidget] Error details:', {
+          message: e?.message,
+          stack: e?.stack,
+          name: e?.name,
+          type: typeof e,
+          constructor: e?.constructor?.name
+        });
         if (!mounted) return;
         setError(e?.message || "Failed to load");
       }

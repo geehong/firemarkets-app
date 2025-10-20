@@ -13,11 +13,11 @@ const getAPIBaseURL = () => {
   
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     return 'http://localhost:8001';
-  } else if (hostname.includes('firemarkets.net')) {
+  } else if (hostname.includes('firemarkets.net') && !hostname.includes('localhost')) {
     return 'https://backend.firemarkets.net';
   } else {
     // 기타 환경에서는 환경 변수 사용
-    return process.env.NEXT_PUBLIC_API_BASE_URL || 'https://backend.firemarkets.net';
+    return process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8001';
   }
 };
 

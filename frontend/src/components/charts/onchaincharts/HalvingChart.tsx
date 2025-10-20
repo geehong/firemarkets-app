@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useMultipleHalvingData } from '@/hooks/useCrypto';
+import { useNavigation } from '@/hooks/useNavigation';
 import ChartControls from '@/components/common/ChartControls';
 import { getColorMode } from '@/constants/colorModes';
 
@@ -47,6 +48,9 @@ const HalvingChart: React.FC<HalvingChartProps> = ({
   const [HighchartsReact, setHighchartsReact] = useState<any>(null);
   const [Highcharts, setHighcharts] = useState<any>(null);
   const chartRef = useRef<any>(null);
+
+  // 네비게이션 메뉴 데이터 가져오기
+  const { currentMenuItem } = useNavigation();
 
   // 4차 반감기 시작가격 기본값
   const isLoadingStartPrice = false;
@@ -490,7 +494,11 @@ const HalvingChart: React.FC<HalvingChartProps> = ({
         text: title,
         style: {
           fontSize: '14px'
-        }
+        },
+        useHTML: true,
+        ...(currentMenuItem?.metadata?.description && {
+          text: `<span title="${currentMenuItem.metadata.description.ko || currentMenuItem.metadata.description.en || ''}">${title}</span>`
+        })
       },
       subtitle: {
         text: `Normalized to $${startPrice.toLocaleString()}`,
@@ -705,7 +713,13 @@ const HalvingChart: React.FC<HalvingChartProps> = ({
   return (
     <div className="bg-white rounded-lg p-4 mb-4">
       <div className="d-flex justify-content-between align-items-center mb-3">
-        <h5 className="mb-0">{title}</h5>
+        <h5 
+          className="mb-0" 
+          title={currentMenuItem?.metadata?.description?.ko || currentMenuItem?.metadata?.description?.en || ''}
+          style={{ cursor: 'help' }}
+        >
+          {title}
+        </h5>
       </div>
       
       {/* Chart Controls */}

@@ -13,14 +13,15 @@ import HistoryTable from '@/components/tables/HistoryTable'
 
 interface AssetOverviewProps {
   className?: string
+  initialData?: any
 }
 
-const AssetOverview: React.FC<AssetOverviewProps> = ({ className }) => {
+const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData }) => {
   const { assetIdentifier } = useParams()
   const [isMobile, setIsMobile] = useState(false)
   
-  // 자산 개요 데이터 fetching
-  const { data: overviewData, loading: overviewLoading, error: overviewError } = useAssetOverview(assetIdentifier as string)
+  // 자산 개요 데이터 fetching (initialData가 있으면 사용)
+  const { data: overviewData, loading: overviewLoading, error: overviewError } = useAssetOverview(assetIdentifier as string, { initialData })
   
   // 디버깅을 위한 로그
   console.log('🔍 AssetOverview Debug:', {

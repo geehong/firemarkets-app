@@ -1,5 +1,10 @@
 import { Metadata } from 'next'
 import ComponentCard from '@/components/common/ComponentCard'
+import ClientLayout from '@/components/layout/ClientLayout'
+
+// 동적 렌더링 강제 설정
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 import Badge from '@/components/ui/badge/Badge'
 import Button from '@/components/ui/button/Button'
 import { 
@@ -121,11 +126,32 @@ const popularMetrics = [
   },
 ]
 
-export default function OnchainPage() {
+// SSR로 온체인 메트릭 데이터 가져오기
+async function getOnchainMetrics() {
+  try {
+    // 서버사이드에서는 백엔드 직접 호출
+    const BACKEND_BASE = process.env.BACKEND_API_BASE || 'http://fire_markets_backend:8000/api/v1'
+    const res = await fetch(`${BACKEND_BASE}/onchain/metrics`, {
+      cache: 'no-store'
+    })
+    
+    if (!res.ok) {
+      throw new Error('Failed to fetch onchain metrics')
+    }
+    
+    return await res.json()
+  } catch (error) {
+    console.error('Error fetching onchain metrics:', error)
+    return []
+  }
+}
+
+export default async function OnchainPage() {
+  const metricsData = await getOnchainMetrics()
   const structuredData = generateStructuredData()
 
   return (
-    <>
+    <ClientLayout>
       {/* 구조화된 데이터 */}
       <script
         type="application/ld+json"
@@ -242,6 +268,6 @@ export default function OnchainPage() {
           </ComponentCard>
         </div>
       </main>
-    </>
+    </ClientLayout>
   )
 }

@@ -2,10 +2,9 @@ import { NextResponse } from 'next/server'
 
 const BACKEND_BASE = (process.env.BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1').replace(/\/$/, '')
 
-export async function GET(req: Request) {
-  const u = new URL(req.url)
-  const qs = u.search
-  const url = `${BACKEND_BASE}/blogs${qs}`
+export async function GET(_req: Request, context: { params: { assetIdentifier: string } }) {
+  const { assetIdentifier } = context.params
+  const url = `${BACKEND_BASE}/assets/overview/${encodeURIComponent(assetIdentifier)}`
   
   try {
     const res = await fetch(url, { 
@@ -25,11 +24,11 @@ export async function GET(req: Request) {
       status: 200, 
       headers: { 
         'content-type': 'application/json',
-        'Cache-Control': 'public, max-age=300' // 5분 캐싱
+        'Cache-Control': 'public, max-age=600' // 10분 캐싱 (자산 정보는 상대적으로 안정적)
       } 
     })
   } catch (e: any) {
-    console.error('Blogs API proxy error:', e)
+    console.error('Asset overview API proxy error:', e)
     return NextResponse.json({ error: e?.message || 'Proxy failed' }, { status: 500 })
   }
 }

@@ -5,7 +5,10 @@ import dynamic from "next/dynamic";
 
 const VectorMap = dynamic(
   () => import("@react-jvectormap/core").then((mod) => mod.VectorMap),
-  { ssr: false }
+  { 
+    ssr: false,
+    loading: () => <div className="h-96 bg-gray-100 rounded-lg flex items-center justify-center">Loading map...</div>
+  }
 );
 
 // Define the component props

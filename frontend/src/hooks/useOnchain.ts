@@ -70,9 +70,10 @@ export const useOnchain = (metric?: string, timeRange: string = '1y') => {
 /**
  * 온체인 메트릭 목록 훅
  */
-export const useOnchainMetrics = () => {
-  const [metrics, setMetrics] = useState<OnchainMetric[]>([])
-  const [loading, setLoading] = useState(true)
+export const useOnchainMetrics = (options: { initialData?: OnchainMetric[] | null } = {}) => {
+  const { initialData = null } = options;
+  const [metrics, setMetrics] = useState<OnchainMetric[]>(initialData || [])
+  const [loading, setLoading] = useState(!initialData)
   const [error, setError] = useState<Error | null>(null)
 
   const fetchMetrics = useCallback(async () => {
@@ -93,8 +94,10 @@ export const useOnchainMetrics = () => {
   }, [])
 
   useEffect(() => {
-    fetchMetrics()
-  }, [fetchMetrics])
+    if (!initialData) {
+      fetchMetrics()
+    }
+  }, [fetchMetrics, initialData])
 
   return { 
     metrics, 

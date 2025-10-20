@@ -22,9 +22,11 @@ import HistoryTable from '@/components/tables/HistoryTable'
 
 interface OnchainOverviewProps {
   className?: string
+  initialMetrics?: any[]
+  initialMetricConfig?: any
 }
 
-const OnchainOverview: React.FC<OnchainOverviewProps> = ({ className }) => {
+const OnchainOverview: React.FC<OnchainOverviewProps> = ({ className, initialMetrics, initialMetricConfig }) => {
   const searchParams = useSearchParams()
   const pathname = usePathname()
   const [isMobile, setIsMobile] = useState(false)
@@ -53,8 +55,8 @@ const OnchainOverview: React.FC<OnchainOverviewProps> = ({ className }) => {
   // halving 전용 라우트 또는 쿼리 파라미터로 진입한 경우
   const isHalvingMode = pathname.includes('/onchain/halving') || (searchParams.get('halving') === 'true')
   
-  // 온체인 메트릭 목록 및 데이터
-  const { metrics, loading: metricsLoading, error: metricsError } = useOnchainMetrics()
+  // 온체인 메트릭 목록 및 데이터 (initialData가 있으면 사용)
+  const { metrics, loading: metricsLoading, error: metricsError } = useOnchainMetrics({ initialData: initialMetrics })
   // halving 모드에서는 안전한 기본 메트릭으로 데이터 요청 (또는 훅 내부 skip이 있다면 사용)
   const safeMetricId = isHalvingMode ? 'mvrv_z_score' : metricId
   const { data: onchainData, loading: dataLoading, error: dataError } = useOnchain(safeMetricId, '1y')

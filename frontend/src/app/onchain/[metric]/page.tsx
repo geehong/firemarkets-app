@@ -1,7 +1,8 @@
 import { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { apiClient } from '@/lib/api'
+import { getOnchainMetrics } from '@/lib/data/onchain'
 import OnchainOverview from '@/components/overviews/OnchainOverview'
+import ClientLayout from '@/components/layout/ClientLayout'
 
 interface OnchainMetricPageProps {
   params: { metric: string }
@@ -13,7 +14,7 @@ export async function generateMetadata({
 }: OnchainMetricPageProps): Promise<Metadata> {
   try {
     const { metric } = await params
-    const metrics = await apiClient.getOnchainMetrics()
+    const metrics = await getOnchainMetrics()
     const metricConfig = metrics.find(m => m.id === metric)
     
     if (!metricConfig) {
@@ -100,7 +101,7 @@ export default async function OnchainMetricPage({ params }: OnchainMetricPagePro
   let metricConfig
   
   try {
-    const metrics = await apiClient.getOnchainMetrics()
+    const metrics = await getOnchainMetrics()
     metricConfig = metrics.find(m => m.id === metric)
   } catch (error) {
     console.error('Failed to fetch onchain metrics:', error)
@@ -114,7 +115,7 @@ export default async function OnchainMetricPage({ params }: OnchainMetricPagePro
   const structuredData = generateStructuredData(metricConfig, metric)
 
   return (
-    <>
+    <ClientLayout>
       {/* 구조화된 데이터 */}
       <script
         type="application/ld+json"
@@ -125,16 +126,16 @@ export default async function OnchainMetricPage({ params }: OnchainMetricPagePro
       
       {/* 메인 콘텐츠 */}
       <main className="container mx-auto px-4 py-8">
-        <OnchainOverview />
+        <OnchainOverview initialMetrics={metrics} initialMetricConfig={metricConfig} />
       </main>
-    </>
+    </ClientLayout>
   )
 }
 
 // 정적 생성 가능한 경로들 (인기 메트릭들)
 export async function generateStaticParams() {
   try {
-    const metrics = await apiClient.getOnchainMetrics()
+    const metrics = await getOnchainMetrics()
     return metrics.slice(0, 10).map((metric) => ({
       metric: metric.id,
     }))

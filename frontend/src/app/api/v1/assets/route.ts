@@ -5,7 +5,7 @@ const BACKEND_BASE = (process.env.BACKEND_API_BASE || 'https://backend.firemarke
 export async function GET(req: Request) {
   const u = new URL(req.url)
   const qs = u.search
-  const url = `${BACKEND_BASE}/blogs${qs}`
+  const url = `${BACKEND_BASE}/assets/assets${qs}`
   
   try {
     const res = await fetch(url, { 
@@ -29,7 +29,7 @@ export async function GET(req: Request) {
       } 
     })
   } catch (e: any) {
-    console.error('Blogs API proxy error:', e)
+    console.error('Assets API proxy error:', e)
     return NextResponse.json({ error: e?.message || 'Proxy failed' }, { status: 500 })
   }
 }

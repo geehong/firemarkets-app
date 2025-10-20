@@ -42,37 +42,54 @@ export async function apiFetch<T>(path: string, opts: FetchOptions = {}): Promis
 
 function resolveApiBaseUrl(): string {
   // 환경 변수가 명시적으로 설정된 경우 우선 사용
-  const envUrl = process.env.NEXT_PUBLIC_API_URL;
+  const envUrl = process.env.NEXT_PUBLIC_API_URL || process.env.BACKEND_API_BASE;
   if (envUrl) {
-    console.log('🔧 Using NEXT_PUBLIC_API_URL:', envUrl);
+    console.log('🔧 Using environment variable:', envUrl);
     return envUrl;
   }
 
-  // 브라우저 환경에서 호스트 기반으로 결정
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    console.log('🔍 Current hostname:', hostname);
+  // 서버사이드 렌더링 시 Docker 환경 감지
+  if (typeof window === 'undefined') {
+    // Docker 환경에서 서버사이드 렌더링
+    if (process.env.BACKEND_API_BASE) {
+      console.log('🐳 Docker server-side detected, using:', process.env.BACKEND_API_BASE);
+      return process.env.BACKEND_API_BASE;
+    }
     
-    // 프로덕션 도메인인 경우 강제로 HTTPS 사용
-    if (hostname.includes('firemarkets.net')) {
+    // 프로덕션 환경 감지 (서버사이드)
+    if (process.env.NODE_ENV === 'production') {
       const prodUrl = 'https://backend.firemarkets.net/api/v1';
-      console.log('🌐 Production domain detected, forcing HTTPS:', prodUrl);
+      console.log('🌐 Production server-side detected, using:', prodUrl);
       return prodUrl;
     }
     
-    // 로컬 개발 환경
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      const localUrl = 'http://localhost:8001/api/v1';
-      console.log('🏠 Local development detected:', localUrl);
-      return localUrl;
-    }
+    // 로컬 개발 환경 (서버사이드) - 항상 HTTP 사용
+    const localUrl = 'http://localhost:8001/api/v1';
+    console.log('🏠 Local development server-side, using:', localUrl);
+    return localUrl;
   }
 
-  // 서버사이드 렌더링 시 기본값 (프로덕션 환경에서는 HTTPS 사용)
-  const defaultUrl = typeof window !== 'undefined' && window.location.hostname.includes('firemarkets.net') 
-    ? 'https://backend.firemarkets.net/api/v1'
-    : 'http://localhost:8001/api/v1';
-  console.log('⚙️ Server-side rendering, using default:', defaultUrl);
+  // 브라우저 환경에서 호스트 기반으로 결정
+  const hostname = window.location.hostname;
+  console.log('🔍 Current hostname:', hostname);
+  
+  // 프로덕션 도메인인 경우에만 HTTPS 사용
+  if (hostname.includes('firemarkets.net') && !hostname.includes('localhost')) {
+    const prodUrl = 'https://backend.firemarkets.net/api/v1';
+    console.log('🌐 Production domain detected, using HTTPS:', prodUrl);
+    return prodUrl;
+  }
+  
+  // 로컬 개발 환경 (브라우저에서는 항상 HTTP 사용)
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    const localUrl = 'http://localhost:8001/api/v1';
+    console.log('🏠 Local development detected (Browser):', localUrl);
+    return localUrl;
+  }
+
+  // 기본값 - 항상 HTTP 사용 (로컬 개발 환경)
+  const defaultUrl = 'http://localhost:8001/api/v1';
+  console.log('⚙️ Using default URL:', defaultUrl);
   return defaultUrl;
 }
 
@@ -83,26 +100,10 @@ export class ApiClient {
   constructor(baseURL: string = resolveApiBaseUrl()) {
     this.baseURL = baseURL
     console.log('🚀 ApiClient initialized with baseURL:', this.baseURL)
-    
-    // 프로덕션 환경에서 HTTP URL이 감지되면 강제로 HTTPS로 변경
-    if (typeof window !== 'undefined' && 
-        window.location.hostname.includes('firemarkets.net') && 
-        this.baseURL.startsWith('http://')) {
-      this.baseURL = this.baseURL.replace('http://', 'https://')
-      console.log('⚠️ Forced HTTPS conversion:', this.baseURL)
-    }
   }
 
   private async request<T = any>(endpoint: string, init?: RequestInit): Promise<T> {
-    let url = `${this.baseURL}${endpoint}`
-    
-    // 프로덕션 환경에서 HTTP URL이 감지되면 강제로 HTTPS로 변경
-    if (typeof window !== 'undefined' && 
-        window.location.hostname.includes('firemarkets.net') && 
-        url.startsWith('http://')) {
-      url = url.replace('http://', 'https://')
-      console.log('🔄 Request URL forced to HTTPS:', url)
-    }
+    const url = `${this.baseURL}${endpoint}`
     
     console.log('📡 Making request to:', url)
     
@@ -132,7 +133,9 @@ export class ApiClient {
         url,
         method: init?.method ?? 'GET',
         error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined
+        stack: error instanceof Error ? error.stack : undefined,
+        errorType: typeof error,
+        errorConstructor: error?.constructor?.name
       })
       throw error
     }

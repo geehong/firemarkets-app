@@ -1,5 +1,6 @@
 import { Metadata } from 'next'
 import OnchainOverview from '@/components/overviews/OnchainOverview'
+import ClientLayout from '@/components/layout/ClientLayout'
 
 // 정적 메타데이터
 export const metadata: Metadata = {
@@ -58,7 +59,7 @@ export default function HalvingPage() {
   const structuredData = generateStructuredData()
 
   return (
-    <>
+    <ClientLayout>
       {/* 구조화된 데이터 */}
       <script
         type="application/ld+json"
@@ -71,6 +72,6 @@ export default function HalvingPage() {
       <main className="container mx-auto px-4 py-8">
         <OnchainOverview />
       </main>
-    </>
+    </ClientLayout>
   )
 }
