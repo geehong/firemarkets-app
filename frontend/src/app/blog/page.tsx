@@ -1,5 +1,6 @@
 import React from 'react'
 import BlogList from '@/components/blog/BlogList'
+import ClientLayout from '@/components/layout/ClientLayout'
 import { Metadata } from 'next'
 
 // 동적 렌더링 강제 설정
@@ -41,13 +42,15 @@ export default async function BlogPage() {
   const blogData = await getBlogs()
   
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <BlogList 
-        showFilters={true}
-        showSearch={true}
-        featuredOnly={false}
-        initialData={blogData}
-      />
-    </div>
+    <ClientLayout>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <BlogList 
+          showFilters={true}
+          showSearch={true}
+          featuredOnly={false}
+          initialBlogs={blogData.blogs || []}
+        />
+      </div>
+    </ClientLayout>
   )
 }

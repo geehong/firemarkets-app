@@ -75,7 +75,6 @@ export const useSocket = () => {
 
     // 전역 Socket 인스턴스 사용
     if (!globalSocket) {
-      console.log('🔗 Socket 연결 시도:', socketURL, '모바일:', isMobile)
       
       globalSocket = io(socketURL, {
         // 모바일에서는 polling 우선, 데스크탑에서는 websocket 우선
@@ -113,10 +112,6 @@ export const useSocket = () => {
 
     // 연결 성공
     socket.on('connect', () => {
-      console.log('✅ Socket 연결됨 - Transport:', socket.io.engine.transport.name)
-      console.log('🔗 Socket ID:', socket.id)
-      console.log('🌐 연결 URL:', socketURL)
-      console.log('📱 모바일 환경:', isMobile)
       setIsConnected(true)
       setConnectionError(null)
       setTransport(socket.io.engine.transport.name)
@@ -124,7 +119,6 @@ export const useSocket = () => {
       if (globalSubscriptions && globalSubscriptions.size > 0) {
         try {
           const symbols = Array.from(globalSubscriptions)
-          console.log('[useSocket] 재구독 실행 (connect):', symbols)
           socket.emit('subscribe_prices', { symbols })
         } catch (e) {
           console.warn('[useSocket] 재구독 중 예외 발생:', e)
@@ -134,19 +128,8 @@ export const useSocket = () => {
 
     // 연결 실패
     socket.on('connect_error', (error) => {
-      console.error('❌ Socket 연결 실패:', error.message)
-      console.error('🔍 연결 실패 상세:', {
-        type: error.type,
-        description: error.description,
-        context: error.context,
-        transport: socket.io.engine.transport.name,
-        url: socketURL,
-        isMobile: isMobile
-      })
-      
       // WebSocket 연결 실패시 polling으로 강제 전환
       if (socket.io.engine.transport.name === 'websocket') {
-        console.log('🔄 WebSocket 실패, polling으로 전환 시도')
         socket.io.engine.close()
       }
       
@@ -156,30 +139,22 @@ export const useSocket = () => {
 
     // 연결 해제
     socket.on('disconnect', (reason) => {
-      console.log('🔌 Socket 연결 해제:', reason)
-      console.log('🔍 연결 해제 상세:', {
-        reason,
-        transport: socket.io.engine.transport.name,
-        wasConnected: socket.connected
-      })
       setIsConnected(false)
     })
 
     // 재연결 시도
     socket.on('reconnect_attempt', (attemptNumber) => {
-      console.log(`🔄 재연결 시도 ${attemptNumber}/3`)
+      // 재연결 시도 중
     })
 
     // 재연결 성공
     socket.on('reconnect', (attemptNumber) => {
-      console.log(`✅ 재연결 성공 (${attemptNumber}번째 시도)`)
       setIsConnected(true)
       setConnectionError(null)
       // 재연결 시 기존 구독 복원
       if (globalSubscriptions && globalSubscriptions.size > 0) {
         try {
           const symbols = Array.from(globalSubscriptions)
-          console.log('[useSocket] 재구독 실행 (reconnect):', symbols)
           socket.emit('subscribe_prices', { symbols })
         } catch (e) {
           console.warn('[useSocket] 재구독 중 예외 발생:', e)
@@ -189,19 +164,16 @@ export const useSocket = () => {
 
     // 재연결 실패
     socket.on('reconnect_failed', () => {
-      console.error('❌ 재연결 실패 - 수동 재연결 필요')
       setConnectionError('연결 실패 - 페이지를 새로고침해주세요')
       setIsConnected(false)
     })
 
     // Transport 변경 감지
     socket.io.engine.on('upgrade', () => {
-      console.log('⬆️ Transport 업그레이드:', socket.io.engine.transport.name)
       setTransport(socket.io.engine.transport.name)
     })
 
     socket.io.engine.on('upgradeError', (error) => {
-      console.warn('⚠️ Transport 업그레이드 실패, polling으로 fallback:', error.message)
       setTransport('polling') // fallback으로 polling 사용
     })
 
@@ -210,7 +182,6 @@ export const useSocket = () => {
       connectionCount--
       // 마지막 연결이 해제될 때만 Socket 연결 종료
       if (connectionCount <= 0 && globalSocket) {
-        console.log('🧹 마지막 Socket 연결 정리')
         globalSocket.disconnect()
         globalSocket = null
         connectionCount = 0
@@ -268,7 +239,7 @@ export const useRealtimePrices = (assetIdentifier: string) => {
 
     // 구독 확인 수신
     const handleSubscriptionConfirmed = (data: any) => {
-      // console.log(`✅ ${assetIdentifier} 구독 확인`)
+      // 구독 확인 처리
     }
 
     // 실시간 가격 데이터 수신

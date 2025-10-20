@@ -708,5 +708,12 @@ class AssetOverviewResponse(BaseModel):
     leveraged: Optional[bool] = None
     sectors: Optional[List[Dict[str, Any]]] = None
     holdings: Optional[List[Dict[str, Any]]] = None
+    
+    # treemap_live_view에서 추가된 컬럼들
+    current_price: Optional[float] = None
+    price_change_percentage_24h: Optional[float] = None
+    market_status: Optional[str] = None
+    realtime_updated_at: Optional[datetime] = None
+    daily_data_updated_at: Optional[datetime] = None
 
 

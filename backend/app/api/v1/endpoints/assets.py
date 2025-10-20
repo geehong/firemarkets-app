@@ -558,6 +558,17 @@ def get_asset_detail(
     """단일 자산 상세 정보 조회 (실시간 가격 정보 포함)"""
     try:
         asset_id = resolve_asset_identifier(db, asset_identifier)
+        logger.debug(f"[get_asset_overview] resolved asset_identifier={asset_identifier} -> asset_id={asset_id}")
+
+        # treemap_live_view 접근성/가시성 점검 로그
+        try:
+            probe = db.execute(text("SELECT 1 FROM treemap_live_view WHERE asset_id = :asset_id LIMIT 1"), {"asset_id": asset_id}).fetchone()
+            if probe:
+                logger.debug(f"[get_asset_overview] treemap_live_view has row for asset_id={asset_id}")
+            else:
+                logger.warning(f"[get_asset_overview] treemap_live_view MISSING row for asset_id={asset_id}")
+        except Exception as e:
+            logger.error(f"[get_asset_overview] treemap_live_view probe failed for asset_id={asset_id}: {e}")
         from ....models import Asset, AssetType, OHLCVData
         asset_with_type = db.query(Asset, AssetType.type_name) \
                             .join(AssetType, Asset.asset_type_id == AssetType.asset_type_id) \
@@ -1324,7 +1335,11 @@ def db_get_ohlcv_data(db: Session, asset_id: int, start_date: Optional[date], en
     if data_interval == '1d':
         query = db.query(OHLCVData).filter(
             OHLCVData.asset_id == asset_id,
-            or_(OHLCVData.data_interval == '1d', OHLCVData.data_interval.is_(None))
+            or_(
+                OHLCVData.data_interval == '1d', 
+                OHLCVData.data_interval == '1day',
+                OHLCVData.data_interval.is_(None)
+            )
         )
     else:
         # 다른 간격 데이터 (4h, 1h 등)
@@ -1778,16 +1793,8 @@ def get_asset_overview(
         
         asset, type_name = asset_with_type
         
-        # 자산 타입별로 적절한 뷰에서 데이터 조회
-        if type_name == 'Stocks':
-            overview_data = get_stock_overview_data(db, asset_id)
-        elif type_name == 'Crypto':
-            overview_data = get_crypto_overview_data(db, asset_id)
-        elif type_name == 'ETFs':
-            overview_data = get_etf_overview_data(db, asset_id)
-        else:
-            # 기본 자산 정보만 조회
-            overview_data = get_basic_overview_data(db, asset_id)
+        # 모든 자산 타입에 대해 treemap_live_view 기본 정보 사용
+        overview_data = get_unified_overview_data(db, asset_id)
         
         if not overview_data:
             raise HTTPException(status_code=404, detail="Overview data not found")
@@ -1956,39 +1963,128 @@ def get_etf_overview_data(db: Session, asset_id: int):
         return None
 
 
-def get_basic_overview_data(db: Session, asset_id: int):
-    """기본 자산 개요 데이터 조회 (기타 자산 타입용)"""
+def get_unified_overview_data(db: Session, asset_id: int):
+    """통합 자산 개요 데이터 조회 (모든 자산 타입용)"""
     try:
+        # treemap_live_view에서 기본 정보 조회
+        logger.debug(f"[get_unified_overview_data] querying treemap_live_view for asset_id={asset_id}")
         result = db.execute(text("""
-            SELECT * FROM asset_basic_info 
+            SELECT * FROM treemap_live_view
             WHERE asset_id = :asset_id
         """), {"asset_id": asset_id}).fetchone()
         
         if not result:
+            logger.warning(f"[get_unified_overview_data] no row found in treemap_live_view for asset_id={asset_id}")
             return None
         
         # SQLAlchemy Row를 딕셔너리로 변환
         overview_dict = dict(result._mapping)
+        logger.debug(f"[get_unified_overview_data] base columns fetched: keys={list(overview_dict.keys())}")
+        # treemap_live_view는 asset_type 컬럼을 제공, 스키마는 type_name을 기대 -> 매핑
+        if 'type_name' not in overview_dict and 'asset_type' in overview_dict:
+            overview_dict['type_name'] = overview_dict.get('asset_type')
+        
+        # 자산 타입별 추가 정보 조회
+        asset_type = overview_dict.get('asset_type')
+        
+        if asset_type == 'Stocks':
+            # 주식 전용 정보 추가
+            stock_data = get_stock_additional_data(db, asset_id)
+            if stock_data:
+                overview_dict.update(stock_data)
+        elif asset_type == 'Crypto':
+            # 암호화폐 전용 정보 추가
+            crypto_data = get_crypto_additional_data(db, asset_id)
+            if crypto_data:
+                overview_dict.update(crypto_data)
+        elif asset_type == 'ETFs':
+            # ETF 전용 정보 추가
+            etf_data = get_etf_additional_data(db, asset_id)
+            if etf_data:
+                overview_dict.update(etf_data)
         
         # None 값 처리 및 타입 변환
         for key, value in overview_dict.items():
             if value is None:
                 continue
             # 날짜/시간 타입 변환
-            if key in ['created_at', 'updated_at'] and value:
+            if key in ['created_at', 'updated_at', 'realtime_updated_at', 'daily_data_updated_at'] and value:
                 overview_dict[key] = value
             # 정수 타입 변환
-            elif key in ['asset_id']:
+            elif key in ['asset_id', 'employees_count', 'cmc_rank']:
                 try:
                     overview_dict[key] = int(value) if value is not None else None
                 except (ValueError, TypeError):
                     overview_dict[key] = None
             # 불린 타입 변환
-            elif key == 'is_active':
+            elif key in ['is_active', 'leveraged', 'crypto_is_active']:
                 overview_dict[key] = bool(value) if value is not None else None
+            # 숫자 타입 변환
+            elif key in ['current_price', 'price_change_percentage_24h', 'market_cap', 'pe_ratio', 'eps', 'beta']:
+                try:
+                    overview_dict[key] = float(value) if value is not None else None
+                except (ValueError, TypeError):
+                    overview_dict[key] = None
         
         return AssetOverviewResponse(**overview_dict)
         
     except Exception as e:
-        logger.error(f"Error getting basic overview data: {str(e)}")
+        logger.error(f"Error getting unified overview data: {str(e)}")
         return None
+
+
+def get_stock_additional_data(db: Session, asset_id: int):
+    """주식 전용 추가 데이터 조회"""
+    try:
+        result = db.execute(text("""
+            SELECT sp.*, sf.* FROM stock_profiles sp
+            LEFT JOIN stock_financials sf ON sp.asset_id = sf.asset_id
+            WHERE sp.asset_id = :asset_id
+        """), {"asset_id": asset_id}).fetchone()
+        
+        if not result:
+            return None
+        
+        return dict(result._mapping)
+    except Exception as e:
+        logger.error(f"Error getting stock additional data: {str(e)}")
+        return None
+
+
+def get_crypto_additional_data(db: Session, asset_id: int):
+    """암호화폐 전용 추가 데이터 조회"""
+    try:
+        result = db.execute(text("""
+            SELECT * FROM crypto_data
+            WHERE asset_id = :asset_id
+        """), {"asset_id": asset_id}).fetchone()
+        
+        if not result:
+            return None
+        
+        return dict(result._mapping)
+    except Exception as e:
+        logger.error(f"Error getting crypto additional data: {str(e)}")
+        return None
+
+
+def get_etf_additional_data(db: Session, asset_id: int):
+    """ETF 전용 추가 데이터 조회"""
+    try:
+        result = db.execute(text("""
+            SELECT * FROM etf_info
+            WHERE asset_id = :asset_id
+        """), {"asset_id": asset_id}).fetchone()
+        
+        if not result:
+            return None
+        
+        return dict(result._mapping)
+    except Exception as e:
+        logger.error(f"Error getting etf additional data: {str(e)}")
+        return None
+
+
+def get_basic_overview_data(db: Session, asset_id: int):
+    """기본 자산 개요 데이터 조회 (기타 자산 타입용) - deprecated"""
+    return get_unified_overview_data(db, asset_id)

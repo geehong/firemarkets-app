@@ -59,19 +59,12 @@ class NavigationService {
       
       // API URL이 없으면 정적 메뉴 반환
       if (!currentAPIURL) {
-        console.log('navigationService - No API URL, returning static menu');
         return this.getStaticMenu();
       }
-      
-      console.log('navigationService - API_BASE_URL:', currentAPIURL);
-      console.log('navigationService - Making request to:', `${currentAPIURL}/api/v1/navigation/menu`);
-      console.log('navigationService - Current hostname:', window.location.hostname);
       
       // 인증 헤더 가져오기
       const token = this.getAuthToken();
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      
-      console.log('navigationService - Headers:', headers);
       
       const response = await axios.get(`${currentAPIURL}/api/v1/navigation/menu`, {
         headers,
@@ -82,7 +75,6 @@ class NavigationService {
         }
       });
       
-      console.log('navigationService - Response:', response.data);
       return response.data;
     } catch (error: any) {
       console.error('navigationService - Failed to fetch menu structure:', error);

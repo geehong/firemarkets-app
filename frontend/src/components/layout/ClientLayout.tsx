@@ -23,8 +23,6 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    console.log('🔍 [CLIENT DEBUG] AdminLayoutContent useEffect called')
-    console.log('🔍 [CLIENT DEBUG] isClient:', isClient)
     setIsClient(true);
     
     // 파비콘 설정

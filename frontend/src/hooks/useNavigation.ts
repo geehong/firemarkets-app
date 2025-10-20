@@ -43,11 +43,9 @@ export const useNavigation = () => {
 
   const loadMenuItems = async () => {
     try {
-      console.log('useNavigation - Starting to load menu items');
       setLoading(true);
       setError(null);
       const items = await navigationService.getMenuStructure();
-      console.log('useNavigation - Received items:', items);
       setMenuItems(items);
     } catch (err: any) {
       console.error('useNavigation - Failed to load menu items:', err);

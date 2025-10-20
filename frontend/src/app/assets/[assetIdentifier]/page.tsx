@@ -29,18 +29,18 @@ export async function generateMetadata({
       }
     }
 
-    const title = `${asset.name} (${asset.asset_identifier || asset.ticker}) - Price, Charts | FireMarkets`
+    const title = `${asset.name} (${asset.ticker}) - Price, Charts | FireMarkets`
     const description = `Live price, charts, and market data for ${asset.name}. Explore historical data and analysis on FireMarkets.`
-    const keywords = `${asset.name}, ${asset.asset_identifier || asset.ticker}, price, chart, market data, ${asset.type_name}`
+    const keywords = `${asset.name}, ${asset.ticker}, price, chart, market data, ${asset.type_name}`
 
     return {
       title,
       description,
       keywords,
       openGraph: {
-        title: `${asset.name} (${asset.asset_identifier || asset.ticker}) | FireMarkets`,
+        title: `${asset.name} (${asset.ticker}) | FireMarkets`,
         description: `Live price and market data for ${asset.name}.`,
-        images: asset.logo_url ? [asset.logo_url] : ['/default-logo.png'],
+        images: asset.logo_image_url ? [asset.logo_image_url] : ['/default-logo.png'],
         type: 'website',
         url: `/assets/${assetIdentifier}`,
       },
@@ -48,7 +48,7 @@ export async function generateMetadata({
         card: 'summary_large_image',
         title: `${asset.name} | FireMarkets`,
         description: `Live price and market data for ${asset.name}.`,
-        images: asset.logo_url ? [asset.logo_url] : ['/default-logo.png'],
+        images: asset.logo_image_url ? [asset.logo_image_url] : ['/default-logo.png'],
       },
       alternates: {
         canonical: `/assets/${assetIdentifier}`,
@@ -74,7 +74,7 @@ function generateStructuredData(asset: any, assetIdentifier: string) {
     '@context': 'https://schema.org',
     '@type': 'FinancialProduct',
     name: asset.name,
-    tickerSymbol: asset.asset_identifier || asset.ticker,
+    tickerSymbol: asset.ticker,
     description: asset.description,
     category: asset.type_name,
     provider: {
@@ -83,13 +83,18 @@ function generateStructuredData(asset: any, assetIdentifier: string) {
       url: 'https://firemarkets.net'
     },
     url: `https://firemarkets.net/assets/${assetIdentifier}`,
-    ...(asset.logo_url && {
-      image: asset.logo_url
+    ...(asset.logo_image_url && {
+      image: asset.logo_image_url
     }),
     ...(asset.company_name && {
       issuer: {
         '@type': 'Organization',
-        name: asset.company_name
+        name: asset.company_name,
+        ...(asset.website && { url: asset.website }),
+        ...(asset.ceo && { founder: asset.ceo }),
+        ...(asset.employees_count && { numberOfEmployees: asset.employees_count }),
+        ...(asset.address && { address: asset.address }),
+        ...(asset.city && asset.state && { location: `${asset.city}, ${asset.state}` })
       }
     }),
     ...(asset.sector && {
@@ -100,6 +105,29 @@ function generateStructuredData(asset: any, assetIdentifier: string) {
         '@type': 'Country',
         name: asset.country
       }
+    }),
+    ...(asset.market_cap && {
+      marketCap: {
+        '@type': 'MonetaryAmount',
+        value: asset.market_cap,
+        currency: asset.currency
+      }
+    }),
+    ...(asset.pe_ratio && {
+      priceEarningsRatio: asset.pe_ratio
+    }),
+    ...(asset.eps && {
+      earningsPerShare: {
+        '@type': 'MonetaryAmount',
+        value: asset.eps,
+        currency: asset.currency
+      }
+    }),
+    ...(asset.dividend_yield && {
+      dividendYield: asset.dividend_yield
+    }),
+    ...(asset.ipo_date && {
+      dateFounded: asset.ipo_date
     })
   }
 }

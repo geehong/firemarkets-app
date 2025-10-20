@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiClient } from "@/lib/api";
+import { useSidebar } from "../context/SidebarContext";
 
 interface BlogItem {
   id: number;
@@ -13,14 +14,13 @@ interface BlogItem {
 export default function SidebarWidget() {
   const [latest, setLatest] = useState<BlogItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const { isExpanded, isMobileOpen } = useSidebar();
 
   useEffect(() => {
     let mounted = true;
     const load = async () => {
       try {
-        console.log('🔍 [SidebarWidget] Starting to load blogs...');
         const data = await apiClient.getBlogs({ page: 1, page_size: 5, status: "published" });
-        console.log('🔍 [SidebarWidget] Blogs loaded successfully:', data);
         if (!mounted) return;
         setLatest((data?.blogs || []).map((b: any) => ({ id: b.id, title: b.title, slug: b.slug })));
       } catch (e: any) {
@@ -39,6 +39,11 @@ export default function SidebarWidget() {
     load();
     return () => { mounted = false };
   }, []);
+  // 사이드바가 축소되었을 때는 위젯을 숨김 (데스크톱에서는 isExpanded, 모바일에서는 isMobileOpen 확인)
+  if (!isExpanded && !isMobileOpen) {
+    return null;
+  }
+
   return (
     <div
       className={`

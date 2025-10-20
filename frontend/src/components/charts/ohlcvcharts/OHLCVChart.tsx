@@ -58,34 +58,49 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
   const [isClient, setIsClient] = useState(false)
   const [HighchartsReact, setHighchartsReact] = useState<any>(null)
   const [Highcharts, setHighcharts] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
   // 클라이언트 사이드에서 Highcharts 동적 로드
   useEffect(() => {
     const loadHighcharts = async () => {
       try {
-        const [
-          { default: HighchartsReactComponent },
-          { default: HighchartsCore }
-        ] = await Promise.all([
+        // 브라우저 환경 확인
+        if (typeof window === 'undefined') {
+          return
+        }
+
+        // HighchartsReact와 Highcharts를 동시에 로드
+        const [HighchartsReactModule, HighchartsModule] = await Promise.allSettled([
           import('highcharts-react-official'),
           import('highcharts/highstock')
         ])
 
-        // Highcharts 모듈들 동적 로드
-        await Promise.all([
-          import('highcharts/modules/exporting'),
-          import('highcharts/modules/accessibility'),
-          import('highcharts/modules/full-screen'),
-          import('highcharts/modules/annotations-advanced'),
-          import('highcharts/modules/price-indicator')
-        ])
+        if (HighchartsReactModule.status === 'rejected' || HighchartsModule.status === 'rejected') {
+          throw new Error('Failed to load core Highcharts modules')
+        }
+
+        const HighchartsReactComponent = HighchartsReactModule.value.default
+        const HighchartsCore = HighchartsModule.value.default
+
+        // Highcharts 모듈들을 병렬로 로드 (실패해도 계속 진행)
+        const modulePromises = [
+          import('highcharts/modules/exporting').catch(e => console.warn('Exporting module failed:', e)),
+          import('highcharts/modules/accessibility').catch(e => console.warn('Accessibility module failed:', e)),
+          import('highcharts/modules/full-screen').catch(e => console.warn('Full-screen module failed:', e)),
+          import('highcharts/modules/annotations-advanced').catch(e => console.warn('Annotations module failed:', e)),
+          import('highcharts/modules/price-indicator').catch(e => console.warn('Price indicator module failed:', e))
+        ]
+
+        await Promise.allSettled(modulePromises)
 
         setHighchartsReact(() => HighchartsReactComponent)
         setHighcharts(HighchartsCore)
         setIsClient(true)
+        setIsLoading(false)
       } catch (error) {
         console.error('Failed to load Highcharts:', error)
         setError('Failed to load chart library')
+        setIsLoading(false)
       }
     }
 
@@ -154,8 +169,14 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
   useEffect(() => {
     if (!assetIdentifier) return
 
+    console.log('🔍 OHLCVChart: Starting data fetch for:', assetIdentifier)
+    console.log('🔍 OHLCVChart: API loading states:', { apiLoading, timeLoading, dailyLoading })
+    console.log('🔍 OHLCVChart: API errors:', { apiError, timeError, dailyError })
+    console.log('🔍 OHLCVChart: API data:', { apiData, timeData, dailyData })
+
     // 외부 데이터가 있으면 그것을 사용
     if (externalOhlcvData && externalOhlcvData.length > 0) {
+      console.log('🔍 OHLCVChart: Using external data:', externalOhlcvData.length, 'items')
       const ohlcData = externalOhlcvData
         .map((item) => [
           new Date(item.timestamp_utc).getTime(),
@@ -172,6 +193,7 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
         .filter((item) => item[0] > 0)
         .sort((a, b) => a[0] - b[0])
 
+      console.log('✅ OHLCVChart: External data processed:', { ohlcData: ohlcData.length, volumeData: volumeData.length })
       setChartData(ohlcData)
       setVolumeData(volumeData)
       return
@@ -179,6 +201,7 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
 
     // 훅 데이터 사용
     if (apiError) {
+      console.error('❌ OHLCVChart: API error:', apiError)
       const errorMessage = `차트 데이터를 불러오는데 실패했습니다: ${(apiError as Error)?.message || apiError}`
       setError(errorMessage)
       if (onError) onError(errorMessage)
@@ -191,12 +214,17 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
     if (isTimeData && dataInterval === '15m' && delayedData) {
       // 15m 지연 데이터는 quotes 배열 안에 있음
       rows = delayedData.quotes || []
+      console.log('🔍 OHLCVChart: Using delayed data:', rows.length, 'items')
     } else {
       // 시간 데이터 또는 일간 데이터
       rows = apiData?.data || apiData || []
+      console.log('🔍 OHLCVChart: Using API data:', rows.length, 'items')
     }
 
+    console.log('🔍 OHLCVChart: Raw rows data:', rows.slice(0, 3)) // 첫 3개 항목만 로그
+
     if (rows && rows.length > 0) {
+      console.log('🔍 OHLCVChart: Processing', rows.length, 'data points')
       const ohlcData = rows
         .map((item: Record<string, unknown>) => {
           let timestamp: number
@@ -244,10 +272,18 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
         .filter((item) => item[0] > 0)
         .sort((a, b) => a[0] - b[0])
 
+      console.log('✅ OHLCVChart: Data processed successfully:', { 
+        ohlcData: ohlcData.length, 
+        volumeData: volumeData.length,
+        firstOHLC: ohlcData[0],
+        lastOHLC: ohlcData[ohlcData.length - 1]
+      })
+
       setChartData(ohlcData)
       setVolumeData(volumeData)
       if (onDataLoad) onDataLoad({ ohlcData, volumeData, totalCount: rows.length })
     } else if (!apiLoading) {
+      console.warn('⚠️ OHLCVChart: No data available', { rowsLength: rows.length, apiData, isTimeData, dataInterval })
       setError('차트 데이터가 없습니다.')
     }
   }, [assetIdentifier, dataInterval, onDataLoad, onError, externalOhlcvData, apiData, apiLoading, apiError, isTimeData, isDailyData, delayedData, useIntradayData])
@@ -436,6 +472,18 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
     </div>
   )
   
+  // 로딩 상태 처리
+  if (isLoading || !isClient) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="text-sm text-gray-600">Loading chart library...</div>
+        </div>
+      </div>
+    )
+  }
+
   if (!chartData || chartData.length === 0) return (
     <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
       <h5 className="text-yellow-800 font-medium">No Data Available</h5>

@@ -8,20 +8,22 @@ import HistoryTable from '@/components/tables/HistoryTable'
 import SimpleHistoryTable from '@/components/tables/SimpleHistoryTable'
 import AgGridBaseTable from '@/components/tables/AgGridBaseTable'
 import AgGridHistoryTable from '@/components/tables/AgGridHistoryTable'
+import ClientLayout from '@/components/layout/ClientLayout'
 
 export default function TablesPage() {
   const [activeTable, setActiveTable] = useState('basic')
 
   return (
-    <main className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-          Tables
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          Interactive table components and data grids for structured data display.
-        </p>
-      </div>
+    <ClientLayout>
+      <main className="container mx-auto px-4 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+            Tables
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            Interactive table components and data grids for structured data display.
+          </p>
+        </div>
 
       {/* Table Type Selector */}
       <div className="mb-6">
@@ -121,6 +123,7 @@ export default function TablesPage() {
           </div>
         </div>
       </div>
-    </main>
+      </main>
+    </ClientLayout>
   )
 }

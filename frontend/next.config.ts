@@ -1,17 +1,58 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  webpack(config) {
+  /* 개발 모드 설정 */
+  // 개발 모드 활성화
+  reactStrictMode: true,
+  
+  webpack(config, { dev, isServer }) {
     config.module.rules.push({
       test: /\.svg$/,
       use: ["@svgr/webpack"],
     });
+    
+    // 개발 모드에서 디버깅을 위한 설정
+    if (dev) {
+      config.devtool = 'eval-source-map';
+      config.optimization = {
+        ...config.optimization,
+        splitChunks: {
+          ...config.optimization.splitChunks,
+          cacheGroups: {
+            ...config.optimization.splitChunks?.cacheGroups,
+            default: false,
+            vendors: false,
+          },
+        },
+      }
+    }
+    
     return config;
   },
-  // 개발 환경에서 HMR 설정
+  
+  // 개발 모드 인디케이터 설정
+  devIndicators: {
+    buildActivity: true,
+    buildActivityPosition: 'bottom-right',
+  },
+  
+  // 개발 모드에서 콘솔 로그 유지
+  compiler: {
+    removeConsole: false,
+  },
+  
+  // 개발 모드 헤더 설정
+  poweredByHeader: false,
+  generateEtags: false,
+  
+  // 개발 환경 최적화 설정
   experimental: {
-    // HMR 관련 설정
+    // 개발 모드에서 CSS 최적화 비활성화
+    optimizeCss: false,
+    // 개발 모드에서 성능 측정 활성화
+    webVitalsAttribution: true,
+    // 개발 모드에서 패키지 최적화 비활성화
+    optimizePackageImports: [],
   },
   // 캐시 설정
   async headers() {

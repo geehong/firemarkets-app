@@ -44,7 +44,6 @@ function resolveApiBaseUrl(): string {
   // 환경 변수가 명시적으로 설정된 경우 우선 사용
   const envUrl = process.env.NEXT_PUBLIC_API_URL || process.env.BACKEND_API_BASE;
   if (envUrl) {
-    console.log('🔧 Using environment variable:', envUrl);
     return envUrl;
   }
 
@@ -52,44 +51,37 @@ function resolveApiBaseUrl(): string {
   if (typeof window === 'undefined') {
     // Docker 환경에서 서버사이드 렌더링
     if (process.env.BACKEND_API_BASE) {
-      console.log('🐳 Docker server-side detected, using:', process.env.BACKEND_API_BASE);
       return process.env.BACKEND_API_BASE;
     }
     
     // 프로덕션 환경 감지 (서버사이드)
     if (process.env.NODE_ENV === 'production') {
       const prodUrl = 'https://backend.firemarkets.net/api/v1';
-      console.log('🌐 Production server-side detected, using:', prodUrl);
       return prodUrl;
     }
     
     // 로컬 개발 환경 (서버사이드) - 항상 HTTP 사용
     const localUrl = 'http://localhost:8001/api/v1';
-    console.log('🏠 Local development server-side, using:', localUrl);
     return localUrl;
   }
 
   // 브라우저 환경에서 호스트 기반으로 결정
   const hostname = window.location.hostname;
-  console.log('🔍 Current hostname:', hostname);
   
   // 프로덕션 도메인인 경우에만 HTTPS 사용
   if (hostname.includes('firemarkets.net') && !hostname.includes('localhost')) {
     const prodUrl = 'https://backend.firemarkets.net/api/v1';
-    console.log('🌐 Production domain detected, using HTTPS:', prodUrl);
     return prodUrl;
   }
   
   // 로컬 개발 환경 (브라우저에서는 항상 HTTP 사용)
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     const localUrl = 'http://localhost:8001/api/v1';
-    console.log('🏠 Local development detected (Browser):', localUrl);
     return localUrl;
   }
 
   // 기본값 - 항상 HTTP 사용 (로컬 개발 환경)
   const defaultUrl = 'http://localhost:8001/api/v1';
-  console.log('⚙️ Using default URL:', defaultUrl);
   return defaultUrl;
 }
 
@@ -99,13 +91,10 @@ export class ApiClient {
 
   constructor(baseURL: string = resolveApiBaseUrl()) {
     this.baseURL = baseURL
-    console.log('🚀 ApiClient initialized with baseURL:', this.baseURL)
   }
 
   private async request<T = any>(endpoint: string, init?: RequestInit): Promise<T> {
     const url = `${this.baseURL}${endpoint}`
-    
-    console.log('📡 Making request to:', url)
     
     const defaultHeaders: Record<string, string> = {
       'Content-Type': 'application/json',

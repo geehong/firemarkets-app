@@ -14,6 +14,7 @@ import {
   ChevronLeftIcon
 } from '@/icons/index'
 import { useBlog } from '@/hooks'
+import ClientLayout from '@/components/layout/ClientLayout'
 
 interface BlogPost {
   id: number
@@ -134,8 +135,9 @@ export default function BlogPostPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <ClientLayout>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* 뒤로가기 버튼 */}
         <div className="mb-6">
           <Link
@@ -273,6 +275,7 @@ export default function BlogPostPage() {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </ClientLayout>
   )
 }

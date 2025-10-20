@@ -93,12 +93,56 @@ const ClientSidebar: React.FC = () => {
       .map(convertItem);
   };
 
+  // 정적 메뉴 정의
+  const staticMenuItems: NavItem[] = [
+    {
+      name: "Dashboard",
+      icon: <GridIcon className="h-5 w-5" />,
+      path: "/"
+    },
+    {
+      name: "Assets",
+      icon: <BoxCubeIcon className="h-5 w-5" />,
+      path: "/assets"
+    },
+    {
+      name: "OnChain",
+      icon: <PlugInIcon className="h-5 w-5" />,
+      path: "/onchain"
+    },
+    {
+      name: "Calendar",
+      icon: <CalenderIcon className="h-5 w-5" />,
+      path: "/calendar"
+    },
+    {
+      name: "Charts",
+      icon: <PieChartIcon className="h-5 w-5" />,
+      path: "/charts"
+    },
+    {
+      name: "Widgets",
+      icon: <TableIcon className="h-5 w-5" />,
+      path: "/widgets"
+    }
+  ];
+
   // 모든 메뉴 통합 (동적 메뉴 + 정적 메뉴)
   const convertedDynamicMenus = convertDynamicMenuToStatic(dynamicMenuItems || []);
   const allMenuItems = [
     ...convertedDynamicMenus,  // 동적 메뉴를 정적 형식으로 변환
-    ...[]               // 기존 정적 메뉴
+    ...(convertedDynamicMenus.length === 0 ? staticMenuItems : [])  // 동적 메뉴가 없을 때 정적 메뉴 사용
   ];
+
+  // 디버깅을 위한 로그
+  console.log('ClientSidebar Debug:', {
+    dynamicMenuItems: dynamicMenuItems?.length || 0,
+    convertedDynamicMenus: convertedDynamicMenus.length,
+    staticMenuItems: staticMenuItems.length,
+    allMenuItems: allMenuItems.length,
+    dynamicMenuLoading,
+    dynamicMenuError
+  });
 
   useEffect(() => {
     // 클라이언트 사이드에서만 실행
@@ -325,6 +369,8 @@ const ClientSidebar: React.FC = () => {
 
   // const isActive = (path: string) => path === pathname;
   const isActive = useCallback((path: string) => {
+    if (!pathname) return false;
+    
     // OnChain 메트릭에 대한 특별 처리
     if (path && path.includes('/onchain/')) {
       // /onchain/mvrv_z_score와 /onchain/overviews?metric=mvrv_z_score 매칭

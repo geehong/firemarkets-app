@@ -1,5 +1,6 @@
 import { Metadata } from 'next'
 import AssetsList from '@/components/lists/AssetsList'
+import ClientLayout from '@/components/layout/ClientLayout'
 
 interface AssetsPageProps {
   searchParams: { type_name?: string }
@@ -55,7 +56,7 @@ export async function generateMetadata({
 }
 
 // 구조화된 데이터 (JSON-LD) 생성
-function generateStructuredData(typeName?: string) {
+function generateStructuredData(typeName?: string, assetsData?: any) {
   const baseData = {
     '@context': 'https://schema.org',
     '@type': 'WebPage',
@@ -74,7 +75,28 @@ function generateStructuredData(typeName?: string) {
       name: typeName ? `${typeName} Assets` : 'Asset List',
       description: typeName 
         ? `List of ${typeName} assets with market data`
-        : 'List of all available assets with market data'
+        : 'List of all available assets with market data',
+      numberOfItems: assetsData?.total_count || 0,
+      ...(assetsData?.data && assetsData.data.length > 0 && {
+        itemListElement: assetsData.data.slice(0, 10).map((asset: any, index: number) => ({
+          '@type': 'ListItem',
+          position: index + 1,
+          item: {
+            '@type': 'FinancialProduct',
+            name: asset.name,
+            tickerSymbol: asset.ticker,
+            description: asset.description,
+            category: asset.type_name,
+            ...(asset.market_cap && {
+              marketCap: {
+                '@type': 'MonetaryAmount',
+                value: asset.market_cap,
+                currency: asset.currency
+              }
+            })
+          }
+        }))
+      })
     }
   }
 
@@ -111,10 +133,10 @@ async function getAssets(typeName?: string) {
 export default async function AssetsPage({ searchParams }: AssetsPageProps) {
   const { type_name: typeName } = await searchParams
   const assetsData = await getAssets(typeName)
-  const structuredData = generateStructuredData(typeName)
+  const structuredData = generateStructuredData(typeName, assetsData)
 
   return (
-    <>
+    <ClientLayout>
       {/* 구조화된 데이터 */}
       <script
         type="application/ld+json"
@@ -127,6 +149,6 @@ export default async function AssetsPage({ searchParams }: AssetsPageProps) {
       <main className="container mx-auto px-4 py-8">
         <AssetsList initialData={assetsData} />
       </main>
-    </>
+    </ClientLayout>
   )
 }
