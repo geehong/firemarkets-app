@@ -338,8 +338,8 @@ export class ApiClient {
     return this.request(`/assets/treemap/live${qs ? `?${qs}` : ''}`);
   }
 
-  // Blog APIs
-  getBlogs(params?: { 
+  // Post APIs
+  getPosts(params?: { 
     page?: number; 
     page_size?: number; 
     status?: string; 
@@ -357,40 +357,40 @@ export class ApiClient {
     const qs = search.toString();
     
     // trailing slash로 리다이렉트 방지
-    return this.request(`/blogs/${qs ? `?${qs}` : ''}`);
+    return this.request(`/posts/${qs ? `?${qs}` : ''}`);
   }
 
-  getBlog(slug: string) {
+  getPost(slug: string) {
     // 슬러그 전용 엔드포인트 사용 및 리다이렉트 방지
-    return this.request(`/blogs/slug/${slug}`);
+    return this.request(`/posts/slug/${slug}`);
   }
 
   getBlogCategories() {
-    // backend route: /api/v1/blogs/categories/
-    return this.request('/blogs/categories/');
+    // backend route: /api/v1/posts/categories/
+    return this.request('/posts/categories/');
   }
 
   getBlogTags() {
-    // backend route: /api/v1/blogs/tags/
-    return this.request('/blogs/tags/');
+    // backend route: /api/v1/posts/tags/
+    return this.request('/posts/tags/');
   }
 
   createBlog(data: any) {
-    return this.request('/blogs/', {
+    return this.request('/posts/', {
       method: 'POST',
       body: JSON.stringify(data)
     });
   }
 
   updateBlog(id: number, data: any) {
-    return this.request(`/blogs/${id}`, {
+    return this.request(`/posts/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data)
     });
   }
 
   deleteBlog(id: number) {
-    return this.request(`/blogs/${id}`, {
+    return this.request(`/posts/${id}`, {
       method: 'DELETE'
     });
   }

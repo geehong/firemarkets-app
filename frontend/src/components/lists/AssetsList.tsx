@@ -19,13 +19,22 @@ interface AssetsListProps {
 
 const AssetsList: React.FC<AssetsListProps> = ({ className }) => {
   const searchParams = useSearchParams()
-  const typeNameFromQuery = searchParams.get('type_name')
+  const typeNameFromQuery = searchParams?.get('type_name')
   
   // Removed search/sort controls per request
 
   // TreeMap Live 데이터 사용 (AssetsListTable과 동일한 hook 사용)
   const { data: treemapData, isLoading: liveLoading, error: liveError } = useTreemapLive(
-    typeNameFromQuery ? { type_name: typeNameFromQuery } : undefined
+    typeNameFromQuery 
+      ? { 
+          type_name: typeNameFromQuery,
+          sort_by: 'market_cap',
+          sort_order: 'desc'
+        } 
+      : {
+          sort_by: 'market_cap',
+          sort_order: 'desc'
+        }
   )
   
   // 실시간 가격 데이터 (첫 번째 자산에 대해서만)
@@ -35,10 +44,20 @@ const AssetsList: React.FC<AssetsListProps> = ({ className }) => {
   // 헤더/상단 카운트 표시에 사용 (테이블은 별도 API 사용)
   const filteredAssets = useMemo(() => {
     const anyData: any = treemapData as any
-    const arr = Array.isArray(anyData?.data) ? (anyData.data as any[]) : []
-    if (!typeNameFromQuery) return arr
-    const wanted = String(typeNameFromQuery)
-    return arr.filter((asset: any) => (asset.type_name || asset.asset_type || asset.category) === wanted)
+    let arr = Array.isArray(anyData?.data) ? (anyData.data as any[]) : []
+    
+    // 타입 필터링
+    if (typeNameFromQuery) {
+      const wanted = String(typeNameFromQuery)
+      arr = arr.filter((asset: any) => (asset.type_name || asset.asset_type || asset.category) === wanted)
+    }
+    
+    // 시총으로 정렬 (내림차순)
+    return arr.sort((a: any, b: any) => {
+      const marketCapA = parseFloat(a.market_cap) || 0
+      const marketCapB = parseFloat(b.market_cap) || 0
+      return marketCapB - marketCapA
+    })
   }, [treemapData, typeNameFromQuery])
 
   if (liveLoading) {

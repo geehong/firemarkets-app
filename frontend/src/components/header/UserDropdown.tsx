@@ -8,10 +8,23 @@ import { DropdownItem } from "../ui/dropdown/DropdownItem";
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
 
-function toggleDropdown(e: React.MouseEvent<HTMLButtonElement, MouseEvent>) {
-  e.stopPropagation();
-  setIsOpen((prev) => !prev);
-}
+  // 하드코딩된 사용자 데이터 (users 테이블에서 가져온 정보)
+  const userData = {
+    id: 13,
+    username: "geehong",
+    email: "geecgpi1@gmail.com",
+    role: "super_admin",
+    full_name: "GEEHONG KIM",
+    address: "103@702 33, Cheonma-ro 90beon-gil, Buk-gu, Pohang-si, Gyeongsangbuk-do, Republic of Korea",
+    avatar_url: "/images/user/adminavatar.png",
+    last_login: "2025-10-21 03:57:42.942389",
+    created_at: "2025-08-12 17:22:41"
+  };
+
+  function toggleDropdown(e: React.MouseEvent<HTMLButtonElement, MouseEvent>) {
+    e.stopPropagation();
+    setIsOpen((prev) => !prev);
+  }
 
   function closeDropdown() {
     setIsOpen(false);
@@ -26,12 +39,12 @@ function toggleDropdown(e: React.MouseEvent<HTMLButtonElement, MouseEvent>) {
           <Image
             width={44}
             height={44}
-            src="/images/user/owner.jpg"
+            src={userData.avatar_url}
             alt="User"
           />
         </span>
 
-        <span className="block mr-1 font-medium text-theme-sm">Musharof</span>
+        <span className="block mr-1 font-medium text-theme-sm">{userData.username}</span>
 
         <svg
           className={`stroke-gray-500 dark:stroke-gray-400 transition-transform duration-200 ${
@@ -60,10 +73,13 @@ function toggleDropdown(e: React.MouseEvent<HTMLButtonElement, MouseEvent>) {
       >
         <div>
           <span className="block font-medium text-gray-700 text-theme-sm dark:text-gray-400">
-            Musharof Chowdhury
+            {userData.full_name}
           </span>
           <span className="mt-0.5 block text-theme-xs text-gray-500 dark:text-gray-400">
-            randomuser@pimjo.com
+            {userData.email}
+          </span>
+          <span className="mt-1 block text-theme-xs text-gray-400 dark:text-gray-500">
+            Role: {userData.role.replace('_', ' ').toUpperCase()}
           </span>
         </div>
 

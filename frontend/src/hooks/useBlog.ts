@@ -3,29 +3,29 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api'
 
-export const useBlogs = () => {
+export const usePosts = () => {
   return useQuery({
-    queryKey: ['blogs'],
+    queryKey: ['posts'],
     queryFn: async () => {
-      console.log('🔍 [useBlogs] Blog API 호출 시작')
+      console.log('🔍 [usePosts] Post API 호출 시작')
       
       try {
-        // apiClient를 사용하여 블로그 데이터 가져오기
-        const result = await apiClient.getBlogs({
+        // apiClient를 사용하여 포스트 데이터 가져오기
+        const result = await apiClient.getPosts({
           page: 1,
           page_size: 10,
           status: 'published'
         })
         
-        console.log('✅ [useBlogs] Blog API 호출 성공:', result)
+        console.log('✅ [usePosts] Post API 호출 성공:', result)
         return result
         
       } catch (error) {
-        console.error('❌ [useBlogs] Blog API 호출 실패:', error)
+        console.error('❌ [usePosts] Post API 호출 실패:', error)
         
         // Log more details about the error
         if (error instanceof TypeError && error.message === 'Failed to fetch') {
-          console.error('🔥 [useBlogs] Network error - 가능한 원인:')
+          console.error('🔥 [usePosts] Network error - 가능한 원인:')
           console.error('  1. CORS 정책 위반')
           console.error('  2. Mixed Content (HTTP/HTTPS 혼용)')
           console.error('  3. 네트워크 연결 문제')

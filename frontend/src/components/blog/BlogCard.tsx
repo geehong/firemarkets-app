@@ -41,7 +41,7 @@ interface BlogCardProps {
 
 const BlogCard: React.FC<BlogCardProps> = ({ blog, featured = false }) => {
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('ko-KR', {
+    return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
@@ -79,7 +79,7 @@ const BlogCard: React.FC<BlogCardProps> = ({ blog, featured = false }) => {
                 {blog.view_count && (
                   <div className="flex items-center">
                     <EyeIcon className="w-4 h-4 mr-1" />
-                    {blog.view_count.toLocaleString()}
+                    {blog.view_count.toLocaleString('en-US')}
                   </div>
                 )}
                 {blog.author && (

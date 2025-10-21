@@ -5,32 +5,32 @@ from sqlalchemy.sql import func
 from app.core.database import Base
 
 
-class BlogCategory(Base):
-    """블로그 카테고리 모델"""
-    __tablename__ = 'blog_categories'
+class PostCategory(Base):
+    """포스트 카테고리 모델"""
+    __tablename__ = 'post_categories'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(100), unique=True, nullable=False)
     slug = Column(String(100), unique=True, nullable=False)
     description = Column(Text, nullable=True)
     icon = Column(String(50), nullable=True)
-    parent_id = Column(Integer, ForeignKey('blog_categories.id'), nullable=True)
+    parent_id = Column(Integer, ForeignKey('post_categories.id'), nullable=True)
     display_order = Column(Integer, default=0)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
     
     # 관계 설정
-    parent = relationship("BlogCategory", remote_side=[id], back_populates="children")
-    children = relationship("BlogCategory", back_populates="parent")
-    blogs = relationship("Blog", back_populates="category")
+    parent = relationship("PostCategory", remote_side=[id], back_populates="children", primaryjoin="PostCategory.parent_id == PostCategory.id")
+    children = relationship("PostCategory", back_populates="parent")
+    posts = relationship("Post", back_populates="category")
     
     def __repr__(self):
-        return f"<BlogCategory(id={self.id}, name='{self.name}', slug='{self.slug}')>"
+        return f"<PostCategory(id={self.id}, name='{self.name}', slug='{self.slug}')>"
 
 
-class BlogTag(Base):
-    """블로그 태그 모델"""
-    __tablename__ = 'blog_tags'
+class PostTag(Base):
+    """포스트 태그 모델"""
+    __tablename__ = 'post_tags'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(50), unique=True, nullable=False)
@@ -39,15 +39,15 @@ class BlogTag(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
     
     # 관계 설정
-    blogs = relationship("Blog", secondary="blog_post_tags", back_populates="tags")
+    posts = relationship("Post", secondary="post_tag_associations", back_populates="tags")
     
     def __repr__(self):
-        return f"<BlogTag(id={self.id}, name='{self.name}', slug='{self.slug}')>"
+        return f"<PostTag(id={self.id}, name='{self.name}', slug='{self.slug}')>"
 
 
-class Blog(Base):
-    """블로그 포스트 모델"""
-    __tablename__ = 'blogs'
+class Post(Base):
+    """포스트 모델"""
+    __tablename__ = 'posts'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     
@@ -73,7 +73,7 @@ class Blog(Base):
     author_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     
     # 카테고리
-    category_id = Column(Integer, ForeignKey('blog_categories.id'), nullable=True)
+    category_id = Column(Integer, ForeignKey('post_categories.id'), nullable=True)
     
     # 미디어
     cover_image = Column(String(500), nullable=True)
@@ -100,16 +100,16 @@ class Blog(Base):
     sync_status = Column(String(20), default='pending')
     
     # 관계 설정
-    asset = relationship("Asset", back_populates="blogs")
+    asset = relationship("Asset", back_populates="posts")
     author = relationship("User")
-    category = relationship("BlogCategory", back_populates="blogs")
-    tags = relationship("BlogTag", secondary="blog_post_tags", back_populates="blogs")
-    comments = relationship("BlogComment", back_populates="blog", cascade="all, delete-orphan")
-    products = relationship("BlogProduct", back_populates="blog", cascade="all, delete-orphan")
-    charts = relationship("BlogChart", back_populates="blog", cascade="all, delete-orphan")
+    category = relationship("PostCategory", back_populates="posts")
+    tags = relationship("PostTag", secondary="post_tag_associations", back_populates="posts")
+    comments = relationship("PostComment", back_populates="post", cascade="all, delete-orphan")
+    products = relationship("PostProduct", back_populates="post", cascade="all, delete-orphan")
+    charts = relationship("PostChart", back_populates="post", cascade="all, delete-orphan")
     
     def sync_with_asset_description(self, db_session):
-        """Asset의 description을 블로그 content와 동기화"""
+        """Asset의 description을 포스트 content와 동기화"""
         if not self.asset_id or not self.sync_with_asset:
             return False
             
@@ -118,7 +118,7 @@ class Blog(Base):
         if not asset:
             return False
             
-        # Asset description을 블로그 content로 복사
+        # Asset description을 포스트 content로 복사
         if asset.description:
             self.content = asset.description
             self.last_sync_at = func.now()
@@ -127,7 +127,7 @@ class Blog(Base):
         return False
     
     def update_asset_description(self, db_session):
-        """블로그 content를 Asset description으로 동기화"""
+        """포스트 content를 Asset description으로 동기화"""
         if not self.asset_id or not self.auto_sync_content:
             return False
             
@@ -136,23 +136,23 @@ class Blog(Base):
         if not asset:
             return False
             
-        # 블로그 content를 Asset description으로 복사
+        # 포스트 content를 Asset description으로 복사
         asset.description = self.content
         self.last_sync_at = func.now()
         self.sync_status = 'synced'
         return True
     
     def __repr__(self):
-        return f"<Blog(id={self.id}, title='{self.title}', slug='{self.slug}')>"
+        return f"<Post(id={self.id}, title='{self.title}', slug='{self.slug}')>"
 
 
-class BlogComment(Base):
-    """블로그 댓글 모델"""
-    __tablename__ = 'blog_comments'
+class PostComment(Base):
+    """포스트 댓글 모델"""
+    __tablename__ = 'post_comments'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    blog_id = Column(Integer, ForeignKey('blogs.id'), nullable=False)
-    parent_id = Column(Integer, ForeignKey('blog_comments.id'), nullable=True)
+    post_id = Column(Integer, ForeignKey('posts.id'), nullable=False)
+    parent_id = Column(Integer, ForeignKey('post_comments.id'), nullable=True)
     
     user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     author_name = Column(String(100), nullable=True)
@@ -170,21 +170,21 @@ class BlogComment(Base):
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
     
     # 관계 설정
-    blog = relationship("Blog", back_populates="comments")
+    post = relationship("Post", back_populates="comments")
     user = relationship("User")
-    parent = relationship("BlogComment", remote_side=[id], back_populates="replies")
-    replies = relationship("BlogComment", back_populates="parent")
+    parent = relationship("PostComment", remote_side=[id], back_populates="replies")
+    replies = relationship("PostComment", back_populates="parent")
     
     def __repr__(self):
-        return f"<BlogComment(id={self.id}, blog_id={self.blog_id}, content='{self.content[:50]}...')>"
+        return f"<PostComment(id={self.id}, post_id={self.post_id}, content='{self.content[:50]}...')>"
 
 
-class BlogProduct(Base):
-    """블로그-상품 연결 모델"""
-    __tablename__ = 'blog_products'
+class PostProduct(Base):
+    """포스트-상품 연결 모델"""
+    __tablename__ = 'post_products'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    blog_id = Column(Integer, ForeignKey('blogs.id'), nullable=False)
+    post_id = Column(Integer, ForeignKey('posts.id'), nullable=False)
     product_symbol = Column(String(20), ForeignKey('assets.ticker'), nullable=False)
     
     # 표시 옵션
@@ -200,19 +200,19 @@ class BlogProduct(Base):
     context = Column(Text, nullable=True)
     
     # 관계 설정
-    blog = relationship("Blog", back_populates="products")
+    post = relationship("Post", back_populates="products")
     asset = relationship("Asset")
     
     def __repr__(self):
-        return f"<BlogProduct(id={self.id}, blog_id={self.blog_id}, symbol='{self.product_symbol}')>"
+        return f"<PostProduct(id={self.id}, post_id={self.post_id}, symbol='{self.product_symbol}')>"
 
 
-class BlogChart(Base):
-    """블로그 차트 임베딩 모델"""
-    __tablename__ = 'blog_charts'
+class PostChart(Base):
+    """포스트 차트 임베딩 모델"""
+    __tablename__ = 'post_charts'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    blog_id = Column(Integer, ForeignKey('blogs.id'), nullable=False)
+    post_id = Column(Integer, ForeignKey('posts.id'), nullable=False)
     
     # 차트 설정
     title = Column(String(200), nullable=True)
@@ -234,19 +234,19 @@ class BlogChart(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
     
     # 관계 설정
-    blog = relationship("Blog", back_populates="charts")
+    post = relationship("Post", back_populates="charts")
     
     def __repr__(self):
-        return f"<BlogChart(id={self.id}, blog_id={self.blog_id}, chart_type='{self.chart_type}')>"
+        return f"<PostChart(id={self.id}, post_id={self.post_id}, chart_type='{self.chart_type}')>"
 
 
-# 블로그-태그 연결 테이블 (Many-to-Many)
-class BlogPostTag(Base):
-    """블로그-태그 연결 테이블"""
-    __tablename__ = 'blog_post_tags'
+# 포스트-태그 연결 테이블 (Many-to-Many)
+class PostTagAssociation(Base):
+    """포스트-태그 연결 테이블"""
+    __tablename__ = 'post_tag_associations'
     
-    blog_id = Column(Integer, ForeignKey('blogs.id'), primary_key=True)
-    tag_id = Column(Integer, ForeignKey('blog_tags.id'), primary_key=True)
+    post_id = Column(Integer, ForeignKey('posts.id'), primary_key=True)
+    tag_id = Column(Integer, ForeignKey('post_tags.id'), primary_key=True)
     
     def __repr__(self):
-        return f"<BlogPostTag(blog_id={self.blog_id}, tag_id={self.tag_id})>"
+        return f"<PostTagAssociation(post_id={self.post_id}, tag_id={self.tag_id})>"

@@ -8,6 +8,16 @@ import Label from "../form/Label";
 
 export default function UserAddressCard() {
   const { isOpen, openModal, closeModal } = useModal();
+  
+  // 하드코딩된 사용자 주소 데이터 (users 테이블에서 가져온 정보)
+  const userAddressData = {
+    country: "Republic of Korea",
+    city_state: "Pohang-si, Gyeongsangbuk-do",
+    postal_code: "37673",
+    tax_id: "GEEHONG-KIM-13",
+    full_address: "103@702 33, Cheonma-ro 90beon-gil, Buk-gu, Pohang-si, Gyeongsangbuk-do, Republic of Korea"
+  };
+
   const handleSave = () => {
     // Handle save logic here
     console.log("Saving changes...");
@@ -28,7 +38,7 @@ export default function UserAddressCard() {
                   Country
                 </p>
                 <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                  United States
+                  {userAddressData.country}
                 </p>
               </div>
 
@@ -37,7 +47,7 @@ export default function UserAddressCard() {
                   City/State
                 </p>
                 <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                  Phoenix, Arizona, United States.
+                  {userAddressData.city_state}
                 </p>
               </div>
 
@@ -46,7 +56,7 @@ export default function UserAddressCard() {
                   Postal Code
                 </p>
                 <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                  ERT 2489
+                  {userAddressData.postal_code}
                 </p>
               </div>
 
@@ -55,7 +65,7 @@ export default function UserAddressCard() {
                   TAX ID
                 </p>
                 <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                  AS4568384
+                  {userAddressData.tax_id}
                 </p>
               </div>
             </div>
@@ -99,22 +109,22 @@ export default function UserAddressCard() {
               <div className="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
                 <div>
                   <Label>Country</Label>
-                  <Input type="text" defaultValue="United States" />
+                  <Input type="text" defaultValue={userAddressData.country} />
                 </div>
 
                 <div>
                   <Label>City/State</Label>
-                  <Input type="text" defaultValue="Arizona, United States." />
+                  <Input type="text" defaultValue={userAddressData.city_state} />
                 </div>
 
                 <div>
                   <Label>Postal Code</Label>
-                  <Input type="text" defaultValue="ERT 2489" />
+                  <Input type="text" defaultValue={userAddressData.postal_code} />
                 </div>
 
                 <div>
                   <Label>TAX ID</Label>
-                  <Input type="text" defaultValue="AS4568384" />
+                  <Input type="text" defaultValue={userAddressData.tax_id} />
                 </div>
               </div>
             </div>

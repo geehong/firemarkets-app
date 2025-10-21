@@ -31,7 +31,7 @@ const AppSidebar: React.FC = () => {
   const pathname = usePathname();
   const { menuItems, loading, error } = useNavigation();
 
-  // 동적 메뉴를 NavItem 타입으로 변환하는 함수
+  // Convert dynamic menu items to NavItem type
   const convertDynamicMenuToNavItems = (dynamicItems: any[]): NavItem[] => {
     return dynamicItems
       .filter(item => item.is_active)
@@ -39,7 +39,7 @@ const AppSidebar: React.FC = () => {
       .map(item => ({
         name: item.name,
         path: item.path,
-        icon: <GridIcon />, // 기본 아이콘 사용
+        icon: <GridIcon />, // Default icon
         subItems: item.children && item.children.length > 0 
           ? item.children
               .filter((child: any) => child.is_active)
@@ -65,32 +65,49 @@ const AppSidebar: React.FC = () => {
       }));
   };
 
-  // 동적 메뉴만 사용
+  // Use dynamic menu items
   const dynamicNavItems = convertDynamicMenuToNavItems(menuItems);
   console.log('🔍 Dynamic nav items:', dynamicNavItems);
   
-  // 테스트용 3단계 메뉴 추가
-  const testNavItems = [
+  // Blog static menu items
+  const blogNavItems = [
     {
-      name: "Test Menu",
+      name: "Blog",
       icon: <GridIcon />,
       subItems: [
         {
-          name: "Sub Menu 1",
+          name: "All Posts",
+          path: "/blog"
+        },
+        {
+          name: "Search Posts",
+          path: "/blog/search"
+        },
+        {
+          name: "Categories",
           subItems: [
-            { name: "Sub Sub 1", path: "/test1", pro: false, new: false },
-            { name: "Sub Sub 2", path: "/test2", pro: false, new: false }
+            { name: "Browse by Category", path: "/blog/category", pro: false, new: false }
           ]
         },
         {
-          name: "Sub Menu 2",
-          path: "/sub2"
+          name: "Tags",
+          subItems: [
+            { name: "Browse by Tag", path: "/blog/tag", pro: false, new: false }
+          ]
+        },
+        {
+          name: "Admin",
+          subItems: [
+            { name: "Admin Dashboard", path: "/blog/admin", pro: false, new: false },
+            { name: "Create Post", path: "/blog/admin/create", pro: false, new: false },
+            { name: "Admin Dashboard Detail", path: "/blog/admin/dashboard", pro: false, new: false }
+          ]
         }
       ]
     }
   ];
-  
-  const finalNavItems = [...dynamicNavItems, ...testNavItems];
+
+  const finalNavItems = [...dynamicNavItems, ...blogNavItems];
   console.log('🔍 Final nav items:', finalNavItems);
 
   const renderMenuItems = (
@@ -182,7 +199,7 @@ const AppSidebar: React.FC = () => {
                 {nav.subItems.map((subItem, subIndex) => (
                   <li key={subItem.name}>
                     {subItem.subItems && subItem.subItems.length > 0 ? (
-                      // 3단계 메뉴가 있는 경우
+                      // 3-level menu
                       <div>
                         <button
                           onClick={(e) => {
@@ -263,7 +280,7 @@ const AppSidebar: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                      // 2단계 메뉴인 경우
+                      // 2-level menu
                       subItem.path ? (
                         <Link
                           href={subItem.path}
@@ -353,7 +370,7 @@ const AppSidebar: React.FC = () => {
             submenuMatched = true;
           }
           
-          // 3단계 메뉴 확인
+          // Check 3-level menu
           if (subItem.subItems) {
             subItem.subItems.forEach((subSubItem) => {
               if (subSubItem.path && isActive(subSubItem.path)) {

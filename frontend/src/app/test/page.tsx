@@ -15,7 +15,7 @@ const MiniPriceCryptoChart: ChartComponent = ({ ticker, price, volume, timestamp
   <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
     <h3 className="text-lg font-semibold text-blue-800">{ticker}</h3>
     <div className="text-2xl font-bold text-blue-600">${price?.toFixed(2) || 'N/A'}</div>
-    <div className="text-sm text-gray-600">Volume: {volume?.toLocaleString() || 'N/A'}</div>
+    <div className="text-sm text-gray-600">Volume: {volume?.toLocaleString('en-US') || 'N/A'}</div>
     <div className="text-xs text-gray-500">{timestamp || 'No data'}</div>
   </div>
 );
@@ -24,7 +24,7 @@ const MiniPriceStocksEtfChart: ChartComponent = ({ ticker, price, volume, timest
   <div className="bg-green-50 p-4 rounded-lg border border-green-200">
     <h3 className="text-lg font-semibold text-green-800">{ticker}</h3>
     <div className="text-2xl font-bold text-green-600">${price?.toFixed(2) || 'N/A'}</div>
-    <div className="text-sm text-gray-600">Volume: {volume?.toLocaleString() || 'N/A'}</div>
+    <div className="text-sm text-gray-600">Volume: {volume?.toLocaleString('en-US') || 'N/A'}</div>
     <div className="text-xs text-gray-500">{timestamp || 'No data'}</div>
   </div>
 );
@@ -33,7 +33,7 @@ const MiniPriceCommoditiesChart: ChartComponent = ({ ticker, price, volume, time
   <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
     <h3 className="text-lg font-semibold text-yellow-800">{ticker}</h3>
     <div className="text-2xl font-bold text-yellow-600">${price?.toFixed(2) || 'N/A'}</div>
-    <div className="text-sm text-gray-600">Volume: {volume?.toLocaleString() || 'N/A'}</div>
+    <div className="text-sm text-gray-600">Volume: {volume?.toLocaleString('en-US') || 'N/A'}</div>
     <div className="text-xs text-gray-500">{timestamp || 'No data'}</div>
   </div>
 );
@@ -165,9 +165,9 @@ const TestPage: React.FC = () => {
                     <span className="text-lg font-bold text-green-600">${data.price.toFixed(2)}</span>
                   </div>
                   <div className="text-sm text-gray-600">
-                    Volume: {data.volume?.toLocaleString() || 'N/A'} | 
+                    Volume: {data.volume?.toLocaleString('en-US') || 'N/A'} | 
                     Source: {data.dataSource} | 
-                    Time: {new Date(data.timestamp).toLocaleTimeString()}
+                    Time: {new Date(data.timestamp).toLocaleTimeString('en-US')}
                   </div>
                 </div>
               ))}

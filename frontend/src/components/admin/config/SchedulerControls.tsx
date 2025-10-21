@@ -55,7 +55,7 @@ const SchedulerControls: React.FC<SchedulerControlsProps> = ({
           <div className="text-sm font-medium text-gray-500">Last Run</div>
           <div className="text-sm text-gray-900">
             {schedulerStatus?.last_run 
-              ? new Date(schedulerStatus.last_run).toLocaleString() 
+              ? new Date(schedulerStatus.last_run).toLocaleString('en-US') 
               : 'Never'
             }
           </div>
@@ -65,7 +65,7 @@ const SchedulerControls: React.FC<SchedulerControlsProps> = ({
           <div className="text-sm font-medium text-gray-500">Next Run</div>
           <div className="text-sm text-gray-900">
             {schedulerStatus?.next_run 
-              ? new Date(schedulerStatus.next_run).toLocaleString() 
+              ? new Date(schedulerStatus.next_run).toLocaleString('en-US') 
               : 'Not scheduled'
             }
           </div>

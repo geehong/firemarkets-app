@@ -21,9 +21,18 @@ interface AssetsListTableProps {
 }
 
 export default function AssetsListTable({ typeName }: AssetsListTableProps) {
-  // Always use treemap live, optionally filtered by type_name
+  // Always use treemap live, optionally filtered by type_name with market cap sorting
   const { data, isLoading, error } = useTreemapLive(
-    typeName ? { type_name: typeName } : undefined
+    typeName 
+      ? { 
+          type_name: typeName,
+          sort_by: 'market_cap',
+          sort_order: 'desc'
+        } 
+      : {
+          sort_by: 'market_cap',
+          sort_order: 'desc'
+        }
   )
   const [query, setQuery] = useState('')
 
@@ -41,9 +50,17 @@ export default function AssetsListTable({ typeName }: AssetsListTableProps) {
       logo_url: it.logo_url ?? null,
       category: it.category,
     }))
-    if (!query) return mapped
+    
+    // 시총으로 정렬 (내림차순)
+    const sorted = mapped.sort((a: any, b: any) => {
+      const marketCapA = parseFloat(a.market_cap) || 0
+      const marketCapB = parseFloat(b.market_cap) || 0
+      return marketCapB - marketCapA
+    })
+    
+    if (!query) return sorted
     const q = query.toLowerCase()
-    return mapped.filter((r: any) =>
+    return sorted.filter((r: any) =>
       (r.ticker || '').toLowerCase().includes(q) ||
       (r.name || '').toLowerCase().includes(q) ||
       (r.type_name || '').toLowerCase().includes(q)

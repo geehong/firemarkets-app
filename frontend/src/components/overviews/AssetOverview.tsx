@@ -172,7 +172,7 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
                   <div className="flex items-center gap-2">
                     <UserIcon className="h-4 w-4 text-gray-500" />
                     <span className="text-sm font-medium">Employees:</span>
-                    <span className="text-sm">{asset.employees_count.toLocaleString()}</span>
+                    <span className="text-sm">{asset.employees_count.toLocaleString('en-US')}</span>
                   </div>
                 )}
                 {asset.ceo && (
@@ -221,21 +221,21 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
                   <div className="flex items-center gap-2">
                     <ArrowUpIcon className="h-4 w-4 text-gray-500" />
                     <span className="text-sm font-medium">Circulating Supply:</span>
-                    <span className="text-sm">{asset.circulating_supply.toLocaleString()}</span>
+                    <span className="text-sm">{asset.circulating_supply.toLocaleString('en-US')}</span>
                   </div>
                 )}
                 {asset.total_supply && (
                   <div className="flex items-center gap-2">
                     <UserIcon className="h-4 w-4 text-gray-500" />
                     <span className="text-sm font-medium">Total Supply:</span>
-                    <span className="text-sm">{asset.total_supply.toLocaleString()}</span>
+                    <span className="text-sm">{asset.total_supply.toLocaleString('en-US')}</span>
                   </div>
                 )}
                 {asset.max_supply && (
                   <div className="flex items-center gap-2">
                     <PieChartIcon className="h-4 w-4 text-gray-500" />
                     <span className="text-sm font-medium">Max Supply:</span>
-                    <span className="text-sm">{asset.max_supply.toLocaleString()}</span>
+                    <span className="text-sm">{asset.max_supply.toLocaleString('en-US')}</span>
                   </div>
                 )}
                 {asset.cmc_rank && (
@@ -508,7 +508,7 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
                 {asset.shares_outstanding && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">Shares Outstanding:</span>
-                    <span>{asset.shares_outstanding.toLocaleString()}</span>
+                    <span>{asset.shares_outstanding.toLocaleString('en-US')}</span>
                   </div>
                 )}
               </div>

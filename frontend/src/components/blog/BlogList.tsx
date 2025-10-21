@@ -83,7 +83,7 @@ const BlogList: React.FC<BlogListProps> = ({
         ...(filters.tag && { tag: filters.tag }),
         ...(filters.status && { status: filters.status })
       })
-      const url = `/api/v1/blogs/?${params}`
+      const url = `/api/v1/posts/?${params}`
       console.log('[BlogList] requesting URL:', url)
       const response = await fetch(url)
       
@@ -94,12 +94,12 @@ const BlogList: React.FC<BlogListProps> = ({
 
       const data = await response.json()
       console.log('[BlogList] response data summary', {
-        count: data?.blogs?.length,
+        count: data?.posts?.length,
         total: data?.total,
         page: data?.page,
         total_pages: data?.total_pages
       })
-      setBlogs(data.blogs || [])
+      setBlogs(data.posts || [])
       setTotalPages(data.total_pages || 1)
       setTotalBlogs(data.total || 0)
       setCurrentPage(prev => {
@@ -116,16 +116,23 @@ const BlogList: React.FC<BlogListProps> = ({
     }
   }, [filters.search, filters.category, filters.tag, filters.status])
 
-  const firstRunRef = useRef(true)
+  // 초기 데이터가 없거나 비어있을 때 API 호출
   useEffect(() => {
-    console.log('[BlogList] useEffect triggered by filters primitives', {
-      search: filters.search, category: filters.category, tag: filters.tag, status: filters.status
+    console.log('[BlogList] useEffect triggered', {
+      initialBlogsLength: initialBlogs.length,
+      currentBlogsLength: blogs.length,
+      filters: filters
     })
-    // Avoid StrictMode initial double-invoke
-    if (firstRunRef.current) {
-      firstRunRef.current = false
-      return
+    
+    // initialBlogs가 비어있거나 현재 blogs가 비어있을 때 API 호출
+    if (initialBlogs.length === 0 || blogs.length === 0) {
+      fetchBlogs(1)
     }
+  }, []) // 빈 의존성 배열로 컴포넌트 마운트 시에만 실행
+
+  // 필터 변경 시 API 호출
+  useEffect(() => {
+    console.log('[BlogList] filters changed, fetching blogs', { filters })
     fetchBlogs(1)
   }, [filters.search, filters.category, filters.tag, filters.status, fetchBlogs])
 

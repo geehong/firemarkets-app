@@ -5,8 +5,8 @@ from pydantic import BaseModel, Field
 from decimal import Decimal
 
 
-class BlogCategoryBase(BaseModel):
-    """블로그 카테고리 기본 스키마"""
+class PostCategoryBase(BaseModel):
+    """포스트 카테고리 기본 스키마"""
     name: str = Field(..., description="카테고리 이름")
     slug: str = Field(..., description="카테고리 슬러그")
     description: Optional[str] = Field(None, description="카테고리 설명")
@@ -15,13 +15,13 @@ class BlogCategoryBase(BaseModel):
     display_order: int = Field(0, description="표시 순서")
 
 
-class BlogCategoryCreate(BlogCategoryBase):
-    """블로그 카테고리 생성 스키마"""
+class PostCategoryCreate(PostCategoryBase):
+    """포스트 카테고리 생성 스키마"""
     pass
 
 
-class BlogCategoryUpdate(BaseModel):
-    """블로그 카테고리 업데이트 스키마"""
+class PostCategoryUpdate(BaseModel):
+    """포스트 카테고리 업데이트 스키마"""
     name: Optional[str] = None
     slug: Optional[str] = None
     description: Optional[str] = None
@@ -30,8 +30,8 @@ class BlogCategoryUpdate(BaseModel):
     display_order: Optional[int] = None
 
 
-class BlogCategoryResponse(BlogCategoryBase):
-    """블로그 카테고리 응답 스키마"""
+class PostCategoryResponse(PostCategoryBase):
+    """포스트 카테고리 응답 스키마"""
     id: int
     created_at: datetime
     updated_at: datetime
@@ -40,19 +40,19 @@ class BlogCategoryResponse(BlogCategoryBase):
         from_attributes = True
 
 
-class BlogTagBase(BaseModel):
-    """블로그 태그 기본 스키마"""
+class PostTagBase(BaseModel):
+    """포스트 태그 기본 스키마"""
     name: str = Field(..., description="태그 이름")
     slug: str = Field(..., description="태그 슬러그")
 
 
-class BlogTagCreate(BlogTagBase):
-    """블로그 태그 생성 스키마"""
+class PostTagCreate(PostTagBase):
+    """포스트 태그 생성 스키마"""
     pass
 
 
-class BlogTagResponse(BlogTagBase):
-    """블로그 태그 응답 스키마"""
+class PostTagResponse(PostTagBase):
+    """포스트 태그 응답 스키마"""
     id: int
     usage_count: int
     created_at: datetime
@@ -61,20 +61,20 @@ class BlogTagResponse(BlogTagBase):
         from_attributes = True
 
 
-class BlogBase(BaseModel):
-    """블로그 기본 스키마"""
-    title: str = Field(..., description="블로그 제목")
-    slug: str = Field(..., description="블로그 슬러그")
-    description: str = Field(..., description="블로그 설명")
-    content: str = Field(..., description="블로그 내용")
-    excerpt: Optional[str] = Field(None, description="블로그 요약")
+class PostBase(BaseModel):
+    """포스트 기본 스키마"""
+    title: str = Field(..., description="포스트 제목")
+    slug: str = Field(..., description="포스트 슬러그")
+    description: str = Field(..., description="포스트 설명")
+    content: str = Field(..., description="포스트 내용")
+    excerpt: Optional[str] = Field(None, description="포스트 요약")
     
     # 동기화 설정
     sync_with_asset: bool = Field(True, description="Asset과 동기화 여부")
     auto_sync_content: bool = Field(True, description="자동 동기화 여부")
     
     # 상태 관리
-    status: str = Field("draft", description="블로그 상태")
+    status: str = Field("draft", description="포스트 상태")
     featured: bool = Field(False, description="주요 글 여부")
     
     # 작성자
@@ -97,13 +97,13 @@ class BlogBase(BaseModel):
     asset_id: Optional[int] = Field(None, description="연결된 Asset ID")
 
 
-class BlogCreate(BlogBase):
-    """블로그 생성 스키마"""
+class PostCreate(PostBase):
+    """포스트 생성 스키마"""
     pass
 
 
-class BlogUpdate(BaseModel):
-    """블로그 업데이트 스키마"""
+class PostUpdate(BaseModel):
+    """포스트 업데이트 스키마"""
     title: Optional[str] = None
     slug: Optional[str] = None
     description: Optional[str] = None
@@ -124,8 +124,8 @@ class BlogUpdate(BaseModel):
     asset_id: Optional[int] = None
 
 
-class BlogResponse(BlogBase):
-    """블로그 응답 스키마"""
+class PostResponse(PostBase):
+    """포스트 응답 스키마"""
     id: int
     view_count: int
     read_time_minutes: Optional[int]
@@ -137,8 +137,8 @@ class BlogResponse(BlogBase):
     sync_status: str
     
     # 관계 데이터
-    category: Optional[BlogCategoryResponse] = None
-    tags: List[BlogTagResponse] = []
+    category: Optional[PostCategoryResponse] = None
+    tags: List[PostTagResponse] = []
     asset: Optional[Any] = None
     author: Optional[Any] = None
     
@@ -146,32 +146,32 @@ class BlogResponse(BlogBase):
         from_attributes = True
 
 
-class BlogListResponse(BaseModel):
-    """블로그 목록 응답 스키마"""
-    blogs: List[BlogResponse]
+class PostListResponse(BaseModel):
+    """포스트 목록 응답 스키마"""
+    posts: List[PostResponse]
     total: int
     page: int
     page_size: int
     total_pages: int
 
 
-class BlogCommentBase(BaseModel):
-    """블로그 댓글 기본 스키마"""
+class PostCommentBase(BaseModel):
+    """포스트 댓글 기본 스키마"""
     content: str = Field(..., description="댓글 내용")
     author_name: Optional[str] = Field(None, description="작성자 이름")
     author_email: Optional[str] = Field(None, description="작성자 이메일")
     parent_id: Optional[int] = Field(None, description="부모 댓글 ID")
 
 
-class BlogCommentCreate(BlogCommentBase):
-    """블로그 댓글 생성 스키마"""
+class PostCommentCreate(PostCommentBase):
+    """포스트 댓글 생성 스키마"""
     pass
 
 
-class BlogCommentResponse(BlogCommentBase):
-    """블로그 댓글 응답 스키마"""
+class PostCommentResponse(PostCommentBase):
+    """포스트 댓글 응답 스키마"""
     id: int
-    blog_id: int
+    post_id: int
     user_id: Optional[int]
     status: str
     likes_count: int
@@ -179,14 +179,14 @@ class BlogCommentResponse(BlogCommentBase):
     updated_at: datetime
     
     # 관계 데이터
-    replies: List['BlogCommentResponse'] = []
+    replies: List['PostCommentResponse'] = []
     
     class Config:
         from_attributes = True
 
 
-class BlogProductBase(BaseModel):
-    """블로그 상품 연결 기본 스키마"""
+class PostProductBase(BaseModel):
+    """포스트 상품 연결 기본 스키마"""
     product_symbol: str = Field(..., description="상품 심볼")
     display_type: Optional[str] = Field(None, description="표시 타입")
     display_order: Optional[int] = Field(None, description="표시 순서")
@@ -196,22 +196,22 @@ class BlogProductBase(BaseModel):
     context: Optional[str] = Field(None, description="컨텍스트")
 
 
-class BlogProductCreate(BlogProductBase):
-    """블로그 상품 연결 생성 스키마"""
+class PostProductCreate(PostProductBase):
+    """포스트 상품 연결 생성 스키마"""
     pass
 
 
-class BlogProductResponse(BlogProductBase):
-    """블로그 상품 연결 응답 스키마"""
+class PostProductResponse(PostProductBase):
+    """포스트 상품 연결 응답 스키마"""
     id: int
-    blog_id: int
+    post_id: int
     
     class Config:
         from_attributes = True
 
 
-class BlogChartBase(BaseModel):
-    """블로그 차트 기본 스키마"""
+class PostChartBase(BaseModel):
+    """포스트 차트 기본 스키마"""
     title: Optional[str] = Field(None, description="차트 제목")
     chart_type: Optional[str] = Field(None, description="차트 타입")
     symbol: Optional[str] = Field(None, description="단일 심볼")
@@ -223,46 +223,46 @@ class BlogChartBase(BaseModel):
     height: int = Field(400, description="차트 높이")
 
 
-class BlogChartCreate(BlogChartBase):
-    """블로그 차트 생성 스키마"""
+class PostChartCreate(PostChartBase):
+    """포스트 차트 생성 스키마"""
     pass
 
 
-class BlogChartResponse(BlogChartBase):
-    """블로그 차트 응답 스키마"""
+class PostChartResponse(PostChartBase):
+    """포스트 차트 응답 스키마"""
     id: int
-    blog_id: int
+    post_id: int
     created_at: datetime
     
     class Config:
         from_attributes = True
 
 
-class BlogSyncRequest(BaseModel):
-    """블로그 동기화 요청 스키마"""
-    sync_direction: str = Field(..., description="동기화 방향: asset_to_blog, blog_to_asset, auto")
-    blog_id: int = Field(..., description="블로그 ID")
+class PostSyncRequest(BaseModel):
+    """포스트 동기화 요청 스키마"""
+    sync_direction: str = Field(..., description="동기화 방향: asset_to_post, post_to_asset, auto")
+    post_id: int = Field(..., description="포스트 ID")
 
 
-class BlogSyncResponse(BaseModel):
-    """블로그 동기화 응답 스키마"""
+class PostSyncResponse(BaseModel):
+    """포스트 동기화 응답 스키마"""
     success: bool
     message: str
     sync_status: str
     last_sync_at: Optional[datetime]
 
 
-class BlogStatsResponse(BaseModel):
-    """블로그 통계 응답 스키마"""
-    total_blogs: int
-    published_blogs: int
-    draft_blogs: int
+class PostStatsResponse(BaseModel):
+    """포스트 통계 응답 스키마"""
+    total_posts: int
+    published_posts: int
+    draft_posts: int
     total_views: int
     total_comments: int
     monthly_blogs: int
     popular_categories: List[Dict[str, Any]]
-    recent_blogs: List[BlogResponse]
+    recent_posts: List[PostResponse]
 
 
 # 순환 참조 해결
-BlogCommentResponse.model_rebuild()
+PostCommentResponse.model_rebuild()

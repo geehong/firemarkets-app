@@ -13,7 +13,7 @@ function getOrigin() {
 
 export async function getBlogSSR(slug: string) {
   const origin = getOrigin()
-  const res = await fetch(`${origin}/api/v1/blogs/slug/${encodeURIComponent(slug)}`, { cache: 'no-store' })
+  const res = await fetch(`${origin}/api/v1/posts/slug/${encodeURIComponent(slug)}`, { cache: 'no-store' })
   if (!res.ok) throw new Error(`Failed to fetch blog: ${res.status}`)
   return res.json()
 }
@@ -26,7 +26,7 @@ export async function getBlogsSSR(params?: Record<string, string | number | unde
       if (v !== undefined && v !== null) search.append(k, String(v))
     })
   }
-  const url = `${origin}/api/v1/blogs/${search.toString() ? `?${search.toString()}` : ''}`
+  const url = `${origin}/api/v1/posts/${search.toString() ? `?${search.toString()}` : ''}`
   const res = await fetch(url, { cache: 'no-store' })
   if (!res.ok) throw new Error(`Failed to fetch blogs: ${res.status}`)
   return res.json()

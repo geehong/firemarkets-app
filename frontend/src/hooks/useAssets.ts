@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useQuery, UseQueryOptions } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api'
 
 // Types
@@ -37,34 +38,21 @@ export interface TreemapLiveResponse {
 
 // Treemap live data hook for tables
 export const useTreemapLive = (
-  params?: { asset_type_id?: number; type_name?: string }
+  params?: { 
+    asset_type_id?: number
+    type_name?: string
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
+  },
+  queryOptions?: UseQueryOptions
 ) => {
-  const [data, setData] = useState<any>(undefined)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<any>(null)
-
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const result = await apiClient.getTreemapLiveData(params)
-        setData(result)
-      } catch (err) {
-        setError(err)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
-    
-    // 15분마다 자동 새로고침
-    const interval = setInterval(fetchData, 15 * 60 * 1000)
-    return () => clearInterval(interval)
-  }, [JSON.stringify(params)])
-
-  return { data, loading, error }
+  return useQuery({
+    queryKey: ['treemap-live-table', params],
+    queryFn: () => apiClient.getTreemapLiveData(params),
+    staleTime: 5 * 60 * 1000,
+    refetchInterval: 15 * 60 * 1000,
+    ...queryOptions,
+  })
 }
 
 export interface OHLCVData {
@@ -178,38 +166,22 @@ export const useOhlcvData = (
     limit?: number
     startDate?: string
     endDate?: string
-  }
+  },
+  queryOptions?: UseQueryOptions
 ) => {
-  const [data, setData] = useState<any>(undefined)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<any>(null)
-
-  useEffect(() => {
-    if (!assetIdentifier) return
-
-    const fetchData = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const result = await apiClient.getAssetsOhlcv({
-          asset_identifier: assetIdentifier,
-          data_interval: options?.dataInterval,
-          start_date: options?.startDate,
-          end_date: options?.endDate,
-          limit: options?.limit,
-        })
-        setData(result)
-      } catch (err) {
-        setError(err)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
-  }, [assetIdentifier, JSON.stringify(options)])
-
-  return { data, loading, error }
+  return useQuery({
+    queryKey: ['ohlcv', assetIdentifier, options],
+    queryFn: () => apiClient.getAssetsOhlcv({
+      asset_identifier: assetIdentifier,
+      data_interval: options?.dataInterval,
+      start_date: options?.startDate,
+      end_date: options?.endDate,
+      limit: options?.limit,
+    }),
+    enabled: !!assetIdentifier,
+    staleTime: 1 * 60 * 1000, // 1분
+    ...queryOptions,
+  })
 }
 
 // Asset Price Hook

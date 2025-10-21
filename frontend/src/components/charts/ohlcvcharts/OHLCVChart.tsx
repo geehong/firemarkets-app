@@ -170,9 +170,20 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
     if (!assetIdentifier) return
 
     console.log('🔍 OHLCVChart: Starting data fetch for:', assetIdentifier)
+    console.log('🔍 OHLCVChart: Data source config:', { 
+      useIntradayData, 
+      isTimeData, 
+      isDailyData, 
+      dataInterval 
+    })
     console.log('🔍 OHLCVChart: API loading states:', { apiLoading, timeLoading, dailyLoading })
     console.log('🔍 OHLCVChart: API errors:', { apiError, timeError, dailyError })
     console.log('🔍 OHLCVChart: API data:', { apiData, timeData, dailyData })
+    console.log('🔍 OHLCVChart: Hook enabled states:', {
+      timeEnabled: !!assetIdentifier && isTimeData,
+      dailyEnabled: !!assetIdentifier && isDailyData,
+      delayedEnabled: !!assetIdentifier && isTimeData && dataInterval === '15m'
+    })
 
     // 외부 데이터가 있으면 그것을 사용
     if (externalOhlcvData && externalOhlcvData.length > 0) {

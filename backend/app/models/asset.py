@@ -37,8 +37,8 @@ class Asset(Base):
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
     asset_type = relationship("AssetType", back_populates="assets")
     
-    # 블로그 관계 추가
-    blogs = relationship("Blog", back_populates="asset")
+    # 포스트 관계 추가
+    posts = relationship("Post", back_populates="asset")
 
     # JSON 설정에 대한 편의 메서드들
     def get_setting(self, key: str, default=None):

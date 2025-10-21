@@ -33,22 +33,13 @@ export default function FullScreenModal() {
               Modal Heading
             </h4>
             <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
-              Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-              Pellentesque euismod est quis mauris lacinia pharetra. Sed a
-              ligula ac odio condimentum aliquet a nec nulla. Aliquam bibendum
-              ex sit amet ipsum rutrum feugiat ultrices enim quam.
+              This page is under construction or is a test page.
             </p>
             <p className="mt-5 text-sm leading-6 text-gray-500 dark:text-gray-400">
-              Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-              Pellentesque euismod est quis mauris lacinia pharetra. Sed a
-              ligula ac odio condimentum aliquet a nec nulla. Aliquam bibendum
-              ex sit amet ipsum rutrum feugiat ultrices enim quam odio
-              condimentum aliquet a nec nulla pellentesque euismod est quis
-              mauris lacinia pharetra.
+              This page is under construction or is a test page.
             </p>
             <p className="mt-5 text-sm leading-6 text-gray-500 dark:text-gray-400">
-              Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-              Pellentesque euismod est quis mauris lacinia pharetra.
+              This page is under construction or is a test page.
             </p>
           </div>
           <div className="flex items-center justify-end w-full gap-3 mt-8">

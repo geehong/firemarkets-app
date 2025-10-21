@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState } from 'react';
 import { Save, Eye, Calendar, Image, Tag, FileText } from 'lucide-react';
 

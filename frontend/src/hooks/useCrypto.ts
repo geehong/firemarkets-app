@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useQuery, useMutation, useQueryClient, UseQueryOptions } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api'
 
 // Types
@@ -22,31 +23,17 @@ export interface TechnicalIndicator {
 }
 
 // Crypto Metrics Hook
-export const useCryptoMetrics = (assetIdentifier: string) => {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-
-  useEffect(() => {
-    if (!assetIdentifier) return
-
-    const fetchData = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const result = await apiClient.getCryptoMetrics(assetIdentifier)
-        setData(result)
-      } catch (err) {
-        setError(err)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
-  }, [assetIdentifier])
-
-  return { data, loading, error }
+export const useCryptoMetrics = (
+  assetIdentifier: string,
+  queryOptions?: UseQueryOptions
+) => {
+  return useQuery({
+    queryKey: ['crypto-metrics', assetIdentifier],
+    queryFn: () => apiClient.getCryptoMetrics(assetIdentifier),
+    enabled: !!assetIdentifier,
+    staleTime: 1 * 60 * 1000, // 1분
+    ...queryOptions,
+  })
 }
 
 // Technical Indicators Hook
@@ -149,76 +136,22 @@ export const useHalvingData = (period: number, startPrice: number, enabled: bool
 
 // 여러 반감기 데이터를 동시에 가져오는 훅
 export const useMultipleHalvingData = (periods: number[], startPrice: number, enabled: boolean = true) => {
-  const [queries, setQueries] = useState<any[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [isError, setIsError] = useState(false)
-  const [errors, setErrors] = useState<any[]>([])
-  const [lastFetchKey, setLastFetchKey] = useState<string>('')
+  const queries = periods.map(period => 
+    useHalvingData(period, startPrice, enabled)
+  )
 
-  // periods 배열을 문자열로 변환하여 의존성 비교
-  const periodsKey = periods.join(',')
-  const fetchKey = `${periodsKey}-${startPrice}-${enabled}`
-
-  useEffect(() => {
-    // 이미 같은 요청을 처리했으면 중복 실행 방지
-    if (fetchKey === lastFetchKey) return
-
-    if (!enabled || startPrice <= 0 || periods.length === 0) {
-      setQueries([])
-      setIsLoading(false)
-      setIsError(false)
-      setErrors([])
-      setLastFetchKey(fetchKey)
-      return
-    }
-
-    const fetchAllData = async () => {
-      setIsLoading(true)
-      setIsError(false)
-      setErrors([])
-      setLastFetchKey(fetchKey)
-      
-      try {
-        const promises = periods.map(async (period, index) => {
-          try {
-            const result = await apiClient.getHalvingData(period, startPrice)
-            return {
-              data: result,
-              isLoading: false,
-              isError: false,
-              error: null
-            }
-          } catch (err) {
-            return {
-              data: null,
-              isLoading: false,
-              isError: true,
-              error: err
-            }
-          }
-        })
-        
-        const results = await Promise.all(promises)
-        setQueries(results)
-        
-        // 에러가 있는지 확인
-        const hasErrors = results.some(result => result.isError)
-        const errorList = results.filter(result => result.isError).map(result => result.error)
-        
-        setIsError(hasErrors)
-        setErrors(errorList)
-      } catch (err) {
-        setIsError(true)
-        setErrors([err])
-      } finally {
-        setIsLoading(false)
+  return {
+    queries,
+    isLoading: queries.some(query => query.isLoading),
+    isError: queries.some(query => query.isError),
+    errors: queries.filter(query => query.isError).map(query => query.error),
+    data: queries.reduce((acc, query, index) => {
+      if (query.data) {
+        acc[periods[index]] = query.data
       }
-    }
-
-    fetchAllData()
-  }, [periodsKey, startPrice, enabled, fetchKey, lastFetchKey])
-
-  return { queries, isLoading, isError, errors }
+      return acc
+    }, {} as Record<number, any>)
+  }
 }
 
 // Bitcoin Halving Summary 훅

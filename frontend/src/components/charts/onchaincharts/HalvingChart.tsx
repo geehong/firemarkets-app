@@ -501,7 +501,7 @@ const HalvingChart: React.FC<HalvingChartProps> = ({
         })
       },
       subtitle: {
-        text: `Normalized to $${startPrice.toLocaleString()}`,
+        text: `Normalized to $${startPrice.toLocaleString('en-US')}`,
         style: {
           fontSize: '12px'
         }

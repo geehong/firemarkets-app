@@ -55,7 +55,7 @@ export default function BlogPostPage() {
   const { blog: blogPost, loading, error } = useBlog(slug)
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('ko-KR', {
+    return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
@@ -165,7 +165,7 @@ export default function BlogPostPage() {
                 {blogPost.view_count && (
                   <div className="flex items-center">
                     <EyeIcon className="w-4 h-4 mr-1" />
-                    {blogPost.view_count.toLocaleString()} 조회
+                    {blogPost.view_count.toLocaleString('en-US')} 조회
                   </div>
                 )}
                 {blogPost.author && (

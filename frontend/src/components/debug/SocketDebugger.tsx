@@ -21,7 +21,7 @@ const SocketDebugger: React.FC = () => {
   // 로그 추가 함수
   const addLog = (level: LogEntry['level'], message: string, data?: any) => {
     const newLog: LogEntry = {
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: new Date().toLocaleTimeString('en-US'),
       level,
       message,
       data

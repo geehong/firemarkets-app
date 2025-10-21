@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
 import ChartControls from '@/components/common/ChartControls';
 import { getColorMode } from '@/constants/colorModes';
@@ -175,30 +176,14 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
     }
   };
 
-  // 온체인 메트릭 데이터 상태
-  const [onchainData, setOnchainData] = useState(null);
-  const [onchainLoading, setOnchainLoading] = useState(false);
-  const [onchainError, setOnchainError] = useState(null);
-
-  // 온체인 메트릭 데이터 조회
-  useEffect(() => {
-    if (!assetId || !metricId) return;
-
-    const fetchOnchainData = async () => {
-      setOnchainLoading(true);
-      setOnchainError(null);
-      try {
-        const result = await apiClient.getOnchainMetricsData(assetId, metricId, 10000);
-        setOnchainData(result);
-      } catch (err) {
-        setOnchainError(err);
-      } finally {
-        setOnchainLoading(false);
-      }
-    };
-
-    fetchOnchainData();
-  }, [assetId, metricId]);
+  // 온체인 메트릭 데이터 조회 (통합 엔드포인트)
+  const { data: onchainData, isLoading: onchainLoading, error: onchainError } = useQuery({
+    queryKey: ['onchain', assetId, metricId],
+    queryFn: () => apiClient.getOnchainMetricsData(assetId, metricId, 10000),
+    enabled: !!assetId && !!metricId,
+    staleTime: 10 * 60 * 1000, // 10분
+    retry: 3,
+  });
 
   // 데이터 처리
   useEffect(() => {
@@ -474,7 +459,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
             fontSize: isMobile ? '0px' : '12px' // 모바일에서 라벨 숨김
           },
           formatter: function() {
-            return '$' + this.value.toLocaleString();
+            return '$' + this.value.toLocaleString('en-US');
           }
         },
         gridLineColor: '#e5e7eb',
@@ -513,7 +498,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
         
         points.forEach((point: any) => {
           if (point.series.name === 'Bitcoin Price') {
-            tooltip += `${point.series.name}: $${point.y.toLocaleString()}<br/>`;
+            tooltip += `${point.series.name}: $${point.y.toLocaleString('en-US')}<br/>`;
           } else {
             tooltip += `${point.series.name}: ${point.y.toFixed(3)}<br/>`;
           }
