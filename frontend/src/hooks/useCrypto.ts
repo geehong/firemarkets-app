@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient, UseQueryOptions } from '@tanstack/react-query'
+import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api'
 
 // Types
@@ -22,17 +22,31 @@ export interface TechnicalIndicator {
 }
 
 // Crypto Metrics Hook
-export const useCryptoMetrics = (
-  assetIdentifier: string,
-  queryOptions?: UseQueryOptions
-) => {
-  return useQuery({
-    queryKey: ['crypto-metrics', assetIdentifier],
-    queryFn: () => apiClient.getCryptoMetrics(assetIdentifier),
-    enabled: !!assetIdentifier,
-    staleTime: 1 * 60 * 1000, // 1분
-    ...queryOptions,
-  })
+export const useCryptoMetrics = (assetIdentifier: string) => {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    if (!assetIdentifier) return
+
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.getCryptoMetrics(assetIdentifier)
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [assetIdentifier])
+
+  return { data, loading, error }
 }
 
 // Technical Indicators Hook
@@ -41,16 +55,32 @@ export const useTechnicalIndicators = (
   options?: {
     indicators?: string[]
     period?: number
-  },
-  queryOptions?: UseQueryOptions
+  }
 ) => {
-  return useQuery({
-    queryKey: ['technical-indicators', assetIdentifier, options],
-    queryFn: () => apiClient.getTechnicalIndicators(assetIdentifier, options),
-    enabled: !!assetIdentifier,
-    staleTime: 5 * 60 * 1000, // 5분
-    ...queryOptions,
-  })
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    if (!assetIdentifier) return
+
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.getTechnicalIndicators(assetIdentifier, options)
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [assetIdentifier, JSON.stringify(options)])
+
+  return { data, loading, error }
 }
 
 // Crypto Market Overview Hook
@@ -59,110 +89,288 @@ export const useCryptoMarketOverview = (
     limit?: number
     sortBy?: string
     sortOrder?: 'asc' | 'desc'
-  },
-  queryOptions?: UseQueryOptions
+  }
 ) => {
-  return useQuery({
-    queryKey: ['crypto-market-overview', options],
-    queryFn: () => apiClient.getCryptoMarketOverview(options),
-    refetchInterval: 30 * 1000, // 30초마다 자동 갱신
-    ...queryOptions,
-  })
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.getCryptoMarketOverview(options)
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+    
+    // 30초마다 자동 갱신
+    const interval = setInterval(fetchData, 30 * 1000)
+    return () => clearInterval(interval)
+  }, [JSON.stringify(options)])
+
+  return { data, loading, error }
 }
 
 // Bitcoin Halving Data 훅
 export const useHalvingData = (period: number, startPrice: number, enabled: boolean = true) => {
-  return useQuery({
-    queryKey: ['halving-data', period, startPrice],
-    queryFn: () => apiClient.getHalvingData(period, startPrice),
-    enabled: enabled && startPrice > 0,
-    staleTime: 5 * 60 * 1000, // 5분
-    cacheTime: 10 * 60 * 1000, // 10분
-  })
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    if (!enabled || startPrice <= 0) return
+
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.getHalvingData(period, startPrice)
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [period, startPrice, enabled])
+
+  return { data, loading, error }
 }
 
 // 여러 반감기 데이터를 동시에 가져오는 훅
 export const useMultipleHalvingData = (periods: number[], startPrice: number, enabled: boolean = true) => {
-  const queries = periods.map(period => 
-    useHalvingData(period, startPrice, enabled)
-  )
+  const [queries, setQueries] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [isError, setIsError] = useState(false)
+  const [errors, setErrors] = useState<any[]>([])
+  const [lastFetchKey, setLastFetchKey] = useState<string>('')
 
-  return {
-    queries,
-    isLoading: queries.some(query => query.isLoading),
-    isError: queries.some(query => query.isError),
-    errors: queries.filter(query => query.isError).map(query => query.error),
-    data: queries.reduce((acc, query, index) => {
-      if (query.data) {
-        acc[periods[index]] = query.data
+  // periods 배열을 문자열로 변환하여 의존성 비교
+  const periodsKey = periods.join(',')
+  const fetchKey = `${periodsKey}-${startPrice}-${enabled}`
+
+  useEffect(() => {
+    // 이미 같은 요청을 처리했으면 중복 실행 방지
+    if (fetchKey === lastFetchKey) return
+
+    if (!enabled || startPrice <= 0 || periods.length === 0) {
+      setQueries([])
+      setIsLoading(false)
+      setIsError(false)
+      setErrors([])
+      setLastFetchKey(fetchKey)
+      return
+    }
+
+    const fetchAllData = async () => {
+      setIsLoading(true)
+      setIsError(false)
+      setErrors([])
+      setLastFetchKey(fetchKey)
+      
+      try {
+        const promises = periods.map(async (period, index) => {
+          try {
+            const result = await apiClient.getHalvingData(period, startPrice)
+            return {
+              data: result,
+              isLoading: false,
+              isError: false,
+              error: null
+            }
+          } catch (err) {
+            return {
+              data: null,
+              isLoading: false,
+              isError: true,
+              error: err
+            }
+          }
+        })
+        
+        const results = await Promise.all(promises)
+        setQueries(results)
+        
+        // 에러가 있는지 확인
+        const hasErrors = results.some(result => result.isError)
+        const errorList = results.filter(result => result.isError).map(result => result.error)
+        
+        setIsError(hasErrors)
+        setErrors(errorList)
+      } catch (err) {
+        setIsError(true)
+        setErrors([err])
+      } finally {
+        setIsLoading(false)
       }
-      return acc
-    }, {} as Record<number, any>)
-  }
+    }
+
+    fetchAllData()
+  }, [periodsKey, startPrice, enabled, fetchKey, lastFetchKey])
+
+  return { queries, isLoading, isError, errors }
 }
 
 // Bitcoin Halving Summary 훅
 export const useHalvingSummary = () => {
-  return useQuery({
-    queryKey: ['halving-summary'],
-    queryFn: () => apiClient.getHalvingSummary(),
-    staleTime: 10 * 60 * 1000, // 10분
-    cacheTime: 30 * 60 * 1000, // 30분
-  })
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.getHalvingSummary()
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [])
+
+  return { data, loading, error }
 }
 
 // Next Halving Info 훅
 export const useNextHalvingInfo = () => {
-  return useQuery({
-    queryKey: ['next-halving-info'],
-    queryFn: () => apiClient.getNextHalvingInfo(),
-    staleTime: 60 * 60 * 1000, // 1시간
-    cacheTime: 2 * 60 * 60 * 1000, // 2시간
-  })
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.getNextHalvingInfo()
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [])
+
+  return { data, loading, error }
 }
 
 // Crypto Data by Asset 훅
 export const useCryptoDataByAsset = (assetIdentifier: string) => {
-  return useQuery({
-    queryKey: ['crypto-data', assetIdentifier],
-    queryFn: () => apiClient.getCryptoDataByAsset(assetIdentifier),
-    enabled: !!assetIdentifier,
-    staleTime: 2 * 60 * 1000, // 2분
-    cacheTime: 5 * 60 * 1000, // 5분
-  })
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    if (!assetIdentifier) return
+
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.getCryptoDataByAsset(assetIdentifier)
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [assetIdentifier])
+
+  return { data, loading, error }
 }
 
 // Top Cryptos 훅
 export const useTopCryptos = (limit: number = 100) => {
-  return useQuery({
-    queryKey: ['top-cryptos', limit],
-    queryFn: () => apiClient.getTopCryptos(limit),
-    staleTime: 5 * 60 * 1000, // 5분
-    cacheTime: 10 * 60 * 1000, // 10분
-  })
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.getTopCryptos(limit)
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [limit])
+
+  return { data, loading, error }
 }
 
 // Update Crypto Data 훅 (Mutation)
 export const useUpdateCryptoData = () => {
-  const queryClient = useQueryClient()
-  
-  return useMutation({
-    mutationFn: (symbol: string) => apiClient.updateCryptoData(symbol),
-    onSuccess: (data, symbol) => {
-      // 관련 쿼리들 무효화
-      queryClient.invalidateQueries({ queryKey: ['crypto-data', symbol] })
-      queryClient.invalidateQueries({ queryKey: ['top-cryptos'] })
-      queryClient.invalidateQueries({ queryKey: ['global-crypto-metrics'] })
-    },
-  })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  const mutate = async (symbol: string) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await apiClient.updateCryptoData(symbol)
+      return result
+    } catch (err) {
+      setError(err)
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return { mutate, loading, error }
 }
 
 // Global Crypto Metrics 훅
 export const useGlobalCryptoMetrics = () => {
-  return useQuery({
-    queryKey: ['global-crypto-metrics'],
-    queryFn: () => apiClient.getGlobalCryptoMetrics(),
-    staleTime: 5 * 60 * 1000, // 5분
-    cacheTime: 10 * 60 * 1000, // 10분
-  })
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.getGlobalCryptoMetrics()
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [])
+
+  return { data, loading, error }
 }

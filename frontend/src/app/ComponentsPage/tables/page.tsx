@@ -8,13 +8,12 @@ import HistoryTable from '@/components/tables/HistoryTable'
 import SimpleHistoryTable from '@/components/tables/SimpleHistoryTable'
 import AgGridBaseTable from '@/components/tables/AgGridBaseTable'
 import AgGridHistoryTable from '@/components/tables/AgGridHistoryTable'
-import ClientLayout from '@/components/layout/ClientLayout'
 
 export default function TablesPage() {
   const [activeTable, setActiveTable] = useState('basic')
 
   return (
-    <ClientLayout>
+    
       <main className="container mx-auto px-4 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
@@ -124,6 +123,6 @@ export default function TablesPage() {
         </div>
       </div>
       </main>
-    </ClientLayout>
+    
   )
 }

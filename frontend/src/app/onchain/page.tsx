@@ -1,6 +1,11 @@
-import { Metadata } from 'next'
+"use client";
+
+import React from "react";
+import { useSidebar } from "@/context/SidebarContext";
+import AppHeader from "@/layout/AppHeader";
+import AppSidebar from "@/layout/AppSidebar";
+import Backdrop from "@/layout/Backdrop";
 import ComponentCard from '@/components/common/ComponentCard'
-import ClientLayout from '@/components/layout/ClientLayout'
 
 // 동적 렌더링 강제 설정
 export const dynamic = 'force-dynamic'
@@ -17,26 +22,7 @@ import {
 } from '@/icons'
 import Link from 'next/link'
 
-// 정적 메타데이터
-export const metadata: Metadata = {
-  title: 'Bitcoin Onchain Analysis - Blockchain Metrics | FireMarkets',
-  description: 'Comprehensive Bitcoin onchain metrics analysis including MVRV, NVT ratio, realized price, and correlation with market movements. Advanced blockchain data insights.',
-  keywords: 'Bitcoin, onchain, blockchain, metrics, MVRV, NVT, realized price, analysis, correlation, market data',
-  openGraph: {
-    title: 'Bitcoin Onchain Analysis | FireMarkets',
-    description: 'Advanced Bitcoin blockchain metrics and market correlation analysis.',
-    type: 'website',
-    url: '/onchain',
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'Bitcoin Onchain Analysis | FireMarkets',
-    description: 'Advanced Bitcoin blockchain metrics and market correlation analysis.',
-  },
-  alternates: {
-    canonical: '/onchain',
-  },
-}
+// 정적 메타데이터는 클라이언트 컴포넌트에서 제거됨
 
 // 구조화된 데이터 (JSON-LD) 생성
 function generateStructuredData() {
@@ -130,7 +116,7 @@ const popularMetrics = [
 async function getOnchainMetrics() {
   try {
     // 서버사이드에서는 백엔드 직접 호출
-    const BACKEND_BASE = process.env.BACKEND_API_BASE || 'http://fire_markets_backend:8000/api/v1'
+    const BACKEND_BASE = process.env.BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'
     const res = await fetch(`${BACKEND_BASE}/onchain/metrics`, {
       cache: 'no-store'
     })
@@ -146,17 +132,34 @@ async function getOnchainMetrics() {
   }
 }
 
-export default async function OnchainPage() {
-  const metricsData = await getOnchainMetrics()
-  const structuredData = generateStructuredData()
+export default function OnchainPage() {
+  const { isExpanded, isHovered, isMobileOpen } = useSidebar();
+
+  // Dynamic class for main content margin based on sidebar state
+  const mainContentMargin = isMobileOpen
+    ? "ml-0"
+    : isExpanded || isHovered
+    ? "lg:ml-[290px]"
+    : "lg:ml-[90px]";
 
   return (
-    <ClientLayout>
-      {/* 구조화된 데이터 */}
+    <div className="min-h-screen xl:flex">
+      {/* Sidebar and Backdrop */}
+      <AppSidebar />
+      <Backdrop />
+      {/* Main Content Area */}
+      <div
+        className={`flex-1 transition-all duration-300 ease-in-out ${mainContentMargin}`}
+      >
+        {/* Header */}
+        <AppHeader />
+        {/* Page Content */}
+        <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">
+          {/* 구조화된 데이터 */}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify(structuredData),
+          __html: JSON.stringify({}),
         }}
       />
       
@@ -268,6 +271,8 @@ export default async function OnchainPage() {
           </ComponentCard>
         </div>
       </main>
-    </ClientLayout>
+        </div>
+      </div>
+    </div>
   )
 }

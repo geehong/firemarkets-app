@@ -2,7 +2,6 @@ import { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getOnchainMetrics } from '@/lib/data/onchain'
 import OnchainOverview from '@/components/overviews/OnchainOverview'
-import ClientLayout from '@/components/layout/ClientLayout'
 
 interface OnchainMetricPageProps {
   params: { metric: string }
@@ -99,23 +98,29 @@ function generateStructuredData(metricConfig: any, metric: string) {
 export default async function OnchainMetricPage({ params }: OnchainMetricPageProps) {
   const { metric } = await params
   let metricConfig
+  let metrics = []
   
   try {
-    const metrics = await getOnchainMetrics()
-    metricConfig = metrics.find(m => m.id === metric)
+    metrics = await getOnchainMetrics()
+    if (!Array.isArray(metrics)) {
+      console.error('Invalid metrics data format:', metrics)
+      notFound()
+    }
+    metricConfig = metrics.find(m => m && m.id === metric)
   } catch (error) {
     console.error('Failed to fetch onchain metrics:', error)
     notFound()
   }
 
   if (!metricConfig) {
+    console.error(`Metric not found: ${metric}`)
     notFound()
   }
 
   const structuredData = generateStructuredData(metricConfig, metric)
 
   return (
-    <ClientLayout>
+    <>
       {/* 구조화된 데이터 */}
       <script
         type="application/ld+json"
@@ -126,9 +131,9 @@ export default async function OnchainMetricPage({ params }: OnchainMetricPagePro
       
       {/* 메인 콘텐츠 */}
       <main className="container mx-auto px-4 py-8">
-        <OnchainOverview initialMetrics={metrics} initialMetricConfig={metricConfig} />
+        <OnchainOverview initialMetrics={metrics || []} initialMetricConfig={metricConfig} />
       </main>
-    </ClientLayout>
+    </>
   )
 }
 

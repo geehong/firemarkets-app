@@ -1,4 +1,4 @@
-import { useQuery, UseQueryOptions } from '@tanstack/react-query'
+import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api'
 
 // Types
@@ -37,16 +37,34 @@ export interface TreemapLiveResponse {
 
 // Treemap live data hook for tables
 export const useTreemapLive = (
-  params?: { asset_type_id?: number; type_name?: string },
-  queryOptions?: UseQueryOptions
+  params?: { asset_type_id?: number; type_name?: string }
 ) => {
-  return useQuery({
-    queryKey: ['treemap-live-table', params],
-    queryFn: () => apiClient.getTreemapLiveData(params),
-    staleTime: 5 * 60 * 1000,
-    refetchInterval: 15 * 60 * 1000,
-    ...queryOptions,
-  })
+  const [data, setData] = useState<any>(undefined)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<any>(null)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.getTreemapLiveData(params)
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+    
+    // 15분마다 자동 새로고침
+    const interval = setInterval(fetchData, 15 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [JSON.stringify(params)])
+
+  return { data, loading, error }
 }
 
 export interface OHLCVData {
@@ -63,14 +81,30 @@ export const useAssetTypes = (
   options?: {
     hasData?: boolean
     includeDescription?: boolean
-  },
-  queryOptions?: UseQueryOptions
+  }
 ) => {
-  return useQuery({
-    queryKey: ['asset-types', options],
-    queryFn: () => apiClient.getAssetTypes(options),
-    ...queryOptions,
-  })
+  const [data, setData] = useState<any>(undefined)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<any>(null)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.getAssetTypes(options)
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [JSON.stringify(options)])
+
+  return { data, loading, error }
 }
 
 // Assets List Hook
@@ -80,27 +114,60 @@ export const useAssets = (
     limit?: number
     offset?: number
     search?: string
-  },
-  queryOptions?: UseQueryOptions
+  }
 ) => {
-  return useQuery({
-    queryKey: ['assets', options],
-    queryFn: () => apiClient.getAssets(options),
-    ...queryOptions,
-  })
+  const [data, setData] = useState<any>(undefined)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<any>(null)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.getAssets(options)
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [JSON.stringify(options)])
+
+  return { data, loading, error }
 }
 
 // Asset Detail Hook
 export const useAssetDetail = (
-  assetIdentifier: string,
-  queryOptions?: UseQueryOptions
+  assetIdentifier: string
 ) => {
-  return useQuery({
-    queryKey: ['asset-detail', assetIdentifier],
-    queryFn: () => apiClient.getAssetDetail(assetIdentifier),
-    enabled: !!assetIdentifier,
-    ...queryOptions,
-  })
+  const [data, setData] = useState<any>(undefined)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<any>(null)
+
+  useEffect(() => {
+    if (!assetIdentifier) return
+
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.getAssetDetail(assetIdentifier)
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [assetIdentifier])
+
+  return { data, loading, error }
 }
 
 // OHLCV Data Hook
@@ -111,36 +178,68 @@ export const useOhlcvData = (
     limit?: number
     startDate?: string
     endDate?: string
-  },
-  queryOptions?: UseQueryOptions
+  }
 ) => {
-  return useQuery({
-    queryKey: ['ohlcv', assetIdentifier, options],
-    queryFn: () => apiClient.getAssetsOhlcv({
-      asset_identifier: assetIdentifier,
-      data_interval: options?.dataInterval,
-      start_date: options?.startDate,
-      end_date: options?.endDate,
-      limit: options?.limit,
-    }),
-    enabled: !!assetIdentifier,
-    staleTime: 1 * 60 * 1000, // 1분
-    ...queryOptions,
-  })
+  const [data, setData] = useState<any>(undefined)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<any>(null)
+
+  useEffect(() => {
+    if (!assetIdentifier) return
+
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.getAssetsOhlcv({
+          asset_identifier: assetIdentifier,
+          data_interval: options?.dataInterval,
+          start_date: options?.startDate,
+          end_date: options?.endDate,
+          limit: options?.limit,
+        })
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [assetIdentifier, JSON.stringify(options)])
+
+  return { data, loading, error }
 }
 
 // Asset Price Hook
 export const useAssetPrice = (
-  assetIdentifier: string,
-  queryOptions?: UseQueryOptions
+  assetIdentifier: string
 ) => {
-  return useQuery({
-    queryKey: ['asset-price', assetIdentifier],
-    queryFn: () => apiClient.getAssetPrice(assetIdentifier),
-    enabled: !!assetIdentifier,
-    staleTime: 30 * 1000, // 30초
-    ...queryOptions,
-  })
+  const [data, setData] = useState<any>(undefined)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<any>(null)
+
+  useEffect(() => {
+    if (!assetIdentifier) return
+
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.getAssetPrice(assetIdentifier)
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [assetIdentifier])
+
+  return { data, loading, error }
 }
 
 // Market Caps Hook
@@ -148,28 +247,62 @@ export const useMarketCaps = (
   options?: {
     assetTypeId?: number
     limit?: number
-  },
-  queryOptions?: UseQueryOptions
+  }
 ) => {
-  return useQuery({
-    queryKey: ['market-caps', options],
-    queryFn: () => apiClient.getMarketCaps(options),
-    ...queryOptions,
-  })
+  const [data, setData] = useState<any>(undefined)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<any>(null)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.getMarketCaps(options)
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [JSON.stringify(options)])
+
+  return { data, loading, error }
 }
 
 // TreeMap Live Data Hook
 export const useTreemapLiveData = (
-  params?: { asset_type_id?: number; type_name?: string },
-  queryOptions?: UseQueryOptions
+  params?: { asset_type_id?: number; type_name?: string }
 ) => {
-  return useQuery({
-    queryKey: ['treemap-live', params],
-    queryFn: () => apiClient.getTreemapLiveData(params),
-    staleTime: 5 * 60 * 1000, // 5분
-    refetchInterval: 15 * 60 * 1000, // 15분마다 자동 새로고침
-    ...queryOptions,
-  })
+  const [data, setData] = useState<any>(undefined)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<any>(null)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.getTreemapLiveData(params)
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+    
+    // 15분마다 자동 새로고침
+    const interval = setInterval(fetchData, 15 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [JSON.stringify(params)])
+
+  return { data, loading, error }
 }
 
 // Assets List with Filters Hook (for overviews migration)
@@ -180,26 +313,58 @@ export const useAssetsList = (
     limit?: number
     offset?: number
     search?: string
-  },
-  queryOptions?: UseQueryOptions
+  }
 ) => {
-  return useQuery({
-    queryKey: ['assets-list', options],
-    queryFn: () => apiClient.getAssetsList(options),
-    staleTime: 5 * 60 * 1000, // 5분
-    ...queryOptions,
-  })
+  const [data, setData] = useState<any>(undefined)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<any>(null)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.getAssetsList(options)
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [JSON.stringify(options)])
+
+  return { data, loading, error }
 }
 
 // Performance TreeMap Hook (for AssetsList component)
-export const usePerformanceTreeMap = (
-  queryOptions?: UseQueryOptions
-) => {
-  return useQuery({
-    queryKey: ['performance-treemap'],
-    queryFn: () => apiClient.getPerformanceTreeMap(),
-    staleTime: 5 * 60 * 1000, // 5분
-    refetchInterval: 15 * 60 * 1000, // 15분마다 자동 새로고침
-    ...queryOptions,
-  })
+export const usePerformanceTreeMap = () => {
+  const [data, setData] = useState<any>(undefined)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<any>(null)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.getPerformanceTreeMap()
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+    
+    // 15분마다 자동 새로고침
+    const interval = setInterval(fetchData, 15 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  return { data, loading, error }
 }

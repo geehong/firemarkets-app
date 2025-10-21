@@ -2,7 +2,6 @@ import { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getAssetOverview } from '@/lib/data/assets'
 import AssetOverview from '@/components/overviews/AssetOverview'
-import ClientLayout from '@/components/layout/ClientLayout'
 
 // 동적 렌더링 강제 설정
 export const dynamic = 'force-dynamic'
@@ -146,7 +145,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
     const structuredData = generateStructuredData(asset, assetIdentifier)
 
     return (
-      <ClientLayout>
+      <>
         {/* 구조화된 데이터 */}
         <script
           type="application/ld+json"
@@ -159,7 +158,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
         <main className="container mx-auto px-4 py-8">
           <AssetOverview initialData={asset} />
         </main>
-      </ClientLayout>
+      </>
     )
   } catch (error) {
     console.error('Failed to fetch asset:', error)

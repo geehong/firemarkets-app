@@ -1,8 +1,526 @@
-import React from "react";
-import ClientSidebar from "./ClientSidebar";
+"use client";
+import React, { useEffect, useRef, useState,useCallback } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { usePathname } from "next/navigation";
+import { useSidebar } from "../context/SidebarContext";
+import { useNavigation } from "../hooks/useNavigation";
+import {
+  ChevronDownIcon,
+  GridIcon,
+  HorizontaLDots,
+} from "../icons/index";
+import SidebarWidget from "./SidebarWidget";
+
+type NavItem = {
+  name: string;
+  icon: React.ReactNode;
+  path?: string;
+  subItems?: { 
+    name: string; 
+    path?: string; 
+    pro?: boolean; 
+    new?: boolean;
+    subItems?: { name: string; path: string; pro?: boolean; new?: boolean }[];
+  }[];
+};
+
 
 const AppSidebar: React.FC = () => {
-  return <ClientSidebar />;
+  const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
+  const pathname = usePathname();
+  const { menuItems, loading, error } = useNavigation();
+
+  // 동적 메뉴를 NavItem 타입으로 변환하는 함수
+  const convertDynamicMenuToNavItems = (dynamicItems: any[]): NavItem[] => {
+    return dynamicItems
+      .filter(item => item.is_active)
+      .sort((a, b) => a.order - b.order)
+      .map(item => ({
+        name: item.name,
+        path: item.path,
+        icon: <GridIcon />, // 기본 아이콘 사용
+        subItems: item.children && item.children.length > 0 
+          ? item.children
+              .filter((child: any) => child.is_active)
+              .sort((a: any, b: any) => a.order - b.order)
+              .map((child: any) => ({
+                name: child.name,
+                path: child.path,
+                pro: false,
+                new: false,
+                subItems: child.children && child.children.length > 0
+                  ? child.children
+                      .filter((grandChild: any) => grandChild.is_active)
+                      .sort((a: any, b: any) => a.order - b.order)
+                      .map((grandChild: any) => ({
+                        name: grandChild.name,
+                        path: grandChild.path,
+                        pro: false,
+                        new: false
+                      }))
+                  : undefined
+              }))
+          : undefined
+      }));
+  };
+
+  // 동적 메뉴만 사용
+  const dynamicNavItems = convertDynamicMenuToNavItems(menuItems);
+  console.log('🔍 Dynamic nav items:', dynamicNavItems);
+  
+  // 테스트용 3단계 메뉴 추가
+  const testNavItems = [
+    {
+      name: "Test Menu",
+      icon: <GridIcon />,
+      subItems: [
+        {
+          name: "Sub Menu 1",
+          subItems: [
+            { name: "Sub Sub 1", path: "/test1", pro: false, new: false },
+            { name: "Sub Sub 2", path: "/test2", pro: false, new: false }
+          ]
+        },
+        {
+          name: "Sub Menu 2",
+          path: "/sub2"
+        }
+      ]
+    }
+  ];
+  
+  const finalNavItems = [...dynamicNavItems, ...testNavItems];
+  console.log('🔍 Final nav items:', finalNavItems);
+
+  const renderMenuItems = (
+    navItems: NavItem[],
+    menuType: "main"
+  ) => (
+    <ul className="flex flex-col gap-4">
+      {navItems.map((nav, index) => (
+        <li key={nav.name}>
+          {nav.subItems ? (
+            <div
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🔍 Main menu button clicked:', { index, menuType, navName: nav.name });
+                handleSubmenuToggle(index, menuType);
+              }}
+              className={`menu-item group  ${
+                openSubmenu?.type === menuType && openSubmenu?.index === index
+                  ? "menu-item-active"
+                  : "menu-item-inactive"
+              } cursor-pointer ${
+                !isExpanded && !isHovered
+                  ? "lg:justify-center"
+                  : "lg:justify-start"
+              }`}
+              style={{ zIndex: 9999, position: 'relative', pointerEvents: 'auto' }}
+            >
+              <span
+                className={` ${
+                  openSubmenu?.type === menuType && openSubmenu?.index === index
+                    ? "menu-item-icon-active"
+                    : "menu-item-icon-inactive"
+                }`}
+              >
+                {nav.icon}
+              </span>
+              {(isExpanded || isHovered || isMobileOpen) && (
+                <span className={`menu-item-text`}>{nav.name}</span>
+              )}
+              {(isExpanded || isHovered || isMobileOpen) && (
+                <ChevronDownIcon
+                  className={`ml-auto w-5 h-5 transition-transform duration-200  ${
+                    openSubmenu?.type === menuType &&
+                    openSubmenu?.index === index
+                      ? "rotate-180 text-brand-500"
+                      : ""
+                  }`}
+                />
+              )}
+            </div>
+          ) : (
+            nav.path && (
+              <Link
+                href={nav.path}
+                className={`menu-item group ${
+                  isActive(nav.path) ? "menu-item-active" : "menu-item-inactive"
+                }`}
+              >
+                <span
+                  className={`${
+                    isActive(nav.path)
+                      ? "menu-item-icon-active"
+                      : "menu-item-icon-inactive"
+                  }`}
+                >
+                  {nav.icon}
+                </span>
+                {(isExpanded || isHovered || isMobileOpen) && (
+                  <span className={`menu-item-text`}>{nav.name}</span>
+                )}
+              </Link>
+            )
+          )}
+          {nav.subItems && (isExpanded || isHovered || isMobileOpen) && (
+            <div
+              ref={(el) => {
+                subMenuRefs.current[`${menuType}-${index}`] = el;
+              }}
+              className="overflow-hidden transition-all duration-300"
+              style={{
+                height:
+                  openSubmenu?.type === menuType && openSubmenu?.index === index
+                    ? `${subMenuHeight[`${menuType}-${index}`]}px`
+                    : "0px",
+              }}
+            >
+              <ul className="mt-2 space-y-1 ml-9">
+                {nav.subItems.map((subItem, subIndex) => (
+                  <li key={subItem.name}>
+                    {subItem.subItems && subItem.subItems.length > 0 ? (
+                      // 3단계 메뉴가 있는 경우
+                      <div>
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            console.log('🔍 Sub-submenu button clicked:', { index, subIndex, subItemName: subItem.name });
+                            handleSubSubmenuToggle(index, subIndex);
+                          }}
+                          className={`menu-dropdown-item ${
+                            openSubSubmenu === `${index}-${subIndex}`
+                              ? "menu-dropdown-item-active"
+                              : "menu-dropdown-item-inactive"
+                          } cursor-pointer flex items-center justify-between w-full`}
+                          style={{ zIndex: 9999, position: 'relative', pointerEvents: 'auto' }}
+                        >
+                          <span>{subItem.name}</span>
+                          <ChevronDownIcon
+                            className={`w-4 h-4 transition-transform duration-200 ${
+                              openSubSubmenu === `${index}-${subIndex}`
+                                ? "rotate-180"
+                                : ""
+                            }`}
+                          />
+                        </button>
+                        <div
+                          className={`transition-all duration-300 ${
+                            openSubSubmenu === `${index}-${subIndex}`
+                              ? "block"
+                              : "hidden"
+                          }`}
+                        >
+                          <ul className="mt-2 space-y-1 ml-9">
+                            {subItem.subItems.map((subSubItem) => (
+                              <li key={subSubItem.name}>
+                                {subSubItem.path ? (
+                                  <Link
+                                    href={subSubItem.path}
+                                    className={`menu-dropdown-item ${
+                                      isActive(subSubItem.path)
+                                        ? "menu-dropdown-item-active"
+                                        : "menu-dropdown-item-inactive"
+                                    }`}
+                                  >
+                                    {subSubItem.name}
+                                    <span className="flex items-center gap-1 ml-auto">
+                                      {subSubItem.new && (
+                                        <span
+                                          className={`ml-auto ${
+                                            isActive(subSubItem.path)
+                                              ? "menu-dropdown-badge-active"
+                                              : "menu-dropdown-badge-inactive"
+                                          } menu-dropdown-badge `}
+                                        >
+                                          new
+                                        </span>
+                                      )}
+                                      {subSubItem.pro && (
+                                        <span
+                                          className={`ml-auto ${
+                                            isActive(subSubItem.path)
+                                              ? "menu-dropdown-badge-active"
+                                              : "menu-dropdown-badge-inactive"
+                                          } menu-dropdown-badge `}
+                                        >
+                                          pro
+                                        </span>
+                                      )}
+                                    </span>
+                                  </Link>
+                                ) : (
+                                  <span className="menu-dropdown-item menu-dropdown-item-inactive">
+                                    {subSubItem.name}
+                                  </span>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    ) : (
+                      // 2단계 메뉴인 경우
+                      subItem.path ? (
+                        <Link
+                          href={subItem.path}
+                          className={`menu-dropdown-item ${
+                            isActive(subItem.path)
+                              ? "menu-dropdown-item-active"
+                              : "menu-dropdown-item-inactive"
+                          }`}
+                        >
+                          {subItem.name}
+                          <span className="flex items-center gap-1 ml-auto">
+                            {subItem.new && (
+                              <span
+                                className={`ml-auto ${
+                                  isActive(subItem.path)
+                                    ? "menu-dropdown-badge-active"
+                                    : "menu-dropdown-badge-inactive"
+                                } menu-dropdown-badge `}
+                              >
+                                new
+                              </span>
+                            )}
+                            {subItem.pro && (
+                              <span
+                                className={`ml-auto ${
+                                  isActive(subItem.path)
+                                    ? "menu-dropdown-badge-active"
+                                    : "menu-dropdown-badge-inactive"
+                                } menu-dropdown-badge `}
+                              >
+                                pro
+                              </span>
+                            )}
+                          </span>
+                        </Link>
+                      ) : (
+                        <span className="menu-dropdown-item menu-dropdown-item-inactive">
+                          {subItem.name}
+                        </span>
+                      )
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+
+  const [openSubmenu, setOpenSubmenu] = useState<{
+    type: "main";
+    index: number;
+  } | null>(null);
+  const [openSubSubmenu, setOpenSubSubmenu] = useState<string | null>(null);
+  
+  // 상태 변화 추적
+  useEffect(() => {
+    console.log('🔍 openSubmenu state changed:', openSubmenu);
+  }, [openSubmenu]);
+  
+  useEffect(() => {
+    console.log('🔍 openSubSubmenu state changed:', openSubSubmenu);
+  }, [openSubSubmenu]);
+  const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>(
+    {}
+  );
+  const subMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // const isActive = (path: string) => path === pathname;
+   const isActive = useCallback((path: string) => path === pathname, [pathname]);
+
+  useEffect(() => {
+    // Check if the current path matches any submenu item
+    let submenuMatched = false;
+    let subSubmenuMatched = false;
+    
+    finalNavItems.forEach((nav, index) => {
+      if (nav.subItems) {
+        nav.subItems.forEach((subItem, subIndex) => {
+          if (subItem.path && isActive(subItem.path)) {
+            setOpenSubmenu({
+              type: "main",
+              index,
+            });
+            submenuMatched = true;
+          }
+          
+          // 3단계 메뉴 확인
+          if (subItem.subItems) {
+            subItem.subItems.forEach((subSubItem) => {
+              if (subSubItem.path && isActive(subSubItem.path)) {
+                setOpenSubmenu({
+                  type: "main",
+                  index,
+                });
+                setOpenSubSubmenu(`${index}-${subIndex}`);
+                submenuMatched = true;
+                subSubmenuMatched = true;
+              }
+            });
+          }
+        });
+      }
+    });
+
+    // Only close submenu if no path matches (don't close manually opened menus)
+    if (!submenuMatched) {
+      console.log('🔍 No path match, but keeping manually opened submenu');
+      // Don't close manually opened submenu
+    }
+    if (!subSubmenuMatched) {
+      console.log('🔍 No path match, but keeping manually opened sub-submenu');
+      // Don't close manually opened sub-submenu
+    }
+  }, [pathname, isActive]);
+
+  useEffect(() => {
+    // Set the height of the submenu items when the submenu is opened
+    if (openSubmenu !== null) {
+      const key = `${openSubmenu.type}-${openSubmenu.index}`;
+      console.log('🔍 Setting submenu height for key:', key);
+      if (subMenuRefs.current[key]) {
+        const height = subMenuRefs.current[key]?.scrollHeight || 0;
+        console.log('🔍 Submenu height calculated:', height);
+        setSubMenuHeight((prevHeights) => ({
+          ...prevHeights,
+          [key]: height,
+        }));
+      } else {
+        console.log('🔍 Submenu ref not found for key:', key);
+      }
+    }
+  }, [openSubmenu]);
+
+
+  const handleSubmenuToggle = (index: number, menuType: "main") => {
+    console.log('🔍 handleSubmenuToggle called:', { index, menuType });
+    setOpenSubmenu((prevOpenSubmenu) => {
+      console.log('🔍 Previous submenu state:', prevOpenSubmenu);
+      if (
+        prevOpenSubmenu &&
+        prevOpenSubmenu.type === menuType &&
+        prevOpenSubmenu.index === index
+      ) {
+        console.log('🔍 Closing submenu');
+        return null;
+      }
+      console.log('🔍 Opening submenu');
+      return { type: menuType, index };
+    });
+  };
+
+  const handleSubSubmenuToggle = (mainIndex: number, subIndex: number) => {
+    const key = `${mainIndex}-${subIndex}`;
+    console.log('🔍 handleSubSubmenuToggle called:', { mainIndex, subIndex, key });
+    setOpenSubSubmenu((prevOpenSubSubmenu) => {
+      console.log('🔍 Previous sub-submenu state:', prevOpenSubSubmenu);
+      if (prevOpenSubSubmenu === key) {
+        console.log('🔍 Closing sub-submenu');
+        return null;
+      }
+      console.log('🔍 Opening sub-submenu');
+      return key;
+    });
+  };
+
+  return (
+    <aside
+      className={`fixed mt-16 flex flex-col lg:mt-0 top-0 px-5 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 border-r border-gray-200 
+        ${
+          isExpanded || isMobileOpen
+            ? "w-[290px]"
+            : isHovered
+            ? "w-[290px]"
+            : "w-[90px]"
+        }
+        ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}
+        lg:translate-x-0`}
+      onMouseEnter={() => !isExpanded && setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <div
+        className={`py-8 flex  ${
+          !isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
+        }`}
+      >
+        <Link href="/">
+          {isExpanded || isHovered || isMobileOpen ? (
+            <>
+              <Image
+                className="dark:hidden"
+                src="/images/logo/logo.svg"
+                alt="Logo"
+                width={150}
+                height={40}
+                style={{ height: 'auto' }}
+              />
+              <Image
+                className="hidden dark:block"
+                src="/images/logo/logo-dark.svg"
+                alt="Logo"
+                width={150}
+                height={40}
+                style={{ height: 'auto' }}
+              />
+            </>
+          ) : (
+            <Image
+              src="/images/logo/logo-icon.svg"
+              alt="Logo"
+              width={32}
+              height={32}
+            />
+          )}
+        </Link>
+      </div>
+      <div className="flex flex-col overflow-y-auto duration-300 ease-linear no-scrollbar">
+        <nav className="mb-6">
+          <div className="flex flex-col gap-4">
+            <div>
+              <h2
+                className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
+                  !isExpanded && !isHovered
+                    ? "lg:justify-center"
+                    : "justify-start"
+                }`}
+              >
+                {isExpanded || isHovered || isMobileOpen ? (
+                  "Menu"
+                ) : (
+                  <HorizontaLDots />
+                )}
+              </h2>
+              {loading ? (
+                <div className="flex items-center justify-center py-4">
+                  <div className="text-sm text-gray-500">Loading...</div>
+                </div>
+              ) : error ? (
+                <div className="flex items-center justify-center py-4">
+                  <div className="text-sm text-red-500">Error loading menu</div>
+                </div>
+              ) : (
+                (() => {
+                  console.log('🔍 Rendering menu items:', { finalNavItems, openSubmenu, openSubSubmenu });
+                  return renderMenuItems(finalNavItems, "main");
+                })()
+              )}
+            </div>
+
+          </div>
+        </nav>
+        {isExpanded || isHovered || isMobileOpen ? <SidebarWidget /> : null}
+      </div>
+    </aside>
+  );
 };
 
 export default AppSidebar;

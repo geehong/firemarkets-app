@@ -1,6 +1,5 @@
 import React from 'react'
 import BlogList from '@/components/blog/BlogList'
-import ClientLayout from '@/components/layout/ClientLayout'
 import { Metadata } from 'next'
 
 // 동적 렌더링 강제 설정
@@ -22,7 +21,7 @@ export const metadata: Metadata = {
 async function getBlogs() {
   try {
     // 서버사이드에서는 백엔드 직접 호출
-    const BACKEND_BASE = process.env.BACKEND_API_BASE || 'http://fire_markets_backend:8000/api/v1'
+    const BACKEND_BASE = process.env.BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'
     const res = await fetch(`${BACKEND_BASE}/blogs?page=1&page_size=20&status=published`, {
       cache: 'no-store'
     })
@@ -42,7 +41,7 @@ export default async function BlogPage() {
   const blogData = await getBlogs()
   
   return (
-    <ClientLayout>
+    
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <BlogList 
           showFilters={true}
@@ -51,6 +50,6 @@ export default async function BlogPage() {
           initialBlogs={blogData.blogs || []}
         />
       </div>
-    </ClientLayout>
+    
   )
 }

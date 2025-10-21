@@ -154,15 +154,16 @@ export default function AdminManage() {
   if (!isAdmin) return null
 
   return (
-    <div className="py-6">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="mb-8">
+    
+      <div className="py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Header */}
+          <div className="mb-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">System Administration</h2>
           <p className="text-gray-600">관리자: {user?.username} ({user?.role})</p>
-        </div>
+          </div>
 
-        {/* Alert */}
+          {/* Alert */}
         {alert && (
           <div className={`mb-6 p-4 rounded-md ${
             alert.type === 'success' ? 'bg-green-50 border border-green-200' :
@@ -179,9 +180,9 @@ export default function AdminManage() {
               {alert.message}
             </div>
           </div>
-        )}
+          )}
 
-        {/* Scheduler Management Card */}
+          {/* Scheduler Management Card */}
         <div className={`bg-white shadow rounded-lg mb-6 ${collapsedCards['scheduler-management'] ? 'opacity-50' : ''}`}>
           <div className="px-6 py-4 border-b border-gray-200">
             <div className="flex justify-between items-center">
@@ -226,9 +227,9 @@ export default function AdminManage() {
               )}
             </div>
           )}
-        </div>
+          </div>
 
-        {/* Navigation Tabs */}
+          {/* Navigation Tabs */}
         <div className="border-b border-gray-200 mb-6">
           <nav className="-mb-px flex space-x-8">
             {[
@@ -253,9 +254,9 @@ export default function AdminManage() {
               </button>
             ))}
           </nav>
-        </div>
+          </div>
 
-        {/* Tab Content */}
+          {/* Tab Content */}
         <div className="space-y-6">
           {activeTab === 'config-readme' && (
             <div className={`bg-white shadow rounded-lg ${collapsedCards['config-readme'] ? 'opacity-50' : ''}`}>
@@ -425,8 +426,9 @@ export default function AdminManage() {
               </div>
             </div>
           )}
+          </div>
         </div>
       </div>
-    </div>
+    
   )
 }

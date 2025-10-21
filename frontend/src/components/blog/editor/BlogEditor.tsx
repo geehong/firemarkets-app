@@ -50,8 +50,21 @@ export default function BlogEditor() {
   const editorRef = useRef<HTMLTextAreaElement>(null)
   const ckEditorRef = useRef<any>(null)
 
-  // CKEditor 4 setup
+  // CKEditor 4.22.1 setup
   useEffect(() => {
+    // CKEditor 보안 경고 필터링
+    const originalWarn = console.warn;
+    console.warn = function(message: string) {
+      if (message && (
+        message.includes('not secure') || 
+        message.includes('4.22.1') ||
+        message.includes('Consider upgrading')
+      )) {
+        return; // CKEditor 보안 경고 무시
+      }
+      originalWarn.apply(console, arguments);
+    };
+
     const loadCKEditor = () => {
       if (typeof window !== 'undefined' && window.CKEDITOR && editorRef.current) {
         // CKEditor가 이미 로드되어 있는 경우
@@ -62,6 +75,32 @@ export default function BlogEditor() {
         ckEditorRef.current = window.CKEDITOR.replace(editorRef.current, {
           height: 300,
           language: 'ko',
+          // 보안 경고 비활성화
+          startupMode: 'wysiwyg',
+          removePlugins: 'scayt,wsc,exportpdf',
+          // PDF 내보내기 관련 설정 비활성화
+          exportPdf_tokenUrl: '',
+          exportPdf_url: '',
+          // 알림 비활성화
+          notification_duration: 0,
+          // 버전 체크 비활성화
+          versionCheck: false,
+          // 알림 시스템 완전 비활성화
+          on: {
+            instanceReady: function(evt: any) {
+              // 알림 영역 숨기기
+              const notificationArea = document.getElementById('cke_notifications_area_content');
+              if (notificationArea) {
+                notificationArea.style.display = 'none';
+              }
+            },
+            change: (evt: any) => {
+              const data = evt.editor.getData()
+              if (data !== formData.content) {
+                setFormData(prev => ({ ...prev, content: data }))
+              }
+            }
+          },
           toolbar: [
             { name: 'document', items: ['Source', '-', 'NewPage', 'Preview', 'Print', '-', 'Templates'] },
             { name: 'clipboard', items: ['Cut', 'Copy', 'Paste', 'PasteText', 'PasteFromWord', '-', 'Undo', 'Redo'] },
@@ -77,15 +116,7 @@ export default function BlogEditor() {
             { name: 'colors', items: ['TextColor', 'BGColor'] },
             { name: 'tools', items: ['Maximize', 'ShowBlocks'] },
             { name: 'about', items: ['About'] }
-          ],
-          on: {
-            change: (evt: any) => {
-              const data = evt.editor.getData()
-              if (data !== formData.content) {
-                setFormData(prev => ({ ...prev, content: data }))
-              }
-            }
-          }
+          ]
         })
       }
     }
@@ -242,7 +273,7 @@ export default function BlogEditor() {
               </div>
             </div>
 
-            {/* 본문 에디터 (CKEditor 4) */}
+            {/* 본문 에디터 (CKEditor 4.22.1) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 <FileText className="w-4 h-4 inline mr-2" />

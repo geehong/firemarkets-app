@@ -102,7 +102,7 @@ docker-compose build backend && docker-compose restart backend
 docker-compose stop backend && docker-compose up -d backend
 # 프론트엔드 빌드
 docker-compose up -d --build frontend
-
+docker-compose stop frontend && docker-compose up -d frontend
 # 스케줄러 빌드
 docker-compose up -d --build scheduler
 

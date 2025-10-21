@@ -15,7 +15,7 @@ declare module '@tiptap/pm' {
   export default pm
 }
 
-// CKEditor 4 types
+// CKEditor 4.22.1 types
 declare global {
   interface Window {
     CKEDITOR: any;

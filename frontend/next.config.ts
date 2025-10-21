@@ -32,8 +32,7 @@ const nextConfig: NextConfig = {
   
   // 개발 모드 인디케이터 설정
   devIndicators: {
-    buildActivity: true,
-    buildActivityPosition: 'bottom-right',
+    position: 'bottom-right',
   },
   
   // 개발 모드에서 콘솔 로그 유지
@@ -50,7 +49,7 @@ const nextConfig: NextConfig = {
     // 개발 모드에서 CSS 최적화 비활성화
     optimizeCss: false,
     // 개발 모드에서 성능 측정 활성화
-    webVitalsAttribution: true,
+    webVitalsAttribution: ['CLS', 'FID', 'FCP', 'LCP', 'TTFB'],
     // 개발 모드에서 패키지 최적화 비활성화
     optimizePackageImports: [],
   },
@@ -99,10 +98,15 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ['firemarkets.net', 'www.firemarkets.net', '.firemarkets.net'],
   // 라이브러리 경로 처리
   async rewrites() {
+    // 환경 변수에서 백엔드 URL 가져오기
+    const backendUrl = process.env.BACKEND_API_URL || 'http://localhost:8001';
+    
     return [
       {
-        source: '/map',
-        destination: '/api/map-fallback',
+        // API 요청을 백엔드로 프록시합니다.
+        // 예: /api/v1/crypto/bitcoin -> http://localhost:8001/api/v1/crypto/bitcoin
+        source: '/api/:path*',
+        destination: `${backendUrl}/api/:path*`,
       },
     ];
   },

@@ -1,89 +1,54 @@
-import { Metadata } from 'next'
+"use client"
+
 import { Inter } from 'next/font/google'
 import './globals.css'
 
+import { SidebarProvider } from '@/context/SidebarContext'
+import { ThemeProvider } from '@/context/ThemeContext'
+import AppHeader from '@/layout/AppHeader'
+import AppSidebar from '@/layout/AppSidebar'
+import Backdrop from '@/layout/Backdrop'
+import { useSidebar } from '@/context/SidebarContext'
+
 const inter = Inter({ subsets: ['latin'] })
 
-export const metadata: Metadata = {
-  title: {
-    default: 'FireMarkets - Advanced Financial Data Platform',
-    template: '%s | FireMarkets'
-  },
-  description: 'Comprehensive financial data platform with real-time market data, advanced analytics, and onchain insights for informed trading decisions.',
-  keywords: 'financial data, market analysis, trading, cryptocurrency, stocks, ETFs, onchain analysis, blockchain metrics',
-  authors: [{ name: 'FireMarkets Team' }],
-  creator: 'FireMarkets',
-  publisher: 'FireMarkets',
-  formatDetection: {
-    email: false,
-    address: false,
-    telephone: false,
-  },
-  metadataBase: new URL('https://firemarkets.net'),
-  alternates: {
-    canonical: '/',
-  },
-  openGraph: {
-    type: 'website',
-    locale: 'ko_KR',
-    url: 'https://firemarkets.net',
-    siteName: 'FireMarkets',
-    title: 'FireMarkets - Advanced Financial Data Platform',
-    description: 'Comprehensive financial data platform with real-time market data and advanced analytics.',
-    images: [
-      {
-        url: '/og-image.png',
-        width: 1200,
-        height: 630,
-        alt: 'FireMarkets - Financial Data Platform',
-      },
-    ],
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'FireMarkets - Advanced Financial Data Platform',
-    description: 'Comprehensive financial data platform with real-time market data and advanced analytics.',
-    images: ['/og-image.png'],
-    creator: '@firemarkets',
-  },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-      'max-video-preview': -1,
-      'max-image-preview': 'large',
-      'max-snippet': -1,
-    },
-  },
-  verification: {
-    google: 'your-google-verification-code',
-  },
-}
+function LayoutContent({ children }: { children: React.ReactNode }) {
+  const { isExpanded, isHovered, isMobileOpen } = useSidebar()
 
-import { getNavigationMenu } from '@/lib/data/menus'
-
-export default async function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const navigationData = await getNavigationMenu()
+  const mainContentMargin = isMobileOpen
+    ? "ml-0"
+    : isExpanded || isHovered
+    ? "lg:ml-[290px]"
+    : "lg:ml-[90px]"
 
   return (
-    <html lang="ko">
-      <head>
-        <link rel="icon" href="/favicon.ico" />
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-        <meta name="theme-color" content="#1f2937" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-      </head>
-      <body className={inter.className}>
-        <div className="min-h-screen">
+    <div className="min-h-screen xl:flex">
+      <AppSidebar />
+      <Backdrop />
+      <div className={`flex-1 transition-all duration-300 ease-in-out ${mainContentMargin}`}>
+        <AppHeader />
+        <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">
           {children}
         </div>
+      </div>
+    </div>
+  )
+}
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <html lang="ko">
+      <body className={`${inter.className} dark:bg-gray-900`}>
+        <ThemeProvider>
+          <SidebarProvider>
+            <LayoutContent>{children}</LayoutContent>
+          </SidebarProvider>
+        </ThemeProvider>
       </body>
     </html>
-  );
+  )
 }

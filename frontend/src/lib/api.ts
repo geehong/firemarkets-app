@@ -47,42 +47,8 @@ function resolveApiBaseUrl(): string {
     return envUrl;
   }
 
-  // 서버사이드 렌더링 시 Docker 환경 감지
-  if (typeof window === 'undefined') {
-    // Docker 환경에서 서버사이드 렌더링
-    if (process.env.BACKEND_API_BASE) {
-      return process.env.BACKEND_API_BASE;
-    }
-    
-    // 프로덕션 환경 감지 (서버사이드)
-    if (process.env.NODE_ENV === 'production') {
-      const prodUrl = 'https://backend.firemarkets.net/api/v1';
-      return prodUrl;
-    }
-    
-    // 로컬 개발 환경 (서버사이드) - 항상 HTTP 사용
-    const localUrl = 'http://localhost:8001/api/v1';
-    return localUrl;
-  }
-
-  // 브라우저 환경에서 호스트 기반으로 결정
-  const hostname = window.location.hostname;
-  
-  // 프로덕션 도메인인 경우에만 HTTPS 사용
-  if (hostname.includes('firemarkets.net') && !hostname.includes('localhost')) {
-    const prodUrl = 'https://backend.firemarkets.net/api/v1';
-    return prodUrl;
-  }
-  
-  // 로컬 개발 환경 (브라우저에서는 항상 HTTP 사용)
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    const localUrl = 'http://localhost:8001/api/v1';
-    return localUrl;
-  }
-
-  // 기본값 - 항상 HTTP 사용 (로컬 개발 환경)
-  const defaultUrl = 'http://localhost:8001/api/v1';
-  return defaultUrl;
+  // 모든 환경에서 프로덕션 API 사용
+  return 'https://backend.firemarkets.net/api/v1';
 }
 
 
@@ -105,7 +71,9 @@ export class ApiClient {
         ...init,
         headers: { ...defaultHeaders, ...(init?.headers as Record<string, string> | undefined) },
         mode: 'cors',
-        credentials: 'omit'
+        credentials: 'omit',
+        // 네트워크 타임아웃 설정
+        signal: AbortSignal.timeout(10000) // 10초 타임아웃
       }
       
       const res = await fetch(url, fetchOptions)

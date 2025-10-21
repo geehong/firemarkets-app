@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import ClientLayout from '@/components/layout/ClientLayout'
 
 export const revalidate = 60
 export const dynamic = 'force-dynamic'
@@ -12,7 +11,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   
   try {
     // 서버사이드에서는 백엔드 직접 호출
-    const BACKEND_BASE = process.env.BACKEND_API_BASE || 'http://fire_markets_backend:8000/api/v1'
+    const BACKEND_BASE = process.env.BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'
     const res = await fetch(`${BACKEND_BASE}/blogs/slug/${encodeURIComponent(slug)}`, {
       cache: 'no-store'
     })
@@ -61,7 +60,7 @@ export default async function BlogDetailPage(props: { params: Promise<{ slug: st
   
   try {
     // 서버사이드에서는 백엔드 직접 호출
-    const BACKEND_BASE = process.env.BACKEND_API_BASE || 'http://fire_markets_backend:8000/api/v1'
+    const BACKEND_BASE = process.env.BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'
     const res = await fetch(`${BACKEND_BASE}/blogs/slug/${encodeURIComponent(slug)}`, {
       cache: 'no-store'
     })
@@ -73,7 +72,7 @@ export default async function BlogDetailPage(props: { params: Promise<{ slug: st
     const data = await res.json()
 
     return (
-      <ClientLayout>
+      
         <div className="container mx-auto px-4 py-8">
           <div className="mb-6">
             <Link href="/blog" className="text-sm text-gray-600 hover:text-gray-900">← Back to Blog</Link>
@@ -84,7 +83,7 @@ export default async function BlogDetailPage(props: { params: Promise<{ slug: st
           </div>
           <article className="prose dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: data.content }} />
         </div>
-      </ClientLayout>
+      
     )
   } catch (error) {
     console.error('Error fetching blog post:', error)

@@ -1,7 +1,6 @@
 "use client"
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
 import ChartControls from '@/components/common/ChartControls';
 import { getColorMode } from '@/constants/colorModes';
@@ -176,14 +175,30 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
     }
   };
 
-  // 온체인 메트릭 데이터 조회 (통합 엔드포인트)
-  const { data: onchainData, isLoading: onchainLoading, error: onchainError } = useQuery({
-    queryKey: ['onchain', assetId, metricId],
-    queryFn: () => apiClient.getOnchainMetricsData(assetId, metricId, 10000),
-    enabled: !!assetId && !!metricId,
-    staleTime: 10 * 60 * 1000, // 10분
-    retry: 3,
-  });
+  // 온체인 메트릭 데이터 상태
+  const [onchainData, setOnchainData] = useState(null);
+  const [onchainLoading, setOnchainLoading] = useState(false);
+  const [onchainError, setOnchainError] = useState(null);
+
+  // 온체인 메트릭 데이터 조회
+  useEffect(() => {
+    if (!assetId || !metricId) return;
+
+    const fetchOnchainData = async () => {
+      setOnchainLoading(true);
+      setOnchainError(null);
+      try {
+        const result = await apiClient.getOnchainMetricsData(assetId, metricId, 10000);
+        setOnchainData(result);
+      } catch (err) {
+        setOnchainError(err);
+      } finally {
+        setOnchainLoading(false);
+      }
+    };
+
+    fetchOnchainData();
+  }, [assetId, metricId]);
 
   // 데이터 처리
   useEffect(() => {

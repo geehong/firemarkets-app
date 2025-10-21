@@ -11,14 +11,8 @@ const getAPIBaseURL = () => {
   // 브라우저 환경에서 현재 호스트 기반으로 API URL 결정
   const hostname = window.location.hostname;
   
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return 'http://localhost:8001';
-  } else if (hostname.includes('firemarkets.net') && !hostname.includes('localhost')) {
-    return 'https://backend.firemarkets.net';
-  } else {
-    // 기타 환경에서는 환경 변수 사용
-    return process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8001';
-  }
+  // 모든 환경에서 프로덕션 API 사용
+  return 'https://backend.firemarkets.net';
 };
 
 class NavigationService {
@@ -66,7 +60,7 @@ class NavigationService {
       const token = this.getAuthToken();
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
       
-      const response = await axios.get(`${currentAPIURL}/api/v1/navigation/menu`, {
+      const response = await axios.get('/api/v1/navigation/menu', {
         headers,
         timeout: 15000, // 15초 타임아웃 (모바일 네트워크 고려)
         // withCredentials: true, // 리버스 프록시 CORS 문제로 임시 비활성화
@@ -122,7 +116,7 @@ class NavigationService {
     try {
       const headers = this.getAuthHeaders();
       const currentAPIURL = getAPIBaseURL();
-      const response = await axios.post(`${currentAPIURL}/api/v1/navigation/menu/refresh`, {}, {
+      const response = await axios.post('/api/v1/navigation/menu/refresh', {}, {
         headers
       });
       return response.data;
@@ -146,7 +140,7 @@ class NavigationService {
     try {
       const headers = this.getAuthHeaders();
       const currentAPIURL = getAPIBaseURL();
-      const response = await axios.get(`${currentAPIURL}/api/v1/navigation/menu/status`, {
+      const response = await axios.get('/api/v1/navigation/menu/status', {
         headers
       });
       return response.data;

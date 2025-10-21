@@ -65,7 +65,7 @@ const HalvingChart: React.FC<HalvingChartProps> = ({
   );
 
   // 에러 확인
-  const error = errors.length > 0 ? errors[0] : null;
+  const error = errors && errors.length > 0 ? errors[0] : null;
 
   // 클라이언트 사이드에서 Highcharts 동적 로드
   useEffect(() => {

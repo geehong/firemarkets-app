@@ -24,25 +24,14 @@ interface BroadcastData {
 const getSocketURL = () => {
   // 브라우저 환경이 아닌 경우 (SSR 등)
   if (typeof window === 'undefined') {
-    return 'http://localhost:8001'
+    return 'https://backend.firemarkets.net'
   }
 
   const hostname = window.location.hostname
   const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:'
   
-  // localhost 또는 127.0.0.1인 경우 (데스크탑 개발 환경)
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return 'http://localhost:8001'
-  }
-  
-  // firemarkets.net 도메인인 경우
-  if (hostname === 'firemarkets.net') {
-    return 'https://backend.firemarkets.net'
-  }
-  
-  // 실제 도메인인 경우 (프로덕션 또는 모바일 테스트)
-  // 현재 프론트엔드와 같은 호스트의 8001 포트 사용
-  return `${protocol}//${hostname}:8001`
+  // 모든 환경에서 프로덕션 백엔드 사용
+  return 'https://backend.firemarkets.net'
 }
 
 // 전역 Socket 인스턴스 관리 (클라이언트 측에서만)
