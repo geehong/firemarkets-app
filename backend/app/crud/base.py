@@ -56,7 +56,11 @@ class CRUDBase(Generic[ModelType]):
         if isinstance(obj_in, dict):
             obj_data = obj_in
         else:
-            obj_data = obj_in.dict()
+            # Pydantic v2 호환성
+            if hasattr(obj_in, 'model_dump'):
+                obj_data = obj_in.model_dump()
+            else:
+                obj_data = obj_in.dict()
         
         db_obj = self.model(**obj_data)
         db.add(db_obj)
@@ -96,7 +100,11 @@ class CRUDBase(Generic[ModelType]):
         if isinstance(obj_in, dict):
             update_data = obj_in
         else:
-            update_data = obj_in.dict(exclude_unset=True)
+            # Pydantic v2 호환성
+            if hasattr(obj_in, 'model_dump'):
+                update_data = obj_in.model_dump(exclude_unset=True)
+            else:
+                update_data = obj_in.dict(exclude_unset=True)
         
         for field, value in update_data.items():
             if hasattr(db_obj, field):

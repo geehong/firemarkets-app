@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import ClientRedirect from '@/components/ClientRedirect'
 
 export const revalidate = 60
 export const dynamic = 'force-dynamic'
@@ -12,7 +13,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   try {
     // 서버사이드에서는 백엔드 직접 호출
     const BACKEND_BASE = process.env.BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'
-    const res = await fetch(`${BACKEND_BASE}/blogs/slug/${encodeURIComponent(slug)}`, {
+    const res = await fetch(`${BACKEND_BASE}/posts/slug/${encodeURIComponent(slug)}`, {
       cache: 'no-store'
     })
     
@@ -61,7 +62,7 @@ export default async function BlogDetailPage(props: { params: Promise<{ slug: st
   try {
     // 서버사이드에서는 백엔드 직접 호출
     const BACKEND_BASE = process.env.BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'
-    const res = await fetch(`${BACKEND_BASE}/blogs/slug/${encodeURIComponent(slug)}`, {
+    const res = await fetch(`${BACKEND_BASE}/posts/slug/${encodeURIComponent(slug)}`, {
       cache: 'no-store'
     })
 
@@ -71,6 +72,16 @@ export default async function BlogDetailPage(props: { params: Promise<{ slug: st
 
     const data = await res.json()
 
+    // 포스트 타입에 따라 적절한 페이지로 리다이렉트
+    if (data.post_type === 'assets') {
+      // Asset 타입인 경우 /assets/[slug]로 리다이렉트
+      return <ClientRedirect url={`/assets/${slug}`} />
+    } else if (data.post_type === 'onchain') {
+      // Onchain 타입인 경우 /onchain/[slug]로 리다이렉트
+      return <ClientRedirect url={`/onchain/${slug}`} />
+    }
+
+    // 일반 블로그 포스트인 경우 기존 렌더링
     return (
       
         <div className="container mx-auto px-4 py-8">

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { Save, Eye, Calendar, Image as ImageIcon, Tag, FileText } from 'lucide-react'
+import { apiClient } from '@/lib/api'
 
 type BlogFormState = {
   title: string
@@ -19,9 +20,28 @@ type BlogFormState = {
   meta_description: string
   keywords: string[]
   canonical_url: string
-  post_type: 'post' | 'page' | 'tutorial' | 'news'
+  post_type: 'post' | 'page' | 'tutorial' | 'news' | 'assets' | 'onchain'
   published_at: string
   scheduled_at: string
+  
+  // Asset 연동 필드들
+  asset_id: number | null
+  sync_with_asset: boolean
+  auto_sync_content: boolean
+  
+  // 구조 필드들
+  post_parent: number | null
+  menu_order: number
+  
+  // 보안 필드들
+  post_password: string
+  
+  // 동기화 필드들
+  sync_status: 'pending' | 'synced' | 'failed'
+  last_sync_at: string
+  
+  // 읽기 시간 (자동 계산)
+  read_time_minutes: number | null
 }
 
 export default function BlogEditor() {
@@ -43,7 +63,26 @@ export default function BlogEditor() {
     canonical_url: '',
     post_type: 'post',
     published_at: '',
-    scheduled_at: ''
+    scheduled_at: '',
+    
+    // Asset 연동 필드들
+    asset_id: null,
+    sync_with_asset: false,
+    auto_sync_content: false,
+    
+    // 구조 필드들
+    post_parent: null,
+    menu_order: 0,
+    
+    // 보안 필드들
+    post_password: '',
+    
+    // 동기화 필드들
+    sync_status: 'pending',
+    last_sync_at: '',
+    
+    // 읽기 시간 (자동 계산)
+    read_time_minutes: null
   })
 
   const [keywordInput, setKeywordInput] = useState('')
@@ -62,17 +101,17 @@ export default function BlogEditor() {
       )) {
         return; // CKEditor 보안 경고 무시
       }
-      originalWarn.apply(console, arguments);
+      originalWarn.apply(console, arguments as any);
     };
 
     const loadCKEditor = () => {
-      if (typeof window !== 'undefined' && window.CKEDITOR && editorRef.current) {
+      if (typeof window !== 'undefined' && (window as any).CKEDITOR && editorRef.current) {
         // CKEditor가 이미 로드되어 있는 경우
         if (ckEditorRef.current) {
           ckEditorRef.current.destroy()
         }
         
-        ckEditorRef.current = window.CKEDITOR.replace(editorRef.current, {
+        ckEditorRef.current = (window as any).CKEDITOR.replace(editorRef.current, {
           height: 300,
           language: 'ko',
           // 보안 경고 비활성화
@@ -122,7 +161,7 @@ export default function BlogEditor() {
     }
 
     // CKEditor 스크립트가 로드되지 않은 경우 로드
-    if (typeof window !== 'undefined' && !window.CKEDITOR) {
+    if (typeof window !== 'undefined' && !(window as any).CKEDITOR) {
       const script = document.createElement('script')
       script.src = '/ckeditor/ckeditor.js'
       script.onload = loadCKEditor
@@ -143,6 +182,36 @@ export default function BlogEditor() {
     if (ckEditorRef.current && formData.content !== ckEditorRef.current.getData()) {
       ckEditorRef.current.setData(formData.content)
     }
+  }, [formData.content])
+
+  // 읽기 시간 계산 함수
+  const calculateReadTime = (content: string): number => {
+    if (!content) return 0
+    
+    // HTML 태그 제거하고 텍스트만 추출
+    const textContent = content.replace(/<[^>]*>/g, '')
+    
+    // 한국어와 영어 단어 수 계산 (한국어는 글자 수, 영어는 단어 수)
+    const koreanChars = textContent.match(/[가-힣]/g) || []
+    const englishWords = textContent.match(/[a-zA-Z]+/g) || []
+    
+    // 한국어는 글자 수로, 영어는 단어 수로 계산
+    const totalWords = koreanChars.length + englishWords.length
+    
+    // 평균 읽기 속도: 분당 200단어 (한국어 기준)
+    const wordsPerMinute = 200
+    const readTime = Math.ceil(totalWords / wordsPerMinute)
+    
+    return Math.max(1, readTime) // 최소 1분
+  }
+
+  // 내용이 변경될 때마다 읽기 시간 업데이트
+  useEffect(() => {
+    const readTime = calculateReadTime(formData.content)
+    setFormData(prev => ({
+      ...prev,
+      read_time_minutes: readTime
+    }))
   }, [formData.content])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -171,28 +240,37 @@ export default function BlogEditor() {
     }))
   }
 
-  const handleSaveDraft = () => {
-    const draftData = { ...formData, status: 'draft' as const }
-    // Replace with API call
-    // await apiClient.saveDraft(draftData)
-    console.log('Draft saved:', draftData)
-    alert('✅ 임시저장되었습니다!\n\n제목: ' + draftData.title)
+  const handleSaveDraft = async () => {
+    try {
+      const draftData = { ...formData, status: 'draft' as const }
+      const response = await apiClient.createBlog(draftData)
+      console.log('Draft saved:', response)
+      alert('✅ 임시저장되었습니다!\n\n제목: ' + draftData.title + '\n포스트 ID: ' + response.id)
+    } catch (error) {
+      console.error('Draft save error:', error)
+      alert('❌ 임시저장 실패: ' + (error as Error).message)
+    }
   }
 
-  const handlePublish = () => {
+  const handlePublish = async () => {
     if (!formData.title || !formData.slug || !formData.content) {
       alert('⚠️ 필수 항목을 입력해주세요.\n- 제목\n- 슬러그\n- 본문 내용')
       return
     }
-    const publishedData = {
-      ...formData,
-      status: 'published' as const,
-      published_at: formData.published_at || new Date().toISOString()
+    
+    try {
+      const publishedData = {
+        ...formData,
+        status: 'published' as const,
+        published_at: formData.published_at || new Date().toISOString()
+      }
+      const response = await apiClient.createBlog(publishedData)
+      console.log('Published:', response)
+      alert('🎉 발행되었습니다!\n\n제목: ' + publishedData.title + '\n포스트 ID: ' + response.id)
+    } catch (error) {
+      console.error('Publish error:', error)
+      alert('❌ 발행 실패: ' + (error as Error).message)
     }
-    // Replace with API call
-    // await apiClient.publish(publishedData)
-    console.log('Published:', publishedData)
-    alert('🎉 발행되었습니다!\n\n제목: ' + publishedData.title)
   }
 
   return (
@@ -377,6 +455,8 @@ export default function BlogEditor() {
                     <option value="page">페이지</option>
                     <option value="tutorial">튜토리얼</option>
                     <option value="news">뉴스</option>
+                    <option value="assets">자산</option>
+                    <option value="onchain">온체인 메트릭</option>
                   </select>
                 </div>
 
@@ -407,6 +487,104 @@ export default function BlogEditor() {
                     placeholder="카테고리 ID"
                   />
                 </div>
+
+                {/* Asset 연동 필드들 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Asset ID
+                  </label>
+                  <input
+                    type="number"
+                    name="asset_id"
+                    value={formData.asset_id ?? ''}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    placeholder="연동할 Asset ID"
+                  />
+                </div>
+
+                <div className="flex space-x-4">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      name="sync_with_asset"
+                      checked={formData.sync_with_asset}
+                      onChange={handleChange}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+                      Asset과 동기화
+                    </label>
+                  </div>
+                  
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      name="auto_sync_content"
+                      checked={formData.auto_sync_content}
+                      onChange={handleChange}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+                      자동 콘텐츠 동기화
+                    </label>
+                  </div>
+                </div>
+
+                {/* 구조 필드들 */}
+                <div className="flex space-x-4">
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      부모 포스트 ID
+                    </label>
+                    <input
+                      type="number"
+                      name="post_parent"
+                      value={formData.post_parent ?? ''}
+                      onChange={handleChange}
+                      className="w-full px-4 py-3 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                      placeholder="부모 포스트 ID"
+                    />
+                  </div>
+                  
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      메뉴 순서
+                    </label>
+                    <input
+                      type="number"
+                      name="menu_order"
+                      value={formData.menu_order}
+                      onChange={handleChange}
+                      className="w-full px-4 py-3 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                      placeholder="메뉴 순서"
+                    />
+                  </div>
+                </div>
+
+                {/* 보안 필드 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    포스트 비밀번호
+                  </label>
+                  <input
+                    type="password"
+                    name="post_password"
+                    value={formData.post_password}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    placeholder="비밀번호 보호 (선택사항)"
+                  />
+                </div>
+
+                {/* 읽기 시간 표시 */}
+                {formData.read_time_minutes && (
+                  <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
+                    <p className="text-sm text-blue-700 dark:text-blue-300">
+                      📖 예상 읽기 시간: {formData.read_time_minutes}분
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="mt-4">

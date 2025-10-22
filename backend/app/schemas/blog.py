@@ -95,6 +95,16 @@ class PostBase(BaseModel):
     
     # Asset 연결
     asset_id: Optional[int] = Field(None, description="연결된 Asset ID")
+    
+    # 포스트 타입 및 구조
+    post_type: str = Field("post", description="포스트 타입")
+    post_parent: Optional[int] = Field(None, description="부모 포스트 ID")
+    menu_order: int = Field(0, description="메뉴 순서")
+    
+    # 통계 및 보안
+    comment_count: int = Field(0, description="댓글 수")
+    post_password: Optional[str] = Field(None, description="포스트 비밀번호")
+    ping_status: str = Field("open", description="핑백 상태")
 
 
 class PostCreate(PostBase):
@@ -122,6 +132,16 @@ class PostUpdate(BaseModel):
     keywords: Optional[List[str]] = None
     canonical_url: Optional[str] = None
     asset_id: Optional[int] = None
+    
+    # 포스트 타입 및 구조
+    post_type: Optional[str] = None
+    post_parent: Optional[int] = None
+    menu_order: Optional[int] = None
+    
+    # 통계 및 보안
+    comment_count: Optional[int] = None
+    post_password: Optional[str] = None
+    ping_status: Optional[str] = None
 
 
 class PostResponse(PostBase):
@@ -136,11 +156,11 @@ class PostResponse(PostBase):
     last_sync_at: Optional[datetime]
     sync_status: str
     
-    # 관계 데이터
-    category: Optional[PostCategoryResponse] = None
-    tags: List[PostTagResponse] = []
-    asset: Optional[Any] = None
-    author: Optional[Any] = None
+    # 관계 데이터는 별도 엔드포인트에서 처리
+    # category: Optional[PostCategoryResponse] = None
+    # tags: List[PostTagResponse] = Field(default_factory=list)
+    # asset: Optional[Any] = None
+    # author: Optional[Any] = None
     
     class Config:
         from_attributes = True

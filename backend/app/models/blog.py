@@ -99,6 +99,20 @@ class Post(Base):
     last_sync_at = Column(TIMESTAMP, nullable=True)
     sync_status = Column(String(20), default='pending')
     
+    # 포스트 타입 및 구조
+    post_type = Column(String(20), default='post')
+    post_parent = Column(Integer, nullable=True)
+    menu_order = Column(Integer, default=0)
+    
+    # 통계 및 보안
+    comment_count = Column(Integer, default=0)
+    post_password = Column(String(255), nullable=True)
+    ping_status = Column(String(20), default='open')
+    
+    # Asset 관련 추가 필드
+    asset_type_id = Column(Integer, nullable=True)
+    post_info = Column(JSON, nullable=True)
+    
     # 관계 설정
     asset = relationship("Asset", back_populates="posts")
     author = relationship("User")

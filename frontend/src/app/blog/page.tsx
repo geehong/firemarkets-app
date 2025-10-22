@@ -22,7 +22,7 @@ async function getBlogs() {
   try {
     // 서버사이드에서는 백엔드 직접 호출
     const BACKEND_BASE = process.env.BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'
-    const res = await fetch(`${BACKEND_BASE}/blogs?page=1&page_size=20&status=published`, {
+    const res = await fetch(`${BACKEND_BASE}/posts?page=1&page_size=20&status=published`, {
       cache: 'no-store'
     })
     

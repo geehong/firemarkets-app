@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useOhlcv, useIntraday, useDelayedQuotes } from '@/hooks'
 
 interface OHLCVData {
@@ -53,12 +53,16 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
 }) => {
   const [chartData, setChartData] = useState<number[][] | null>(null)
   const [volumeData, setVolumeData] = useState<number[][] | null>(null)
+  const [volumeChangeSummary, setVolumeChangeSummary] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false)
   const [isClient, setIsClient] = useState(false)
   const [HighchartsReact, setHighchartsReact] = useState<any>(null)
   const [Highcharts, setHighcharts] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const prevVolumeRef = useRef<number[][] | null>(null)
+  const chartRef = useRef<any>(null)
+  const lastAppliedVolumeRef = useRef<number | null>(null)
 
   // 클라이언트 사이드에서 Highcharts 동적 로드
   useEffect(() => {
@@ -169,25 +173,11 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
   useEffect(() => {
     if (!assetIdentifier) return
 
-    console.log('🔍 OHLCVChart: Starting data fetch for:', assetIdentifier)
-    console.log('🔍 OHLCVChart: Data source config:', { 
-      useIntradayData, 
-      isTimeData, 
-      isDailyData, 
-      dataInterval 
-    })
-    console.log('🔍 OHLCVChart: API loading states:', { apiLoading, timeLoading, dailyLoading })
-    console.log('🔍 OHLCVChart: API errors:', { apiError, timeError, dailyError })
-    console.log('🔍 OHLCVChart: API data:', { apiData, timeData, dailyData })
-    console.log('🔍 OHLCVChart: Hook enabled states:', {
-      timeEnabled: !!assetIdentifier && isTimeData,
-      dailyEnabled: !!assetIdentifier && isDailyData,
-      delayedEnabled: !!assetIdentifier && isTimeData && dataInterval === '15m'
-    })
+    // 간결한 상태 로그
+    console.log('[OHLCVChart] fetch start', { assetIdentifier, dataInterval, isTimeData })
 
     // 외부 데이터가 있으면 그것을 사용
     if (externalOhlcvData && externalOhlcvData.length > 0) {
-      console.log('🔍 OHLCVChart: Using external data:', externalOhlcvData.length, 'items')
       const ohlcData = externalOhlcvData
         .map((item) => [
           new Date(item.timestamp_utc).getTime(),
@@ -204,7 +194,46 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
         .filter((item) => item[0] > 0)
         .sort((a, b) => a[0] - b[0])
 
-      console.log('✅ OHLCVChart: External data processed:', { ohlcData: ohlcData.length, volumeData: volumeData.length })
+      // 볼륨 검증 로그
+      try {
+        const volumes = volumeData.map((p) => p[1])
+        const min = Math.min(...volumes)
+        const max = Math.max(...volumes)
+        let decreases = 0
+        for (let i = 1; i < volumes.length; i++) {
+          if (volumes[i] < volumes[i - 1]) decreases++
+        }
+        const nans = volumes.filter((v) => Number.isNaN(v)).length
+        const negatives = volumes.filter((v) => v < 0).length
+        console.log('[OHLCVChart][VALIDATE_VOLUME]', {
+          source: 'external',
+          assetIdentifier,
+          dataInterval,
+          points: volumeData.length,
+          min,
+          max,
+          nans,
+          negatives,
+          decreases,
+          last3: volumeData.slice(-3),
+        })
+
+        // 변경 요약 계산 및 표시
+        const prev = prevVolumeRef.current
+        const prevLen = prev?.length || 0
+        const nextLen = volumeData.length
+        const prevLast = prevLen > 0 ? prev![prevLen - 1][1] : undefined
+        const nextLast = nextLen > 0 ? volumeData[nextLen - 1][1] : undefined
+        const pointsAdded = nextLen - prevLen
+        const changed = prevLast !== nextLast || pointsAdded !== 0
+        if (changed) {
+          const ts = nextLen > 0 ? new Date(volumeData[nextLen - 1][0]).toISOString() : ''
+          const summary = `volume updated (${pointsAdded >= 0 ? '+' : ''}${pointsAdded} pts) last ${prevLast ?? '-'} → ${nextLast ?? '-'} @ ${ts}`
+          setVolumeChangeSummary(summary)
+          console.log('[OHLCVChart][VOLUME_CHANGE]', { summary })
+        }
+        prevVolumeRef.current = volumeData
+      } catch {}
       setChartData(ohlcData)
       setVolumeData(volumeData)
       return
@@ -225,17 +254,12 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
     if (isTimeData && dataInterval === '15m' && delayedData) {
       // 15m 지연 데이터는 quotes 배열 안에 있음
       rows = delayedData.quotes || []
-      console.log('🔍 OHLCVChart: Using delayed data:', rows.length, 'items')
     } else {
       // 시간 데이터 또는 일간 데이터
       rows = apiData?.data || apiData || []
-      console.log('🔍 OHLCVChart: Using API data:', rows.length, 'items')
     }
 
-    console.log('🔍 OHLCVChart: Raw rows data:', rows.slice(0, 3)) // 첫 3개 항목만 로그
-
     if (rows && rows.length > 0) {
-      console.log('🔍 OHLCVChart: Processing', rows.length, 'data points')
       const ohlcData = rows
         .map((item: Record<string, unknown>) => {
           let timestamp: number
@@ -283,18 +307,53 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
         .filter((item) => item[0] > 0)
         .sort((a, b) => a[0] - b[0])
 
-      console.log('✅ OHLCVChart: Data processed successfully:', { 
-        ohlcData: ohlcData.length, 
-        volumeData: volumeData.length,
-        firstOHLC: ohlcData[0],
-        lastOHLC: ohlcData[ohlcData.length - 1]
-      })
+      // 볼륨 검증 로그 (요약)
+      try {
+        const volumes = volumeData.map((p) => p[1])
+        const min = Math.min(...volumes)
+        const max = Math.max(...volumes)
+        let decreases = 0
+        for (let i = 1; i < volumes.length; i++) {
+          if (volumes[i] < volumes[i - 1]) decreases++
+        }
+        const nans = volumes.filter((v) => Number.isNaN(v)).length
+        const negatives = volumes.filter((v) => v < 0).length
+        const source = isTimeData ? (dataInterval === '15m' ? 'delayed15m' : 'time') : 'daily'
+        console.log('[OHLCVChart][VALIDATE_VOLUME]', {
+          source,
+          assetIdentifier,
+          dataInterval,
+          points: volumeData.length,
+          min,
+          max,
+          nans,
+          negatives,
+          decreases,
+          last3: volumeData.slice(-3),
+        })
+
+        // 변경 요약 계산 및 표시
+        const prev = prevVolumeRef.current
+        const prevLen = prev?.length || 0
+        const nextLen = volumeData.length
+        const prevLast = prevLen > 0 ? prev![prevLen - 1][1] : undefined
+        const nextLast = nextLen > 0 ? volumeData[nextLen - 1][1] : undefined
+        const pointsAdded = nextLen - prevLen
+        const changed = prevLast !== nextLast || pointsAdded !== 0
+        if (changed) {
+          const ts = nextLen > 0 ? new Date(volumeData[nextLen - 1][0]).toISOString() : ''
+          const summary = `volume updated (${pointsAdded >= 0 ? '+' : ''}${pointsAdded} pts) last ${prevLast ?? '-'} → ${nextLast ?? '-'} @ ${ts}`
+          setVolumeChangeSummary(summary)
+          console.log('[OHLCVChart][VOLUME_CHANGE]', { summary })
+        }
+        prevVolumeRef.current = volumeData
+      } catch {}
 
       setChartData(ohlcData)
       setVolumeData(volumeData)
       if (onDataLoad) onDataLoad({ ohlcData, volumeData, totalCount: rows.length })
     } else if (!apiLoading) {
-      console.warn('⚠️ OHLCVChart: No data available', { rowsLength: rows.length, apiData, isTimeData, dataInterval })
+      console.warn('[OHLCVChart] no data', { rowsLength: rows.length, isTimeData, dataInterval })
       setError('차트 데이터가 없습니다.')
     }
   }, [assetIdentifier, dataInterval, onDataLoad, onError, externalOhlcvData, apiData, apiLoading, apiError, isTimeData, isDailyData, delayedData, useIntradayData])
@@ -316,7 +375,42 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
         enabled: true,
         type: 'xy'
       },
-      pinchType: 'xy'
+      pinchType: 'xy',
+      events: {
+        redraw: function () {
+          try {
+            const chart = this
+            const xExt = chart.xAxis && chart.xAxis[0] ? chart.xAxis[0].getExtremes() : null
+            const volAxis = chart.yAxis && chart.yAxis[1] ? chart.yAxis[1] : null
+            const volSeries = chart.get && chart.get('volume')
+            if (!xExt || !volSeries || !volAxis) return
+            const minX = xExt.min, maxX = xExt.max
+            const pts = volSeries.points || []
+            let lastVisibleVol = null
+            for (let i = pts.length - 1; i >= 0; i--) {
+              const p = pts[i]
+              if (p && typeof p.x === 'number' && p.x >= minX && p.x <= maxX) {
+                lastVisibleVol = typeof p.y === 'number' ? p.y : null
+                break
+              }
+            }
+            const prev = lastAppliedVolumeRef.current
+            if (lastVisibleVol !== null && prev !== lastVisibleVol) {
+              lastAppliedVolumeRef.current = lastVisibleVol
+              const yExt = volAxis.getExtremes()
+              console.log('[OHLCVChart][APPLIED_VOLUME]', {
+                assetIdentifier,
+                dataInterval,
+                lastVisibleVol,
+                yMin: yExt.min,
+                yMax: yExt.max,
+                xMin: minX,
+                xMax: maxX,
+              })
+            }
+          } catch {}
+        }
+      }
     },
     title: {
       text: title || `${assetIdentifier} Price Chart`,
@@ -364,6 +458,39 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
                   fontSize: isMobile ? '0px' : '12px' // 모바일에서 제목 숨김
                 }
               },
+              events: {
+                setExtremes: function (e: any) {
+                  try {
+                    const chart = chartRef.current?.chart
+                    const volSeries = chart?.get && chart.get('volume')
+                    const xExt = chart?.xAxis && chart.xAxis[0] ? chart.xAxis[0].getExtremes() : null
+                    if (!volSeries || !xExt) return
+                    const minX = xExt.min, maxX = xExt.max
+                    const pts = volSeries.points || []
+                    let lastVisibleVol = null
+                    for (let i = pts.length - 1; i >= 0; i--) {
+                      const p = pts[i]
+                      if (p && typeof p.x === 'number' && p.x >= minX && p.x <= maxX) {
+                        lastVisibleVol = typeof p.y === 'number' ? p.y : null
+                        break
+                      }
+                    }
+                    if (lastVisibleVol !== null) {
+                      const prev = lastAppliedVolumeRef.current
+                      if (prev !== lastVisibleVol) {
+                        lastAppliedVolumeRef.current = lastVisibleVol
+                        console.log('[OHLCVChart][APPLIED_VOLUME_AXIS]', {
+                          assetIdentifier,
+                          dataInterval,
+                          lastVisibleVol,
+                          yMin: e.min,
+                          yMax: e.max,
+                        })
+                      }
+                    }
+                  } catch {}
+                }
+              }
             },
           ]
         : []),
@@ -515,6 +642,25 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
             zIndex: 1
           }}
         >
+          {volumeChangeSummary && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                background: 'rgba(17,24,39,0.8)',
+                color: '#fff',
+                padding: '6px 8px',
+                borderRadius: 6,
+                fontSize: 12,
+                zIndex: 2,
+                pointerEvents: 'none'
+              }}
+              aria-live="polite"
+            >
+              {volumeChangeSummary}
+            </div>
+          )}
           <HighchartsReact
             highcharts={Highcharts}
             constructorType={'stockChart'}

@@ -21,6 +21,19 @@ export async function generateMetadata({
     // 중앙화된 데이터 페칭 함수 사용
     const asset = await getAssetOverview(assetIdentifier)
     
+    // 서버 사이드 로깅: 메타데이터 생성 시 볼륨 관련 필드 점검
+    // 참고: 실제 존재하지 않는 키는 undefined로 출력됩니다.
+    // 이 로그는 서버 콘솔(Next.js 서버 로그)에 표시됩니다.
+    console.log('[AssetPage][generateMetadata]', {
+      assetIdentifier,
+      volume: (asset as any)?.volume,
+      volume_24h: (asset as any)?.volume_24h,
+      avg_volume: (asset as any)?.avg_volume,
+      avg_volume_24h: (asset as any)?.avg_volume_24h,
+      turnover: (asset as any)?.turnover,
+      quote_volume: (asset as any)?.quote_volume,
+    })
+    
     if (!asset) {
       return {
         title: 'Asset Not Found | FireMarkets',
@@ -138,11 +151,33 @@ export default async function AssetPage({ params }: AssetPageProps) {
     // 중앙화된 데이터 페칭 함수 사용
     const asset = await getAssetOverview(assetIdentifier)
     
+    // 서버 사이드 로깅: 페이지 렌더 시 볼륨 관련 필드 점검
+    console.log('[AssetPage][render]', {
+      assetIdentifier,
+      volume: (asset as any)?.volume,
+      volume_24h: (asset as any)?.volume_24h,
+      avg_volume: (asset as any)?.avg_volume,
+      avg_volume_24h: (asset as any)?.avg_volume_24h,
+      turnover: (asset as any)?.turnover,
+      quote_volume: (asset as any)?.quote_volume,
+    })
+    
     if (!asset) {
       notFound()
     }
 
     const structuredData = generateStructuredData(asset, assetIdentifier)
+    
+    // 클라이언트 사이드 로깅을 위한 데이터 준비
+    const clientVolumeLogData = {
+      assetIdentifier,
+      volume: (asset as any)?.volume,
+      volume_24h: (asset as any)?.volume_24h,
+      avg_volume: (asset as any)?.avg_volume,
+      avg_volume_24h: (asset as any)?.avg_volume_24h,
+      turnover: (asset as any)?.turnover,
+      quote_volume: (asset as any)?.quote_volume,
+    }
 
     return (
       <>
@@ -151,6 +186,14 @@ export default async function AssetPage({ params }: AssetPageProps) {
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify(structuredData),
+          }}
+        />
+        {/* 클라이언트 콘솔 로깅: 차트/볼륨 이슈 디버깅 */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(() => { try { console.log('[AssetPage][client]', ${JSON.stringify(
+              clientVolumeLogData
+            )}); } catch (e) {} })();`,
           }}
         />
         

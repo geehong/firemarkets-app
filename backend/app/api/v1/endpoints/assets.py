@@ -1792,13 +1792,15 @@ def get_asset_overview(
             raise HTTPException(status_code=404, detail="Asset not found")
         
         asset, type_name = asset_with_type
-        
-        # 모든 자산 타입에 대해 treemap_live_view 기본 정보 사용
+        # 1) posts 기반 개요 우선 시도
+        overview_from_posts = get_overview_from_posts(db, asset_id)
+        if overview_from_posts:
+            return overview_from_posts
+
+        # 2) treemap_live_view 기반 개요 (기존)
         overview_data = get_unified_overview_data(db, asset_id)
-        
         if not overview_data:
             raise HTTPException(status_code=404, detail="Overview data not found")
-        
         return overview_data
         
     except HTTPException:
@@ -1988,20 +1990,26 @@ def get_unified_overview_data(db: Session, asset_id: int):
         asset_type = overview_dict.get('asset_type')
         
         if asset_type == 'Stocks':
-            # 주식 전용 정보 추가
+            # 주식 전용 정보 추가 (Null-safe 병합)
             stock_data = get_stock_additional_data(db, asset_id)
             if stock_data:
-                overview_dict.update(stock_data)
+                for k, v in stock_data.items():
+                    if v is not None:
+                        overview_dict[k] = v
         elif asset_type == 'Crypto':
-            # 암호화폐 전용 정보 추가
+            # 암호화폐 전용 정보 추가 (Null-safe 병합)
             crypto_data = get_crypto_additional_data(db, asset_id)
             if crypto_data:
-                overview_dict.update(crypto_data)
+                for k, v in crypto_data.items():
+                    if v is not None:
+                        overview_dict[k] = v
         elif asset_type == 'ETFs':
-            # ETF 전용 정보 추가
+            # ETF 전용 정보 추가 (Null-safe 병합)
             etf_data = get_etf_additional_data(db, asset_id)
             if etf_data:
-                overview_dict.update(etf_data)
+                for k, v in etf_data.items():
+                    if v is not None:
+                        overview_dict[k] = v
         
         # None 값 처리 및 타입 변환
         for key, value in overview_dict.items():
@@ -2030,6 +2038,73 @@ def get_unified_overview_data(db: Session, asset_id: int):
         
     except Exception as e:
         logger.error(f"Error getting unified overview data: {str(e)}")
+        return None
+
+
+def get_overview_from_posts(db: Session, asset_id: int):
+    """posts 테이블 기반의 최소 개요 응답 생성 (폴백)
+    - 최신 게시물(발행 우선, 그 다음 드래프트)을 기준으로 콘텐츠 중심 개요 구성
+    - 필수 필드는 Asset/AssetType 조합으로 보충
+    """
+    try:
+        from ....models import Post, Asset, AssetType
+
+        # 자산 및 타입 정보 조회
+        asset_with_type = db.query(Asset, AssetType.type_name) \
+            .join(AssetType, Asset.asset_type_id == AssetType.asset_type_id) \
+            .filter(Asset.asset_id == asset_id) \
+            .first()
+        if not asset_with_type:
+            return None
+
+        asset, type_name = asset_with_type
+
+        # posts에서 해당 자산 관련 최신글(발행 우선) 선택
+        q = db.query(Post).filter(Post.asset_id == asset_id)
+        # 발행 우선 정렬 후 최신 업데이트 순
+        posts = q.order_by(
+            (Post.status == 'published').desc(),
+            Post.updated_at.desc()
+        ).limit(1).all()
+
+        post = posts[0] if posts else None
+        if not post:
+            return None
+
+        # posts 기반 필드 매핑
+        title = post.title or asset.name
+        description = post.description or post.excerpt or (post.content[:300] if post.content else None)
+        logo_url = post.cover_image
+
+        # 최소 응답 구성 (필수값 채움)
+        overview_payload = {
+            'asset_id': asset.asset_id,
+            'ticker': asset.ticker,
+            'name': title or asset.name,
+            'exchange': asset.exchange if hasattr(asset, 'exchange') else None,
+            'currency': asset.currency if hasattr(asset, 'currency') else None,
+            'description': description,
+            'is_active': bool(getattr(asset, 'is_active', True)),
+            'created_at': getattr(asset, 'created_at', None) or post.created_at,
+            'updated_at': getattr(asset, 'updated_at', None) or post.updated_at,
+            'type_name': type_name,
+            'type_description': None,
+            'asset_category': None,
+            'logo_image_url': logo_url,
+            # 시장 데이터 폴백은 없음
+            'market_cap': None,
+            'current_price': None,
+            'price_change_percentage_24h': None,
+            'market_status': None,
+            'realtime_updated_at': None,
+            'daily_data_updated_at': None,
+        }
+
+        # 스키마로 검증 및 반환
+        return AssetOverviewResponse(**overview_payload)
+
+    except Exception as e:
+        logger.error(f"Error building posts-based overview for asset_id={asset_id}: {e}")
         return None
 
 
