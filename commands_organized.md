@@ -11,12 +11,15 @@
 8. [Git 명령어](#git-명령어)
 9. [백업 및 압축](#백업-및-압축)
 
+
 ---
 
 ## 🔧 환경 설정
 
 ### 환경 변수 확인
 ```bash
+docker-compose restart nginx-proxy-manager
+
     cd /home/geehong/firemarkets-app && cat .env
     ```
     # .env
@@ -65,19 +68,23 @@
     
 ### 컨테이너 상태 확인
 ```bash
+firemarkets.net
 docker-compose ps
-    NAME                                  IMAGE                                                                     COMMAND                   SERVICE                  CREATED        STATUS                   PORTS
-    fire_markets_backend                  sha256:98cf91082963461e68b82ab5231dbe11df5cb12cbb6b92e683813fd368411a73   "uvicorn app.admin_m…"   backend                  19 hours ago   Up 2 minutes (healthy)   0.0.0.0:8001->8000/tcp, [::]:8001->8000/tcp
-    fire_markets_data_processor           sha256:c70c87b4858b505579fc1240bb4cb1a5c20ef76423063291c12eef1ba0a887a5   "python -m app.servi…"   data_processor           18 hours ago   Up 2 minutes             8000/tcp
-    fire_markets_db                       mysql:8.0                                                                 "docker-entrypoint.s…"   db                       2 days ago     Up 2 minutes (healthy)   0.0.0.0:3306->3306/tcp, [::]:3306->3306/tcp, 33060/tcp
-    fire_markets_db_postgres              postgres:15-alpine                                                        "docker-entrypoint.s…"   db_postgres              3 days ago     Up 2 minutes (healthy)   0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
-    fire_markets_dbeaver                  dbeaver/cloudbeaver:latest                                                "./launch-product.sh"     dbeaver                  20 hours ago   Up 2 minutes             8978/tcp
-    fire_markets_frontend                 sha256:a484ce66d598f40568301ac97e02617ce235dd4ccf963687c4531c48a153c630   "docker-entrypoint.s…"   frontend                 5 days ago     Up 2 minutes             0.0.0.0:3000->80/tcp, [::]:3000->80/tcp
-    fire_markets_redis                    redis:7-alpine                                                            "docker-entrypoint.s…"   redis                    5 days ago     Up 2 minutes (healthy)   6379/tcp
-    fire_markets_scheduler                sha256:28a047062075203fa2002db83aec4654abbcd025190dcdf502d8127cb9b369fa   "python -m app.servi…"   scheduler                19 hours ago   Up 2 minutes             8000/tcp
-    fire_markets_websocket_orchestrator   firemarkets-app-websocket_orchestrator                                    "python -m app.servi…"   websocket_orchestrator   5 days ago     Up 2 days                8000/tcp
-    nginx-proxy-manager                   jc21/nginx-proxy-manager:latest                                           "/init"                   nginx-proxy-manager      5 days ago     Up 2 minutes             0.0.0.0:80-81->80-81/tcp, [::]:80-81->80-81/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp
-    portainer                             portainer/portainer-ce:latest                                             "/portainer"              portainer                5 days ago     Up 2 minutes             0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp, 0.0.0.0:9443->9443/tcp, [::]:9443->9443/tcp, 9000/tcp
+
+
+NAME                                  IMAGE                                                                     COMMAND                   SERVICE                  CREATED          STATUS                  PORTS
+fire_markets_adminer                  adminer:latest                                                            "entrypoint.sh docke…"   adminer                  47 hours ago     Up 47 hours             0.0.0.0:5054->8080/tcp, [::]:5054->8080/tcp
+fire_markets_backend                  firemarkets-app-backend                                                   "uvicorn app.main:ap…"   backend                  17 hours ago     Up 17 hours (healthy)   0.0.0.0:8001->8000/tcp, [::]:8001->8000/tcp
+fire_markets_data_processor           firemarkets-app-data_processor                                            "python -m app.servi…"   data_processor           47 hours ago     Up 47 hours             8000/tcp
+fire_markets_db_postgres              postgres:15-alpine                                                        "docker-entrypoint.s…"   db_postgres              47 hours ago     Up 47 hours (healthy)   5432/tcp
+fire_markets_frontend                 firemarkets-app-frontend                                                  "docker-entrypoint.s…"   frontend                 14 minutes ago   Up 13 minutes           0.0.0.0:3006->3000/tcp, [::]:3006->3000/tcp
+fire_markets_redis                    redis:7-alpine                                                            "docker-entrypoint.s…"   redis                    47 hours ago     Up 47 hours (healthy)   6379/tcp
+fire_markets_scheduler                firemarkets-app-scheduler                                                 "python -m app.servi…"   scheduler                47 hours ago     Up 47 hours             8000/tcp
+fire_markets_websocket_broadcaster    firemarkets-app-websocket_broadcaster                                     "python -m app.servi…"   websocket_broadcaster    47 hours ago     Up 25 hours             8000/tcp
+fire_markets_websocket_orchestrator   sha256:7fa8176180184081f032a0d727a26594eceda3a40ded2bb2792d0f4d4c739448   "sh -c 'cd /app && p…"   websocket_orchestrator   29 hours ago     Up 28 hours             8000/tcp
+nginx-proxy-manager                   jc21/nginx-proxy-manager:latest                                           "/init"                   nginx-proxy-manager      47 hours ago     Up 25 hours             0.0.0.0:80-81->80-81/tcp, [::]:80-81->80-81/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp
+portainer                             portainer/portainer-ce:latest                                             "/portainer"              portainer                47 hours ago     Up 47 hours             0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp, 0.0.0.0:9000->9000/tcp, [::]:9000->9000/tcp, 0.0.0.0:9443->9443/tcp, [::]:9443->9443/tcp
+
         
 ```
 
@@ -100,9 +107,12 @@ docker-compose down pgadmin && docker compose up --build -d pgadmin
 # 백엔드만 빌드
 docker-compose build backend && docker-compose restart backend
 docker-compose stop backend && docker-compose up -d backend
+docker-compose stop frontend && docker-compose up -d frontend
+docker-compose stop frontend backend && docker-compose up -d  frontend backend
+
 # 프론트엔드 빌드
 docker-compose up -d --build frontend
-docker-compose stop frontend && docker-compose up -d frontend
+
 # 스케줄러 빌드
 docker-compose up -d --build scheduler
 
@@ -120,13 +130,16 @@ docker-compose restart nginx-proxy-manager
 ### 복합 빌드 및 실행
 ```bash
 # 백엔드 + 스케줄러 + 데이터 프로세서
-docker-compose build backend scheduler data_processor | cat && docker-compose up -d --no-deps --force-recreate backend scheduler data_processor | cat && sleep 3 && docker-compose ps | cat
+docker-compose build backend data_processor websocket_orchestrator websocket_broadcaster | cat && docker-compose up -d --no-deps --force-recreate backend websocket_orchestrator websocket_broadcaster data_processor | cat && sleep 3 && docker-compose ps | cat
+docker-compose --profile processing up -d --build
 
 # 백엔드 + 데이터 프로세서
 docker-compose build backend data_processor | cat && docker-compose up -d --no-deps --force-recreate backend data_processor | cat && sleep 3 && docker-compose ps | cat
 
 # 웹소켓 오케스트레이터 + 데이터 프로세서
 docker-compose build websocket_orchestrator data_processor | cat && docker-compose up -d --no-deps --force-recreate websocket_orchestrator data_processor | cat && sleep 3 && docker-compose ps | cat
+docker-compose build websocket_orchestrator  | cat && docker-compose up -d --no-deps --force-recreate websocket_orchestrator  | cat && sleep 3 && docker-compose ps | cat
+
 ```
 
 ### 프로파일 기반 실행
@@ -137,15 +150,28 @@ docker-compose --profile 8001 up -d websocket_orchestrator
 
 ### 서비스 중지 및 재시작
 ```bash
+docker-compose --profile processing stop data_processor && docker-compose --profile processing rm -f data_processor && docker-compose --profile processing up -d --build data_processor
+
 docker-compose down data_processor && docker-compose build data_processor && docker-compose up -d data_processor
-docker-compose down data_processor && docker-compose build data_processor && docker-compose up -d data_processor
+docker-compose down scheduler && docker-compose build scheduler && docker-compose up -d scheduler
+docker-compose down backend && docker-compose build backend && docker-compose up -d backend
 
 docker-compose down websocket_orchestrator && docker-compose build websocket_orchestrator && docker-compose up -d websocket_orchestrator
+
 docker-compose --profile processing down
 docker-compose --profile processing up -d --no-deps
+
+docker-compose --profile processing down data_processor && docker-compose --profile processing up -d --build data_processor
 ```
 
 ---
+
+### 재시작후 내부코드 확인인
+```bash
+
+ocker-compose exec scheduler cat /app/app/external_apis/implementations/finnhub_client.py | grep -A 15 "return CompanyProfileData"
+```
+
 
 ## 🗄️ 데이터베이스 명령어
 
@@ -166,6 +192,10 @@ docker-compose exec db_postgres psql -U geehong -d markets -c "\d app_configurat
 
 ### 기본 로그 확인
 ```bash
+docker logs --tail 200 fire_markets_websocket_orchestrator | tail -n +1 && echo '---' && docker logs --tail 200 fire_markets_data_processor | tail -n +1 && echo '---' && docker logs --tail 200 fire_markets_websocket_broadcaster | tail -n +1 && echo '---' && docker exec -i fire_markets_redis sh -lc "redis-cli XLEN binance:realtime; redis-cli XLEN finnhub:realtime; redis-cli XLEN tiingo:realtime; redis-cli XLEN fmp:realtime; redis-cli XLEN swissquote:realtime"
+
+watch -n 2 'echo "=== 시스템 전체 상태 ===" && top -bn1 | head -10 && echo -e "\n=== Docker 컨테이 너 상태 ===" && docker stats --no-stream'
+
 # 스케줄러 + 백엔드 로그
 docker-compose logs scheduler backend
 
@@ -173,6 +203,8 @@ docker-compose logs scheduler backend
 docker-compose logs data_processor --tail 50 -f
 
 timeout 300 docker-compose logs -f scheduler | grep -E "(crypto_clients|etf_clients|error|exception|failed|PostgreSQL|jsonb|operator does not exist)"
+
+cd /home/geehong/firemarkets-app && docker-compose logs websocket_orchestrator | grep -E "(finnhub|alpaca).*(error|failed|disconnect|timeout)" | head -10
 ```
 
 ### 데이터 저장 관련 로그
@@ -182,6 +214,7 @@ docker-compose logs data_processor --tail 50 -f | grep -Ei "OHLCV 데이터 저�
 
 # 저장 성공/실패 로그
 docker-compose logs data_processor --tail 50 -f | grep -Ei "저장 (시작|완료|성공|실패|오류|error|success)"
+docker-compose logs data_processor --tail 50 -f | grep -Ei "(실패|오류|error|success)"
 
 # 자산 매칭 및 DB 저장 로그
 docker-compose logs data_processor --tail 100 -f | grep -E "(자산 매칭 성공|DB 저장 성공|✅.*성공)"
@@ -189,19 +222,26 @@ docker-compose logs data_processor --tail 100 -f | grep -E "(자산 매칭 성�
 
 ### 웹소켓 오케스트레이터 로그
 ```bash
+docker logs --tail 400 fire_markets_backend | grep -E "AAPL|MSFT|NVDA|META|GOOG|AMZN|SPY|QQQ|prices_" -n || true
 # Binance 관련 로그
-docker-compose logs websocket_orchestrator --tail 50 -f | grep -Ei "binance"
+docker-compose logs websocket_orchestrator --tail 50 -f | grep -Ei "connection failed|error|ERROR|fail|FAIL"
 
 # 연결 실패 로그
 docker logs fire_markets_websocket_orchestrator --tail 20 | grep -A 5 -B 5 "connection failed"
 
 # Finnhub 메시지 로그
 docker-compose logs websocket_orchestrator --since 24h | grep -E "(finnhub.*received|finnhub.*message|finnhub.*📨)" | head -20
+
+docker-compose logs websocket_orchestrator --tail 50 -f | grep -E "(enabled status|consumer is disabled|Consumer classes registered|No active consumers)"
+
+
 ```
 ### 스케쥴 로그
 ```bash
  timeout 300 docker-compose logs -f scheduler | grep -E "(crypto_clients|etf_clients|error|exception|failed|PostgreSQL|jsonb|operator does not exist)"
  docker-compose exec scheduler cat /app/app/collectors/etf_collector.py | grep -A 10 -B 5 "collection_settings"
+ docker-compose logs -f scheduler | grep -E "(crypto_clients|etf_clients|stock_profiles_clients|error|exception|failed|PostgreSQL|jsonb|operator does not exist)"
+ docker-compose logs -f scheduler | grep -E "(stock_profiles_clients|저장|실패|오류류|error|exception|failed|PostgreSQL|jsonb|operator does not exist)"
 
  ```
 ### 에러 및 예외 로그
