@@ -21,3 +21,4 @@ export const formatTime = (timestamp: string) => {
   // 서버와 클라이언트에서 동일한 결과를 보장하기 위해 고정 포맷 사용
   return date.toISOString().split('T')[1].split('.')[0] // HH:MM:SS 형식
 }
+

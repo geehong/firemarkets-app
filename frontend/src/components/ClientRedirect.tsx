@@ -25,3 +25,4 @@ export default function ClientRedirect({ url }: ClientRedirectProps) {
     </div>
   )
 }
+

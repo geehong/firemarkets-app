@@ -1,6 +1,6 @@
 # backend/app/schemas/blog.py
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from pydantic import BaseModel, Field
 from decimal import Decimal
 
@@ -63,11 +63,12 @@ class PostTagResponse(PostTagBase):
 
 class PostBase(BaseModel):
     """포스트 기본 스키마"""
-    title: str = Field(..., description="포스트 제목")
+    title: Union[str, Dict[str, str]] = Field(..., description="포스트 제목")
     slug: str = Field(..., description="포스트 슬러그")
-    description: str = Field(..., description="포스트 설명")
-    content: str = Field(..., description="포스트 내용")
-    excerpt: Optional[str] = Field(None, description="포스트 요약")
+    description: Union[str, Dict[str, str]] = Field(..., description="포스트 설명")
+    content: Optional[str] = Field(None, description="포스트 내용 (영문)")
+    content_ko: Optional[str] = Field(None, description="포스트 내용 (한글)")
+    excerpt: Optional[Union[str, Dict[str, str]]] = Field(None, description="포스트 요약")
     
     # 동기화 설정
     sync_with_asset: bool = Field(True, description="Asset과 동기화 여부")
@@ -88,8 +89,8 @@ class PostBase(BaseModel):
     cover_image_alt: Optional[str] = Field(None, description="커버 이미지 Alt 텍스트")
     
     # SEO
-    meta_title: Optional[str] = Field(None, description="메타 제목")
-    meta_description: Optional[str] = Field(None, description="메타 설명")
+    meta_title: Optional[Union[str, Dict[str, str]]] = Field(None, description="메타 제목")
+    meta_description: Optional[Union[str, Dict[str, str]]] = Field(None, description="메타 설명")
     keywords: Optional[List[str]] = Field(None, description="키워드 목록")
     canonical_url: Optional[str] = Field(None, description="정규 URL")
     

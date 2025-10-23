@@ -84,7 +84,12 @@ fire_markets_websocket_broadcaster    firemarkets-app-websocket_broadcaster     
 fire_markets_websocket_orchestrator   sha256:7fa8176180184081f032a0d727a26594eceda3a40ded2bb2792d0f4d4c739448   "sh -c 'cd /app && p…"   websocket_orchestrator   29 hours ago     Up 28 hours             8000/tcp
 nginx-proxy-manager                   jc21/nginx-proxy-manager:latest                                           "/init"                   nginx-proxy-manager      47 hours ago     Up 25 hours             0.0.0.0:80-81->80-81/tcp, [::]:80-81->80-81/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp
 portainer                             portainer/portainer-ce:latest                                             "/portainer"              portainer                47 hours ago     Up 47 hours             0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp, 0.0.0.0:9000->9000/tcp, [::]:9000->9000/tcp, 0.0.0.0:9443->9443/tcp, [::]:9443->9443/tcp
-
+docker-compose logs data_processor --tail 50 -f
+docker-compose logs websocket_orchestrator --tail 50 -f
+docker-compose logs scheduler --tail 50 -f
+docker-compose logs backend --tail 50 -f
+docker-compose logs frontend --tail 50 -f
+docker-compose logs websocket_orchestrator --tail 50 -f
         
 ```
 
@@ -201,6 +206,12 @@ docker-compose logs scheduler backend
 
 # 실시간 로그 모니터링
 docker-compose logs data_processor --tail 50 -f
+docker-compose logs websocket_orchestrator --tail 50 -f
+docker-compose logs scheduler --tail 50 -f
+docker-compose logs backend --tail 50 -f
+docker-compose logs frontend --tail 50 -f
+docker-compose logs data_processor --tail 50 -f
+
 
 timeout 300 docker-compose logs -f scheduler | grep -E "(crypto_clients|etf_clients|error|exception|failed|PostgreSQL|jsonb|operator does not exist)"
 

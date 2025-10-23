@@ -35,7 +35,6 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // 언어 변경 시 메뉴 번역 로드
   useEffect(() => {
-    console.log('[LanguageContext] Language changed to:', language)
     localStorage.setItem('language', language)
     loadMenuTranslations(language)
   }, [language])
@@ -45,9 +44,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
       const BACKEND_BASE = process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'
       const response = await fetch(`${BACKEND_BASE}/navigation/menu?lang=${lang}`)
-      console.log('[LanguageContext] Fetching menu translations from:', `${BACKEND_BASE}/navigation/menu?lang=${lang}`)
       const menus = await response.json()
-      console.log('[LanguageContext] Menu translations loaded:', menus)
       
       // 메뉴 데이터를 번역 객체로 변환
       const menuTranslations: Record<string, string> = {}

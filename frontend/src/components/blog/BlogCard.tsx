@@ -8,9 +8,11 @@ import { CalenderIcon, EyeIcon, UserIcon, ListIcon } from '@/icons/index'
 interface BlogCardProps {
   blog: {
     id: number
-    title: string
+    title: string  // 이미 로컬라이즈된 문자열
     slug: string
-    content: string
+    content?: string  // 이미 로컬라이즈된 문자열
+    description?: string  // 이미 로컬라이즈된 문자열
+    excerpt?: string  // 이미 로컬라이즈된 문자열
     status: string
     created_at: string
     updated_at: string
@@ -39,7 +41,13 @@ interface BlogCardProps {
   featured?: boolean
 }
 
-const BlogCard: React.FC<BlogCardProps> = ({ blog, featured = false }) => {
+const BlogCard: React.FC<BlogCardProps> = React.memo(({ blog, featured = false }) => {
+  console.log('🎯 [BlogCard] Rendering blog:', {
+    id: blog.id,
+    title: blog.title,
+    content: blog.content?.substring(0, 30) + '...'
+  })
+  
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -48,11 +56,11 @@ const BlogCard: React.FC<BlogCardProps> = ({ blog, featured = false }) => {
     })
   }
 
-  const getExcerpt = (content: string, maxLength: number = 150) => {
-    const textContent = content.replace(/<[^>]*>/g, '') // HTML 태그 제거
-    return textContent.length > maxLength 
-      ? textContent.substring(0, maxLength) + '...'
-      : textContent
+  const getExcerpt = (maxLength: number = 150) => {
+    const cleanText = blog.content?.replace(/<[^>]*>/g, '') || '' // HTML 태그 제거
+    return cleanText.length > maxLength 
+      ? cleanText.substring(0, maxLength) + '...'
+      : cleanText
   }
 
   return (
@@ -118,7 +126,7 @@ const BlogCard: React.FC<BlogCardProps> = ({ blog, featured = false }) => {
 
           {/* 내용 미리보기 */}
           <p className="text-gray-600 dark:text-gray-300 mb-4 leading-relaxed">
-            {getExcerpt(blog.content)}
+            {getExcerpt()}
           </p>
 
           {/* 태그 */}
@@ -164,6 +172,6 @@ const BlogCard: React.FC<BlogCardProps> = ({ blog, featured = false }) => {
       </Link>
     </article>
   )
-}
+})
 
 export default BlogCard

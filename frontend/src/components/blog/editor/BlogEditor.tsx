@@ -733,5 +733,3 @@ export default function BlogEditor() {
     </div>
   )
 }
-
-

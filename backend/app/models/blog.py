@@ -58,7 +58,8 @@ class Post(Base):
     title = Column(String(200), nullable=False)
     slug = Column(String(200), unique=True, nullable=False)
     description = Column(Text, nullable=False)
-    content = Column(Text, nullable=False)
+    content = Column(Text, nullable=True)  # 영문 content
+    content_ko = Column(Text, nullable=True)  # 한글 content
     excerpt = Column(Text, nullable=True)
     
     # 동기화 설정

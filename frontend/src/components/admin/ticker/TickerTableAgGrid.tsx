@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { ColDef, GridApi, GridReadyEvent } from 'ag-grid-community'
+import { useRouter } from 'next/navigation'
 import { useAssets, useBulkUpdateTickerSettings, useAssetTypes } from '@/hooks/admin/useAssets'
 import AgGridBaseTable from '@/components/tables/AgGridBaseTable'
 
@@ -59,6 +60,7 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
   onAssetTypeChange,
   isTabActive = false,
 }) => {
+  const router = useRouter()
   // 로컬 상태 관리
   const [checkboxStates, setCheckboxStates] = useState<Record<string, boolean>>({})
   const [dataSourceStates, setDataSourceStates] = useState<Record<string, string>>({})
@@ -581,12 +583,17 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
     // Execute 컬럼 추가
     baseColumns.push({
       field: 'actions',
-      headerName: 'Execute',
-      width: 120,
+      headerName: 'Actions',
+      width: 160,
       sortable: false,
       filter: false,
       cellRenderer: (params: any) => {
         const ticker = params.data
+        
+        const handleEdit = () => {
+          // BlogEditor로 이동하면서 ticker 정보를 전달
+          router.push(`/blog/editor/ticker/${ticker.asset_id}`)
+        }
         
         return (
           <div className="flex gap-1">
@@ -597,6 +604,13 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
               title="실행"
             >
               ▶️
+            </button>
+            <button
+              onClick={handleEdit}
+              className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
+              title="편집"
+            >
+              ✏️
             </button>
             <button
               onClick={() => onDelete?.(ticker.asset_id)}

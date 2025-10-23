@@ -6,6 +6,8 @@ import './globals.css'
 import { SidebarProvider } from '@/context/SidebarContext'
 import { ThemeProvider } from '@/context/ThemeContext'
 import { LanguageProvider } from '@/contexts/LanguageContext'
+import { LocalizedDataProvider } from '@/contexts/LocalizedDataContext'
+import { AutoLocalizationProvider } from '@/contexts/AutoLocalizationContext'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import AppHeader from '@/layout/AppHeader'
 import AppSidebar from '@/layout/AppSidebar'
@@ -60,9 +62,13 @@ export default function RootLayout({
         <QueryClientProvider client={queryClient}>
           <ThemeProvider>
             <LanguageProvider>
-              <SidebarProvider>
-                <LayoutContent>{children}</LayoutContent>
-              </SidebarProvider>
+              <LocalizedDataProvider>
+                <AutoLocalizationProvider>
+                  <SidebarProvider>
+                    <LayoutContent>{children}</LayoutContent>
+                  </SidebarProvider>
+                </AutoLocalizationProvider>
+              </LocalizedDataProvider>
             </LanguageProvider>
           </ThemeProvider>
         </QueryClientProvider>

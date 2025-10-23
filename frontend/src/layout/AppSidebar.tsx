@@ -70,16 +70,6 @@ const AppSidebar: React.FC = () => {
   // Use dynamic menu items
   const dynamicNavItems = convertDynamicMenuToNavItems(menuItems);
   
-  // 언어 변경에 따른 메뉴 표시 로그
-  console.log('🌐 Language changed to:', language);
-  console.log('📋 Menu items for language:', language, dynamicNavItems.map(item => ({ 
-    name: item.name, 
-    subItems: item.subItems?.length || 0,
-    subItemNames: item.subItems?.map(sub => sub.name) || []
-  })));
-  
-  // 메뉴 로딩 상태 로그
-  console.log('📊 Menu loading state:', { loading, error, menuItemsCount: menuItems.length });
   
   // Blog static menu items
   const blogNavItems = [

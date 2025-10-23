@@ -45,9 +45,7 @@ export const useNavigation = (language: string = 'ko') => {
     try {
       setLoading(true);
       setError(null);
-      console.log('🔍 useNavigation - Loading menu items for language:', language);
       const items = await navigationService.getMenuStructure(language);
-      console.log('🔍 useNavigation - Received menu items:', items);
       setMenuItems(items);
     } catch (err: any) {
       console.error('useNavigation - Failed to load menu items:', err);

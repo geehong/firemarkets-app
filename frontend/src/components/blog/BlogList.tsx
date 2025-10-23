@@ -1,17 +1,19 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useCallback } from 'react'
-import BlogCard from './BlogCard'
-import BlogPagination from './BlogPagination'
-import BlogSearch from './BlogSearch'
-import BlogCategories from './BlogCategories'
-// Removed heroicons dependency to avoid build errors
+import React, { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
+import { useAutoLocalization } from '@/contexts/AutoLocalizationContext'
+import { useLanguage } from '@/contexts/LanguageContext'
+// import { Edit, Eye } from 'lucide-react'
 
 interface Blog {
   id: number
-  title: string
+  title: string | { ko?: string; en?: string }
   slug: string
-  content: string
+  content?: string  // 영문
+  content_ko?: string  // 한글
+  description?: string | { ko?: string; en?: string }
+  excerpt?: string | { ko?: string; en?: string }
   status: string
   created_at: string
   updated_at: string
@@ -40,287 +42,236 @@ interface Blog {
 
 interface BlogListProps {
   initialBlogs?: Blog[]
-  showFilters?: boolean
-  showSearch?: boolean
-  categoryFilter?: string
-  tagFilter?: string
-  featuredOnly?: boolean
 }
 
 const BlogList: React.FC<BlogListProps> = ({
-  initialBlogs = [],
-  showFilters = true,
-  showSearch = true,
-  categoryFilter,
-  tagFilter,
-  featuredOnly = false
+  initialBlogs = []
 }) => {
+  const { localizeArray } = useAutoLocalization()
+  const { language } = useLanguage()
+  const router = useRouter()
   const [blogs, setBlogs] = useState<Blog[]>(initialBlogs)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
   const [totalBlogs, setTotalBlogs] = useState(0)
-  const [filters, setFilters] = useState({
-    search: '',
-    category: categoryFilter || '',
-    tag: tagFilter || '',
-    status: 'published'
-  })
-  const [showMobileFilters, setShowMobileFilters] = useState(false)
+  const [currentUser, setCurrentUser] = useState<{ id: number; username: string } | null>(null)
 
-  const fetchBlogs = useCallback(async (page: number = 1) => {
-    console.log('[BlogList] fetchBlogs called', { page, filters })
+  // JWT 토큰에서 사용자 정보 추출
+  const getCurrentUser = useCallback(() => {
+    try {
+      // JWT 토큰이 쿠키에 있는지 확인
+      const cookies = document.cookie.split(';')
+      let token = null
+      
+      for (let cookie of cookies) {
+        const [name, value] = cookie.trim().split('=')
+        if (name === 'access_token' || name === 'token') {
+          token = value
+          break
+        }
+      }
+      
+      if (token) {
+        // JWT 토큰 디코딩 (간단한 방법)
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]))
+          setCurrentUser({
+            id: payload.user_id || payload.id || 1, // 임시로 기본값 설정
+            username: payload.username || payload.sub || 'admin'
+          })
+          console.log('👤 Current user from JWT:', payload)
+          return payload
+        } catch (jwtError) {
+          console.error('Error decoding JWT:', jwtError)
+        }
+      }
+      
+      // JWT 토큰이 없으면 로컬 스토리지에서 확인
+      const userData = localStorage.getItem('currentUser')
+      if (userData) {
+        const user = JSON.parse(userData)
+        setCurrentUser({
+          id: user.id,
+          username: user.username
+        })
+        console.log('👤 Current user from localStorage:', user)
+        return user
+      }
+    } catch (error) {
+      console.error('Error getting current user:', error)
+    }
+    
+    // 임시로 기본 사용자 설정 (개발용)
+    setCurrentUser({
+      id: 1,
+      username: 'admin'
+    })
+    console.log('👤 Using default user for development')
+    return null
+  }, [])
+
+  const fetchBlogs = useCallback(async () => {
     setLoading(true)
     setError(null)
     
     try {
       const params = new URLSearchParams({
-        page: page.toString(),
-        page_size: '12',
-        ...(filters.search && { search: filters.search }),
-        ...(filters.category && { category: filters.category }),
-        ...(filters.tag && { tag: filters.tag }),
-        ...(filters.status && { status: filters.status })
+        page: '1',
+        page_size: '20',
+        post_type: 'post',
+        status: 'published'
       })
-      const url = `/api/v1/posts/?${params}`
-      console.log('[BlogList] requesting URL:', url)
+      const BACKEND_BASE = process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'
+      const url = `${BACKEND_BASE}/posts/?${params}`
       const response = await fetch(url)
       
       if (!response.ok) {
-        console.error('[BlogList] response not ok', { status: response.status })
         throw new Error('Failed to fetch blogs')
       }
 
       const data = await response.json()
-      console.log('[BlogList] response data summary', {
-        count: data?.posts?.length,
-        total: data?.total,
-        page: data?.page,
-        total_pages: data?.total_pages
-      })
-      setBlogs(data.posts || [])
-      setTotalPages(data.total_pages || 1)
+      
+      // 자동으로 다국어 데이터 변환
+      const localizedPosts = localizeArray(data.posts || [])
+      setBlogs(localizedPosts)
       setTotalBlogs(data.total || 0)
-      setCurrentPage(prev => {
-        const next = prev === page ? prev : page
-        if (prev !== next) console.log('[BlogList] currentPage updated', { prev, next })
-        return next
-      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
       console.error('Error fetching blogs:', err)
     } finally {
-      console.log('[BlogList] fetchBlogs finished', { page })
       setLoading(false)
     }
-  }, [filters.search, filters.category, filters.tag, filters.status])
+  }, [localizeArray])
 
-  // 초기 데이터가 없거나 비어있을 때 API 호출
-  useEffect(() => {
-    console.log('[BlogList] useEffect triggered', {
-      initialBlogsLength: initialBlogs.length,
-      currentBlogsLength: blogs.length,
-      filters: filters
-    })
+  // Edit 버튼 클릭 핸들러
+  const handleEdit = (blogId: number) => {
+    router.push(`/blog/editor/${blogId}`)
+  }
+
+  // View 버튼 클릭 핸들러
+  const handleView = (slug: string) => {
+    router.push(`/blog/${slug}`)
+  }
+
+  // 작성자 권한 확인 함수
+  const canEdit = (blog: Blog): boolean => {
+    // 임시로 모든 사용자에게 Edit 권한 부여 (개발용)
+    const allowAllEdit = true // 이 값을 false로 변경하면 정상적인 권한 확인
     
-    // initialBlogs가 비어있거나 현재 blogs가 비어있을 때 API 호출
-    if (initialBlogs.length === 0 || blogs.length === 0) {
-      fetchBlogs(1)
+    if (allowAllEdit) {
+      console.log('🔒 Development mode: All users can edit')
+      return true
     }
-  }, []) // 빈 의존성 배열로 컴포넌트 마운트 시에만 실행
-
-  // 필터 변경 시 API 호출
-  useEffect(() => {
-    console.log('[BlogList] filters changed, fetching blogs', { filters })
-    fetchBlogs(1)
-  }, [filters.search, filters.category, filters.tag, filters.status, fetchBlogs])
-
-  const handleSearch = (searchTerm: string) => {
-    setFilters(prev => ({ ...prev, search: searchTerm }))
-    setCurrentPage(1)
-  }
-
-  const handleCategoryFilter = (category: string) => {
-    setFilters(prev => ({ ...prev, category }))
-    setCurrentPage(1)
-  }
-
-  const handleTagFilter = (tag: string) => {
-    setFilters(prev => ({ ...prev, tag }))
-    setCurrentPage(1)
-  }
-
-  const handlePageChange = (page: number) => {
-    fetchBlogs(page)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
-
-  const clearFilters = () => {
-    setFilters({
-      search: '',
-      category: '',
-      tag: '',
-      status: 'published'
+    
+    if (!currentUser) {
+      console.log('🔒 No current user, cannot edit')
+      return false
+    }
+    
+    const isAuthor = blog.author?.id === currentUser.id
+    console.log('🔒 Edit permission check:', {
+      currentUserId: currentUser.id,
+      blogAuthorId: blog.author?.id,
+      canEdit: isAuthor,
+      blogTitle: typeof blog.title === 'string' ? blog.title : blog.title?.en || blog.title?.ko
     })
-    setCurrentPage(1)
+    return isAuthor
   }
+
+  // 컴포넌트 마운트 시 API 호출 및 사용자 정보 가져오기
+  useEffect(() => {
+    if (initialBlogs.length === 0) {
+      fetchBlogs()
+    }
+    getCurrentUser()
+  }, [fetchBlogs, getCurrentUser])
 
   if (error) {
     return (
-      <div className="text-center py-12">
-        <div className="text-red-500 mb-4">
-          <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-          오류가 발생했습니다
-        </h3>
-        <p className="text-gray-500 dark:text-gray-400 mb-4">{error}</p>
+      <div className="text-center py-8">
+        <p className="text-red-500 mb-4">Error loading posts</p>
         <button
-          onClick={() => fetchBlogs(currentPage)}
+          onClick={fetchBlogs}
           className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
         >
-          다시 시도
+          Try Again
         </button>
       </div>
     )
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* 헤더 */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-          블로그
+    <div className="max-w-4xl mx-auto px-4 py-8">
+      {/* 간단한 헤더 */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+          Blog Posts
         </h1>
         <p className="text-gray-600 dark:text-gray-400">
-          시장 분석, 투자 가이드, 최신 뉴스를 확인하세요
-        </p>
-      </div>
-
-      {/* 필터 및 검색 */}
-      {(showFilters || showSearch) && (
-        <div className="mb-8">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-            {/* 검색 */}
-            {showSearch && (
-              <div className="mb-6">
-                <BlogSearch onSearch={handleSearch} />
-              </div>
-            )}
-
-            {/* 필터 */}
-            {showFilters && (
-              <>
-                {/* 데스크톱 필터 */}
-                <div className="hidden md:block">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-                      필터
-                    </h3>
-                    <button
-                      onClick={clearFilters}
-                      className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
-                    >
-                      필터 초기화
-                    </button>
-                  </div>
-                  <div className="flex gap-4">
-                    <BlogCategories
-                      activeCategorySlug={filters.category}
-                      onCategorySelect={handleCategoryFilter}
-                    />
-                    {/* 태그 필터는 추후 구현 */}
-                  </div>
-                </div>
-
-                {/* 모바일 필터 토글 */}
-                <div className="md:hidden">
-                  <button
-                    onClick={() => setShowMobileFilters(!showMobileFilters)}
-                    className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-                  >
-                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M3 5h18M6 12h12M10 19h4" />
-                    </svg>
-                    필터
-                  </button>
-                  
-                  {showMobileFilters && (
-                    <div className="mt-4 space-y-4">
-                      <BlogCategories
-                        activeCategorySlug={filters.category}
-                        onCategorySelect={handleCategoryFilter}
-                      />
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 결과 통계 */}
-      <div className="mb-6">
-        <p className="text-gray-600 dark:text-gray-400">
-          총 <span className="font-semibold text-gray-900 dark:text-white">{totalBlogs}</span>개의 글
-          {filters.search && ` (검색어: "${filters.search}")`}
-          {filters.category && ` (카테고리: "${filters.category}")`}
+          {totalBlogs} posts available
         </p>
       </div>
 
       {/* 로딩 상태 */}
       {loading && (
-        <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
-          <p className="mt-4 text-gray-600 dark:text-gray-400">글을 불러오는 중...</p>
+        <div className="text-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-2 text-gray-600 dark:text-gray-400">Loading...</p>
         </div>
       )}
 
-      {/* 블로그 목록 */}
+      {/* 간단한 블로그 목록 */}
       {!loading && (
         <>
           {blogs.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="text-gray-400 mb-4">
-                <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                글이 없습니다
-              </h3>
-              <p className="text-gray-500 dark:text-gray-400">
-                {filters.search || filters.category || filters.tag
-                  ? '검색 조건에 맞는 글이 없습니다.'
-                  : '아직 작성된 글이 없습니다.'}
-              </p>
+            <div className="text-center py-8">
+              <p className="text-gray-500 dark:text-gray-400">No posts available</p>
             </div>
           ) : (
-            <>
-              {/* 그리드 레이아웃 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-                {blogs.map((blog, index) => (
-                  <BlogCard
-                    key={blog.id}
-                    blog={blog}
-                    featured={index === 0 && featuredOnly}
-                  />
-                ))}
-              </div>
-
-              {/* 페이지네이션 */}
-              {totalPages > 1 && (
-                <BlogPagination
-                  currentPage={currentPage}
-                  totalPages={totalPages}
-                  onPageChange={handlePageChange}
-                />
-              )}
-            </>
+            <div className="space-y-4">
+              {blogs.map((blog) => (
+                <div key={blog.id} className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                  <div className="flex justify-between items-start mb-2">
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                      {typeof blog.title === 'string' ? blog.title : blog.title?.en || blog.title?.ko || 'Untitled'}
+                    </h2>
+                    <span className={`px-2 py-1 text-xs rounded-full ${
+                      blog.status === 'published' 
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                        : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                    }`}>
+                      {blog.status}
+                    </span>
+                  </div>
+                  
+                  {blog.description && (
+                    <p className="text-gray-600 dark:text-gray-400 text-sm mb-2">
+                      {typeof blog.description === 'string' ? blog.description : blog.description?.en || blog.description?.ko || ''}
+                    </p>
+                  )}
+                  
+                  <div className="flex justify-between items-center text-xs text-gray-500 dark:text-gray-400">
+                    <span>{new Date(blog.created_at).toLocaleDateString()}</span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleView(blog.slug)}
+                        className="flex items-center gap-1 px-2 py-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
+                      >
+                        👁️ View
+                      </button>
+                      {canEdit(blog) && (
+                        <button
+                          onClick={() => handleEdit(blog.id)}
+                          className="flex items-center gap-1 px-2 py-1 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded transition-colors"
+                        >
+                          ✏️ Edit
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </>
       )}

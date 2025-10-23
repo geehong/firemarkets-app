@@ -25,27 +25,75 @@ async def test_posts():
 async def get_posts(
     page: int = Query(1, ge=1, description="페이지 번호"),
     page_size: int = Query(20, ge=1, le=100, description="페이지당 항목 수"),
+    post_type: Optional[str] = Query(None, description="포스트 타입 필터"),
+    status: Optional[str] = Query("published", description="상태 필터"),
+    search: Optional[str] = Query(None, description="검색어"),
+    category: Optional[str] = Query(None, description="카테고리 필터"),
+    tag: Optional[str] = Query(None, description="태그 필터"),
     db: Session = Depends(get_postgres_db)
 ):
-    """포스트 목록 조회 (단순화된 버전)"""
+    """포스트 목록 조회 (필터링 지원)"""
     try:
         skip = (page - 1) * page_size
 
-        # 간단한 쿼리로 시작
-        posts_list = db.query(Post).offset(skip).limit(page_size).all()
-        total = db.query(Post).count()
+        # 기본 쿼리 구성
+        query = db.query(Post)
+        
+        # 필터 적용
+        if post_type:
+            query = query.filter(Post.post_type == post_type)
+        
+        if status:
+            query = query.filter(Post.status == status)
+            
+        if search:
+            query = query.filter(
+                Post.title.ilike(f"%{search}%") |
+                Post.content.ilike(f"%{search}%") |
+                Post.description.ilike(f"%{search}%")
+            )
+        
+        if category:
+            # 카테고리 필터링 (category_id 또는 category name으로)
+            try:
+                category_id = int(category)
+                query = query.filter(Post.category_id == category_id)
+            except ValueError:
+                # category가 숫자가 아닌 경우 name으로 검색
+                from app.models.blog import PostCategory
+                query = query.join(PostCategory).filter(PostCategory.name.ilike(f"%{category}%"))
+        
+        if tag:
+            # 태그 필터링 (추후 구현)
+            pass
 
-        # 간단한 응답
+        # 정렬 (최신순)
+        query = query.order_by(Post.created_at.desc())
+        
+        # 총 개수 계산
+        total = query.count()
+        
+        # 페이지네이션 적용
+        posts_list = query.offset(skip).limit(page_size).all()
+
+        # 응답 데이터 구성
         posts_data = []
         for post_obj in posts_list:
             post_dict = {
                 "id": post_obj.id,
                 "title": post_obj.title,
                 "slug": post_obj.slug,
-                "content": post_obj.content,
+                "content": post_obj.content,  # 영문
+                "content_ko": post_obj.content_ko,  # 한글
+                "description": post_obj.description,
+                "excerpt": post_obj.excerpt,
                 "status": post_obj.status,
+                "post_type": post_obj.post_type,
+                "featured": post_obj.featured,
+                "view_count": post_obj.view_count,
                 "created_at": post_obj.created_at,
-                "updated_at": post_obj.updated_at
+                "updated_at": post_obj.updated_at,
+                "published_at": post_obj.published_at
             }
             posts_data.append(post_dict)
 

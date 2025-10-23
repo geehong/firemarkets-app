@@ -6,6 +6,7 @@ import Badge from '@/components/ui/badge/Badge'
 import Alert from '@/components/ui/alert/Alert'
 import Button from '@/components/ui/button/Button'
 import { formatDate } from '@/utils/date'
+import { useLocalizedContent } from '@/hooks/useLocalizedContent'
 
 interface PostOverviewProps {
   className?: string
@@ -16,6 +17,7 @@ interface PostOverviewProps {
     description?: string
     excerpt?: string
     content?: string
+    content_ko?: string
     cover_image?: string
     cover_image_alt?: string
     meta_title?: string
@@ -31,6 +33,7 @@ interface PostOverviewProps {
 
 const PostOverview: React.FC<PostOverviewProps> = ({ className, postData }) => {
   const [isExpanded, setIsExpanded] = useState(false)
+  const selectedContent = useLocalizedContent(postData?.content, postData?.content_ko)
   
   if (!postData) {
     return (
@@ -43,12 +46,12 @@ const PostOverview: React.FC<PostOverviewProps> = ({ className, postData }) => {
       </div>
     )
   }
-
+  
   // Content 길이 체크 (500자 기준)
-  const shouldShowToggle = postData.content && postData.content.length > 500
+  const shouldShowToggle = selectedContent && selectedContent.length > 500
   const displayContent = shouldShowToggle && !isExpanded 
-    ? postData.content.substring(0, 500) + '...'
-    : postData.content
+    ? selectedContent.substring(0, 500) + '...'
+    : selectedContent
 
   // 상태별 배지 색상
   const getStatusColor = (status: string) => {
@@ -185,7 +188,7 @@ const PostOverview: React.FC<PostOverviewProps> = ({ className, postData }) => {
       )}
 
       {/* 콘텐츠 미리보기 */}
-      {postData.content && (
+      {selectedContent && (
         <ComponentCard title="Content Preview">
           <div className="prose prose-sm max-w-none">
             <div 
@@ -197,7 +200,7 @@ const PostOverview: React.FC<PostOverviewProps> = ({ className, postData }) => {
             {shouldShowToggle && (
               <div className="mt-4 flex items-center justify-between">
                 <Badge color="info">
-                  {isExpanded ? `${postData.content.length} characters` : `${postData.content.length} characters total`}
+                  {isExpanded ? `${selectedContent.length} characters` : `${selectedContent.length} characters total`}
                 </Badge>
                 <Button
                   variant="outline"

@@ -61,9 +61,7 @@ class NavigationService {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
       
       const BACKEND_BASE = process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'
-      const url = `${BACKEND_BASE}/navigation/menu?lang=${language}`;
-      console.log('🔍 navigationService - Fetching from URL:', url);
-      const response = await axios.get(url, {
+      const response = await axios.get(`${BACKEND_BASE}/navigation/menu?lang=${language}`, {
         headers,
         timeout: 15000, // 15초 타임아웃 (모바일 네트워크 고려)
         // withCredentials: true, // 리버스 프록시 CORS 문제로 임시 비활성화
@@ -72,7 +70,6 @@ class NavigationService {
         }
       });
       
-      console.log('🔍 navigationService - API response:', response.data);
       return response.data;
     } catch (error: any) {
       console.error('navigationService - Failed to fetch menu structure:', error);
