@@ -5,6 +5,7 @@ import './globals.css'
 
 import { SidebarProvider } from '@/context/SidebarContext'
 import { ThemeProvider } from '@/context/ThemeContext'
+import { LanguageProvider } from '@/contexts/LanguageContext'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import AppHeader from '@/layout/AppHeader'
 import AppSidebar from '@/layout/AppSidebar'
@@ -58,9 +59,11 @@ export default function RootLayout({
       <body className={`${inter.className} dark:bg-gray-900`}>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider>
-            <SidebarProvider>
-              <LayoutContent>{children}</LayoutContent>
-            </SidebarProvider>
+            <LanguageProvider>
+              <SidebarProvider>
+                <LayoutContent>{children}</LayoutContent>
+              </SidebarProvider>
+            </LanguageProvider>
           </ThemeProvider>
         </QueryClientProvider>
       </body>

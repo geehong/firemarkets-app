@@ -35,7 +35,7 @@ class NavigationService {
   /**
    * 메뉴 구조를 가져옵니다
    */
-  async getMenuStructure() {
+  async getMenuStructure(language: string = 'ko') {
     // 서버 사이드에서는 빈 배열 반환
     if (typeof window === 'undefined') {
       console.log('navigationService - Server side, returning empty array');
@@ -60,7 +60,10 @@ class NavigationService {
       const token = this.getAuthToken();
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
       
-      const response = await axios.get('/api/v1/navigation/menu', {
+      const BACKEND_BASE = process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'
+      const url = `${BACKEND_BASE}/navigation/menu?lang=${language}`;
+      console.log('🔍 navigationService - Fetching from URL:', url);
+      const response = await axios.get(url, {
         headers,
         timeout: 15000, // 15초 타임아웃 (모바일 네트워크 고려)
         // withCredentials: true, // 리버스 프록시 CORS 문제로 임시 비활성화
@@ -69,6 +72,7 @@ class NavigationService {
         }
       });
       
+      console.log('🔍 navigationService - API response:', response.data);
       return response.data;
     } catch (error: any) {
       console.error('navigationService - Failed to fetch menu structure:', error);

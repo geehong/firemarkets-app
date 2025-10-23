@@ -19,7 +19,7 @@ export interface MenuItem {
 /**
  * 동적 네비게이션 메뉴를 관리하는 커스텀 훅
  */
-export const useNavigation = () => {
+export const useNavigation = (language: string = 'ko') => {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,13 +39,15 @@ export const useNavigation = () => {
       // 서버 사이드에서는 로딩 상태 해제
       setLoading(false);
     }
-  }, [isClient]);
+  }, [isClient, language]);
 
   const loadMenuItems = async () => {
     try {
       setLoading(true);
       setError(null);
-      const items = await navigationService.getMenuStructure();
+      console.log('🔍 useNavigation - Loading menu items for language:', language);
+      const items = await navigationService.getMenuStructure(language);
+      console.log('🔍 useNavigation - Received menu items:', items);
       setMenuItems(items);
     } catch (err: any) {
       console.error('useNavigation - Failed to load menu items:', err);

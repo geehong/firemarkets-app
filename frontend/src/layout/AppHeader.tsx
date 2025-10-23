@@ -3,6 +3,7 @@ import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
 import NotificationDropdown from "@/components/header/NotificationDropdown";
 import TopMenuDropdown from "@/components/header/TopMenuDropdown";
 import UserDropdown from "@/components/header/UserDropdown";
+import LanguageSelector from "@/components/LanguageSelector";
 import { useSidebar } from "@/context/SidebarContext";
 import Image from "next/image";
 import Link from "next/link";
@@ -168,6 +169,10 @@ const AppHeader: React.FC = () => {
             {/* <!-- Dark Mode Toggler --> */}
             <ThemeToggleButton />
             {/* <!-- Dark Mode Toggler --> */}
+
+            {/* <!-- Language Selector --> */}
+            <LanguageSelector />
+            {/* <!-- Language Selector --> */}
 
            <NotificationDropdown /> 
             {/* <!-- Notification Menu Area --> */}

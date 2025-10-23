@@ -1,5 +1,5 @@
 # backend/app/api/v1/endpoints/navigation.py
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import asc, text
 from typing import List, Dict, Any, Optional
@@ -84,6 +84,7 @@ def build_menu_tree(menus: List[Menu]) -> List[Dict[str, Any]]:
 
 @router.get("/menu", response_model=List[Dict[str, Any]])
 def get_menu_structure(
+    lang: str = Query("ko", description="언어 코드 (ko, en)"),
     db: Session = Depends(get_postgres_db)
 ):
     """
@@ -96,11 +97,46 @@ def get_menu_structure(
         # 계층 구조로 변환
         menu_tree = build_menu_tree(all_menus)
         
+        # 언어별 메뉴 이름 적용
+        localized_menu_tree = apply_language_to_menus(menu_tree, lang)
+        
         # 모든 사용자에게 모든 메뉴 표시 (공개 API)
-        return menu_tree
+        return localized_menu_tree
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get menu structure: {str(e)}")
+
+
+def apply_language_to_menus(menus: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]]:
+    """메뉴에 언어별 이름을 적용합니다."""
+    def get_localized_menu_name(menu_dict: Dict[str, Any], language: str) -> str:
+        """메뉴 이름을 언어별로 반환합니다."""
+        # menu_metadata와 metadata 둘 다 확인
+        menu_metadata = menu_dict.get('menu_metadata', {}) or menu_dict.get('metadata', {})
+        if not menu_metadata:
+            return menu_dict.get('name', 'Menu')
+        
+        # 언어별 메뉴 이름 반환
+        if language == 'ko' and menu_metadata.get('ko_menu_name'):
+            return menu_metadata['ko_menu_name']
+        elif language == 'en' and menu_metadata.get('en_menu_name'):
+            return menu_metadata['en_menu_name']
+        
+        # 폴백: 기본값 또는 첫 번째 값
+        return menu_metadata.get('en_menu_name') or menu_metadata.get('ko_menu_name') or menu_dict.get('name', 'Menu')
+    
+    def process_menu(menu: Dict[str, Any]) -> Dict[str, Any]:
+        """개별 메뉴를 처리합니다."""
+        processed_menu = menu.copy()
+        processed_menu['name'] = get_localized_menu_name(menu, lang)
+        
+        # 하위 메뉴가 있으면 재귀 처리
+        if 'children' in menu and menu['children']:
+            processed_menu['children'] = [process_menu(child) for child in menu['children']]
+        
+        return processed_menu
+    
+    return [process_menu(menu) for menu in menus]
 
 
 @router.post("/menu/refresh")

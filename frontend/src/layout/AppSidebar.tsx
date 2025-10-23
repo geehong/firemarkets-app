@@ -5,6 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useSidebar } from "../context/SidebarContext";
 import { useNavigation } from "../hooks/useNavigation";
+import { useLanguage } from "../contexts/LanguageContext";
 import {
   ChevronDownIcon,
   GridIcon,
@@ -29,7 +30,8 @@ type NavItem = {
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const pathname = usePathname();
-  const { menuItems, loading, error } = useNavigation();
+  const { language, t } = useLanguage();
+  const { menuItems, loading, error } = useNavigation(language);
 
   // Convert dynamic menu items to NavItem type
   const convertDynamicMenuToNavItems = (dynamicItems: any[]): NavItem[] => {
@@ -67,7 +69,17 @@ const AppSidebar: React.FC = () => {
 
   // Use dynamic menu items
   const dynamicNavItems = convertDynamicMenuToNavItems(menuItems);
-  console.log('🔍 Dynamic nav items:', dynamicNavItems);
+  
+  // 언어 변경에 따른 메뉴 표시 로그
+  console.log('🌐 Language changed to:', language);
+  console.log('📋 Menu items for language:', language, dynamicNavItems.map(item => ({ 
+    name: item.name, 
+    subItems: item.subItems?.length || 0,
+    subItemNames: item.subItems?.map(sub => sub.name) || []
+  })));
+  
+  // 메뉴 로딩 상태 로그
+  console.log('📊 Menu loading state:', { loading, error, menuItemsCount: menuItems.length });
   
   // Blog static menu items
   const blogNavItems = [
@@ -108,7 +120,6 @@ const AppSidebar: React.FC = () => {
   ];
 
   const finalNavItems = [...dynamicNavItems, ...blogNavItems];
-  console.log('🔍 Final nav items:', finalNavItems);
 
   const renderMenuItems = (
     navItems: NavItem[],
@@ -122,7 +133,6 @@ const AppSidebar: React.FC = () => {
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                console.log('🔍 Main menu button clicked:', { index, menuType, navName: nav.name });
                 handleSubmenuToggle(index, menuType);
               }}
               className={`menu-item group  ${
@@ -205,7 +215,6 @@ const AppSidebar: React.FC = () => {
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            console.log('🔍 Sub-submenu button clicked:', { index, subIndex, subItemName: subItem.name });
                             handleSubSubmenuToggle(index, subIndex);
                           }}
                           className={`menu-dropdown-item ${
@@ -338,14 +347,6 @@ const AppSidebar: React.FC = () => {
   } | null>(null);
   const [openSubSubmenu, setOpenSubSubmenu] = useState<string | null>(null);
   
-  // 상태 변화 추적
-  useEffect(() => {
-    console.log('🔍 openSubmenu state changed:', openSubmenu);
-  }, [openSubmenu]);
-  
-  useEffect(() => {
-    console.log('🔍 openSubSubmenu state changed:', openSubSubmenu);
-  }, [openSubSubmenu]);
   const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>(
     {}
   );
@@ -390,11 +391,9 @@ const AppSidebar: React.FC = () => {
 
     // Only close submenu if no path matches (don't close manually opened menus)
     if (!submenuMatched) {
-      console.log('🔍 No path match, but keeping manually opened submenu');
       // Don't close manually opened submenu
     }
     if (!subSubmenuMatched) {
-      console.log('🔍 No path match, but keeping manually opened sub-submenu');
       // Don't close manually opened sub-submenu
     }
   }, [pathname, isActive]);
@@ -403,48 +402,36 @@ const AppSidebar: React.FC = () => {
     // Set the height of the submenu items when the submenu is opened
     if (openSubmenu !== null) {
       const key = `${openSubmenu.type}-${openSubmenu.index}`;
-      console.log('🔍 Setting submenu height for key:', key);
       if (subMenuRefs.current[key]) {
         const height = subMenuRefs.current[key]?.scrollHeight || 0;
-        console.log('🔍 Submenu height calculated:', height);
         setSubMenuHeight((prevHeights) => ({
           ...prevHeights,
           [key]: height,
         }));
-      } else {
-        console.log('🔍 Submenu ref not found for key:', key);
       }
     }
   }, [openSubmenu]);
 
 
   const handleSubmenuToggle = (index: number, menuType: "main") => {
-    console.log('🔍 handleSubmenuToggle called:', { index, menuType });
     setOpenSubmenu((prevOpenSubmenu) => {
-      console.log('🔍 Previous submenu state:', prevOpenSubmenu);
       if (
         prevOpenSubmenu &&
         prevOpenSubmenu.type === menuType &&
         prevOpenSubmenu.index === index
       ) {
-        console.log('🔍 Closing submenu');
         return null;
       }
-      console.log('🔍 Opening submenu');
       return { type: menuType, index };
     });
   };
 
   const handleSubSubmenuToggle = (mainIndex: number, subIndex: number) => {
     const key = `${mainIndex}-${subIndex}`;
-    console.log('🔍 handleSubSubmenuToggle called:', { mainIndex, subIndex, key });
     setOpenSubSubmenu((prevOpenSubSubmenu) => {
-      console.log('🔍 Previous sub-submenu state:', prevOpenSubSubmenu);
       if (prevOpenSubSubmenu === key) {
-        console.log('🔍 Closing sub-submenu');
         return null;
       }
-      console.log('🔍 Opening sub-submenu');
       return key;
     });
   };
@@ -525,10 +512,7 @@ const AppSidebar: React.FC = () => {
                   <div className="text-sm text-red-500">Error loading menu</div>
                 </div>
               ) : (
-                (() => {
-                  console.log('🔍 Rendering menu items:', { finalNavItems, openSubmenu, openSubSubmenu });
-                  return renderMenuItems(finalNavItems, "main");
-                })()
+                renderMenuItems(finalNavItems, "main")
               )}
             </div>
 

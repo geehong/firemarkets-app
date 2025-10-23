@@ -1810,6 +1810,119 @@ def get_asset_overview(
         raise HTTPException(status_code=500, detail=f"Failed to get asset overview: {str(e)}")
 
 
+@router.get("/overview-bundle/{asset_identifier}")
+def get_asset_overview_bundle(
+    asset_identifier: str = Path(..., description="Asset ID (integer) or Ticker (string)"),
+    lang: str = Query("ko", description="언어 코드 (ko, en)"),
+    db: Session = Depends(get_postgres_db)
+):
+    """자산 개요 번들 조회 (숫자 데이터 + 포스트 데이터 분리)"""
+    try:
+        asset_id = resolve_asset_identifier(db, asset_identifier)
+        
+        # 자산 타입 확인
+        from ....models import Asset, AssetType
+        asset_with_type = db.query(Asset, AssetType.type_name) \
+                            .join(AssetType, Asset.asset_type_id == AssetType.asset_type_id) \
+                            .filter(Asset.asset_id == asset_id) \
+                            .first()
+        
+        if not asset_with_type:
+            raise HTTPException(status_code=404, detail="Asset not found")
+        
+        asset, type_name = asset_with_type
+        
+        # 1. 숫자 데이터 (기존 overview 로직)
+        numeric_overview = None
+        try:
+            # posts 기반 개요 우선 시도
+            overview_from_posts = get_overview_from_posts(db, asset_id)
+            if overview_from_posts:
+                numeric_overview = overview_from_posts
+            else:
+                # treemap_live_view 기반 개요
+                numeric_overview = get_unified_overview_data(db, asset_id)
+        except Exception as e:
+            logger.warning(f"Failed to get numeric overview for {asset_identifier}: {str(e)}")
+            numeric_overview = None
+        
+        # 2. 포스트 데이터 (텍스트/콘텐츠)
+        post_overview = None
+        try:
+            from ....models import Post
+            post_obj = db.query(Post).filter(
+                Post.asset_id == asset_id,
+                Post.post_type == 'assets'
+            ).order_by(
+                Post.status.desc(),  # published 우선
+                Post.updated_at.desc()
+            ).first()
+            
+            if post_obj:
+                post_overview = {
+                    "id": post_obj.id,
+                    "title": get_localized_jsonb(post_obj.title, lang),
+                    "slug": post_obj.slug,
+                    "description": get_localized_jsonb(post_obj.description, lang),
+                    "excerpt": get_localized_jsonb(post_obj.excerpt, lang),
+                    "content": get_localized_content(post_obj.content, post_obj.content_ko, lang),
+                    "cover_image": post_obj.cover_image,
+                    "cover_image_alt": post_obj.cover_image_alt,
+                    "meta_title": get_localized_jsonb(post_obj.meta_title, lang),
+                    "meta_description": get_localized_jsonb(post_obj.meta_description, lang),
+                    "keywords": post_obj.keywords,
+                    "canonical_url": post_obj.canonical_url,
+                    "status": post_obj.status,
+                    "created_at": post_obj.created_at,
+                    "updated_at": post_obj.updated_at,
+                    "published_at": post_obj.published_at
+                }
+        except Exception as e:
+            logger.warning(f"Failed to get post overview for {asset_identifier}: {str(e)}")
+            post_overview = None
+        
+        # 3. 번들 응답 구성
+        bundle_response = {
+            "asset_id": asset_id,
+            "asset_identifier": asset_identifier,
+            "numeric_overview": numeric_overview,
+            "post_overview": post_overview,
+            "has_numeric_data": numeric_overview is not None,
+            "has_post_data": post_overview is not None,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        return bundle_response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting asset overview bundle for {asset_identifier}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get asset overview bundle: {str(e)}")
+
+
+def get_localized_jsonb(jsonb_field, lang):
+    """JSONB 필드에서 언어별 값 반환"""
+    if not jsonb_field:
+        return None
+    
+    if isinstance(jsonb_field, dict):
+        return jsonb_field.get(lang) or jsonb_field.get('ko') or jsonb_field.get('en')
+    
+    return jsonb_field
+
+
+def get_localized_content(content, content_ko, lang):
+    """Content 필드 언어별 반환"""
+    if lang == 'ko' and content_ko:
+        return content_ko
+    elif lang == 'en' and content:
+        return content
+    else:
+        # 폴백: 한국어 우선, 없으면 영어
+        return content_ko or content
+
+
 def get_stock_overview_data(db: Session, asset_id: int):
     """주식 개요 데이터 조회"""
     try:
