@@ -2,6 +2,7 @@
 External APIs endpoints for testing and data retrieval.
 """
 from typing import Dict, Any, Optional
+from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
@@ -13,6 +14,8 @@ from ...external_apis import (
     CoinbaseClient,
     CoinMarketCapClient
 )
+from ...external_apis.implementations.edgar_client import EdgarClient
+from ...external_apis.implementations.marketwatch_client import MarketWatchClient
 from ...schemas.common import MarketDataResponse, ExternalAPITestResponse
 # GlobalCryptoMetricsResponse,  # Commented out - duplicate API
 
@@ -29,6 +32,7 @@ class ConnectionTestResponse(BaseModel):
     binance: bool
     coinbase: bool
     coinmarketcap: bool
+    edgar: bool
 
 
 class StockDataResponse(BaseModel):
@@ -214,4 +218,164 @@ async def test_coinmarketcap():
             "rate_limits": rate_limits
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"CoinMarketCap test failed: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"CoinMarketCap test failed: {str(e)}")
+
+
+@router.get("/edgar/test", response_model=ExternalAPITestResponse)
+async def test_edgar():
+    """Test SEC EDGAR API connection"""
+    try:
+        client = EdgarClient()
+        is_connected = await client.test_connection()
+        rate_limits = client.get_rate_limit_info()
+        
+        return {
+            "api_name": "SEC EDGAR",
+            "status": "connected" if is_connected else "failed",
+            "message": f"EDGAR API connection {'successful' if is_connected else 'failed'}",
+            "response_time": None,
+            "timestamp": datetime.now()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"EDGAR test failed: {str(e)}")
+
+
+@router.get("/marketwatch/test", response_model=ExternalAPITestResponse)
+async def test_marketwatch():
+    """Test MarketWatch scraping connection"""
+    try:
+        client = MarketWatchClient()
+        is_connected = await client.test_connection()
+        rate_limits = client.get_rate_limit_info()
+        
+        return {
+            "api_name": "MarketWatch (Scraped)",
+            "status": "connected" if is_connected else "failed",
+            "message": f"MarketWatch scraping {'successful' if is_connected else 'failed'}",
+            "response_time": None,
+            "timestamp": datetime.now()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"MarketWatch test failed: {str(e)}")
+
+
+@router.get("/financial-statements/{ticker}")
+async def get_financial_statements(
+    ticker: str,
+    statement_type: str = Query("balance-sheet", description="Statement type: 'balance-sheet', 'income-statement', 'cash-flow'"),
+    period: str = Query("annual", description="Period: 'annual' or 'quarterly'"),
+    limit: int = Query(4, ge=1, le=10, description="Number of periods to fetch")
+):
+    """Get financial statements data from SEC EDGAR"""
+    try:
+        client = EdgarClient()
+        
+        # Validate statement type
+        valid_statements = ['balance-sheet', 'income-statement', 'cash-flow']
+        if statement_type not in valid_statements:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid statement type. Must be one of: {valid_statements}"
+            )
+        
+        # Validate period
+        valid_periods = ['annual', 'quarterly']
+        if period not in valid_periods:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid period. Must be one of: {valid_periods}"
+            )
+        
+        financial_data = await client.get_financial_statements(
+            symbol=ticker.upper(),
+            statement_type=statement_type,
+            period=period,
+            limit=limit
+        )
+        
+        if not financial_data:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No {period} {statement_type} data found for {ticker}"
+            )
+        
+        return {
+            "ticker": ticker.upper(),
+            "statement_type": statement_type,
+            "period": period,
+            "data": financial_data,
+            "source": "SEC EDGAR",
+            "total_records": len(financial_data)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch financial data: {str(e)}")
+
+
+@router.get("/stock-financials/{ticker}")
+async def get_stock_financials(ticker: str):
+    """
+    Get comprehensive stock financials data from SEC EDGAR matching stock_financials table structure
+    
+    Note: SEC EDGAR only provides fundamental financial data (revenue, assets, equity, etc.).
+    Market data (prices, P/E ratios, moving averages) are not available from SEC EDGAR.
+    For complete financial data, consider using additional data sources like FMP, Alpha Vantage, etc.
+    """
+    try:
+        client = EdgarClient()
+        
+        financial_data = await client.get_stock_financials(symbol=ticker.upper())
+        
+        if not financial_data:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No financial data found for {ticker}"
+            )
+        
+        return {
+            "ticker": ticker.upper(),
+            "data": financial_data,
+            "source": "SEC EDGAR",
+            "timestamp": datetime.now().isoformat(),
+            "note": "SEC EDGAR provides fundamental data only. Market data (prices, ratios) require additional sources."
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch stock financials: {str(e)}")
+
+
+@router.get("/marketwatch/stock-financials/{ticker}")
+async def get_marketwatch_stock_financials(ticker: str):
+    """
+    Get comprehensive stock financials data from MarketWatch scraping
+    
+    Note: This uses web scraping which may be slower and less reliable than APIs.
+    MarketWatch has terms of service that may restrict automated scraping.
+    """
+    try:
+        client = MarketWatchClient()
+        
+        financial_data = await client.get_stock_financials(symbol=ticker.upper())
+        
+        if not financial_data:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No financial data found for {ticker}"
+            )
+        
+        return {
+            "ticker": ticker.upper(),
+            "data": financial_data,
+            "source": "MarketWatch (Scraped)",
+            "timestamp": datetime.now().isoformat(),
+            "note": "Data scraped from MarketWatch. May be slower and less reliable than APIs."
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch MarketWatch data: {str(e)}") 

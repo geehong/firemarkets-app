@@ -1610,7 +1610,7 @@ def get_stock_financials(db: Session, asset_id: int, limit: int):
         StockFinancial.asset_id == asset_id
     ).order_by(StockFinancial.snapshot_date.desc()).limit(limit).all()
     
-    # SQLAlchemy 모델을 딕셔너리로 변환
+    # SQLAlchemy 모델을 딕셔너리로 변환 (모든 데이터베이스 필드 포함)
     financial_data = []
     for financial in financials:
         financial_dict = {
@@ -1636,6 +1636,20 @@ def get_stock_financials(db: Session, asset_id: int, limit: int):
             'day_50_moving_avg': float(financial.day_50_moving_avg) if financial.day_50_moving_avg else None,
             'day_200_moving_avg': float(financial.day_200_moving_avg) if financial.day_200_moving_avg else None,
             'updated_at': financial.updated_at,
+            # 추가 필드들 (데이터베이스 테이블의 모든 필드)
+            'book_value': float(financial.book_value) if financial.book_value else None,
+            'revenue_per_share_ttm': float(financial.revenue_per_share_ttm) if financial.revenue_per_share_ttm else None,
+            'operating_margin_ttm': float(financial.operating_margin_ttm) if financial.operating_margin_ttm else None,
+            'return_on_assets_ttm': float(financial.return_on_assets_ttm) if financial.return_on_assets_ttm else None,
+            'gross_profit_ttm': float(financial.gross_profit_ttm) if financial.gross_profit_ttm else None,
+            'quarterly_earnings_growth_yoy': float(financial.quarterly_earnings_growth_yoy) if financial.quarterly_earnings_growth_yoy else None,
+            'quarterly_revenue_growth_yoy': float(financial.quarterly_revenue_growth_yoy) if financial.quarterly_revenue_growth_yoy else None,
+            'analyst_target_price': float(financial.analyst_target_price) if financial.analyst_target_price else None,
+            'trailing_pe': float(financial.trailing_pe) if financial.trailing_pe else None,
+            'forward_pe': float(financial.forward_pe) if financial.forward_pe else None,
+            'price_to_sales_ratio_ttm': float(financial.price_to_sales_ratio_ttm) if financial.price_to_sales_ratio_ttm else None,
+            'ev_to_revenue': float(financial.ev_to_revenue) if financial.ev_to_revenue else None,
+            'ev_to_ebitda': float(financial.ev_to_ebitda) if financial.ev_to_ebitda else None,
         }
         financial_data.append(financial_dict)
     

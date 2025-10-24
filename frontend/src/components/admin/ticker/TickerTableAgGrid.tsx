@@ -591,8 +591,14 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
         const ticker = params.data
         
         const handleEdit = () => {
-          // BlogEditor로 이동하면서 ticker 정보를 전달
-          router.push(`/blog/editor/ticker/${ticker.asset_id}`)
+          // Assets Editor로 이동하면서 asset ID를 전달
+          const url = `/admin/appconfig/assets_editor?assetId=${ticker.asset_id}`
+          console.log('🔗 Navigating to:', url)
+          console.log('📊 Ticker data:', ticker)
+          console.log('🔍 Asset ID:', ticker.asset_id)
+          
+          // 강제로 URL 이동
+          window.location.href = url
         }
         
         return (

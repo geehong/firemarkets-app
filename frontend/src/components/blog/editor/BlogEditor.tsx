@@ -44,7 +44,12 @@ type BlogFormState = {
   read_time_minutes: number | null
 }
 
-export default function BlogEditor() {
+interface BlogEditorProps {
+  tickerId?: number
+  mode?: string
+}
+
+export default function BlogEditor({ tickerId, mode }: BlogEditorProps) {
   const [formData, setFormData] = useState<BlogFormState>({
     title: '',
     slug: '',

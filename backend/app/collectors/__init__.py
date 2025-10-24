@@ -10,6 +10,7 @@ from .etf_collector import ETFCollector
 # from .technical_collector import TechnicalCollector  # Deferred: will be added later
 from .crypto_data_collector import CryptoDataCollector
 from .world_assets_collector import WorldAssetsCollector
+from .financials_collector import FinancialsCollector
 # from .realtime_collector import RealtimeCollector  # Deferred/disabled for v2 pipeline
 
 __all__ = [
@@ -21,5 +22,6 @@ __all__ = [
     # 'TechnicalCollector',
     'CryptoDataCollector',
     'WorldAssetsCollector',
+    'FinancialsCollector',
     # 'RealtimeCollector',
 ]

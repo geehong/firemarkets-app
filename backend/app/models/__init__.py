@@ -35,6 +35,13 @@ from .asset import (
     ScrapingLogs,
 )
 
+# Financial models
+from .financial import (
+    FinancialStatement,
+    FinancialMetrics,
+    CompanyFinancials,
+)
+
 # System related models
 from .asset import (
     AppConfiguration,
@@ -100,6 +107,11 @@ __all__ = [
     "WorldAssetsRanking",
     "BondMarketData",
     "ScrapingLogs",
+    
+    # Financial models
+    "FinancialStatement",
+    "FinancialMetrics",
+    "CompanyFinancials",
     
     # System models
     "AppConfiguration",

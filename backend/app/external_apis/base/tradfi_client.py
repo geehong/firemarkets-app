@@ -121,6 +121,28 @@ class TradFiAPIClient(BaseAPIClient, ABC):
             Standardized stock financial data or None if not available
         """
         pass
+    
+    @abstractmethod
+    async def get_financial_statements(
+        self, 
+        symbol: str, 
+        statement_type: str, 
+        period: str = "annual",
+        limit: int = 4
+    ) -> List[Dict[str, Any]]:
+        """
+        Get financial statements data (e.g., Balance Sheet, Income Statement).
+        
+        Args:
+            symbol: Stock symbol
+            statement_type: Type of financial statement (e.g., 'balance-sheet', 'income-statement')
+            period: Period type ('annual' or 'quarterly')
+            limit: Maximum number of periods to retrieve
+            
+        Returns:
+            List of financial statement data dictionaries
+        """
+        pass
 
     # Optional: Analyst estimates. Not all providers support this.
     # Provide a default no-op implementation so callers can safely invoke it.

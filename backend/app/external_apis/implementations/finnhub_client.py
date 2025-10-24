@@ -416,6 +416,26 @@ class FinnhubClient(TradFiAPIClient):
             "authentication": "API key in header X-Finnhub-Secret"
         }
     
+    async def get_financial_statements(
+        self, 
+        symbol: str, 
+        statement_type: str, 
+        period: str = "annual",
+        limit: int = 4
+    ) -> List[Dict[str, Any]]:
+        """
+        Get financial statements data from Finnhub.
+        Note: Finnhub has limited financial statements support.
+        """
+        try:
+            # Finnhub doesn't provide comprehensive financial statements
+            # Return empty list as this client doesn't support this feature
+            logger.warning(f"Finnhub API does not support financial statements for {symbol}")
+            return []
+        except Exception as e:
+            logger.error(f"Error fetching financial statements for {symbol}: {e}")
+            return []
+    
     async def close(self):
         """Close the aiohttp session"""
         if self.session and not self.session.closed:

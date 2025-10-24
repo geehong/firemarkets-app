@@ -1,7 +1,7 @@
 # app/config.py
 import os
 from typing import Optional
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     """애플리케이션 설정"""
@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     fmp_api_key: Optional[str] = None
     coinmarketcap_api_key: Optional[str] = None
     
+    # SEC EDGAR API 설정
+    edgar_user_agent_email: Optional[str] = None
+    
     # 스케줄러 설정
     data_collection_interval_minutes: int = 60
     enable_ohlcv_collection: bool = True
@@ -37,6 +40,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # Allow extra fields from environment
 
 # 전역 설정 인스턴스
 settings = Settings()

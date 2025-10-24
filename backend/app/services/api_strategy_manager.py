@@ -159,6 +159,11 @@ class ApiStrategyManager:
                 collector_key="stock_analyst_estimates_clients",
                 clients_attr_name="stock_analyst_estimates_clients",
             )
+            # Apply for commodity OHLCV clients
+            self._apply_scheduler_client_filter(
+                collector_key="commodity_ohlcv_clients",
+                clients_attr_name="commodity_ohlcv_clients",
+            )
         except Exception as e:
             logger.warning(f"[SchedulerFilter] skip: {e}")
 
@@ -563,11 +568,9 @@ class ApiStrategyManager:
             clients_to_use = [c for c in self.crypto_ohlcv_clients if self._get_api_name(c) in ('binance','coinbase')]
             self.logger.info(f"Using crypto OHLCV clients for {ticker} (asset_type: {asset_type}) -> {len(clients_to_use)} providers (binance/coinbase only)")
         elif asset_type and 'commodity' in asset_type.lower():
-            # clients_to_use = self.commodity_ohlcv_clients  # 주석처리
-            # self.logger.info(f"Using commodity clients for {ticker} (asset_type: {asset_type})")  # 주석처리
-            # 커머디티는 일봉 클라이언트 사용
-            clients_to_use = self.ohlcv_day_clients
-            self.logger.info(f"Using daily OHLCV clients for commodity {ticker} (asset_type: {asset_type})")
+            # 커머디티는 전용 클라이언트 사용 (FMPClient 포함)
+            clients_to_use = self.commodity_ohlcv_clients
+            self.logger.info(f"Using commodity OHLCV clients for {ticker} (asset_type: {asset_type})")
         else:
             # 주식, ETF, 지수, 통화 등 - 인터벌에 따라 클라이언트 선택
             if interval in ["4h", "1h", "30m", "15m", "5m", "1m"]:

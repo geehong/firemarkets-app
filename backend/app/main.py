@@ -8,6 +8,7 @@ from app.api.v1.endpoints import (
     onchain, etf, dashboard, configurations, admin, logs, metrics, 
     open_interest, tickers, navigation, posts
 )
+from app.api.v1 import external_apis
 from app.core.database import engine
 from app.models.user import User
 from app.models.session import UserSession, TokenBlacklist, AuditLog
@@ -80,6 +81,7 @@ app.include_router(open_interest.router, prefix="/api/v1/open-interest", tags=["
 app.include_router(tickers.router, prefix="/api/v1/tickers", tags=["tickers"])
 app.include_router(navigation.router, prefix="/api/v1/navigation", tags=["navigation"])
 app.include_router(posts.router, prefix="/api/v1/posts", tags=["posts"])
+app.include_router(external_apis.router, prefix="/api/v1/external-apis", tags=["external-apis"])
 
 @app.get("/")
 async def root():

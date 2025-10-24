@@ -454,3 +454,23 @@ class FMPClient(TradFiAPIClient):
         except Exception as e:
             logger.error(f"FMP Analyst Estimates fetch failed for {symbol}: {e}")
             return None
+    
+    async def get_financial_statements(
+        self, 
+        symbol: str, 
+        statement_type: str, 
+        period: str = "annual",
+        limit: int = 4
+    ) -> List[Dict[str, Any]]:
+        """
+        Get financial statements data from FMP.
+        Note: FMP has limited financial statements support in the current implementation.
+        """
+        try:
+            # FMP doesn't provide comprehensive financial statements in the current setup
+            # Return empty list as this client doesn't support this feature
+            logger.warning(f"FMP API does not support financial statements for {symbol}")
+            return []
+        except Exception as e:
+            logger.error(f"Error fetching financial statements for {symbol}: {e}")
+            return []

@@ -39,6 +39,11 @@ class Asset(Base):
     
     # 포스트 관계 추가
     posts = relationship("Post", back_populates="asset")
+    
+    # Financial data relationships
+    financial_statements = relationship("FinancialStatement", back_populates="asset")
+    financial_metrics = relationship("FinancialMetrics", back_populates="asset")
+    company_financials = relationship("CompanyFinancials", back_populates="asset")
 
     # JSON 설정에 대한 편의 메서드들
     def get_setting(self, key: str, default=None):

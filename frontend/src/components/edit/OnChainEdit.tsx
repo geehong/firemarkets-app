@@ -83,7 +83,7 @@ export default function OnChainEdit({
   }
 
   // OnChain 데이터 업데이트
-  const updateOnChainData = (field: keyof OnChainData, value: string | Record<string, string | number | boolean>) => {
+  const updateOnChainData = (field: keyof OnChainData, value: string | number | Record<string, string | number | boolean>) => {
     const newData = {
       ...onChainFormData,
       [field]: value

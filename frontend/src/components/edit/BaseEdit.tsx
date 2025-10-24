@@ -1,10 +1,48 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, ReactNode } from 'react'
 import SimpleCKEditor from './SimpleCKEditor'
-// import { apiClient } from '@/lib/api' // 사용하지 않으므로 주석 처리
+import FinancialDataBlock from './editorblock/FinancialDataBlock'
 
-// SimpleCKEditor에서 타입 선언을 관리하므로 여기서는 불필요
+// FinancialData 타입 정의
+interface FinancialData {
+  financial_id: number
+  asset_id: number
+  snapshot_date: string
+  currency: string | null
+  market_cap: number | null
+  ebitda: number | null
+  shares_outstanding: number | null
+  pe_ratio: number | null
+  peg_ratio: number | null
+  beta: number | null
+  eps: number | null
+  dividend_yield: number | null
+  dividend_per_share: number | null
+  profit_margin_ttm: number | null
+  return_on_equity_ttm: number | null
+  revenue_ttm: number | null
+  price_to_book_ratio: number | null
+  week_52_high: number | null
+  week_52_low: number | null
+  day_50_moving_avg: number | null
+  day_200_moving_avg: number | null
+  updated_at: string
+  // 추가 필드들
+  book_value: number | null
+  revenue_per_share_ttm: number | null
+  operating_margin_ttm: number | null
+  return_on_assets_ttm: number | null
+  gross_profit_ttm: number | null
+  quarterly_earnings_growth_yoy: number | null
+  quarterly_revenue_growth_yoy: number | null
+  analyst_target_price: number | null
+  trailing_pe: number | null
+  forward_pe: number | null
+  price_to_sales_ratio_ttm: number | null
+  ev_to_revenue: number | null
+  ev_to_ebitda: number | null
+}
 
 // 실제 API 응답 구조에 맞춘 PostFormState 타입
 export type PostFormState = {
@@ -55,6 +93,13 @@ export interface BaseEditProps {
   postType: 'post' | 'page' | 'tutorial' | 'news' | 'assets' | 'onchain'
   onSave?: (data: PostFormState) => void
   onCancel?: () => void
+  children?: ReactNode // 사이드바 컴포넌트들
+  // FinancialDataBlock 관련 props
+  showFinancialData?: boolean
+  financialTicker?: string
+  financialAssetId?: number | null
+  financialData?: FinancialData | null
+  onSaveFinancial?: (data: Partial<FinancialData>) => Promise<void>
 }
 
 export default function BaseEdit({ 
@@ -62,7 +107,13 @@ export default function BaseEdit({
   mode = 'create', 
   postType,
   onSave,
-  onCancel 
+  onCancel,
+  children,
+  showFinancialData = false,
+  financialTicker,
+  financialAssetId,
+  financialData,
+  onSaveFinancial
 }: BaseEditProps) {
   const [formData, setFormData] = useState<PostFormState>({
     // API에서 실제로 제공하는 필드들
@@ -101,7 +152,6 @@ export default function BaseEdit({
     sync_status: 'pending'
   })
 
-  const [keywordInput, setKeywordInput] = useState('')
   const [activeLanguage, setActiveLanguage] = useState<'ko' | 'en'>('ko')
   const [loading, setLoading] = useState(mode === 'edit')
   const [saving, setSaving] = useState(false)
@@ -136,13 +186,9 @@ export default function BaseEdit({
         try {
           setLoading(true)
           console.log('📡 Fetching post data for ID:', postId)
-          console.log('🌐 API Base URL:', process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1')
           
           const apiUrl = `${process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'}/posts/${postId}`
-          console.log('🔗 Full API URL:', apiUrl)
-          
           const response = await fetch(apiUrl)
-          console.log('📊 Response status:', response.status, response.statusText)
           
           if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`)
@@ -152,18 +198,6 @@ export default function BaseEdit({
           console.log('📦 Raw API response:', data)
           
           if (data) {
-            console.log('📝 Processing post data...', {
-              hasTitle: !!data.title,
-              hasContent: !!data.content,
-              hasContentKo: !!data.content_ko,
-              hasExcerpt: !!data.excerpt,
-              titleType: typeof data.title,
-              contentType: typeof data.content,
-              contentKoType: typeof data.content_ko,
-              contentPreview: data.content?.substring(0, 100) + '...',
-              contentKoPreview: data.content_ko?.substring(0, 100) + '...'
-            })
-            
             // 실제 API 응답 구조에 맞춘 데이터 처리
             const processedData = {
               id: data.id,
@@ -206,26 +240,11 @@ export default function BaseEdit({
               sync_status: data.sync_status || 'pending'
             }
             
-            console.log('🔄 Setting form data:', {
-              title: processedData.title,
-              content: processedData.content,
-              content_ko: processedData.content_ko,
-              contentLength: processedData.content?.length || 0,
-              contentKoLength: processedData.content_ko?.length || 0
-            })
-            
             setFormData(processedData)
-            
             console.log('✅ Post data loaded and set successfully')
-          } else {
-            console.warn('⚠️ No data received from API')
           }
         } catch (error) {
           console.error('❌ Error fetching post data:', error)
-          console.error('❌ Error details:', {
-            message: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined
-          })
         } finally {
           setLoading(false)
         }
@@ -234,8 +253,6 @@ export default function BaseEdit({
       fetchPostData()
     }
   }, [mode, postId, postType])
-
-  // SimpleCKEditor는 자체적으로 상태를 관리하므로 복잡한 useEffect 불필요
 
   // 내용이 변경될 때마다 읽기 시간 업데이트
   useEffect(() => {
@@ -255,49 +272,20 @@ export default function BaseEdit({
 
   // 폼 데이터 업데이트
   const updateFormData = (field: keyof PostFormState, value: string | number | boolean | string[] | { ko: string; en: string } | null) => {
-    console.log('📝 updateFormData called:', { field, value, activeLanguage })
-    setFormData(prev => {
-      const newData = {
-        ...prev,
-        [field]: value
-      }
-      console.log('🔄 FormData updated via updateFormData:', newData)
-      return newData
-    })
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }))
   }
 
   // 다국어 필드 업데이트
   const updateMultilingualField = (field: keyof Pick<PostFormState, 'title' | 'description' | 'excerpt' | 'meta_title' | 'meta_description'>, value: string) => {
-    console.log('🌐 updateMultilingualField called:', { field, value, activeLanguage })
-    setFormData(prev => {
-      const newData = {
-        ...prev,
-        [field]: {
-          ...prev[field],
-          [activeLanguage]: value
-        }
-      }
-      console.log('🔄 Multilingual field updated:', { field, newValue: newData[field] })
-      return newData
-    })
-  }
-
-  // 키워드 추가
-  const addKeyword = () => {
-    if (keywordInput.trim() && !(formData.keywords || []).includes(keywordInput.trim())) {
-      setFormData(prev => ({
-        ...prev,
-        keywords: [...(prev.keywords || []), keywordInput.trim()]
-      }))
-      setKeywordInput('')
-    }
-  }
-
-  // 키워드 제거
-  const removeKeyword = (keyword: string) => {
     setFormData(prev => ({
       ...prev,
-      keywords: (prev.keywords || []).filter(k => k !== keyword)
+      [field]: {
+        ...prev[field],
+        [activeLanguage]: value
+      }
     }))
   }
 
@@ -391,262 +379,154 @@ export default function BaseEdit({
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-lg">
-      {/* 언어 선택 */}
-      <div className="mb-6">
-        <div className="flex space-x-2">
-          <button
-            type="button"
-            onClick={() => {
-              console.log('🇰🇷 Switching to Korean')
-              setActiveLanguage('ko')
-            }}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${
-              activeLanguage === 'ko'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            한국어
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              console.log('🇺🇸 Switching to English')
-              setActiveLanguage('en')
-            }}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${
-              activeLanguage === 'en'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            English
-          </button>
-        </div>
-      </div>
-
-      {/* 제목 */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          제목 ({activeLanguage === 'ko' ? '한국어' : 'English'})
-        </label>
-        <input
-          type="text"
-          value={formData.title[activeLanguage]}
-          onChange={(e) => updateMultilingualField('title', e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          placeholder="제목을 입력하세요"
-        />
-      </div>
-
-      {/* 슬러그 */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          슬러그
-        </label>
-        <input
-          type="text"
-          value={formData.slug}
-          onChange={(e) => updateFormData('slug', e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          placeholder="URL 슬러그를 입력하세요"
-        />
-        <button
-          type="button"
-          onClick={() => updateFormData('slug', generateSlug(formData.title[activeLanguage]))}
-          className="mt-2 text-sm text-blue-600 hover:text-blue-800"
-        >
-          제목에서 자동 생성
-        </button>
-      </div>
-
-      {/* 커버 이미지 */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          커버 이미지 URL
-        </label>
-        <input
-          type="url"
-          value={formData.cover_image || ''}
-          onChange={(e) => updateFormData('cover_image', e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          placeholder="https://example.com/image.jpg"
-        />
-      </div>
-
-      {/* 커버 이미지 Alt 텍스트 */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          커버 이미지 Alt 텍스트
-        </label>
-        <input
-          type="text"
-          value={formData.cover_image_alt || ''}
-          onChange={(e) => updateFormData('cover_image_alt', e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          placeholder="이미지에 대한 설명을 입력하세요"
-        />
-      </div>
-
-      {/* Canonical URL */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Canonical URL
-        </label>
-        <input
-          type="url"
-          value={formData.canonical_url || ''}
-          onChange={(e) => updateFormData('canonical_url', e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          placeholder="https://example.com/canonical-url"
-        />
-      </div>
-
-      {/* 설명 */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          설명 ({activeLanguage === 'ko' ? '한국어' : 'English'})
-        </label>
-        <textarea
-          value={formData.description[activeLanguage]}
-          onChange={(e) => updateMultilingualField('description', e.target.value)}
-          rows={3}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          placeholder="블로그 글에 대한 간단한 설명을 입력하세요"
-        />
-      </div>
-
-      {/* 요약 */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          요약 ({activeLanguage === 'ko' ? '한국어' : 'English'})
-        </label>
-        <textarea
-          value={formData.excerpt[activeLanguage]}
-          onChange={(e) => updateMultilingualField('excerpt', e.target.value)}
-          rows={3}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          placeholder="요약을 입력하세요"
-        />
-      </div>
-
-      {/* 본문 */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          본문 ({activeLanguage === 'ko' ? '한국어' : 'English'})
-        </label>
-        <SimpleCKEditor
-          value={activeLanguage === 'ko' ? formData.content_ko : formData.content}
-          onChange={handleEditorChange}
-          placeholder="본문을 입력하세요..."
-          height={400}
-        />
-      </div>
-
-      {/* 메타 제목 */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          메타 제목 ({activeLanguage === 'ko' ? '한국어' : 'English'})
-        </label>
-        <input
-          type="text"
-          value={formData.meta_title[activeLanguage]}
-          onChange={(e) => updateMultilingualField('meta_title', e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          placeholder="SEO 메타 제목을 입력하세요"
-        />
-      </div>
-
-      {/* 메타 설명 */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          메타 설명 ({activeLanguage === 'ko' ? '한국어' : 'English'})
-        </label>
-        <textarea
-          value={formData.meta_description[activeLanguage]}
-          onChange={(e) => updateMultilingualField('meta_description', e.target.value)}
-          rows={3}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          placeholder="SEO 메타 설명을 입력하세요"
-        />
-      </div>
-
-      {/* 키워드 */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          키워드
-        </label>
-        <div className="flex space-x-2 mb-2">
-          <input
-            type="text"
-            value={keywordInput}
-            onChange={(e) => setKeywordInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addKeyword())}
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="키워드를 입력하고 Enter를 누르세요"
-          />
-          <button
-            type="button"
-            onClick={addKeyword}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            추가
-          </button>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {(formData.keywords || []).map((keyword, index) => (
-            <span
-              key={index}
-              className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800"
-            >
-              {keyword}
+    <div className="min-h-screen bg-gray-50">
+      {/* 헤더 */}
+      <div className="bg-white border-b px-4 lg:px-6 py-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
+          <div className="flex flex-col lg:flex-row lg:items-center space-y-2 lg:space-y-0 lg:space-x-4">
+            <h1 className="text-lg lg:text-xl font-semibold">
+              {mode === 'create' ? '새 포스트 작성' : '포스트 편집'}
+            </h1>
+            <div className="flex space-x-2">
               <button
                 type="button"
-                onClick={() => removeKeyword(keyword)}
-                className="ml-2 text-blue-600 hover:text-blue-800"
+                onClick={() => {
+                  console.log('🇰🇷 Switching to Korean')
+                  setActiveLanguage('ko')
+                }}
+                className={`px-3 py-1 rounded text-sm font-medium ${
+                  activeLanguage === 'ko'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
               >
-                ×
+                한국어
               </button>
-            </span>
-          ))}
+              <button
+                type="button"
+                onClick={() => {
+                  console.log('🇺🇸 Switching to English')
+                  setActiveLanguage('en')
+                }}
+                className={`px-3 py-1 rounded text-sm font-medium ${
+                  activeLanguage === 'en'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                English
+              </button>
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3">
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="px-4 py-2 text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
+            >
+              취소
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSave('draft')}
+              disabled={saving}
+              className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 disabled:opacity-50"
+            >
+              {saving ? '저장 중...' : '임시저장'}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSave('published')}
+              disabled={saving}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? '발행 중...' : '발행'}
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* 읽기 시간 표시 */}
-      {formData.read_time_minutes && formData.read_time_minutes > 0 && (
-        <div className="mb-6 p-3 bg-blue-50 rounded-lg">
-          <p className="text-sm text-blue-700">
-            📖 예상 읽기 시간: {formData.read_time_minutes}분
-          </p>
-        </div>
-      )}
+      {/* 메인 컨텐츠 */}
+      <div className="max-w-7xl mx-auto px-4 lg:px-6 py-4 lg:py-6">
+        <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
+          {/* 왼쪽: 메인 편집 영역 */}
+          <div className="flex-1 order-2 lg:order-1">
+            <div className="bg-white rounded-lg shadow-sm">
+              {/* 제목 */}
+              <div className="p-6 border-b">
+                <input
+                  type="text"
+                  value={formData.title[activeLanguage]}
+                  onChange={(e) => updateMultilingualField('title', e.target.value)}
+                  className="w-full text-2xl font-semibold border-none outline-none"
+                  placeholder="제목을 입력하세요..."
+                />
+              </div>
 
-      {/* 기본 버튼들 */}
-      <div className="flex justify-end space-x-4">
-        <button
-          type="button"
-          onClick={handleCancel}
-          className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500"
-        >
-          취소
-        </button>
-        <button
-          type="button"
-          onClick={() => handleSave('draft')}
-          disabled={saving}
-          className="px-6 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:opacity-50"
-        >
-          {saving ? '저장 중...' : '임시저장'}
-        </button>
-        <button
-          type="button"
-          onClick={() => handleSave('published')}
-          disabled={saving}
-          className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-        >
-          {saving ? '발행 중...' : '발행'}
-        </button>
+              {/* 슬러그 */}
+              <div className="px-6 py-3 border-b bg-gray-50">
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm text-gray-500">슬러그:</span>
+                  <input
+                    type="text"
+                    value={formData.slug}
+                    onChange={(e) => updateFormData('slug', e.target.value)}
+                    className="flex-1 text-sm border-none bg-transparent outline-none"
+                    placeholder="url-slug"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => updateFormData('slug', generateSlug(formData.title[activeLanguage]))}
+                    className="text-sm text-blue-600 hover:text-blue-800"
+                  >
+                    자동 생성
+                  </button>
+                </div>
+              </div>
+
+              {/* 요약 */}
+              <div className="p-6 border-b">
+                <textarea
+                  value={formData.excerpt[activeLanguage]}
+                  onChange={(e) => updateMultilingualField('excerpt', e.target.value)}
+                  rows={3}
+                  className="w-full border-none outline-none resize-none"
+                  placeholder="요약을 입력하세요..."
+                />
+              </div>
+
+              {/* 본문 */}
+              <div className="p-6">
+                <SimpleCKEditor
+                  value={activeLanguage === 'ko' ? formData.content_ko : formData.content}
+                  onChange={handleEditorChange}
+                  placeholder="본문을 입력하세요..."
+                  height={500}
+                />
+              </div>
+
+              {/* 재무 데이터 블럭 (Assets 타입일 때만 표시) */}
+              {showFinancialData && (
+                <div className="p-6 border-t">
+                  <FinancialDataBlock
+                    ticker={financialTicker}
+                    assetId={financialAssetId}
+                    financialData={financialData}
+                    onSaveFinancial={onSaveFinancial}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 오른쪽: 사이드바 */}
+          <div className="w-full lg:w-80 order-1 lg:order-2 space-y-4 lg:space-y-6">
+            <div className="sticky top-6 max-h-[calc(100vh-2rem)] overflow-y-auto">
+              {/* 사이드바는 BlogEdit, AssetsEdit에서 구현 */}
+              {children}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )

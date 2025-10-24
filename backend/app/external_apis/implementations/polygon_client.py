@@ -292,6 +292,26 @@ class PolygonClient(TradFiAPIClient):
     async def get_etf_sector_exposure(self, symbol: str) -> Optional[List[Dict[str, Any]]]:
         """Get ETF sector exposure from Polygon (Not supported)"""
         raise NotImplementedError(f"Polygon API는 ETF 섹터 노출 데이터를 제공하지 않습니다. {symbol}의 섹터 정보는 다른 API(FMP, Alpha Vantage)를 사용하세요.")
+    
+    async def get_financial_statements(
+        self, 
+        symbol: str, 
+        statement_type: str, 
+        period: str = "annual",
+        limit: int = 4
+    ) -> List[Dict[str, Any]]:
+        """
+        Get financial statements data from Polygon.
+        Note: Polygon has limited financial statements support.
+        """
+        try:
+            # Polygon doesn't provide comprehensive financial statements
+            # Return empty list as this client doesn't support this feature
+            logger.warning(f"Polygon API does not support financial statements for {symbol}")
+            return []
+        except Exception as e:
+            logger.error(f"Error fetching financial statements for {symbol}: {e}")
+            return []
 
     def _calculate_change_percent(self, close: float, open_price: float) -> Optional[float]:
         """Calculate percentage change"""
