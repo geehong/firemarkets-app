@@ -225,15 +225,66 @@ class NavigationService {
       },
       {
         id: 7,
-        name: "Admin Management",
-        path: "/admin",
-        icon: "cilSettings",
+        name: "에디터",
+        path: "/edit",
+        icon: "cilPencil",
         order: 7,
         is_active: true,
         source_type: "static",
         children: [
           {
             id: 71,
+            name: "CKEditor",
+            path: "/edit/ckeditor",
+            icon: "cilPencil",
+            order: 1,
+            is_active: true,
+            source_type: "static",
+            children: []
+          },
+          {
+            id: 72,
+            name: "Quill Editor",
+            path: "/edit/quill",
+            icon: "cilPencil",
+            order: 2,
+            is_active: true,
+            source_type: "static",
+            children: []
+          },
+          {
+            id: 73,
+            name: "Editor.js",
+            path: "/edit/editorjs",
+            icon: "cilPencil",
+            order: 3,
+            is_active: true,
+            source_type: "static",
+            children: []
+          },
+          {
+            id: 74,
+            name: "Editor.js Light",
+            path: "/edit/editorjs-light",
+            icon: "cilPencil",
+            order: 4,
+            is_active: true,
+            source_type: "static",
+            children: []
+          }
+        ]
+      },
+      {
+        id: 8,
+        name: "Admin Management",
+        path: "/admin",
+        icon: "cilSettings",
+        order: 8,
+        is_active: true,
+        source_type: "static",
+        children: [
+          {
+            id: 81,
             name: "App Config",
             path: "/admin/appconfig",
             icon: "cilCog",

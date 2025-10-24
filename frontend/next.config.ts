@@ -108,6 +108,11 @@ const nextConfig: NextConfig = {
         source: '/api/:path*',
         destination: `${backendUrl}/api/:path*`,
       },
+      {
+        // TinyMCE 정적 파일 제공
+        source: '/node_modules/tinymce/:path*',
+        destination: '/node_modules/tinymce/:path*',
+      },
     ];
   },
   // Socket.IO 프록시 설정 (Docker 환경 감지) - 임시 비활성화

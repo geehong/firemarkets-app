@@ -109,7 +109,14 @@ const AppSidebar: React.FC = () => {
     }
   ];
 
-  const finalNavItems = [...dynamicNavItems, ...blogNavItems];
+  // Static Editor menu item
+  const editorNavItem = {
+    name: "에디터",
+    icon: <GridIcon />,
+    path: "/edit"
+  };
+
+  const finalNavItems = [...dynamicNavItems, editorNavItem, ...blogNavItems];
 
   const renderMenuItems = (
     navItems: NavItem[],

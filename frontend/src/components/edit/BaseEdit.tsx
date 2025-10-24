@@ -284,10 +284,10 @@ export default function BaseEdit({
 
   // 키워드 추가
   const addKeyword = () => {
-    if (keywordInput.trim() && !formData.keywords.includes(keywordInput.trim())) {
+    if (keywordInput.trim() && !(formData.keywords || []).includes(keywordInput.trim())) {
       setFormData(prev => ({
         ...prev,
-        keywords: [...prev.keywords, keywordInput.trim()]
+        keywords: [...(prev.keywords || []), keywordInput.trim()]
       }))
       setKeywordInput('')
     }
@@ -297,7 +297,7 @@ export default function BaseEdit({
   const removeKeyword = (keyword: string) => {
     setFormData(prev => ({
       ...prev,
-      keywords: prev.keywords.filter(k => k !== keyword)
+      keywords: (prev.keywords || []).filter(k => k !== keyword)
     }))
   }
 
@@ -468,7 +468,7 @@ export default function BaseEdit({
         </label>
         <input
           type="url"
-          value={formData.cover_image}
+          value={formData.cover_image || ''}
           onChange={(e) => updateFormData('cover_image', e.target.value)}
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           placeholder="https://example.com/image.jpg"
@@ -482,7 +482,7 @@ export default function BaseEdit({
         </label>
         <input
           type="text"
-          value={formData.cover_image_alt}
+          value={formData.cover_image_alt || ''}
           onChange={(e) => updateFormData('cover_image_alt', e.target.value)}
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           placeholder="이미지에 대한 설명을 입력하세요"
@@ -496,7 +496,7 @@ export default function BaseEdit({
         </label>
         <input
           type="url"
-          value={formData.canonical_url}
+          value={formData.canonical_url || ''}
           onChange={(e) => updateFormData('canonical_url', e.target.value)}
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           placeholder="https://example.com/canonical-url"
@@ -595,7 +595,7 @@ export default function BaseEdit({
           </button>
         </div>
         <div className="flex flex-wrap gap-2">
-          {formData.keywords.map((keyword, index) => (
+          {(formData.keywords || []).map((keyword, index) => (
             <span
               key={index}
               className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800"
