@@ -4,22 +4,11 @@ import Link from "next/link";
 import React, { useState } from "react";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
+import { useAuth } from '@/contexts/SessionContext';
 
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
-
-  // 하드코딩된 사용자 데이터 (users 테이블에서 가져온 정보)
-  const userData = {
-    id: 13,
-    username: "geehong",
-    email: "geecgpi1@gmail.com",
-    role: "super_admin",
-    full_name: "GEEHONG KIM",
-    address: "103@702 33, Cheonma-ro 90beon-gil, Buk-gu, Pohang-si, Gyeongsangbuk-do, Republic of Korea",
-    avatar_url: "/images/user/adminavatar.png",
-    last_login: "2025-10-21 03:57:42.942389",
-    created_at: "2025-08-12 17:22:41"
-  };
+  const { user, isAuthenticated, logout } = useAuth();
 
   function toggleDropdown(e: React.MouseEvent<HTMLButtonElement, MouseEvent>) {
     e.stopPropagation();
@@ -29,6 +18,27 @@ export default function UserDropdown() {
   function closeDropdown() {
     setIsOpen(false);
   }
+
+  const handleLogout = async () => {
+    await logout();
+    closeDropdown();
+  };
+
+  // 로그인하지 않은 경우 로그인 버튼 표시
+  if (!isAuthenticated || !user) {
+    return (
+      <Link
+        href="/admin/signin"
+        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+        </svg>
+        로그인
+      </Link>
+    );
+  }
+
   return (
     <div className="relative">
       <button
@@ -39,12 +49,12 @@ export default function UserDropdown() {
           <Image
             width={44}
             height={44}
-            src={userData.avatar_url}
+            src={user.avatar_url || "/images/user/adminavatar.png"}
             alt="User"
           />
         </span>
 
-        <span className="block mr-1 font-medium text-theme-sm">{userData.username}</span>
+        <span className="block mr-1 font-medium text-theme-sm">{user.username}</span>
 
         <svg
           className={`stroke-gray-500 dark:stroke-gray-400 transition-transform duration-200 ${
@@ -73,13 +83,13 @@ export default function UserDropdown() {
       >
         <div>
           <span className="block font-medium text-gray-700 text-theme-sm dark:text-gray-400">
-            {userData.full_name}
+            {user.full_name || user.username}
           </span>
           <span className="mt-0.5 block text-theme-xs text-gray-500 dark:text-gray-400">
-            {userData.email}
+            {user.email}
           </span>
           <span className="mt-1 block text-theme-xs text-gray-400 dark:text-gray-500">
-            Role: {userData.role.replace('_', ' ').toUpperCase()}
+            Role: {user.role?.replace('_', ' ').toUpperCase() || 'USER'}
           </span>
         </div>
 
@@ -160,8 +170,8 @@ export default function UserDropdown() {
             </DropdownItem>
           </li>
         </ul>
-        <Link
-          href="/admin/signin"
+        <button
+          onClick={handleLogout}
           className="flex items-center gap-3 px-3 py-2 mt-3 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
         >
           <svg
@@ -179,8 +189,8 @@ export default function UserDropdown() {
               fill=""
             />
           </svg>
-          Sign out
-        </Link>
+          로그아웃
+        </button>
       </Dropdown>
     </div>
   );

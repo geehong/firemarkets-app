@@ -1,17 +1,31 @@
 'use client'
 
 import { useState } from 'react'
+
+// Line Charts
 import LineChartOne from '@/components/charts/line/LineChartOne'
+// Bar Charts
 import BarChartOne from '@/components/charts/bar/BarChartOne'
-import MiniPriceChart from '@/components/charts/minicharts/MiniPriceChart'
-import MiniPriceCryptoChart from '@/components/charts/minicharts/MiniPriceCryptoChart'
-import MiniPriceStocksEtfChart from '@/components/charts/minicharts/MiniPriceStocksEtfChart'
-import MiniPriceCommoditiesChart from '@/components/charts/minicharts/MiniPriceCommoditiesChart'
+// Mini Charts
+import ClientOnlyChart from '@/components/charts/minicharts/ClientOnlyChart'
+// OHLCV Charts
+import OHLCVChart from '@/components/charts/ohlcvcharts/OHLCVChart'
+// OnChain Charts
+import HalvingChart from '@/components/charts/onchaincharts/HalvingChart'
+import OnChainChart from '@/components/charts/onchaincharts/OnChainChart'
 
 export default function ChartsPage() {
-  const [activeChart, setActiveChart] = useState('line')
+  console.log('📈 ChartsPage 렌더링');
   
-  console.log('📈 ChartsPage 렌더링:', { activeChart });
+  const [activeTab, setActiveTab] = useState('basic')
+
+  const tabs = [
+    { id: 'basic', name: 'Basic Charts', icon: '📊' },
+    { id: 'financial', name: 'Financial Charts', icon: '💰' },
+    { id: 'onchain', name: 'OnChain Charts', icon: '⛓️' },
+    { id: 'halving', name: 'Halving Charts', icon: '₿' },
+    { id: 'mini', name: 'Mini Charts', icon: '📈' }
+  ]
 
   return (
     <main className="container mx-auto px-4 py-8">
@@ -24,104 +38,219 @@ export default function ChartsPage() {
         </p>
       </div>
 
-      {/* Chart Type Selector */}
-      <div className="mb-6">
-        <div className="flex space-x-2">
-          <button
-            onClick={() => setActiveChart('line')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              activeChart === 'line'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            Line Chart
-          </button>
-          <button
-            onClick={() => setActiveChart('bar')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              activeChart === 'bar'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            Bar Chart
-          </button>
-          <button
-            onClick={() => setActiveChart('mini')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              activeChart === 'mini'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            Mini Charts
-          </button>
+      {/* Tab Navigation */}
+      <div className="mb-8">
+        <div className="border-b border-gray-200 dark:border-gray-700">
+          <nav className="-mb-px flex space-x-8">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === tab.id
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                }`}
+              >
+                <span className="mr-2">{tab.icon}</span>
+                {tab.name}
+              </button>
+            ))}
+          </nav>
         </div>
       </div>
 
-      {/* Chart Display */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-8">
-        <div className="h-96">
-          {activeChart === 'line' && <LineChartOne />}
-          {activeChart === 'bar' && <BarChartOne />}
-          {activeChart === 'mini' && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="h-32">
-                <MiniPriceChart />
-              </div>
-              <div className="h-32">
-                <MiniPriceCryptoChart />
-              </div>
-              <div className="h-32">
-                <MiniPriceStocksEtfChart />
-              </div>
-              <div className="h-32">
-                <MiniPriceCommoditiesChart />
-              </div>
+      {/* Tab Content */}
+      <div className="space-y-8">
+        {/* Basic Charts Tab */}
+        {activeTab === 'basic' && (
+          <>
+            {/* Line Chart */}
+            <div 
+              style={{ 
+                height: '400px', 
+                width: '100%',
+                minHeight: '400px',
+                position: 'relative'
+              }}
+            >
+              <LineChartOne />
             </div>
-          )}
-        </div>
-      </div>
 
-      {/* Chart Examples Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold mb-4">Line Chart</h3>
-          <p className="text-gray-600 dark:text-gray-400 mb-4">
-            Interactive line chart for time series data visualization.
-          </p>
-          <div className="h-48">
-            <LineChartOne />
-          </div>
-        </div>
-        
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold mb-4">Bar Chart</h3>
-          <p className="text-gray-600 dark:text-gray-400 mb-4">
-            Bar chart for comparing categorical data.
-          </p>
-          <div className="h-48">
-            <BarChartOne />
-          </div>
-        </div>
-        
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold mb-4">Mini Charts</h3>
-          <p className="text-gray-600 dark:text-gray-400 mb-4">
-            Compact mini charts for quick data overview.
-          </p>
-          <div className="space-y-2">
-            <div className="h-16">
-              <MiniPriceChart />
+            {/* Bar Chart */}
+            <div 
+              style={{ 
+                height: '400px', 
+                width: '100%',
+                minHeight: '400px',
+                position: 'relative'
+              }}
+            >
+              <BarChartOne />
             </div>
-            <div className="h-16">
-              <MiniPriceCryptoChart />
+          </>
+        )}
+
+        {/* Financial Charts Tab */}
+        {activeTab === 'financial' && (
+          <div 
+            style={{ 
+              height: '500px', 
+              width: '100%',
+              minHeight: '500px',
+              position: 'relative'
+            }}
+          >
+            <OHLCVChart assetIdentifier="BTCUSDT" />
+          </div>
+        )}
+
+        {/* OnChain Charts Tab */}
+        {activeTab === 'onchain' && (
+          <div 
+            style={{ 
+              height: '500px', 
+              width: '100%',
+              minHeight: '500px',
+              position: 'relative'
+            }}
+          >
+            <OnChainChart />
+          </div>
+        )}
+
+        {/* Halving Charts Tab */}
+        {activeTab === 'halving' && (
+          <div 
+            style={{ 
+              height: '500px', 
+              width: '100%',
+              minHeight: '500px',
+              position: 'relative'
+            }}
+          >
+            <HalvingChart height={500} />
+          </div>
+        )}
+
+        {/* Mini Charts Tab */}
+        {activeTab === 'mini' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* BTCUSDT */}
+            <div 
+              style={{ 
+                height: '200px', 
+                width: '100%',
+                minHeight: '200px',
+                position: 'relative'
+              }}
+            >
+              <ClientOnlyChart 
+                type="crypto" 
+                containerId="btcusdt-chart" 
+                assetIdentifier="BTCUSDT" 
+              />
+            </div>
+            
+            {/* ETHUSDT */}
+            <div 
+              style={{ 
+                height: '200px', 
+                width: '100%',
+                minHeight: '200px',
+                position: 'relative'
+              }}
+            >
+              <ClientOnlyChart 
+                type="crypto" 
+                containerId="ethusdt-chart" 
+                assetIdentifier="ETHUSDT" 
+              />
+            </div>
+            
+            {/* GCUSD (금) */}
+            <div 
+              style={{ 
+                height: '200px', 
+                width: '100%',
+                minHeight: '200px',
+                position: 'relative'
+              }}
+            >
+              <ClientOnlyChart 
+                type="commodities" 
+                containerId="gcusd-chart" 
+                assetIdentifier="GCUSD" 
+              />
+            </div>
+            
+            {/* SPY */}
+            <div 
+              style={{ 
+                height: '200px', 
+                width: '100%',
+                minHeight: '200px',
+                position: 'relative'
+              }}
+            >
+              <ClientOnlyChart 
+                type="stocks" 
+                containerId="spy-chart" 
+                assetIdentifier="SPY" 
+              />
+            </div>
+            
+            {/* QQQ */}
+            <div 
+              style={{ 
+                height: '200px', 
+                width: '100%',
+                minHeight: '200px',
+                position: 'relative'
+              }}
+            >
+              <ClientOnlyChart 
+                type="stocks" 
+                containerId="qqq-chart" 
+                assetIdentifier="QQQ" 
+              />
+            </div>
+            
+            {/* NVDA */}
+            <div 
+              style={{ 
+                height: '200px', 
+                width: '100%',
+                minHeight: '200px',
+                position: 'relative'
+              }}
+            >
+              <ClientOnlyChart 
+                type="stocks" 
+                containerId="nvda-chart" 
+                assetIdentifier="NVDA" 
+              />
+            </div>
+            
+            {/* AAPL */}
+            <div 
+              style={{ 
+                height: '200px', 
+                width: '100%',
+                minHeight: '200px',
+                position: 'relative'
+              }}
+            >
+              <ClientOnlyChart 
+                type="stocks" 
+                containerId="aapl-chart" 
+                assetIdentifier="AAPL" 
+              />
             </div>
           </div>
-        </div>
-        
+        )}
       </div>
     </main>
   )
 }
+

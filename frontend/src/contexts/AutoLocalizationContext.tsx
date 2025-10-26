@@ -12,14 +12,11 @@ const AutoLocalizationContext = createContext<AutoLocalizationContextType | null
 
 export const AutoLocalizationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { language } = useLanguage()
-  
-  console.log('🔄 [AutoLocalization] Language changed to:', language)
 
   const localizeData = useMemo(() => {
     return <T extends Record<string, any>>(data: T): T => {
       if (!data) return data
 
-      console.log('🌐 [AutoLocalization] Processing data for language:', language, data)
 
       const localizedData = { ...data }
 

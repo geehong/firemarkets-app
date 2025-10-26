@@ -42,11 +42,11 @@ class NavigationService {
       return [];
     }
 
-    // 로컬 개발 환경에서는 정적 메뉴 반환
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      console.log('navigationService - Local development, returning static menu');
-      return this.getStaticMenu();
-    }
+    // 로컬 개발 환경에서도 동적 메뉴 사용 (개발 중이므로)
+    // if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    //   console.log('navigationService - Local development, returning static menu');
+    //   return this.getStaticMenu();
+    // }
 
     try {
       const currentAPIURL = getAPIBaseURL();
@@ -61,7 +61,14 @@ class NavigationService {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
       
       const BACKEND_BASE = process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'
-      const response = await axios.get(`${BACKEND_BASE}/navigation/menu?lang=${language}`, {
+      const requestUrl = `${BACKEND_BASE}/navigation/menu?lang=${language}`;
+      
+      // console.log('🌐 [NavigationService] 메뉴 API 호출 시작');
+      // console.log('🌐 [NavigationService] 요청 URL:', requestUrl);
+      // console.log('🌐 [NavigationService] 요청 헤더:', headers);
+      // console.log('🌐 [NavigationService] 언어:', language);
+      
+      const response = await axios.get(requestUrl, {
         headers,
         timeout: 15000, // 15초 타임아웃 (모바일 네트워크 고려)
         // withCredentials: true, // 리버스 프록시 CORS 문제로 임시 비활성화
@@ -69,6 +76,9 @@ class NavigationService {
           return status >= 200 && status < 300; // 기본값
         }
       });
+      
+      // console.log('🌐 [NavigationService] API 응답 상태:', response.status);
+      // console.log('🌐 [NavigationService] 응답 데이터:', response.data);
       
       return response.data;
     } catch (error: any) {
@@ -195,9 +205,9 @@ class NavigationService {
       },
       {
         id: 4,
-        name: "Blog",
-        path: "/blog",
-        icon: "cilDescription",
+        name: "Map",
+        path: "/map",
+        icon: "cilChartPie",
         order: 4,
         is_active: true,
         source_type: "static",
@@ -205,9 +215,9 @@ class NavigationService {
       },
       {
         id: 5,
-        name: "Calendar",
-        path: "/calendar",
-        icon: "cilCalendar",
+        name: "Blog",
+        path: "/blog",
+        icon: "cilDescription",
         order: 5,
         is_active: true,
         source_type: "static",
@@ -215,9 +225,9 @@ class NavigationService {
       },
       {
         id: 6,
-        name: "User Profile",
-        path: "/profile",
-        icon: "cilShieldAlt",
+        name: "Calendar",
+        path: "/calendar",
+        icon: "cilCalendar",
         order: 6,
         is_active: true,
         source_type: "static",
@@ -225,10 +235,20 @@ class NavigationService {
       },
       {
         id: 7,
+        name: "User Profile",
+        path: "/profile",
+        icon: "cilShieldAlt",
+        order: 7,
+        is_active: true,
+        source_type: "static",
+        children: []
+      },
+      {
+        id: 8,
         name: "에디터",
         path: "/edit",
         icon: "cilPencil",
-        order: 7,
+        order: 8,
         is_active: true,
         source_type: "static",
         children: [
@@ -275,11 +295,11 @@ class NavigationService {
         ]
       },
       {
-        id: 8,
+        id: 9,
         name: "Admin Management",
         path: "/admin",
         icon: "cilSettings",
-        order: 8,
+        order: 9,
         is_active: true,
         source_type: "static",
         children: [

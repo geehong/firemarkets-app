@@ -1,45 +1,51 @@
-import GridShape from "@/components/common/GridShape";
-import ThemeTogglerTwo from "@/components/common/ThemeTogglerTwo";
-import { ThemeProvider } from "@/context/ThemeContext";
-import Image from "next/image";
-import Link from "next/link";
-import React from "react";
+'use client'
+
+import { SessionProvider } from '@/contexts/SessionContext'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ThemeProvider } from '@/context/ThemeContext'
+import { LanguageProvider } from '@/contexts/LanguageContext'
+import { LocalizedDataProvider } from '@/contexts/LocalizedDataContext'
+import { AutoLocalizationProvider } from '@/contexts/AutoLocalizationContext'
+
+// QueryClient 생성
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5분
+      gcTime: 10 * 60 * 1000, // 10분
+      retry: 3,
+      refetchOnWindowFocus: false,
+    },
+  },
+})
 
 export default function AuthLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: React.ReactNode
 }) {
+  console.log('🔐 [AuthLayout] 로그인 페이지 레이아웃 로드됨')
+  console.log('🔐 [AuthLayout] 독립적인 로그인 레이아웃 적용')
+  
   return (
-    <div className="relative p-6 bg-white z-1 dark:bg-gray-900 sm:p-0">
-      <ThemeProvider>
-        <div className="relative flex lg:flex-row w-full h-screen justify-center flex-col dark:bg-gray-900 sm:p-0">
-          {children}
-          <div className="lg:w-1/2 w-full h-full bg-gradient-to-br from-blue-600 to-purple-700 lg:grid items-center hidden">
-            <div className="relative items-center justify-center flex z-1">
-              {/* Grid Shape for visual appeal */}
-              <GridShape />
-              <div className="flex flex-col items-center max-w-xs">
-                <Link href="/" className="block mb-4">
-                  <div className="text-white text-3xl font-bold">
-                    FireMarkets
-                  </div>
-                </Link>
-                <p className="text-center text-white/80">
-                  Advanced Investment Analytics Platform
-                </p>
-                <p className="text-center text-white/60 text-sm mt-2">
-                  Real-time market data, on-chain insights, and comprehensive asset analysis
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="fixed bottom-6 right-6 z-50 hidden sm:block">
-            <ThemeTogglerTwo />
-          </div>
-        </div>
-      </ThemeProvider>
-    </div>
-  );
+    <html lang="ko">
+      <body className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <QueryClientProvider client={queryClient}>
+          <SessionProvider>
+            <ThemeProvider>
+              <LanguageProvider>
+                <LocalizedDataProvider>
+                  <AutoLocalizationProvider>
+                    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+                      {children}
+                    </div>
+                  </AutoLocalizationProvider>
+                </LocalizedDataProvider>
+              </LanguageProvider>
+            </ThemeProvider>
+          </SessionProvider>
+        </QueryClientProvider>
+      </body>
+    </html>
+  )
 }
-

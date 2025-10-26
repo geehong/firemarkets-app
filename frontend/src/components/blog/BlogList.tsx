@@ -54,61 +54,6 @@ const BlogList: React.FC<BlogListProps> = ({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [totalBlogs, setTotalBlogs] = useState(0)
-  const [currentUser, setCurrentUser] = useState<{ id: number; username: string } | null>(null)
-
-  // JWT 토큰에서 사용자 정보 추출
-  const getCurrentUser = useCallback(() => {
-    try {
-      // JWT 토큰이 쿠키에 있는지 확인
-      const cookies = document.cookie.split(';')
-      let token = null
-      
-      for (let cookie of cookies) {
-        const [name, value] = cookie.trim().split('=')
-        if (name === 'access_token' || name === 'token') {
-          token = value
-          break
-        }
-      }
-      
-      if (token) {
-        // JWT 토큰 디코딩 (간단한 방법)
-        try {
-          const payload = JSON.parse(atob(token.split('.')[1]))
-          setCurrentUser({
-            id: payload.user_id || payload.id || 1, // 임시로 기본값 설정
-            username: payload.username || payload.sub || 'admin'
-          })
-          console.log('👤 Current user from JWT:', payload)
-          return payload
-        } catch (jwtError) {
-          console.error('Error decoding JWT:', jwtError)
-        }
-      }
-      
-      // JWT 토큰이 없으면 로컬 스토리지에서 확인
-      const userData = localStorage.getItem('currentUser')
-      if (userData) {
-        const user = JSON.parse(userData)
-        setCurrentUser({
-          id: user.id,
-          username: user.username
-        })
-        console.log('👤 Current user from localStorage:', user)
-        return user
-      }
-    } catch (error) {
-      console.error('Error getting current user:', error)
-    }
-    
-    // 임시로 기본 사용자 설정 (개발용)
-    setCurrentUser({
-      id: 1,
-      username: 'admin'
-    })
-    console.log('👤 Using default user for development')
-    return null
-  }, [])
 
   const fetchBlogs = useCallback(async () => {
     setLoading(true)
@@ -119,7 +64,8 @@ const BlogList: React.FC<BlogListProps> = ({
         page: '1',
         page_size: '20',
         post_type: 'post',
-        status: 'published'
+        status: 'published',
+        visibility: 'public' // 퍼블릭 포스트만 가져오기
       })
       const BACKEND_BASE = process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'
       const url = `${BACKEND_BASE}/posts/?${params}`
@@ -143,48 +89,19 @@ const BlogList: React.FC<BlogListProps> = ({
     }
   }, [localizeArray])
 
-  // Edit 버튼 클릭 핸들러
-  const handleEdit = (blogId: number) => {
-    router.push(`/blog/editor/${blogId}`)
-  }
 
   // View 버튼 클릭 핸들러
   const handleView = (slug: string) => {
     router.push(`/blog/${slug}`)
   }
 
-  // 작성자 권한 확인 함수
-  const canEdit = (blog: Blog): boolean => {
-    // 임시로 모든 사용자에게 Edit 권한 부여 (개발용)
-    const allowAllEdit = true // 이 값을 false로 변경하면 정상적인 권한 확인
-    
-    if (allowAllEdit) {
-      console.log('🔒 Development mode: All users can edit')
-      return true
-    }
-    
-    if (!currentUser) {
-      console.log('🔒 No current user, cannot edit')
-      return false
-    }
-    
-    const isAuthor = blog.author?.id === currentUser.id
-    console.log('🔒 Edit permission check:', {
-      currentUserId: currentUser.id,
-      blogAuthorId: blog.author?.id,
-      canEdit: isAuthor,
-      blogTitle: typeof blog.title === 'string' ? blog.title : blog.title?.en || blog.title?.ko
-    })
-    return isAuthor
-  }
 
-  // 컴포넌트 마운트 시 API 호출 및 사용자 정보 가져오기
+  // 컴포넌트 마운트 시 API 호출
   useEffect(() => {
     if (initialBlogs.length === 0) {
       fetchBlogs()
     }
-    getCurrentUser()
-  }, [fetchBlogs, getCurrentUser])
+  }, [fetchBlogs])
 
   if (error) {
     return (
@@ -233,7 +150,12 @@ const BlogList: React.FC<BlogListProps> = ({
                 <div key={blog.id} className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
                   <div className="flex justify-between items-start mb-2">
                     <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                      {typeof blog.title === 'string' ? blog.title : blog.title?.en || blog.title?.ko || 'Untitled'}
+                      <button
+                        onClick={() => handleView(blog.slug)}
+                        className="text-left hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                      >
+                        {typeof blog.title === 'string' ? blog.title : blog.title?.en || blog.title?.ko || 'Untitled'}
+                      </button>
                     </h2>
                     <span className={`px-2 py-1 text-xs rounded-full ${
                       blog.status === 'published' 
@@ -251,22 +173,19 @@ const BlogList: React.FC<BlogListProps> = ({
                   )}
                   
                   <div className="flex justify-between items-center text-xs text-gray-500 dark:text-gray-400">
-                    <span>{new Date(blog.created_at).toLocaleDateString()}</span>
+                    <div className="flex items-center gap-4">
+                      <span>{new Date(blog.created_at).toLocaleDateString()}</span>
+                      {blog.author && (
+                        <span>by {blog.author.username}</span>
+                      )}
+                    </div>
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleView(blog.slug)}
-                        className="flex items-center gap-1 px-2 py-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
+                        className="flex items-center gap-1 px-3 py-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors border border-blue-200 dark:border-blue-800"
                       >
-                        👁️ View
+                        👁️ 읽기
                       </button>
-                      {canEdit(blog) && (
-                        <button
-                          onClick={() => handleEdit(blog.id)}
-                          className="flex items-center gap-1 px-2 py-1 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded transition-colors"
-                        >
-                          ✏️ Edit
-                        </button>
-                      )}
                     </div>
                   </div>
                 </div>
