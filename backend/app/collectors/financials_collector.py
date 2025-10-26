@@ -282,3 +282,4 @@ class FinancialsCollector(BaseCollector):
         except Exception as e:
             self.logging_helper.log_error(f"Error collecting financial data for {ticker}: {e}")
             return {"success": False, "error": str(e)}
+
