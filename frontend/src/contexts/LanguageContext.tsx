@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useState, useEffect } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 
 interface LanguageContextType {
   language: 'ko' | 'en'
@@ -24,22 +24,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [translations, setTranslations] = useState<Record<string, any>>({})
   const [isLoading, setIsLoading] = useState(false)
 
-  // 초기 로드 시 localStorage에서 언어 설정
-  useEffect(() => {
-    const storedLang = localStorage.getItem('language') as 'ko' | 'en'
-    if (storedLang && (storedLang === 'ko' || storedLang === 'en')) {
-      console.log('[LanguageContext] Loading stored language:', storedLang)
-      setLanguage(storedLang)
-    }
-  }, [])
-
-  // 언어 변경 시 메뉴 번역 로드
-  useEffect(() => {
-    localStorage.setItem('language', language)
-    loadMenuTranslations(language)
-  }, [language])
-
-  const loadMenuTranslations = async (lang: string) => {
+  const loadMenuTranslations = useCallback(async (lang: string) => {
     setIsLoading(true)
     try {
       const BACKEND_BASE = process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'
@@ -119,7 +104,22 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [])
+
+  // 초기 로드 시 localStorage에서 언어 설정
+  useEffect(() => {
+    const storedLang = localStorage.getItem('language') as 'ko' | 'en'
+    if (storedLang && (storedLang === 'ko' || storedLang === 'en')) {
+      console.log('[LanguageContext] Loading stored language:', storedLang)
+      setLanguage(storedLang)
+    }
+  }, [])
+
+  // 언어 변경 시 메뉴 번역 로드
+  useEffect(() => {
+    localStorage.setItem('language', language)
+    loadMenuTranslations(language)
+  }, [language, loadMenuTranslations])
 
   const t = (key: string, fallback?: string): string => {
     return translations[key] || fallback || key

@@ -42,7 +42,7 @@ class NavigationService {
       return [];
     }
 
-    // 로컬 개발 환경에서도 동적 메뉴 사용 (개발 중이므로)
+    // 로컬 개발 환경에서도 동적 메뉴 사용 (권한 필터링을 위해)
     // if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
     //   console.log('navigationService - Local development, returning static menu');
     //   return this.getStaticMenu();
@@ -61,14 +61,11 @@ class NavigationService {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
       
       const BACKEND_BASE = process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'
-      const requestUrl = `${BACKEND_BASE}/navigation/menu?lang=${language}`;
+      const url = `${BACKEND_BASE}/navigation/menu?lang=${language}`;
+      console.log('🔍 [navigationService] Fetching menu from:', url);
+      console.log('🔍 [navigationService] Headers:', headers);
       
-      // console.log('🌐 [NavigationService] 메뉴 API 호출 시작');
-      // console.log('🌐 [NavigationService] 요청 URL:', requestUrl);
-      // console.log('🌐 [NavigationService] 요청 헤더:', headers);
-      // console.log('🌐 [NavigationService] 언어:', language);
-      
-      const response = await axios.get(requestUrl, {
+      const response = await axios.get(url, {
         headers,
         timeout: 15000, // 15초 타임아웃 (모바일 네트워크 고려)
         // withCredentials: true, // 리버스 프록시 CORS 문제로 임시 비활성화
@@ -77,9 +74,8 @@ class NavigationService {
         }
       });
       
-      // console.log('🌐 [NavigationService] API 응답 상태:', response.status);
-      // console.log('🌐 [NavigationService] 응답 데이터:', response.data);
-      
+      console.log('🔍 [navigationService] Response status:', response.status);
+      console.log('🔍 [navigationService] Response data:', response.data);
       return response.data;
     } catch (error: any) {
       console.error('navigationService - Failed to fetch menu structure:', error);
@@ -205,9 +201,9 @@ class NavigationService {
       },
       {
         id: 4,
-        name: "Map",
-        path: "/map",
-        icon: "cilChartPie",
+        name: "Blog",
+        path: "/blog",
+        icon: "cilDescription",
         order: 4,
         is_active: true,
         source_type: "static",
@@ -215,9 +211,9 @@ class NavigationService {
       },
       {
         id: 5,
-        name: "Blog",
-        path: "/blog",
-        icon: "cilDescription",
+        name: "Calendar",
+        path: "/calendar",
+        icon: "cilCalendar",
         order: 5,
         is_active: true,
         source_type: "static",
@@ -225,9 +221,9 @@ class NavigationService {
       },
       {
         id: 6,
-        name: "Calendar",
-        path: "/calendar",
-        icon: "cilCalendar",
+        name: "User Profile",
+        path: "/profile",
+        icon: "cilShieldAlt",
         order: 6,
         is_active: true,
         source_type: "static",
@@ -235,20 +231,10 @@ class NavigationService {
       },
       {
         id: 7,
-        name: "User Profile",
-        path: "/profile",
-        icon: "cilShieldAlt",
-        order: 7,
-        is_active: true,
-        source_type: "static",
-        children: []
-      },
-      {
-        id: 8,
         name: "에디터",
         path: "/edit",
         icon: "cilPencil",
-        order: 8,
+        order: 7,
         is_active: true,
         source_type: "static",
         children: [
@@ -295,11 +281,11 @@ class NavigationService {
         ]
       },
       {
-        id: 9,
+        id: 8,
         name: "Admin Management",
         path: "/admin",
         icon: "cilSettings",
-        order: 9,
+        order: 8,
         is_active: true,
         source_type: "static",
         children: [

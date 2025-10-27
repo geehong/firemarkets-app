@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-// 보호된 경로들 (관리자 페이지)
+// 보호된 경로들
 const protectedPaths = ['/admin']
 
 // 공개 경로들 (인증이 필요하지 않은 경로)
@@ -18,11 +18,6 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/public') ||
     pathname.includes('.')
   ) {
-    return NextResponse.next()
-  }
-
-  // 관리자 로그인 페이지는 보호 로직에서 제외
-  if (pathname === '/admin/signin') {
     return NextResponse.next()
   }
 

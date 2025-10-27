@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { PlusIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { useAutoLocalization } from '@/contexts/AutoLocalizationContext';
-import { useAuth } from '@/contexts/SessionContext';
+import { useAuth } from '@/hooks/useAuthNew';
 import { usePermissions } from '@/hooks/usePermissions';
 import { filterAccessibleBlogs } from '@/utils/ownershipFilter';
 import PermissionGate from '@/components/PermissionGate';
@@ -38,8 +39,9 @@ interface Blog {
 }
 
 const BlogManage: React.FC = () => {
+  const router = useRouter();
   const { localizeArray } = useAutoLocalization();
-  const { user } = useAuth();
+  const { user, isAuthenticated, isAdmin, loading } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPosts, setSelectedPosts] = useState<number[]>([]);
   const [bulkAction, setBulkAction] = useState('delete');
@@ -64,7 +66,7 @@ const BlogManage: React.FC = () => {
       });
       
       // 관리자가 아닌 경우 자신의 글만 필터링
-      if (user?.role !== 'admin' && user?.role !== 'super_admin') {
+      if (!isAdmin) {
         params.append('user_id', user?.id?.toString() || '1');
       }
       
@@ -140,9 +142,34 @@ const BlogManage: React.FC = () => {
     fetchBlogs();
   };
 
+  // 인증 상태 확인
   useEffect(() => {
-    fetchBlogs();
-  }, [fetchBlogs]);
+    if (!loading && !isAuthenticated) {
+      router.push('/admin/signin');
+    }
+  }, [isAuthenticated, loading, router]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchBlogs();
+    }
+  }, [fetchBlogs, isAuthenticated]);
+
+  // 로딩 중이거나 인증되지 않은 경우
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="flex flex-col items-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <div className="mt-3 text-sm text-gray-600">Loading...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return null; // 리다이렉션 중
+  }
 
   return (
     <div className="w-full p-6">
@@ -166,7 +193,7 @@ const BlogManage: React.FC = () => {
             전체[{totalBlogs}] | 발행됨[{publishedCount}] | 초안[{draftCount}] | 임시[0]
           </span>
           <span className="text-xs text-blue-600 dark:text-blue-400">
-            {user?.role === 'admin' || user?.role === 'super_admin' 
+            {isAdmin 
               ? '모든 블로그 표시됨 (관리자 권한)' 
               : '내가 작성한 블로그만 표시됨'
             }
@@ -294,7 +321,7 @@ const BlogManage: React.FC = () => {
                   return (
                     <tr key={blog.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                       <td className="px-4 py-3">
-                        {(user?.role === 'admin' || user?.role === 'super_admin' || blog.author_id === user?.id) && (
+                        {(isAdmin || blog.author_id === user?.id) && (
                           <input
                             type="checkbox"
                             checked={selectedPosts.includes(blog.id)}

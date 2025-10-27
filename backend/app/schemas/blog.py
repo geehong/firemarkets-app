@@ -115,9 +115,9 @@ class PostCreate(PostBase):
 
 class PostUpdate(BaseModel):
     """포스트 업데이트 스키마"""
-    title: Optional[str] = None
+    title: Optional[Union[str, Dict[str, str]]] = None
     slug: Optional[str] = None
-    description: Optional[str] = None
+    description: Optional[Union[str, Dict[str, str]]] = None
     content: Optional[str] = None
     excerpt: Optional[str] = None
     sync_with_asset: Optional[bool] = None

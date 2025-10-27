@@ -8,7 +8,6 @@ import { ThemeProvider } from '@/context/ThemeContext'
 import { LanguageProvider } from '@/contexts/LanguageContext'
 import { LocalizedDataProvider } from '@/contexts/LocalizedDataContext'
 import { AutoLocalizationProvider } from '@/contexts/AutoLocalizationContext'
-import { SessionProvider } from '@/contexts/SessionContext'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import AppHeader from '@/layout/AppHeader'
 import AppSidebar from '@/layout/AppSidebar'
@@ -52,16 +51,6 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   )
 }
 
-// 로그인 페이지용 레이아웃
-function AuthLayoutContent({ children }: { children: React.ReactNode }) {
-  console.log('🔐 [AuthLayout] 로그인 페이지 레이아웃 렌더링');
-  return (
-    <div className="min-h-screen">
-      {children}
-    </div>
-  )
-}
-
 export default function RootLayout({
   children,
 }: {
@@ -71,19 +60,17 @@ export default function RootLayout({
     <html lang="ko">
       <body className={`${inter.className} dark:bg-gray-900`}>
         <QueryClientProvider client={queryClient}>
-          <SessionProvider>
-            <ThemeProvider>
-              <LanguageProvider>
-                <LocalizedDataProvider>
-                  <AutoLocalizationProvider>
-                    <SidebarProvider>
-                      <LayoutContent>{children}</LayoutContent>
-                    </SidebarProvider>
-                  </AutoLocalizationProvider>
-                </LocalizedDataProvider>
-              </LanguageProvider>
-            </ThemeProvider>
-          </SessionProvider>
+          <ThemeProvider>
+            <LanguageProvider>
+              <LocalizedDataProvider>
+                <AutoLocalizationProvider>
+                  <SidebarProvider>
+                    <LayoutContent>{children}</LayoutContent>
+                  </SidebarProvider>
+                </AutoLocalizationProvider>
+              </LocalizedDataProvider>
+            </LanguageProvider>
+          </ThemeProvider>
         </QueryClientProvider>
       </body>
     </html>

@@ -1,5 +1,5 @@
 // frontend/src/hooks/useNavigation.ts
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import navigationService from '../services/navigationService';
 
@@ -26,27 +26,6 @@ export const useNavigation = (language: string = 'ko') => {
   const [isClient, setIsClient] = useState(false);
   const pathname = usePathname();
 
-  const loadMenuItems = useCallback(async () => {
-    // console.log('🧭 [useNavigation] 메뉴 로드 시작');
-    // console.log('🧭 [useNavigation] 언어:', language);
-    // console.log('🧭 [useNavigation] 클라이언트 상태:', typeof window !== 'undefined');
-    
-    try {
-      setLoading(true);
-      setError(null);
-      // console.log('🧭 [useNavigation] navigationService 호출 중...');
-      const items = await navigationService.getMenuStructure(language);
-      // console.log('🧭 [useNavigation] 메뉴 아이템 받음:', items);
-      setMenuItems(items);
-    } catch (err: any) {
-      console.error('🧭 [useNavigation] 메뉴 로드 실패:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-      // console.log('🧭 [useNavigation] 메뉴 로드 완료');
-    }
-  }, [language]);
-
   useEffect(() => {
     // 클라이언트 사이드 감지
     setIsClient(typeof window !== 'undefined');
@@ -60,7 +39,23 @@ export const useNavigation = (language: string = 'ko') => {
       // 서버 사이드에서는 로딩 상태 해제
       setLoading(false);
     }
-  }, [isClient, language, loadMenuItems]);
+  }, [isClient, language]);
+
+  const loadMenuItems = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      console.log('🔍 [useNavigation] Loading menu items for language:', language);
+      const items = await navigationService.getMenuStructure(language);
+      console.log('🔍 [useNavigation] Received menu items:', items);
+      setMenuItems(items);
+    } catch (err: any) {
+      console.error('useNavigation - Failed to load menu items:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const refreshMenus = async () => {
     try {

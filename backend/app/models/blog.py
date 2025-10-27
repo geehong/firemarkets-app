@@ -55,9 +55,9 @@ class Post(Base):
     asset_id = Column(Integer, ForeignKey('assets.asset_id'), nullable=True)
     
     # 기본 정보
-    title = Column(String(200), nullable=False)
+    title = Column(JSON, nullable=False)  # 다국어 지원을 위해 JSON으로 변경
     slug = Column(String(200), unique=True, nullable=False)
-    description = Column(Text, nullable=False)
+    description = Column(JSON, nullable=False)  # 다국어 지원을 위해 JSON으로 변경
     content = Column(Text, nullable=True)  # 영문 content
     content_ko = Column(Text, nullable=True)  # 한글 content
     excerpt = Column(Text, nullable=True)

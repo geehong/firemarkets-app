@@ -1,5 +1,8 @@
 # backend/app/models/__init__.py
 
+# Import Base from database
+from app.core.database import Base
+
 # All models are now consolidated in asset.py
 from .asset import (
     # Core models
@@ -76,6 +79,7 @@ from .blog import (
 
 # Export all models
 __all__ = [
+    "Base",
     # Core models
     "Asset",
     "AssetType",

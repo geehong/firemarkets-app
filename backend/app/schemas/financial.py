@@ -127,4 +127,3 @@ class FinancialStatementAPIResponse(BaseModel):
     data: List[Dict[str, Any]]
     source: str = "SEC EDGAR"
     total_records: int
-

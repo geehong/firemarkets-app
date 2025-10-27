@@ -6,6 +6,7 @@ from app.dependencies.auth_deps import get_current_user
 from app.models.asset import User, TokenBlacklist, AuditLog
 from app.core.security import security_manager
 from app.core.database import get_postgres_db
+from app.services.session_service import session_service
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 import json
@@ -56,13 +57,75 @@ def authenticate_admin_user(username: str, password: str, db: Session, request: 
         db.rollback()
     return user
 
+@router.post("/login")
+async def user_login(
+    credentials: LoginSchema,
+    request: Request,
+    db: Session = Depends(get_postgres_db)
+):
+    """일반 사용자 로그인 - 세션 관리 통합"""
+    try:
+        user = authenticate_admin_user(credentials.username, credentials.password, db, request)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid credentials"
+            )
+
+        # 사용자 활성 상태 확인
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account is inactive"
+            )
+
+        # IP 주소와 User-Agent 추출
+        ip_address = request.client.host if request.client else None
+        user_agent = request.headers.get("user-agent")
+
+        # 세션 생성 (세션 서비스 사용)
+        session_data = session_service.create_session(
+            db=db,
+            user=user,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+
+        # 응답 바디
+        body = {
+            "access_token": session_data["access_token"],
+            "refresh_token": session_data["refresh_token"],
+            "token_type": "bearer",
+            "session_id": session_data["session_id"],
+            "expires_at": session_data["expires_at"],
+            "user": session_data["user"]
+        }
+
+        # 쿠키 설정
+        response_obj = Response(content=json.dumps(body), media_type="application/json")
+        response_obj.set_cookie(
+            key="refresh_token",
+            value=session_data["refresh_token"],
+            httponly=True,
+            secure=True,  # HTTPS에서만
+            samesite="strict",
+            max_age=7 * 24 * 60 * 60  # 7일
+        )
+        return response_obj
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"/auth/login failed: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @router.post("/admin/login")
 async def admin_login(
     credentials: LoginSchema,
     request: Request,
     db: Session = Depends(get_postgres_db)
 ):
-    """관리자 로그인"""
+    """관리자 로그인 - 세션 관리 통합"""
     try:
         user = authenticate_admin_user(credentials.username, credentials.password, db, request)
         if not user:
@@ -78,31 +141,33 @@ async def admin_login(
                 detail="Admin access required"
             )
 
-        # 토큰 생성
-        access_token = security_manager.create_access_token(
-            data={"sub": user.username, "user_id": user.id, "role": user.role}
-        )
-        refresh_token = security_manager.create_refresh_token(
-            data={"sub": user.username, "user_id": user.id}
+        # IP 주소와 User-Agent 추출
+        ip_address = request.client.host if request.client else None
+        user_agent = request.headers.get("user-agent")
+
+        # 세션 생성 (세션 서비스 사용)
+        session_data = session_service.create_session(
+            db=db,
+            user=user,
+            ip_address=ip_address,
+            user_agent=user_agent
         )
 
         # 응답 바디
         body = {
-            "access_token": access_token,
+            "access_token": session_data["access_token"],
+            "refresh_token": session_data["refresh_token"],
             "token_type": "bearer",
-            "user": {
-                "id": user.id,
-                "username": user.username,
-                "role": user.role,
-                "permissions": getattr(user, 'permissions', [])
-            }
+            "session_id": session_data["session_id"],
+            "expires_at": session_data["expires_at"],
+            "user": session_data["user"]
         }
 
         # 쿠키 설정
         response_obj = Response(content=json.dumps(body), media_type="application/json")
         response_obj.set_cookie(
             key="refresh_token",
-            value=refresh_token,
+            value=session_data["refresh_token"],
             httponly=True,
             secure=True,  # HTTPS에서만
             samesite="strict",
@@ -134,70 +199,123 @@ async def admin_logout(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_postgres_db)
 ):
-    """관리자 로그아웃"""
-    # 현재 토큰을 블랙리스트에 추가
-    token = get_current_token(request)  # 현재 토큰 가져오기
-    
-    if token:
-        token_hash = security_manager.hash_token(token)
-        blacklisted_token = TokenBlacklist(
-            token_hash=token_hash,
-            user_id=current_user.id,
-            expires_at=datetime.utcnow() + timedelta(days=1)
-        )
-        try:
-            db.add(blacklisted_token)
-            db.commit()
-        except Exception as e:
-            logger.warning(f"Failed to store token in blacklist: {e}")
-    
-    # 쿠키에서 refresh token 제거
-    response.delete_cookie("refresh_token")
-    
-    # 감사 로그 기록
+    """관리자 로그아웃 - 세션 관리 통합"""
     try:
-        audit_log = AuditLog(
-            user_id=current_user.id,
-            action="logout.success",
-            resource_type="auth",
-            resource_id=str(current_user.id),
-            ip_address=request.client.host if request else None
-        )
-        db.add(audit_log)
-        db.commit()
-    except Exception:
-        pass
-    
-    return {"message": "Successfully logged out"}
+        # 현재 토큰을 블랙리스트에 추가
+        token = get_current_token(request)
+        
+        if token:
+            token_hash = security_manager.hash_token(token)
+            blacklisted_token = TokenBlacklist(
+                token_hash=token_hash,
+                user_id=current_user.id,
+                expires_at=datetime.utcnow() + timedelta(days=1)
+            )
+            try:
+                db.add(blacklisted_token)
+                db.commit()
+            except Exception as e:
+                logger.warning(f"Failed to store token in blacklist: {e}")
+        
+        # 현재 세션 무효화 (토큰에서 세션 ID 추출)
+        try:
+            payload = security_manager.verify_access_token(token) if token else None
+            if payload and payload.get("session_id"):
+                session_service.revoke_session(db, payload["session_id"], current_user.id)
+        except Exception as e:
+            logger.warning(f"Failed to revoke session: {e}")
+        
+        # 쿠키에서 refresh token 제거
+        response.delete_cookie("refresh_token")
+        
+        return {"message": "Successfully logged out"}
+        
+    except Exception as e:
+        logger.error(f"Logout failed: {e}")
+        raise HTTPException(status_code=500, detail="Logout failed")
 
 @router.post("/admin/refresh")
 async def refresh_token(
     refresh_token: str = Cookie(None),
     db: Session = Depends(get_postgres_db)
 ):
-    """Refresh token을 사용하여 새로운 access token 발급"""
+    """Refresh token을 사용하여 새로운 access token 발급 - 세션 관리 통합"""
     if not refresh_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Refresh token required"
         )
     
-    payload = security_manager.verify_refresh_token(refresh_token)
-    if not payload:
+    # 세션 서비스를 통한 토큰 갱신
+    result = session_service.refresh_access_token(db, refresh_token)
+    if not result:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token"
+            detail="Invalid or expired refresh token"
         )
     
-    user = db.query(User).filter(User.id == payload.get("user_id")).first()
-    if not user or not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive"
-        )
-    
-    new_access_token = security_manager.create_access_token(
-        data={"sub": user.username, "user_id": user.id, "role": user.role}
-    )
-    
-    return {"access_token": new_access_token, "token_type": "bearer"} 
+    return result
+
+
+# 세션 관리 API 추가
+@router.get("/sessions")
+async def get_user_sessions(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_postgres_db)
+):
+    """사용자의 활성 세션 목록 조회"""
+    try:
+        sessions = session_service.get_user_sessions(db, current_user.id)
+        return {"sessions": sessions}
+    except Exception as e:
+        logger.error(f"Failed to get user sessions: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get sessions")
+
+
+@router.delete("/sessions/{session_id}")
+async def revoke_session(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_postgres_db)
+):
+    """특정 세션 무효화"""
+    try:
+        success = session_service.revoke_session(db, session_id, current_user.id)
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found or already revoked"
+            )
+        return {"message": "Session revoked successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to revoke session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to revoke session")
+
+
+@router.delete("/sessions")
+async def revoke_all_sessions(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_postgres_db)
+):
+    """사용자의 모든 세션 무효화"""
+    try:
+        revoked_count = session_service.revoke_all_user_sessions(db, current_user.id)
+        return {"message": f"Revoked {revoked_count} sessions"}
+    except Exception as e:
+        logger.error(f"Failed to revoke all sessions: {e}")
+        raise HTTPException(status_code=500, detail="Failed to revoke sessions")
+
+
+@router.post("/sessions/cleanup")
+async def cleanup_expired_sessions(
+    db: Session = Depends(get_postgres_db)
+):
+    """만료된 세션 정리 (관리자용)"""
+    try:
+        cleaned_count = session_service.cleanup_expired_sessions(db)
+        return {"message": f"Cleaned up {cleaned_count} expired sessions"}
+    except Exception as e:
+        logger.error(f"Failed to cleanup expired sessions: {e}")
+        raise HTTPException(status_code=500, detail="Failed to cleanup sessions") 

@@ -13,20 +13,40 @@ router = APIRouter()
 
 def check_menu_permissions(menu_dict: Dict[str, Any], user_role: str) -> bool:
     """메뉴의 권한을 확인합니다."""
-    menu_metadata = menu_dict.get('menu_metadata', {})
+    # menu_metadata와 metadata 둘 다 확인
+    menu_metadata = menu_dict.get('menu_metadata', {}) or menu_dict.get('metadata', {})
     if not menu_metadata:
         return True  # 권한 설정이 없으면 모든 사용자에게 허용
     
-    permissions = menu_metadata.get('permissions', [])
+    # 새로운 권한 구조 확인
+    permissions = menu_metadata.get('permissions', {})
     if not permissions:
         return True  # 권한 설정이 없으면 모든 사용자에게 허용
+    
+    # 퍼블릭 메뉴는 모든 사용자 접근 가능
+    if permissions.get('access_level') == 'public':
+        return True
+    
+    # guest 사용자는 퍼블릭 메뉴만 접근 가능
+    if user_role == 'guest':
+        return permissions.get('access_level') == 'public'
     
     # super_admin은 모든 권한 통과
     if user_role == 'super_admin':
         return True
     
-    # 사용자 role이 permissions에 포함되어 있는지 확인
-    return user_role in permissions
+    # 제한된 메뉴는 역할 확인
+    required_roles = permissions.get('roles', [])
+    if not required_roles:
+        return True  # 역할 제한이 없으면 접근 허용
+    
+    # 사용자 role이 필요한 역할에 포함되는지 확인
+    has_access = user_role in required_roles
+    
+    # 디버깅 로그
+    print(f"DEBUG: Menu {menu_dict.get('name', 'Unknown')} - User: {user_role}, Required: {required_roles}, Access: {has_access}")
+    
+    return has_access
 
 
 def filter_menus_by_permissions(menus: List[Dict[str, Any]], user_role: str) -> List[Dict[str, Any]]:
@@ -85,6 +105,7 @@ def build_menu_tree(menus: List[Menu]) -> List[Dict[str, Any]]:
 @router.get("/menu", response_model=List[Dict[str, Any]])
 def get_menu_structure(
     lang: str = Query("ko", description="언어 코드 (ko, en)"),
+    current_user: Optional[User] = Depends(get_current_user_optional),
     db: Session = Depends(get_postgres_db)
 ):
     """
@@ -97,10 +118,17 @@ def get_menu_structure(
         # 계층 구조로 변환
         menu_tree = build_menu_tree(all_menus)
         
-        # 언어별 메뉴 이름 적용
-        localized_menu_tree = apply_language_to_menus(menu_tree, lang)
+        # 사용자 권한에 따라 메뉴 필터링
+        if current_user:
+            user_role = current_user.role
+            filtered_menu_tree = filter_menus_by_permissions(menu_tree, user_role)
+        else:
+            # 로그인하지 않은 사용자는 퍼블릭 메뉴만
+            filtered_menu_tree = filter_menus_by_permissions(menu_tree, 'guest')
         
-        # 모든 사용자에게 모든 메뉴 표시 (공개 API)
+        # 언어별 메뉴 이름 적용
+        localized_menu_tree = apply_language_to_menus(filtered_menu_tree, lang)
+        
         return localized_menu_tree
         
     except Exception as e:

@@ -162,9 +162,9 @@ export function useAuth() {
   // 관리자 여부 확인
   const isAdmin = authState.user?.role === 'admin' || authState.user?.role === 'super_admin'
 
-  // 초기 인증 상태 확인
+  // 초기 인증 상태 확인 (비활성화 - useAuthNew 사용)
   useEffect(() => {
-    checkAuth()
+    // checkAuth() // useAuthNew로 대체됨
   }, [checkAuth])
 
   return {

@@ -43,7 +43,7 @@ class SecurityManager:
             return payload
         except jwt.ExpiredSignatureError:
             return None
-        except jwt.JWTError:
+        except jwt.exceptions.DecodeError:
             return None
     
     def hash_token(self, token: str) -> str:

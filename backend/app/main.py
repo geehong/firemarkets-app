@@ -1,5 +1,6 @@
 # app/main.py
 import asyncio
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import auth
@@ -14,7 +15,10 @@ from app.models.user import User
 from app.models.session import UserSession, TokenBlacklist, AuditLog
 from app.core.websocket import sio
 from app.core.config import load_and_set_global_configs, initialize_bitcoin_asset_id
+from app.services.session_cleanup_scheduler import session_cleanup_scheduler
 import socketio
+
+logger = logging.getLogger(__name__)
 
 # 전역 설정 로드
 load_and_set_global_configs()
@@ -60,8 +64,8 @@ app.add_middleware(
 # Socket.IO 애플리케이션 생성
 socket_app = socketio.ASGIApp(sio, app)
 
-# 라우터 등록
-app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+# 인증 API 엔드포인트
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 
 # v1 API 엔드포인트들
 app.include_router(realtime.router, prefix="/api/v1/realtime", tags=["realtime"])
@@ -93,3 +97,6 @@ async def health_check():
 
 # Socket.IO 애플리케이션을 메인 앱으로 설정
 app = socket_app
+
+# 세션 정리 스케줄러는 별도로 시작 (현재는 비활성화)
+# asyncio.create_task(session_cleanup_scheduler.start())

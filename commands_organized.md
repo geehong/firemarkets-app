@@ -241,7 +241,7 @@ docker-compose logs websocket_orchestrator --tail 50 -f | grep -Ei "connection f
 docker logs fire_markets_websocket_orchestrator --tail 20 | grep -A 5 -B 5 "connection failed"
 
 # Finnhub 메시지 로그
-docker-compose logs websocket_orchestrator --since 24h | grep -E "(finnhub.*received|finnhub.*message|finnhub.*📨)" | head -20
+docker-compose logs websocket_orchestrator --since 24h | grep -E "(finnhub.*received|finnhub.*message|finnhub.*📨)" | head -**20**
 
 docker-compose logs websocket_orchestrator --tail 50 -f | grep -E "(enabled status|consumer is disabled|Consumer classes registered|No active consumers)"
 

@@ -1,5 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Path
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
 from sqlalchemy.orm import Session
 from app.core.database import get_postgres_db
 from app.crud.blog import post, post_category, post_tag, post_comment, post_product, post_chart
@@ -11,6 +11,12 @@ from app.schemas.blog import (
     PostSyncRequest, PostSyncResponse, PostStatsResponse
 )
 from app.models.blog import Post, PostCategory, PostTag, PostComment
+from app.models.asset import User
+from app.dependencies.auth_deps import get_current_user, get_current_user_optional
+from app.services.posts_service import posts_service
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -30,6 +36,7 @@ async def get_posts(
     search: Optional[str] = Query(None, description="검색어"),
     category: Optional[str] = Query(None, description="카테고리 필터"),
     tag: Optional[str] = Query(None, description="태그 필터"),
+    current_user: Optional[User] = Depends(get_current_user_optional),
     db: Session = Depends(get_postgres_db)
 ):
     """포스트 목록 조회 (필터링 지원)"""
@@ -145,15 +152,23 @@ async def get_post_by_slug(
 @router.post("/", response_model=PostResponse)
 async def create_post(
     post_data: PostCreate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_postgres_db)
 ):
-    """포스트 생성"""
+    """포스트 생성 (인증 필요)"""
     # 슬러그 중복 확인
     existing_post = post.get_by_slug(db=db, slug=post_data.slug)
     if existing_post:
         raise HTTPException(status_code=400, detail="Slug already exists")
 
+    # 작성자 ID 설정
+    post_data.author_id = current_user.id
+    
     post_obj = post.create(db=db, obj_in=post_data)
+    
+    # 생성된 포스트에 기본 권한 설정
+    posts_service.set_default_permissions(post_obj.id, current_user.id, db)
+    
     return post_obj
 
 
@@ -161,12 +176,20 @@ async def create_post(
 async def update_post(
     post_id: int = Path(..., description="포스트 ID"),
     post_data: PostUpdate = None,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_postgres_db)
 ):
-    """포스트 수정"""
+    """포스트 수정 (작성자만 수정 가능)"""
     post_obj = post.get(db=db, id=post_id)
     if not post_obj:
         raise HTTPException(status_code=404, detail="Post not found")
+
+    # 권한 체크: 작성자 또는 관리자만 수정 가능
+    if not posts_service.can_user_edit_post(post_id, current_user, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to edit this post"
+        )
 
     # 슬러그 중복 확인 (다른 포스트와 중복되지 않는지)
     if post_data.slug and post_data.slug != post_obj.slug:
@@ -181,12 +204,20 @@ async def update_post(
 @router.delete("/{post_id}")
 async def delete_post(
     post_id: int = Path(..., description="포스트 ID"),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_postgres_db)
 ):
-    """포스트 삭제"""
+    """포스트 삭제 (작성자만 삭제 가능)"""
     post_obj = post.get(db=db, id=post_id)
     if not post_obj:
         raise HTTPException(status_code=404, detail="Post not found")
+
+    # 권한 체크: 작성자 또는 관리자만 삭제 가능
+    if not posts_service.can_user_delete_post(post_id, current_user, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to delete this post"
+        )
 
     post.remove(db=db, id=post_id)
     return {"message": "Post deleted successfully"}

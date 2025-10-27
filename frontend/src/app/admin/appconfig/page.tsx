@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/hooks/useAuthNew'
 import { useState, useEffect } from 'react'
 import { useScheduler } from '@/hooks/admin/useScheduler'
 import { useSchedulerLogs } from '@/hooks/admin/useSchedulerLogs'

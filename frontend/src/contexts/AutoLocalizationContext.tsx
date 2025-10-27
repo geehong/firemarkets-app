@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useMemo } from 'react'
+import React, { createContext, useContext, useMemo, useRef } from 'react'
 import { useLanguage } from './LanguageContext'
 
 interface AutoLocalizationContextType {
@@ -12,11 +12,19 @@ const AutoLocalizationContext = createContext<AutoLocalizationContextType | null
 
 export const AutoLocalizationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { language } = useLanguage()
+  
+  // 언어 변경 로그를 한 번만 출력하도록 수정
+  const prevLanguage = useRef<string>()
+  if (prevLanguage.current !== language) {
+    console.log('🔄 [AutoLocalization] Language changed to:', language)
+    prevLanguage.current = language
+  }
 
   const localizeData = useMemo(() => {
     return <T extends Record<string, any>>(data: T): T => {
       if (!data) return data
 
+      console.log('🌐 [AutoLocalization] Processing data for language:', language, data)
 
       const localizedData = { ...data }
 

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/hooks/useAuthNew'
 import AssetsEdit from '@/components/edit/AssetsEdit'
 import OnChainEdit from '@/components/edit/OnChainEdit'
 

@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import { useSidebar } from "../context/SidebarContext";
 import { useNavigation } from "../hooks/useNavigation";
 import { useLanguage } from "../contexts/LanguageContext";
-import { useAuth } from "../contexts/SessionContext";
 import {
   ChevronDownIcon,
   GridIcon,
@@ -23,112 +22,65 @@ type NavItem = {
     path?: string; 
     pro?: boolean; 
     new?: boolean;
-    subItems?: { name: string; path?: string; pro?: boolean; new?: boolean }[];
+    subItems?: { name: string; path: string; pro?: boolean; new?: boolean }[];
   }[];
-};
-
-type MenuItem = {
-  id: number;
-  name: string;
-  path?: string | null;
-  icon?: string;
-  parent_id?: number | null;
-  order: number;
-  is_active: boolean;
-  children?: MenuItem[];
 };
 
 
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const pathname = usePathname();
-  const { language } = useLanguage();
-  const { user, isAuthenticated } = useAuth();
+  const { language, t } = useLanguage();
   const { menuItems, loading, error } = useNavigation(language);
-  
-
-  // Filter menus based on user permissions
-  const filterMenusByPermissions = (menus: MenuItem[]): MenuItem[] => {
-    // console.log('🔍 [AppSidebar] 메뉴 필터링 시작:', { 
-    //   totalMenus: menus.length, 
-    //   isAuthenticated, 
-    //   userRole: user?.role 
-    // });
-    
-    const filtered = menus.filter(menu => {
-      // 퍼블릭 메뉴 (모든 사용자에게 표시)
-      const publicMenus = ['Dashboard', 'OnChain', 'Assets', 'Map', 'Blog', '대시보드', '온체인', '자산', '맵', '지도', '블로그'];
-      if (publicMenus.includes(menu.name)) {
-        // console.log('🔍 [AppSidebar] 퍼블릭 메뉴:', menu.name);
-        return true;
-      }
-
-      // 로그인하지 않은 사용자는 퍼블릭 메뉴만 표시
-      if (!isAuthenticated || !user) {
-        // console.log('🔍 [AppSidebar] 인증되지 않음, 메뉴 제외:', menu.name);
-        return false;
-      }
-
-      // 관리자 메뉴는 관리자만 표시
-      if (menu.name === 'Admin' || menu.name === '관리자') {
-        const isAdmin = user.role === 'admin' || user.role === 'super_admin';
-        // console.log('🔍 [AppSidebar] 관리자 메뉴:', menu.name, '권한:', isAdmin);
-        return isAdmin;
-      }
-
-      // 기타 메뉴는 기본적으로 표시
-      // console.log('🔍 [AppSidebar] 일반 메뉴:', menu.name);
-      return true;
-    });
-    
-    // console.log('🔍 [AppSidebar] 필터링 결과:', { 
-    //   original: menus.length, 
-    //   filtered: filtered.length 
-    // });
-    
-    return filtered;
-  };
 
   // Convert dynamic menu items to NavItem type
-  const convertDynamicMenuToNavItems = (dynamicItems: MenuItem[]): NavItem[] => {
-    const filteredItems = filterMenusByPermissions(dynamicItems);
-    return filteredItems
+  const convertDynamicMenuToNavItems = (dynamicItems: any[]): NavItem[] => {
+    console.log('🔍 [AppSidebar] Converting dynamic menu items:', dynamicItems);
+    
+    return dynamicItems
       .filter(item => item.is_active)
       .sort((a, b) => a.order - b.order)
-      .map((item) => ({
-        name: item.name,
-        path: item.path || undefined, // Convert null to undefined for cleaner handling
-        icon: <GridIcon />, // Default icon
-        subItems: item.children && item.children.length > 0 
-          ? item.children
-              .filter((child) => child.is_active)
-              .sort((a, b) => a.order - b.order)
-              .map((child) => ({
-                name: child.name,
-                path: child.path || undefined, // Convert null to undefined for cleaner handling
-                pro: false,
-                new: false,
-                subItems: child.children && child.children.length > 0
-                  ? child.children
-                      .filter((grandChild) => grandChild.is_active)
-                      .sort((a, b) => a.order - b.order)
-                      .map((grandChild) => ({
-                        name: grandChild.name,
-                        path: grandChild.path || undefined, // Convert null to undefined for cleaner handling
-                        pro: false,
-                        new: false
-                      }))
-                  : undefined
-              }))
-          : undefined
-      }));
+      .map(item => {
+        console.log(`🔍 [AppSidebar] Processing menu item: ${item.name} (${item.id})`);
+        return {
+          name: item.name,
+          path: item.path,
+          icon: <GridIcon />, // Default icon
+          subItems: item.children && item.children.length > 0 
+            ? item.children
+                .filter((child: any) => child.is_active)
+                .sort((a: any, b: any) => a.order - b.order)
+                .map((child: any) => {
+                  console.log(`🔍 [AppSidebar] Processing submenu item: ${child.name} (${child.id})`);
+                  return {
+                    name: child.name,
+                    path: child.path,
+                    pro: false,
+                    new: false,
+                    subItems: child.children && child.children.length > 0
+                      ? child.children
+                          .filter((grandChild: any) => grandChild.is_active)
+                          .sort((a: any, b: any) => a.order - b.order)
+                          .map((grandChild: any) => ({
+                            name: grandChild.name,
+                            path: grandChild.path,
+                            pro: false,
+                            new: false
+                          }))
+                      : undefined
+                  };
+                })
+            : undefined
+        };
+      });
   };
 
   // Use dynamic menu items
   const dynamicNavItems = convertDynamicMenuToNavItems(menuItems);
+  console.log('🔍 [AppSidebar] Final dynamic nav items:', dynamicNavItems);
   
-  
-  const finalNavItems = dynamicNavItems;
+  const finalNavItems = [...dynamicNavItems];
+  console.log('🔍 [AppSidebar] Final nav items for rendering:', finalNavItems);
 
   const renderMenuItems = (
     navItems: NavItem[],
@@ -179,7 +131,7 @@ const AppSidebar: React.FC = () => {
               )}
             </div>
           ) : (
-            nav.path ? (
+            nav.path && (
               <Link
                 href={nav.path}
                 className={`menu-item group ${
@@ -199,7 +151,7 @@ const AppSidebar: React.FC = () => {
                   <span className={`menu-item-text`}>{nav.name}</span>
                 )}
               </Link>
-            ) : null
+            )
           )}
           {nav.subItems && (isExpanded || isHovered || isMobileOpen) && (
             <div
@@ -356,7 +308,6 @@ const AppSidebar: React.FC = () => {
   } | null>(null);
   const [openSubSubmenu, setOpenSubSubmenu] = useState<string | null>(null);
   
-  
   const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>(
     {}
   );
@@ -406,7 +357,7 @@ const AppSidebar: React.FC = () => {
     if (!subSubmenuMatched) {
       // Don't close manually opened sub-submenu
     }
-  }, [pathname, isActive, finalNavItems]);
+  }, [pathname, isActive]);
 
   useEffect(() => {
     // Set the height of the submenu items when the submenu is opened
