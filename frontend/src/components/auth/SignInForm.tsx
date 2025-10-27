@@ -17,7 +17,7 @@ export default function SignInForm() {
   
   const router = useRouter();
   const searchParams = useSearchParams();
-  const from = searchParams.get('from') || '/admin/appconfig';
+  const from = searchParams.get('from') || '/admin';
   const { login, loading, error } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {

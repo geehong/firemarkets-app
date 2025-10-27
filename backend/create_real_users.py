@@ -16,6 +16,7 @@ def create_real_users():
     """실제 사용자들 생성"""
     db = next(get_postgres_db())
     
+    
     try:
         # 기존 admin 사용자 삭제
         admin_user = db.query(User).filter(User.username == "admin").first()

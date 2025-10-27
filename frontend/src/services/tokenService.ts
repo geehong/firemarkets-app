@@ -21,11 +21,11 @@ interface RefreshTokenResponse {
 }
 
 class TokenService {
-  private readonly ACCESS_TOKEN_KEY = 'accessToken'
-  private readonly REFRESH_TOKEN_KEY = 'refreshToken'
+  private readonly ACCESS_TOKEN_KEY = 'access_token'
+  private readonly REFRESH_TOKEN_KEY = 'refresh_token'
   private readonly USER_KEY = 'user'
-  private readonly EXPIRES_AT_KEY = 'expiresAt'
-  private readonly SESSION_ID_KEY = 'sessionId'
+  private readonly EXPIRES_AT_KEY = 'expires_at'
+  private readonly SESSION_ID_KEY = 'session_id'
 
   // 토큰 저장
   saveTokens(tokenData: TokenData): void {

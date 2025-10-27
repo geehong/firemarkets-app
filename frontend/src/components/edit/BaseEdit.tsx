@@ -283,7 +283,7 @@ export default function BaseEdit({
     setFormData(prev => ({
       ...prev,
       [field]: {
-        ...prev[field],
+        ...(prev[field] || { ko: '', en: '' }),
         [activeLanguage]: value
       }
     }))
@@ -456,7 +456,7 @@ export default function BaseEdit({
               <div className="p-6 border-b">
                 <input
                   type="text"
-                  value={formData.title[activeLanguage]}
+                  value={formData.title?.[activeLanguage] || ''}
                   onChange={(e) => updateMultilingualField('title', e.target.value)}
                   className="w-full text-2xl font-semibold border-none outline-none"
                   placeholder="제목을 입력하세요..."
@@ -476,7 +476,7 @@ export default function BaseEdit({
                   />
                   <button
                     type="button"
-                    onClick={() => updateFormData('slug', generateSlug(formData.title[activeLanguage]))}
+                    onClick={() => updateFormData('slug', generateSlug(formData.title?.[activeLanguage] || ''))}
                     className="text-sm text-blue-600 hover:text-blue-800"
                   >
                     자동 생성
@@ -487,7 +487,7 @@ export default function BaseEdit({
               {/* 요약 */}
               <div className="p-6 border-b">
                 <textarea
-                  value={formData.excerpt[activeLanguage]}
+                  value={formData.excerpt?.[activeLanguage] || ''}
                   onChange={(e) => updateMultilingualField('excerpt', e.target.value)}
                   rows={3}
                   className="w-full border-none outline-none resize-none"

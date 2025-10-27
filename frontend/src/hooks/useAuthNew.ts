@@ -42,30 +42,39 @@ export function useAuth() {
       case 'login':
         console.log('🔄 Login event received, checking user role for redirect')
         syncSessionState()
-        // 사용자 역할에 따라 적절한 페이지로 리다이렉션
-        const userRole = event.data?.role
-        if (userRole === 'admin' || userRole === 'super_admin') {
-          router.push('/admin/appconfig')
-          console.log('✅ Redirected to /admin/appconfig (admin user)')
-        } else {
-          router.push('/') // 일반 사용자는 메인 페이지로
-          console.log('✅ Redirected to / (regular user)')
-        }
-        router.refresh()
+        
+        // 로그인 확인 후 리다이렉션
+        // setTimeout(() => {
+        //   const userRole = event.data?.role
+        //   if (userRole === 'super_admin') {
+        //     console.log('✅ Redirecting to /admin (super_admin)')
+        //     window.location.href = '/admin'
+        //   } else if (userRole === 'admin') {
+        //     console.log('✅ Redirecting to /admin (admin)')
+        //     window.location.href = '/admin'
+        //   } else {
+        //     console.log('✅ Redirecting to /blog (regular user)')
+        //     window.location.href = '/blog'
+        //   }
+        // }, 100) // 100ms 지연으로 상태 업데이트 완료 대기
         break
       case 'logout':
         console.log('🔄 Logout event received, redirecting to main page')
         syncSessionState()
-        // 로그아웃 시 메인 페이지로 리다이렉션
-        router.push('/')
-        console.log('✅ Redirected to / (logout)')
+        // 로그아웃 확인 후 리다이렉션
+        // setTimeout(() => {
+        //   console.log('✅ Redirecting to / (logout)')
+        //   window.location.href = '/'
+        // }, 100)
         break
       case 'session_expired':
         console.log('🔄 Session expired, redirecting to main page')
         syncSessionState()
         // 세션 만료 시에도 메인 페이지로 리다이렉션
-        router.push('/')
-        console.log('✅ Redirected to / (session expired)')
+        // setTimeout(() => {
+        //   console.log('✅ Redirecting to / (session expired)')
+        //   window.location.href = '/'
+        // }, 100)
         break
       case 'token_refresh':
         console.log('Token refreshed successfully')

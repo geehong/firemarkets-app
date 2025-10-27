@@ -1,4 +1,5 @@
 # backend/app/api/v1/endpoints/navigation.py
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import asc, text
@@ -9,6 +10,7 @@ from ....dependencies.auth_deps import get_current_user_optional
 from ....models.asset import User
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def check_menu_permissions(menu_dict: Dict[str, Any], user_role: str) -> bool:
@@ -44,7 +46,7 @@ def check_menu_permissions(menu_dict: Dict[str, Any], user_role: str) -> bool:
     has_access = user_role in required_roles
     
     # 디버깅 로그
-    print(f"DEBUG: Menu {menu_dict.get('name', 'Unknown')} - User: {user_role}, Required: {required_roles}, Access: {has_access}")
+    logger.info(f"DEBUG: Menu {menu_dict.get('name', 'Unknown')} - User: {user_role}, Required: {required_roles}, Access: {has_access}")
     
     return has_access
 
@@ -114,17 +116,29 @@ def get_menu_structure(
     try:
         # is_active가 true인 모든 메뉴를 플랫하게 조회
         all_menus = db.query(Menu).filter(Menu.is_active == True).order_by(asc(Menu.order)).all()
+        logger.info(f"DEBUG: Total menus from DB: {len(all_menus)}")
+        
+        # Admin과 Components 메뉴 찾기
+        admin_menus = [m for m in all_menus if m.name in ['Admin', '관리자']]
+        components_menus = [m for m in all_menus if m.name in ['Components', '컴포넌트']]
+        logger.info(f"DEBUG: Admin menus found: {len(admin_menus)}")
+        logger.info(f"DEBUG: Components menus found: {len(components_menus)}")
         
         # 계층 구조로 변환
         menu_tree = build_menu_tree(all_menus)
+        logger.info(f"DEBUG: Menu tree built, root menus: {len(menu_tree)}")
         
         # 사용자 권한에 따라 메뉴 필터링
         if current_user:
             user_role = current_user.role
+            logger.info(f"DEBUG: User role: {user_role}, User: {current_user.username}")
             filtered_menu_tree = filter_menus_by_permissions(menu_tree, user_role)
         else:
             # 로그인하지 않은 사용자는 퍼블릭 메뉴만
+            logger.info("DEBUG: No user, using guest role")
             filtered_menu_tree = filter_menus_by_permissions(menu_tree, 'guest')
+        
+        logger.info(f"DEBUG: Filtered menu tree count: {len(filtered_menu_tree)}")
         
         # 언어별 메뉴 이름 적용
         localized_menu_tree = apply_language_to_menus(filtered_menu_tree, lang)

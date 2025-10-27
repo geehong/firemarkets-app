@@ -1,6 +1,7 @@
 import React from 'react'
 import BlogList from '@/components/blog/BlogList'
 import { Metadata } from 'next'
+import BlogManageButton from '@/components/blog/BlogManageButton'
 
 // 동적 렌더링 강제 설정
 export const dynamic = 'force-dynamic'
@@ -41,8 +42,9 @@ export default async function BlogPage() {
   const blogData = await getBlogs()
   
   return (
-    
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <div className="container mx-auto px-4 py-8">
+        <BlogManageButton />
         <BlogList 
           showFilters={true}
           showSearch={true}
@@ -50,6 +52,6 @@ export default async function BlogPage() {
           initialBlogs={blogData.blogs || []}
         />
       </div>
-    
+    </div>
   )
 }

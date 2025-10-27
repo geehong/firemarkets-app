@@ -1,6 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from app.core.database import get_postgres_db
 from app.crud.blog import post, post_category, post_tag, post_comment, post_product, post_chart
 from app.schemas.blog import (
@@ -32,10 +33,11 @@ async def get_posts(
     page: int = Query(1, ge=1, description="페이지 번호"),
     page_size: int = Query(20, ge=1, le=100, description="페이지당 항목 수"),
     post_type: Optional[str] = Query(None, description="포스트 타입 필터"),
-    status: Optional[str] = Query("published", description="상태 필터"),
+    status: Optional[str] = Query(None, description="상태 필터"),
     search: Optional[str] = Query(None, description="검색어"),
     category: Optional[str] = Query(None, description="카테고리 필터"),
     tag: Optional[str] = Query(None, description="태그 필터"),
+    author_id: Optional[int] = Query(None, description="작성자 ID 필터"),
     current_user: Optional[User] = Depends(get_current_user_optional),
     db: Session = Depends(get_postgres_db)
 ):
@@ -52,6 +54,11 @@ async def get_posts(
         
         if status:
             query = query.filter(Post.status == status)
+        
+        if author_id:
+            logger.info(f"Filtering by author_id: {author_id}")
+            query = query.filter(Post.author_id == author_id)
+            logger.info(f"Query after author_id filter: {query}")
             
         if search:
             query = query.filter(
@@ -67,7 +74,6 @@ async def get_posts(
                 query = query.filter(Post.category_id == category_id)
             except ValueError:
                 # category가 숫자가 아닌 경우 name으로 검색
-                from app.models.blog import PostCategory
                 query = query.join(PostCategory).filter(PostCategory.name.ilike(f"%{category}%"))
         
         if tag:
@@ -86,6 +92,28 @@ async def get_posts(
         # 응답 데이터 구성
         posts_data = []
         for post_obj in posts_list:
+            # 작성자 정보 조회
+            author = None
+            if post_obj.author_id:
+                author = db.query(User).filter(User.id == post_obj.author_id).first()
+            
+            # 카테고리 정보 조회
+            category = None
+            if post_obj.category_id:
+                category = db.query(PostCategory).filter(PostCategory.id == post_obj.category_id).first()
+            
+            # 태그 정보 조회 (blog_post_tags 테이블 사용)
+            tags = []
+            if post_obj.id:
+                # Raw SQL로 태그 조회
+                tag_result = db.execute(
+                    text("SELECT pt.id, pt.name, pt.slug FROM post_tags pt "
+                         "JOIN blog_post_tags bpt ON pt.id = bpt.tag_id "
+                         "WHERE bpt.blog_id = :blog_id"),
+                    {"blog_id": post_obj.id}
+                )
+                tags = [{"id": row[0], "name": row[1], "slug": row[2]} for row in tag_result.fetchall()]
+            
             post_dict = {
                 "id": post_obj.id,
                 "title": post_obj.title,
@@ -100,7 +128,19 @@ async def get_posts(
                 "view_count": post_obj.view_count,
                 "created_at": post_obj.created_at,
                 "updated_at": post_obj.updated_at,
-                "published_at": post_obj.published_at
+                "published_at": post_obj.published_at,
+                "author_id": post_obj.author_id,
+                "author": {
+                    "id": author.id,
+                    "username": author.username,
+                    "email": author.email
+                } if author else None,
+                "category": {
+                    "id": category.id,
+                    "name": category.name,
+                    "slug": category.slug
+                } if category else None,
+                "tags": tags
             }
             posts_data.append(post_dict)
 

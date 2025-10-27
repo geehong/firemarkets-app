@@ -35,13 +35,10 @@ const AppSidebar: React.FC = () => {
 
   // Convert dynamic menu items to NavItem type
   const convertDynamicMenuToNavItems = (dynamicItems: any[]): NavItem[] => {
-    console.log('🔍 [AppSidebar] Converting dynamic menu items:', dynamicItems);
-    
     return dynamicItems
       .filter(item => item.is_active)
       .sort((a, b) => a.order - b.order)
       .map(item => {
-        console.log(`🔍 [AppSidebar] Processing menu item: ${item.name} (${item.id})`);
         return {
           name: item.name,
           path: item.path,
@@ -51,7 +48,6 @@ const AppSidebar: React.FC = () => {
                 .filter((child: any) => child.is_active)
                 .sort((a: any, b: any) => a.order - b.order)
                 .map((child: any) => {
-                  console.log(`🔍 [AppSidebar] Processing submenu item: ${child.name} (${child.id})`);
                   return {
                     name: child.name,
                     path: child.path,
@@ -77,10 +73,8 @@ const AppSidebar: React.FC = () => {
 
   // Use dynamic menu items
   const dynamicNavItems = convertDynamicMenuToNavItems(menuItems);
-  console.log('🔍 [AppSidebar] Final dynamic nav items:', dynamicNavItems);
   
   const finalNavItems = [...dynamicNavItems];
-  console.log('🔍 [AppSidebar] Final nav items for rendering:', finalNavItems);
 
   const renderMenuItems = (
     navItems: NavItem[],

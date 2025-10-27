@@ -1,11 +1,12 @@
 "use client";
 import Image from "next/image";
 import Link from "next/link";
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { useAuth } from "@/hooks/useAuthNew";
+import { getRandomAvatarForUser, isValidAvatarUrl, type AvatarVariant } from "@/utils/avatarUtils";
 
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
@@ -29,6 +30,52 @@ export default function UserDropdown() {
   const handleLogin = () => {
     closeDropdown();
     router.push('/admin/signin');
+  };
+
+  // 사용자 아바타 결정 로직
+  const userAvatar = useMemo(() => {
+    if (!user) return null;
+    
+    // 사용자 아바타 URL이 유효한지 확인
+    const hasValidAvatar = isValidAvatarUrl(user.avatar_url);
+    
+    if (hasValidAvatar) {
+      return {
+        type: 'image' as const,
+        src: user.avatar_url!,
+        alt: user.username
+      };
+    } else {
+      // 랜덤 아바타 템플릿 사용
+      const avatarVariant = getRandomAvatarForUser(user.id);
+      return {
+        type: 'template' as const,
+        variant: avatarVariant,
+        username: user.username
+      };
+    }
+  }, [user]);
+
+  // 아바타 스타일 정의
+  const getAvatarStyle = (variant: string) => {
+    const styles: Record<string, React.CSSProperties> = {
+      avatar1: { background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+      avatar2: { background: 'linear-gradient(90deg, #f093fb 0%, #f5576c 100%)' },
+      avatar3: { background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)' },
+      avatar4: { background: 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)' },
+      avatar5: { background: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)' },
+      avatar6: { background: '#34495e' },
+      avatar7: { background: '#f39c12', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+      avatar8: { background: 'repeating-linear-gradient(45deg, #e74c3c, #e74c3c 5px, #c0392b 5px, #c0392b 10px)' },
+      avatar9: { background: '#2ecc71', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+      avatar10: { background: '#9b59b6', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+      avatar11: { background: 'linear-gradient(45deg, #ff6b6b, #4ecdc4)' },
+      avatar12: { background: 'linear-gradient(45deg, #a8e6cf, #dcedc1)' },
+      avatar13: { background: 'linear-gradient(45deg, #ffd3a5, #fd9853)' },
+      avatar14: { background: 'linear-gradient(45deg, #667eea, #764ba2)' },
+      avatar15: { background: 'linear-gradient(45deg, #f093fb, #f5576c)' }
+    };
+    return styles[variant] || styles.avatar1;
   };
 
   // 로딩 중이거나 인증되지 않은 경우 로그인 버튼 표시
@@ -66,12 +113,33 @@ export default function UserDropdown() {
         className="flex items-center text-gray-700 dark:text-gray-400 dropdown-toggle"
       >
         <span className="mr-3 overflow-hidden rounded-full h-11 w-11">
-          <Image
-            width={44}
-            height={44}
-            src="/images/user/adminavatar.png"
-            alt="User"
-          />
+          {userAvatar?.type === 'image' ? (
+            <Image
+              width={44}
+              height={44}
+              src={userAvatar.src}
+              alt={userAvatar.alt}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div 
+              className="w-full h-full rounded-full flex items-center justify-center"
+              style={getAvatarStyle(userAvatar?.variant || 'avatar1')}
+              title={userAvatar?.username}
+            >
+              {userAvatar?.variant === 'avatar7' && '😊'}
+              {userAvatar?.variant === 'avatar10' && '⭐'}
+              {userAvatar?.variant === 'avatar9' && (
+                <div className="w-6 h-6 bg-white rounded-full" />
+              )}
+              {userAvatar?.variant === 'avatar6' && (
+                <>
+                  <div className="absolute w-3 h-3 bg-blue-500 rounded-sm top-3 left-2.5" />
+                  <div className="absolute w-3 h-3 bg-blue-500 rounded-sm top-3 right-2.5" />
+                </>
+              )}
+            </div>
+          )}
         </span>
 
         <span className="block mr-1 font-medium text-theme-sm">{user.username}</span>

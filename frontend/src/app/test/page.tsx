@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRealtimePrices, useBroadcastData } from '../../hooks/useSocket';
 import SocketDebugger from '../../components/debug/SocketDebugger';
 import NetworkTester from '../../components/debug/NetworkTester';
+import { RealtimePriceWidget, PriceWidgetGrid, MiniPriceWidget } from '../../components/widget';
 
 // 컴포넌트 타입 정의
 interface ChartComponent {
@@ -38,7 +39,7 @@ const MiniPriceCommoditiesChart: ChartComponent = ({ ticker, price, volume, time
   </div>
 );
 
-// 그룹 정의
+// 그룹 정의 (기존 차트용)
 const groupDefs = [
   {
     title: 'Crypto (Live Broadcasting)',
@@ -54,6 +55,25 @@ const groupDefs = [
     title: 'Commodities (No Live Data)',
     items: ['GCUSD', 'SIUSD'],
     comp: MiniPriceCommoditiesChart
+  }
+];
+
+// 위젯용 그룹 정의
+const widgetGroups = [
+  {
+    title: 'Crypto Widgets',
+    tickers: ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'DOGEUSDT', 'ADAUSDT', 'DOTUSDT'],
+    variant: 'crypto' as const
+  },
+  {
+    title: 'Stocks Widgets',
+    tickers: ['BABA', 'TM', 'BRK-A', 'AMX', 'TLK', 'NMRX'],
+    variant: 'stocks' as const
+  },
+  {
+    title: 'Commodities Widgets',
+    tickers: ['GCUSD', 'SIUSD'],
+    variant: 'commodities' as const
   }
 ];
 
@@ -89,13 +109,14 @@ const TickerCard: React.FC<{
 const TestPage: React.FC = () => {
   const { broadcastData, isConnected, isUsingDummyData } = useBroadcastData();
   const [selectedGroup, setSelectedGroup] = useState(0);
+  const [selectedWidgetGroup, setSelectedWidgetGroup] = useState(0);
 
   // 디버그 컴포넌트 비활성화
 
   return (
-    <div className="p-6">
+    <div className="p-6 space-y-8">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-800 mb-2">Real-time Market Data</h1>
+        <h1 className="text-3xl font-bold text-gray-800 mb-2">Real-time Market Data & Widgets</h1>
         <div className="flex items-center gap-4">
           <div className={`px-3 py-1 rounded-full text-sm ${
             isConnected ? 'bg-green-100 text-green-800' : 
@@ -174,6 +195,115 @@ const TestPage: React.FC = () => {
             </div>
           )}
         </div>
+      </div>
+
+      {/* 위젯 섹션들 */}
+      <div className="space-y-8">
+        {/* 개별 위젯 예제 */}
+        <section>
+          <h2 className="text-2xl font-semibold text-gray-700 mb-4">Individual Price Widgets</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <RealtimePriceWidget
+              ticker="BTCUSDT"
+              variant="crypto"
+              size="medium"
+              showVolume={true}
+              showTimestamp={true}
+            />
+            <RealtimePriceWidget
+              ticker="ETHUSDT"
+              variant="crypto"
+              size="small"
+              showVolume={false}
+              showTimestamp={false}
+            />
+            <RealtimePriceWidget
+              ticker="BABA"
+              variant="stocks"
+              size="large"
+              showVolume={true}
+              showTimestamp={true}
+            />
+            <RealtimePriceWidget
+              ticker="GCUSD"
+              variant="commodities"
+              size="medium"
+              showVolume={true}
+              showTimestamp={false}
+            />
+          </div>
+        </section>
+
+        {/* 그리드 위젯 예제 */}
+        <section>
+          <h2 className="text-2xl font-semibold text-gray-700 mb-4">Grid Price Widgets</h2>
+          <div className="space-y-6">
+            {/* 그룹별 탭 그리드 */}
+            <div>
+              <h3 className="text-lg font-medium text-gray-600 mb-3">Grouped Tabs Grid</h3>
+              <div className="mb-4">
+                <div className="flex flex-wrap gap-2">
+                  {widgetGroups.map((group, index) => (
+                    <button
+                      key={index}
+                      onClick={() => setSelectedWidgetGroup(index)}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        selectedWidgetGroup === index
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                    >
+                      {group.title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <PriceWidgetGrid
+                tickers={widgetGroups[selectedWidgetGroup].tickers}
+                variant={widgetGroups[selectedWidgetGroup].variant}
+                size="medium"
+                columns={4}
+              />
+            </div>
+
+            {/* 단일 그룹 그리드들 */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div>
+                <h3 className="text-lg font-medium text-gray-600 mb-3">Crypto Grid (Small)</h3>
+                <PriceWidgetGrid
+                  tickers={['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'DOGEUSDT']}
+                  variant="crypto"
+                  size="small"
+                  columns={2}
+                />
+              </div>
+              <div>
+                <h3 className="text-lg font-medium text-gray-600 mb-3">Stocks Grid (Large)</h3>
+                <PriceWidgetGrid
+                  tickers={['BABA', 'TM', 'BRK-A', 'AMX']}
+                  variant="stocks"
+                  size="large"
+                  columns={2}
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* 미니 위젯 예제 */}
+        <section>
+          <h2 className="text-2xl font-semibold text-gray-700 mb-4">Mini Price Widgets</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'BABA', 'TM', 'GCUSD', 'SIUSD', 'DOGEUSDT', 'ADAUSDT'].map((ticker) => (
+              <MiniPriceWidget
+                key={ticker}
+                ticker={ticker}
+                showChange={true}
+                showStatus={true}
+              />
+            ))}
+          </div>
+        </section>
       </div>
       
       {/* 디버그 컴포넌트들 비활성화 */}
