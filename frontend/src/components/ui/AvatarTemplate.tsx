@@ -34,3 +34,4 @@ export default AvatarTemplate;
 // 사용 예시:
 // <AvatarTemplate variant="avatar1" size={50} />
 // <AvatarTemplate variant="avatar7" size={32} onClick={() => console.log('clicked')} />
+

@@ -9,12 +9,12 @@ import { useDynamicMetadata } from '@/hooks/useDynamicMetadata'
 interface BlogDetailClientProps {
   data: {
     id: number
-    title: string | { ko?: string; en?: string }
+    title: string | { ko?: string; en?: string } | { ko: { en: string; ko: string } }
     slug: string
     content?: string
     content_ko?: string
-    description?: string | { ko?: string; en?: string }
-    excerpt?: string | { ko?: string; en?: string }
+    description?: string | { ko?: string; en?: string } | { ko: { en: string; ko: string } }
+    excerpt?: string | { ko?: string; en?: string } | { ko: { en: string; ko: string } }
     updated_at: string
     tags?: Array<{
       id: number

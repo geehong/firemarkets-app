@@ -63,12 +63,12 @@ class PostTagResponse(PostTagBase):
 
 class PostBase(BaseModel):
     """포스트 기본 스키마"""
-    title: Union[str, Dict[str, str]] = Field(..., description="포스트 제목")
+    title: Union[str, Dict[str, str], Dict[str, Dict[str, str]]] = Field(..., description="포스트 제목")
     slug: str = Field(..., description="포스트 슬러그")
-    description: Union[str, Dict[str, str]] = Field(..., description="포스트 설명")
+    description: Union[str, Dict[str, str], Dict[str, Dict[str, str]]] = Field(..., description="포스트 설명")
     content: Optional[str] = Field(None, description="포스트 내용 (영문)")
     content_ko: Optional[str] = Field(None, description="포스트 내용 (한글)")
-    excerpt: Optional[Union[str, Dict[str, str]]] = Field(None, description="포스트 요약")
+    excerpt: Optional[Union[str, Dict[str, str], Dict[str, Dict[str, str]]]] = Field(None, description="포스트 요약")
     
     # 동기화 설정
     sync_with_asset: bool = Field(True, description="Asset과 동기화 여부")
@@ -89,8 +89,8 @@ class PostBase(BaseModel):
     cover_image_alt: Optional[str] = Field(None, description="커버 이미지 Alt 텍스트")
     
     # SEO
-    meta_title: Optional[Union[str, Dict[str, str]]] = Field(None, description="메타 제목")
-    meta_description: Optional[Union[str, Dict[str, str]]] = Field(None, description="메타 설명")
+    meta_title: Optional[Union[str, Dict[str, str], Dict[str, Dict[str, str]]]] = Field(None, description="메타 제목")
+    meta_description: Optional[Union[str, Dict[str, str], Dict[str, Dict[str, str]]]] = Field(None, description="메타 설명")
     keywords: Optional[List[str]] = Field(None, description="키워드 목록")
     canonical_url: Optional[str] = Field(None, description="정규 URL")
     
@@ -115,11 +115,12 @@ class PostCreate(PostBase):
 
 class PostUpdate(BaseModel):
     """포스트 업데이트 스키마"""
-    title: Optional[Union[str, Dict[str, str]]] = None
+    title: Optional[Union[str, Dict[str, str], Dict[str, Dict[str, str]]]] = None
     slug: Optional[str] = None
-    description: Optional[Union[str, Dict[str, str]]] = None
+    description: Optional[Union[str, Dict[str, str], Dict[str, Dict[str, str]]]] = None
     content: Optional[str] = None
-    excerpt: Optional[str] = None
+    content_ko: Optional[str] = None
+    excerpt: Optional[Union[str, Dict[str, str], Dict[str, Dict[str, str]]]] = None
     sync_with_asset: Optional[bool] = None
     auto_sync_content: Optional[bool] = None
     status: Optional[str] = None
@@ -128,8 +129,8 @@ class PostUpdate(BaseModel):
     category_id: Optional[int] = None
     cover_image: Optional[str] = None
     cover_image_alt: Optional[str] = None
-    meta_title: Optional[str] = None
-    meta_description: Optional[str] = None
+    meta_title: Optional[Union[str, Dict[str, str], Dict[str, Dict[str, str]]]] = None
+    meta_description: Optional[Union[str, Dict[str, str], Dict[str, Dict[str, str]]]] = None
     keywords: Optional[List[str]] = None
     canonical_url: Optional[str] = None
     asset_id: Optional[int] = None

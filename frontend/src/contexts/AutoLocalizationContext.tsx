@@ -43,12 +43,26 @@ export const AutoLocalizationProvider: React.FC<{ children: React.ReactNode }> =
         if (data[field]) {
           // JSONB 객체인 경우
           if (typeof data[field] === 'object' && !Array.isArray(data[field])) {
-            const fieldData = data[field] as { ko?: string; en?: string }
-            const originalValue = fieldData
-            localizedData[field] = language === 'ko' 
-              ? (fieldData.ko || fieldData.en || '')
-              : (fieldData.en || fieldData.ko || '')
+            const fieldData = data[field] as any
             
+            // 중첩된 구조 처리: {ko: {en: "...", ko: "..."}}
+            if (fieldData.ko && typeof fieldData.ko === 'object' && fieldData.ko.en && fieldData.ko.ko) {
+              localizedData[field] = language === 'ko' 
+                ? (fieldData.ko.ko || fieldData.ko.en || '')
+                : (fieldData.ko.en || fieldData.ko.ko || '')
+            }
+            // 일반 구조 처리: {ko: "...", en: "..."}
+            else if (fieldData.ko && typeof fieldData.ko === 'string') {
+              localizedData[field] = language === 'ko' 
+                ? (fieldData.ko || fieldData.en || '')
+                : (fieldData.en || fieldData.ko || '')
+            }
+            // 기타 객체 구조 처리
+            else {
+              localizedData[field] = language === 'ko' 
+                ? (fieldData.ko || fieldData.en || '')
+                : (fieldData.en || fieldData.ko || '')
+            }
           }
           // 문자열인 경우도 처리 (이미 변환된 경우)
           else if (typeof data[field] === 'string') {

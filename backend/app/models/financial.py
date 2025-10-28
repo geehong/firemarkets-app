@@ -104,3 +104,4 @@ class CompanyFinancials(Base):
     
     # Relationships
     asset = relationship("Asset", back_populates="company_financials")
+

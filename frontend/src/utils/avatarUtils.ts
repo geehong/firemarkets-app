@@ -46,3 +46,4 @@ export function isValidAvatarUrl(url: string | null | undefined): boolean {
   if (url === '' || url === 'default' || url === 'null') return false;
   return true;
 }
+

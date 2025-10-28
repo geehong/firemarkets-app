@@ -88,3 +88,4 @@ import AvatarTemplate from '@/components/ui/AvatarTemplate';
 ## 미리보기
 
 `avatar-template.html` 파일을 브라우저에서 열어서 모든 아바타를 미리볼 수 있습니다.
+

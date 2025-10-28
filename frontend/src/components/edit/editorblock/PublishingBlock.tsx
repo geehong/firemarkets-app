@@ -6,8 +6,7 @@ interface PublishingBlockProps {
   status: 'draft' | 'published' | 'private' | 'scheduled'
   onStatusChange: (status: 'draft' | 'published' | 'private' | 'scheduled') => void
   onPreview: () => void
-  onPublish: () => void
-  onSaveDraft: () => void
+  onSave: (status: 'draft' | 'published') => Promise<void>
   saving?: boolean
 }
 
@@ -15,8 +14,7 @@ export default function PublishingBlock({
   status,
   onStatusChange,
   onPreview,
-  onPublish,
-  onSaveDraft,
+  onSave,
   saving = false
 }: PublishingBlockProps) {
   return (
@@ -51,7 +49,7 @@ export default function PublishingBlock({
           </button>
           <button
             type="button"
-            onClick={onPublish}
+            onClick={() => onSave('published')}
             disabled={saving}
             className="flex-1 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 transition-colors"
           >
@@ -61,7 +59,7 @@ export default function PublishingBlock({
         
         <button
           type="button"
-          onClick={onSaveDraft}
+          onClick={() => onSave('draft')}
           disabled={saving}
           className="w-full px-3 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 disabled:opacity-50 transition-colors"
         >

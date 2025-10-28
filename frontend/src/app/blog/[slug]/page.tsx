@@ -41,18 +41,54 @@ export async function generateMetadata({
   try {
     // 서버사이드에서는 백엔드 직접 호출
     const BACKEND_BASE = process.env.BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'
-    const res = await fetch(`${BACKEND_BASE}/posts/slug/${encodeURIComponent(slug)}`, {
+    const url = `${BACKEND_BASE}/posts/slug/${encodeURIComponent(slug)}`
+    
+    console.log(`[generateMetadata] Fetching blog post from: ${url}`)
+    
+    const res = await fetch(url, {
       cache: 'no-store'
     })
     
+    console.log(`[generateMetadata] Response status: ${res.status} ${res.statusText}`)
+    
     if (!res.ok) {
+      console.error(`[generateMetadata] Backend error: ${res.status} ${res.statusText}`)
+      
+      // For server errors, return a generic error page metadata
+      if (res.status >= 500) {
+        return {
+          title: 'Server Error | FireMarkets',
+          description: 'We are experiencing technical difficulties. Please try again later.',
+        }
+      }
+      
+      // For 404, return generic blog post metadata
+      return {
+        title: 'Blog Post | FireMarkets',
+        description: 'A blog post from FireMarkets',
+      }
+    }
+
+    // Check if response is JSON before parsing
+    const contentType = res.headers.get('content-type')
+    if (!contentType || !contentType.includes('application/json')) {
+      console.error('[generateMetadata] Invalid response content type:', contentType)
       return {
         title: 'Blog Post | FireMarkets',
         description: 'A blog post from FireMarkets',
       }
     }
     
-    const data = await res.json()
+    let data
+    try {
+      data = await res.json()
+    } catch (jsonError) {
+      console.error('[generateMetadata] Failed to parse JSON response:', jsonError)
+      return {
+        title: 'Blog Post | FireMarkets',
+        description: 'A blog post from FireMarkets',
+      }
+    }
     
     // JSONB 필드들을 처리하여 문자열로 변환
     const title = getLocalizedText(data.title, 'Untitled')
@@ -107,15 +143,43 @@ export default async function BlogDetailPage(props: { params: Promise<{ slug: st
   try {
     // 서버사이드에서는 백엔드 직접 호출
     const BACKEND_BASE = process.env.BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'
-    const res = await fetch(`${BACKEND_BASE}/posts/slug/${encodeURIComponent(slug)}`, {
+    const url = `${BACKEND_BASE}/posts/slug/${encodeURIComponent(slug)}`
+    
+    console.log(`[BlogDetailPage] Fetching blog post from: ${url}`)
+    console.log(`[BlogDetailPage] Backend base URL: ${BACKEND_BASE}`)
+    
+    const res = await fetch(url, {
       cache: 'no-store'
     })
 
+    console.log(`[BlogDetailPage] Response status: ${res.status} ${res.statusText}`)
+
     if (!res.ok) {
+      console.error(`Backend error: ${res.status} ${res.statusText}`)
+      
+      // Only call notFound() for 404 errors, not server errors
+      if (res.status === 404) {
+        notFound()
+      } else {
+        // For server errors (500, 502, 503, etc.), throw an error to trigger error boundary
+        throw new Error(`Backend server error: ${res.status} ${res.statusText}`)
+      }
+    }
+
+    // Check if response is JSON before parsing
+    const contentType = res.headers.get('content-type')
+    if (!contentType || !contentType.includes('application/json')) {
+      console.error('Invalid response content type:', contentType)
       notFound()
     }
 
-    const data = await res.json()
+    let data
+    try {
+      data = await res.json()
+    } catch (jsonError) {
+      console.error('Failed to parse JSON response:', jsonError)
+      notFound()
+    }
 
     // 원본 JSONB 데이터를 그대로 전달 (클라이언트에서 변환)
     const processedData = {

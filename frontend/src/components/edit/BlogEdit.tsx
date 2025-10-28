@@ -55,7 +55,9 @@ export default function BlogEdit({
   })
 
   const [activeLanguage] = useState<'ko' | 'en'>('ko')
-  const [saving] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [handleSave, setHandleSave] = useState<((status: 'draft' | 'published') => Promise<void>) | null>(null)
+  const [baseEditSaving, setBaseEditSaving] = useState(false)
 
   // 폼 데이터 업데이트 함수
   const updateFormData = (field: keyof PostFormState, value: string | number | boolean | string[] | { ko: string; en: string } | null) => {
@@ -104,6 +106,8 @@ export default function BlogEdit({
       postType="post"
       onSave={handleBlogSave}
       onCancel={onCancel}
+      onHandleSave={setHandleSave}
+      onSavingChange={setBaseEditSaving}
       {...props}
     >
       {/* 퍼블리싱 블럭 */}
@@ -111,9 +115,8 @@ export default function BlogEdit({
         status={formData.status}
         onStatusChange={(status) => updateFormData('status', status)}
         onPreview={() => console.log('미리보기')}
-        onPublish={() => handleBlogSave({ ...formData, status: 'published' })}
-        onSaveDraft={() => handleBlogSave({ ...formData, status: 'draft' })}
-        saving={saving}
+        onSave={handleSave || (async () => {})}
+        saving={baseEditSaving}
       />
 
       {/* 작성내용 블럭 */}

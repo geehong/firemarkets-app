@@ -4,6 +4,20 @@ import React, { useState, useEffect, useRef, useCallback, ReactNode } from 'reac
 import SimpleCKEditor from './SimpleCKEditor'
 import FinancialDataBlock from './editorblock/FinancialDataBlock'
 
+// 인증 헤더를 가져오는 헬퍼 함수
+const getAuthHeaders = (): Record<string, string> => {
+  const token = localStorage.getItem('access_token') || localStorage.getItem('accessToken')
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  
+  return headers
+}
+
 // FinancialData 타입 정의
 interface FinancialData {
   financial_id: number
@@ -100,6 +114,10 @@ export interface BaseEditProps {
   financialAssetId?: number | null
   financialData?: FinancialData | null
   onSaveFinancial?: (data: Partial<FinancialData>) => Promise<void>
+  // PublishingBlock에서 사용할 handleSave 함수
+  onHandleSave?: (handleSave: (status: 'draft' | 'published') => Promise<void>) => void
+  // saving 상태 전달
+  onSavingChange?: (saving: boolean) => void
 }
 
 export default function BaseEdit({ 
@@ -113,7 +131,9 @@ export default function BaseEdit({
   financialTicker,
   financialAssetId,
   financialData,
-  onSaveFinancial
+  onSaveFinancial,
+  onHandleSave,
+  onSavingChange
 }: BaseEditProps) {
   const [formData, setFormData] = useState<PostFormState>({
     // API에서 실제로 제공하는 필드들
@@ -325,30 +345,114 @@ export default function BaseEdit({
     try {
       setSaving(true)
       
+      // 데이터 유효성 검사
+      const validationErrors: string[] = []
+      
+      // 제목 검사 - 더 엄격한 검사
+      if (!formData.title) {
+        validationErrors.push('제목을 입력해주세요.')
+      } else if (typeof formData.title === 'object') {
+        const hasValidTitle = (formData.title.ko && formData.title.ko.trim() !== '') || 
+                             (formData.title.en && formData.title.en.trim() !== '')
+        if (!hasValidTitle) {
+          validationErrors.push('제목을 입력해주세요.')
+        }
+      } else if (typeof formData.title === 'string' && formData.title.trim() === '') {
+        validationErrors.push('제목을 입력해주세요.')
+      }
+      
+      // 슬러그 검사
+      if (!formData.slug || formData.slug.trim() === '') {
+        validationErrors.push('슬러그를 입력해주세요.')
+      } else {
+        // 슬러그 형식 검사 - /로 시작하면 제거
+        let cleanSlug = formData.slug.trim()
+        if (cleanSlug.startsWith('/')) {
+          cleanSlug = cleanSlug.substring(1)
+        }
+        // 슬러그는 영문자, 숫자, 하이픈, 언더스코어만 허용
+        if (!/^[a-zA-Z0-9-_]+$/.test(cleanSlug)) {
+          validationErrors.push('슬러그는 영문자, 숫자, 하이픈, 언더스코어만 사용할 수 있습니다.')
+        } else {
+          // 정리된 슬러그로 업데이트
+          formData.slug = cleanSlug
+        }
+      }
+      
+      // 내용 검사 - content 또는 content_ko 중 하나는 있어야 함
+      const hasContent = (formData.content && formData.content.trim() !== '') || 
+                        (formData.content_ko && formData.content_ko.trim() !== '')
+      if (!hasContent) {
+        validationErrors.push('내용을 입력해주세요.')
+      }
+      
+      if (validationErrors.length > 0) {
+        throw new Error(validationErrors.join(' '))
+      }
+
       const postData = {
         ...formData,
         status,
         published_at: status === 'published' ? new Date().toISOString() : formData.published_at
       }
+      
+      console.log('📝 Sending post data:', JSON.stringify(postData, null, 2))
 
       if (mode === 'create') {
         const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'}/posts`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: getAuthHeaders(),
           body: JSON.stringify(postData)
         })
+        
+        if (!response.ok) {
+          if (response.status === 401) {
+            throw new Error('인증이 필요합니다. 로그인해주세요.')
+          }
+          const errorData = await response.json().catch(() => ({}))
+          throw new Error(errorData.detail || `서버 오류: ${response.status}`)
+        }
+        
         const result = await response.json()
         console.log('Post created:', result)
       } else if (mode === 'edit' && postId) {
         const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'}/posts/${postId}`, {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: getAuthHeaders(),
           body: JSON.stringify(postData)
         })
+        
+        if (!response.ok) {
+          if (response.status === 401) {
+            throw new Error('인증이 필요합니다. 로그인해주세요.')
+          }
+          const errorData = await response.json().catch(() => ({}))
+          console.error('API Error Details:', errorData)
+          console.error('API Error Details (full):', JSON.stringify(errorData, null, 2))
+          
+          // 422 오류의 경우 상세한 유효성 검사 오류 표시
+          if (response.status === 422) {
+            const validationErrors = errorData.detail || errorData.errors || errorData
+            console.error('Validation errors:', validationErrors)
+            
+            if (Array.isArray(validationErrors)) {
+              const errorMessages = validationErrors.map(err => {
+                if (typeof err === 'object' && err !== null) {
+                  return `${err.field || err.loc?.join('.') || '필드'}: ${err.message || err.msg || err.type || JSON.stringify(err)}`
+                }
+                return String(err)
+              }).join(', ')
+              throw new Error(`유효성 검사 오류: ${errorMessages}`)
+            } else if (typeof validationErrors === 'string') {
+              throw new Error(`유효성 검사 오류: ${validationErrors}`)
+            } else {
+              throw new Error(`유효성 검사 오류: ${JSON.stringify(validationErrors)}`)
+            }
+          }
+          
+          throw new Error(errorData.detail || `서버 오류: ${response.status}`)
+        }
+        
         const result = await response.json()
         console.log('Post updated:', result)
       }
@@ -369,6 +473,20 @@ export default function BaseEdit({
       onCancel()
     }
   }
+
+  // onHandleSave에 handleSave 함수 전달
+  React.useEffect(() => {
+    if (onHandleSave) {
+      onHandleSave(handleSave)
+    }
+  }, [onHandleSave, handleSave])
+
+  // saving 상태를 부모 컴포넌트에 전달
+  React.useEffect(() => {
+    if (onSavingChange) {
+      onSavingChange(saving)
+    }
+  }, [saving, onSavingChange])
 
   if (loading) {
     return (
