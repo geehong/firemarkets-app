@@ -14,6 +14,8 @@ from .asset import (
     StockProfile,
     StockFinancial,
     StockAnalystEstimate,
+    MacrotrendsFinancial,
+    MacrotrendsField,
     
     # ETF models
     ETFInfo,
@@ -89,6 +91,8 @@ __all__ = [
     "StockProfile",
     "StockFinancial",
     "StockAnalystEstimate",
+    "MacrotrendsFinancial",
+    "MacrotrendsField",
     
     # ETF models
     "ETFInfo",

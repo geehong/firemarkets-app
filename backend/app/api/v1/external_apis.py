@@ -3,7 +3,7 @@ External APIs endpoints for testing and data retrieval.
 """
 from typing import Dict, Any, Optional
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 
 from ...services.endpoint.external_data_service import ExternalDataService
@@ -15,11 +15,27 @@ from ...external_apis import (
     CoinMarketCapClient
 )
 from ...external_apis.implementations.edgar_client import EdgarClient
-from ...external_apis.implementations.marketwatch_client import MarketWatchClient
+from ...external_apis.implementations.macrotrends_client import MacrotrendsClient
+from ...services.ingest.macrotrends_ingest import ingest_stock_financials
+from ...core.database import get_postgres_db
+from sqlalchemy.orm import Session
 from ...schemas.common import MarketDataResponse, ExternalAPITestResponse
 # GlobalCryptoMetricsResponse,  # Commented out - duplicate API
 
 router = APIRouter(tags=["External APIs"])
+@router.post("/macrotrends/{asset_id}/{ticker}/ingest")
+async def macrotrends_ingest(
+    asset_id: int,
+    ticker: str,
+    db: Session = Depends(get_postgres_db)
+):
+    """Scrape Macrotrends and insert into stock_financials for given asset_id/ticker."""
+    try:
+        inserted = await ingest_stock_financials(db, asset_id=asset_id, ticker=ticker.upper())
+        return {"asset_id": asset_id, "ticker": ticker.upper(), "inserted": inserted}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Macrotrends ingest failed: {str(e)}")
+
 
 # Initialize services
 external_data_service = ExternalDataService()
@@ -240,23 +256,65 @@ async def test_edgar():
         raise HTTPException(status_code=500, detail=f"EDGAR test failed: {str(e)}")
 
 
-@router.get("/marketwatch/test", response_model=ExternalAPITestResponse)
-async def test_marketwatch():
-    """Test MarketWatch scraping connection"""
+## MarketWatch test temporarily disabled due to invalid source file
+
+
+@router.get("/macrotrends/{ticker}/income")
+async def macrotrends_income(ticker: str):
     try:
-        client = MarketWatchClient()
-        is_connected = await client.test_connection()
-        rate_limits = client.get_rate_limit_info()
-        
-        return {
-            "api_name": "MarketWatch (Scraped)",
-            "status": "connected" if is_connected else "failed",
-            "message": f"MarketWatch scraping {'successful' if is_connected else 'failed'}",
-            "response_time": None,
-            "timestamp": datetime.now()
-        }
+        client = MacrotrendsClient()
+        data = await client.get_income_statement(ticker.upper(), ticker.lower())
+        if not data:
+            raise HTTPException(status_code=404, detail=f"No Macrotrends income data for {ticker}")
+        return {"ticker": ticker.upper(), "section": "income", "rows": data}
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"MarketWatch test failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Macrotrends income failed: {str(e)}")
+
+
+@router.get("/macrotrends/{ticker}/balance")
+async def macrotrends_balance(ticker: str):
+    try:
+        client = MacrotrendsClient()
+        data = await client.get_balance_sheet(ticker.upper(), ticker.lower())
+        if not data:
+            raise HTTPException(status_code=404, detail=f"No Macrotrends balance data for {ticker}")
+        return {"ticker": ticker.upper(), "section": "balance", "rows": data}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Macrotrends balance failed: {str(e)}")
+
+
+@router.get("/macrotrends/{ticker}/cash-flow")
+async def macrotrends_cash_flow(ticker: str):
+    try:
+        client = MacrotrendsClient()
+        data = await client.get_cash_flow(ticker.upper(), ticker.lower())
+        if not data:
+            raise HTTPException(status_code=404, detail=f"No Macrotrends cash-flow data for {ticker}")
+        return {"ticker": ticker.upper(), "section": "cash-flow", "rows": data}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Macrotrends cash-flow failed: {str(e)}")
+
+
+@router.get("/macrotrends/{ticker}/ratios")
+async def macrotrends_ratios(ticker: str):
+    try:
+        client = MacrotrendsClient()
+        data = await client.get_financial_ratios(ticker.upper(), ticker.lower())
+        if not data:
+            raise HTTPException(status_code=404, detail=f"No Macrotrends ratios data for {ticker}")
+        return {"ticker": ticker.upper(), "section": "ratios", "rows": data}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Macrotrends ratios failed: {str(e)}")
+
+## Removed temporary WebScraper endpoints
 
 
 @router.get("/financial-statements/{ticker}")

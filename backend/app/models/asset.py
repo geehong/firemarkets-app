@@ -1,6 +1,6 @@
 # backend_temp/app/models/asset.py
 from sqlalchemy import (BIGINT, BigInteger, DECIMAL, TIMESTAMP, Boolean, Column, Date,
-                        DateTime, ForeignKey, Integer, String, Text, func, JSON, Float, UniqueConstraint)
+                        DateTime, ForeignKey, Integer, String, Text, func, JSON, Float, UniqueConstraint, Index)
 from sqlalchemy.orm import relationship
 
 from ..core.database import Base
@@ -249,6 +249,42 @@ class StockAnalystEstimate(Base):
     sga_expense_low = Column(BIGINT)
     sga_expense_high = Column(BIGINT)
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+
+# ------------------------------
+# Macrotrends normalized storage
+# ------------------------------
+
+class MacrotrendsFinancial(Base):
+    __tablename__ = "macrotrends_financials"
+
+    id = Column(BIGINT, primary_key=True, index=True, autoincrement=True)
+    asset_id = Column(Integer, ForeignKey("assets.asset_id"), nullable=False)
+    section = Column(String(32), nullable=False)  # 'income' | 'balance' | 'cash-flow' | 'ratios'
+    field_name = Column(String(128), nullable=False)
+    snapshot_date = Column(Date, nullable=False)
+    value_numeric = Column(DECIMAL(24, 6))
+    value_text = Column(String(256))
+    unit = Column(String(32))
+    currency = Column(String(10))
+    source_url = Column(String(512))
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("asset_id", "section", "field_name", "snapshot_date", name="ux_macrotrends_financials_unique"),
+        Index("ix_macrotrends_financials_asset_date", "asset_id", "snapshot_date"),
+        Index("ix_macrotrends_financials_section_field", "section", "field_name"),
+    )
+
+
+class MacrotrendsField(Base):
+    __tablename__ = "macrotrends_fields"
+
+    field_key = Column(String(128), primary_key=True)
+    alias = Column(String(128))
+    section = Column(String(32))
+    description = Column(String(512))
 
 
 class ETFInfo(Base):

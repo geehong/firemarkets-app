@@ -35,3 +35,4 @@ export default AvatarTemplate;
 // <AvatarTemplate variant="avatar1" size={50} />
 // <AvatarTemplate variant="avatar7" size={32} onClick={() => console.log('clicked')} />
 
+

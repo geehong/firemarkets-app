@@ -21,7 +21,7 @@ export default function BlogEdit({
   authorId,
   ...props 
 }: BlogEditProps) {
-  // BaseEdit에서 사용할 상태들
+  // BaseEdit에서 받아온 formData와 updateFormData 함수
   const [formData, setFormData] = useState<PostFormState>({
     title: { ko: '', en: '' },
     content: '',
@@ -55,17 +55,29 @@ export default function BlogEdit({
   })
 
   const [activeLanguage] = useState<'ko' | 'en'>('ko')
-  const [saving, setSaving] = useState(false)
-  const [handleSave, setHandleSave] = useState<((status: 'draft' | 'published') => Promise<void>) | null>(null)
+  const handleSaveRef = React.useRef<((status: 'draft' | 'published') => Promise<void>) | null>(null)
   const [baseEditSaving, setBaseEditSaving] = useState(false)
+  const [updateFormData, setUpdateFormData] = useState<((field: keyof PostFormState, value: string | number | boolean | string[] | { ko: string; en: string } | null) => void) | null>(null)
+  
+  // 안정적인 handleSave 함수
+  const stableHandleSave = React.useCallback((status: 'draft' | 'published') => {
+    if (handleSaveRef.current) {
+      return handleSaveRef.current(status)
+    }
+    return Promise.resolve()
+  }, [])
 
-  // 폼 데이터 업데이트 함수
-  const updateFormData = (field: keyof PostFormState, value: string | number | boolean | string[] | { ko: string; en: string } | null) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }))
-  }
+  // BaseEdit의 updateFormData 함수를 받아서 저장
+  const handleUpdateFormData = React.useCallback((fn: (field: keyof PostFormState, value: string | number | boolean | string[] | { ko: string; en: string } | null) => void) => {
+    setUpdateFormData(() => fn)
+  }, [])
+
+  // 실제 폼 데이터 업데이트 함수
+  const updateFormDataField = React.useCallback((field: keyof PostFormState, value: string | number | boolean | string[] | { ko: string; en: string } | null) => {
+    if (updateFormData) {
+      updateFormData(field, value)
+    }
+  }, [updateFormData])
 
   // 블로그 저장 핸들러
   const handleBlogSave = (data: PostFormState) => {
@@ -106,45 +118,47 @@ export default function BlogEdit({
       postType="post"
       onSave={handleBlogSave}
       onCancel={onCancel}
-      onHandleSave={setHandleSave}
+      onHandleSave={(fn) => { handleSaveRef.current = fn }}
       onSavingChange={setBaseEditSaving}
+      onFormDataChange={setFormData}
+      onUpdateFormData={handleUpdateFormData}
       {...props}
     >
       {/* 퍼블리싱 블럭 */}
       <PublishingBlock
         status={formData.status}
-        onStatusChange={(status) => updateFormData('status', status)}
+        onStatusChange={(status) => updateFormDataField('status', status)}
         onPreview={() => console.log('미리보기')}
-        onSave={handleSave || (async () => {})}
+        onSave={stableHandleSave}
         saving={baseEditSaving}
       />
 
       {/* 작성내용 블럭 */}
       <ContentBlock
         postType={formData.post_type}
-        onPostTypeChange={(postType) => updateFormData('post_type', postType)}
+        onPostTypeChange={(postType) => updateFormDataField('post_type', postType)}
         authorId={formData.author_id || null}
-        onAuthorIdChange={(authorId) => updateFormData('author_id', authorId)}
+        onAuthorIdChange={(authorId) => updateFormDataField('author_id', authorId)}
         categoryId={formData.category_id || null}
-        onCategoryIdChange={(categoryId) => updateFormData('category_id', categoryId)}
+        onCategoryIdChange={(categoryId) => updateFormDataField('category_id', categoryId)}
         postParent={formData.post_parent || null}
-        onPostParentChange={(postParent) => updateFormData('post_parent', postParent)}
+        onPostParentChange={(postParent) => updateFormDataField('post_parent', postParent)}
         postPassword={formData.post_password || null}
-        onPostPasswordChange={(postPassword) => updateFormData('post_password', postPassword)}
+        onPostPasswordChange={(postPassword) => updateFormDataField('post_password', postPassword)}
         featured={formData.featured}
-        onFeaturedChange={(featured) => updateFormData('featured', featured)}
+        onFeaturedChange={(featured) => updateFormDataField('featured', featured)}
       />
 
       {/* SEO 설정 */}
       <SEOSettings
         keywords={formData.keywords}
-        onKeywordsChange={(keywords) => updateFormData('keywords', keywords)}
+        onKeywordsChange={(keywords) => updateFormDataField('keywords', keywords)}
         metaTitle={formData.meta_title}
-        onMetaTitleChange={(metaTitle) => updateFormData('meta_title', metaTitle)}
+        onMetaTitleChange={(metaTitle) => updateFormDataField('meta_title', metaTitle)}
         metaDescription={formData.meta_description}
-        onMetaDescriptionChange={(metaDescription) => updateFormData('meta_description', metaDescription)}
+        onMetaDescriptionChange={(metaDescription) => updateFormDataField('meta_description', metaDescription)}
         canonicalUrl={formData.canonical_url}
-        onCanonicalUrlChange={(canonicalUrl) => updateFormData('canonical_url', canonicalUrl)}
+        onCanonicalUrlChange={(canonicalUrl) => updateFormDataField('canonical_url', canonicalUrl)}
         activeLanguage={activeLanguage}
       />
     </BaseEdit>

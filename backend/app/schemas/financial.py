@@ -128,3 +128,4 @@ class FinancialStatementAPIResponse(BaseModel):
     source: str = "SEC EDGAR"
     total_records: int
 
+

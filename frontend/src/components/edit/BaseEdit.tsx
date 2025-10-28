@@ -118,6 +118,9 @@ export interface BaseEditProps {
   onHandleSave?: (handleSave: (status: 'draft' | 'published') => Promise<void>) => void
   // saving 상태 전달
   onSavingChange?: (saving: boolean) => void
+  // formData와 updateFormData를 children에 전달하기 위한 props
+  onFormDataChange?: (formData: PostFormState) => void
+  onUpdateFormData?: (field: keyof PostFormState, value: string | number | boolean | string[] | { ko: string; en: string } | null) => void
 }
 
 export default function BaseEdit({ 
@@ -133,7 +136,9 @@ export default function BaseEdit({
   financialData,
   onSaveFinancial,
   onHandleSave,
-  onSavingChange
+  onSavingChange,
+  onFormDataChange,
+  onUpdateFormData
 }: BaseEditProps) {
   const [formData, setFormData] = useState<PostFormState>({
     // API에서 실제로 제공하는 필드들
@@ -218,14 +223,36 @@ export default function BaseEdit({
           console.log('📦 Raw API response:', data)
           
           if (data) {
+            // 다국어 필드를 안전하게 처리하는 헬퍼 함수
+            const processMultilingualField = (field: any) => {
+              if (typeof field === 'string') {
+                return { ko: field, en: field }
+              }
+              if (typeof field === 'object' && field !== null) {
+                // 중첩된 객체인 경우 (예: {ko: {…}, en: {…}})
+                if (field.ko && typeof field.ko === 'object') {
+                  return {
+                    ko: field.ko.ko || field.ko || '',
+                    en: field.en?.en || field.en || ''
+                  }
+                }
+                // 일반적인 객체인 경우 (예: {ko: 'text', en: 'text'})
+                return {
+                  ko: field.ko || '',
+                  en: field.en || ''
+                }
+              }
+              return { ko: '', en: '' }
+            }
+
             // 실제 API 응답 구조에 맞춘 데이터 처리
             const processedData = {
               id: data.id,
-              title: typeof data.title === 'object' ? data.title : { ko: data.title || '', en: data.title || '' },
+              title: processMultilingualField(data.title),
               content: data.content || '',
               content_ko: data.content_ko || '',
-              description: typeof data.description === 'object' ? data.description : { ko: data.description || '', en: data.description || '' },
-              excerpt: typeof data.excerpt === 'object' ? data.excerpt : { ko: data.excerpt || '', en: data.excerpt || '' },
+              description: processMultilingualField(data.description),
+              excerpt: processMultilingualField(data.excerpt),
               slug: data.slug || '',
               status: data.status || 'draft',
               featured: data.featured || false,
@@ -243,8 +270,8 @@ export default function BaseEdit({
               cover_image_alt: data.cover_image_alt || null,
               keywords: data.keywords || null,
               canonical_url: data.canonical_url || null,
-              meta_title: typeof data.meta_title === 'object' ? data.meta_title : { ko: data.meta_title || '', en: data.meta_title || '' },
-              meta_description: typeof data.meta_description === 'object' ? data.meta_description : { ko: data.meta_description || '', en: data.meta_description || '' },
+              meta_title: processMultilingualField(data.meta_title),
+              meta_description: processMultilingualField(data.meta_description),
               read_time_minutes: data.read_time_minutes || null,
               
               // 추가 API 필드들
@@ -260,6 +287,11 @@ export default function BaseEdit({
               sync_status: data.sync_status || 'pending'
             }
             
+            console.log('📝 Processed data:', {
+              title: processedData.title,
+              description: processedData.description,
+              excerpt: processedData.excerpt
+            })
             setFormData(processedData)
             console.log('✅ Post data loaded and set successfully')
           }
@@ -300,12 +332,17 @@ export default function BaseEdit({
 
   // 다국어 필드 업데이트
   const updateMultilingualField = (field: keyof Pick<PostFormState, 'title' | 'description' | 'excerpt' | 'meta_title' | 'meta_description'>, value: string) => {
+    const currentFieldValue = formData[field]
+    const newValue = {
+      ko: '',
+      en: '',
+      ...(typeof currentFieldValue === 'object' && currentFieldValue !== null ? currentFieldValue : {}),
+      [activeLanguage]: value
+    }
+    
     setFormData(prev => ({
       ...prev,
-      [field]: {
-        ...(prev[field] || { ko: '', en: '' }),
-        [activeLanguage]: value
-      }
+      [field]: newValue
     }))
   }
 
@@ -341,7 +378,7 @@ export default function BaseEdit({
   }
 
   // 저장 함수
-  const handleSave = async (status: 'draft' | 'published' = 'draft') => {
+  const handleSave = React.useCallback(async (status: 'draft' | 'published' = 'draft') => {
     try {
       setSaving(true)
       
@@ -465,7 +502,7 @@ export default function BaseEdit({
     } finally {
       setSaving(false)
     }
-  }
+  }, [formData, mode, postId, postType, onSave])
 
   // 취소 함수
   const handleCancel = () => {
@@ -474,12 +511,15 @@ export default function BaseEdit({
     }
   }
 
-  // onHandleSave에 handleSave 함수 전달
+  // onHandleSave에 handleSave 함수 전달 (useRef 사용)
+  const handleSaveRef = React.useRef(handleSave)
+  handleSaveRef.current = handleSave
+  
   React.useEffect(() => {
     if (onHandleSave) {
-      onHandleSave(handleSave)
+      onHandleSave(handleSaveRef.current)
     }
-  }, [onHandleSave, handleSave])
+  }, [onHandleSave])
 
   // saving 상태를 부모 컴포넌트에 전달
   React.useEffect(() => {
@@ -487,6 +527,22 @@ export default function BaseEdit({
       onSavingChange(saving)
     }
   }, [saving, onSavingChange])
+
+  // formData가 변경될 때마다 부모 컴포넌트에 전달 (안전한 처리)
+  React.useEffect(() => {
+    if (onFormDataChange) {
+      // formData의 다국어 필드들이 올바른 형태인지 확인
+      const safeFormData = {
+        ...formData,
+        title: typeof formData.title === 'object' ? formData.title : { ko: formData.title || '', en: formData.title || '' },
+        description: typeof formData.description === 'object' ? formData.description : { ko: formData.description || '', en: formData.description || '' },
+        excerpt: typeof formData.excerpt === 'object' ? formData.excerpt : { ko: formData.excerpt || '', en: formData.excerpt || '' },
+        meta_title: typeof formData.meta_title === 'object' ? formData.meta_title : { ko: formData.meta_title || '', en: formData.meta_title || '' },
+        meta_description: typeof formData.meta_description === 'object' ? formData.meta_description : { ko: formData.meta_description || '', en: formData.meta_description || '' }
+      }
+      onFormDataChange(safeFormData)
+    }
+  }, [formData, onFormDataChange])
 
   if (loading) {
     return (
@@ -574,7 +630,11 @@ export default function BaseEdit({
               <div className="p-6 border-b">
                 <input
                   type="text"
-                  value={formData.title?.[activeLanguage] || ''}
+                  value={
+                    typeof formData.title === 'object' && formData.title !== null
+                      ? (formData.title[activeLanguage] || '')
+                      : (typeof formData.title === 'string' ? formData.title : '')
+                  }
                   onChange={(e) => updateMultilingualField('title', e.target.value)}
                   className="w-full text-2xl font-semibold border-none outline-none"
                   placeholder="제목을 입력하세요..."
@@ -594,7 +654,12 @@ export default function BaseEdit({
                   />
                   <button
                     type="button"
-                    onClick={() => updateFormData('slug', generateSlug(formData.title?.[activeLanguage] || ''))}
+                    onClick={() => {
+                      const titleValue = typeof formData.title === 'object' && formData.title !== null
+                        ? (formData.title[activeLanguage] || '')
+                        : (typeof formData.title === 'string' ? formData.title : '')
+                      updateFormData('slug', generateSlug(titleValue))
+                    }}
                     className="text-sm text-blue-600 hover:text-blue-800"
                   >
                     자동 생성
@@ -605,7 +670,11 @@ export default function BaseEdit({
               {/* 요약 */}
               <div className="p-6 border-b">
                 <textarea
-                  value={formData.excerpt?.[activeLanguage] || ''}
+                  value={
+                    typeof formData.excerpt === 'object' && formData.excerpt !== null
+                      ? (formData.excerpt[activeLanguage] || '')
+                      : (typeof formData.excerpt === 'string' ? formData.excerpt : '')
+                  }
                   onChange={(e) => updateMultilingualField('excerpt', e.target.value)}
                   rows={3}
                   className="w-full border-none outline-none resize-none"

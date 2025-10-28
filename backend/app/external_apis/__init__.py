@@ -16,7 +16,7 @@ from .base.onchain_client import OnChainAPIClient
 # All implementations
 from .implementations import (
     # Traditional Financial API Clients
-    FMPClient, TiingoClient, AlphaVantageClient, PolygonClient, TwelveDataClient,
+    FMPClient, TiingoClient, AlphaVantageClient, PolygonClient, TwelveDataClient, MacrotrendsClient,
     # Cryptocurrency API Clients
     BinanceClient, CoinbaseClient, CoinGeckoClient, CoinMarketCapClient,
     # On-chain Data API Clients
@@ -36,6 +36,7 @@ __all__ = [
     "AlphaVantageClient",
     "PolygonClient", 
     "TwelveDataClient",
+    "MacrotrendsClient",
     
     # Cryptocurrency API Clients
     "BinanceClient",

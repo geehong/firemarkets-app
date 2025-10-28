@@ -16,6 +16,7 @@ from .coingecko_client import CoinGeckoClient
 from .coinmarketcap_client import CoinMarketCapClient
 from .twelvedata_client import TwelveDataClient
 from .finnhub_client import FinnhubClient
+from .macrotrends_client import MacrotrendsClient
 
 __all__ = [
     # Traditional Financial API Clients
@@ -25,6 +26,7 @@ __all__ = [
     "PolygonClient",
     "TwelveDataClient",
     "FinnhubClient",
+    "MacrotrendsClient",
     
     # Cryptocurrency API Clients
     "BinanceClient",

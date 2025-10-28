@@ -9,7 +9,7 @@ class SecurityManager:
     def __init__(self):
         self.SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
         self.ALGORITHM = "HS256"
-        self.ACCESS_TOKEN_EXPIRE_MINUTES = 15
+        self.ACCESS_TOKEN_EXPIRE_MINUTES = 60
         self.REFRESH_TOKEN_EXPIRE_DAYS = 7
     
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
