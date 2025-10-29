@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { TrendingUp, DollarSign, BarChart3, PieChart } from 'lucide-react'
+import { useAssetOverviewBundle } from '@/hooks/useAssetOverviewBundle'
 
 interface FinancialData {
   financial_id: number
@@ -51,16 +52,60 @@ interface FinancialDataBlockProps {
 
 export default function FinancialDataBlock({ ticker, assetId, financialData, onSaveFinancial }: FinancialDataBlockProps) {
   const [financials, setFinancials] = useState<FinancialData | null>(financialData || null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   const [editData, setEditData] = useState<Partial<FinancialData>>({})
 
+  // useAssetOverviewBundle 훅 사용
+  const { data: assetBundle, loading, error: bundleError } = useAssetOverviewBundle(
+    assetId?.toString() || '',
+    { initialData: undefined }
+  )
+
   useEffect(() => {
-    if (ticker || assetId) {
-      fetchFinancialData()
+    if (assetBundle?.numeric_overview) {
+      // bundle에서 받은 데이터를 FinancialData 형태로 변환
+      const numericData = assetBundle.numeric_overview
+      const financialData: FinancialData = {
+        financial_id: 0, // bundle에는 없으므로 0으로 설정
+        asset_id: numericData.asset_id,
+        snapshot_date: new Date().toISOString(),
+        currency: numericData.currency || null,
+        market_cap: numericData.market_cap || null,
+        ebitda: numericData.ebitda || null,
+        shares_outstanding: numericData.shares_outstanding || null,
+        pe_ratio: numericData.pe_ratio || null,
+        peg_ratio: numericData.peg_ratio || null,
+        beta: numericData.beta || null,
+        eps: numericData.eps || null,
+        dividend_yield: numericData.dividend_yield || null,
+        dividend_per_share: numericData.dividend_per_share || null,
+        profit_margin_ttm: numericData.profit_margin_ttm || null,
+        return_on_equity_ttm: numericData.return_on_equity_ttm || null,
+        revenue_ttm: numericData.revenue_ttm || null,
+        price_to_book_ratio: numericData.price_to_book_ratio || null,
+        week_52_high: numericData.week_52_high || null,
+        week_52_low: numericData.week_52_low || null,
+        day_50_moving_avg: numericData.day_50_avg || null,
+        day_200_moving_avg: numericData.day_200_avg || null,
+        updated_at: numericData.updated_at || new Date().toISOString(),
+        // 추가 필드들
+        book_value: numericData.book_value || null,
+        revenue_per_share_ttm: numericData.revenue_per_share_ttm || null,
+        operating_margin_ttm: numericData.operating_margin_ttm || null,
+        return_on_assets_ttm: numericData.return_on_assets_ttm || null,
+        gross_profit_ttm: numericData.gross_profit_ttm || null,
+        quarterly_earnings_growth_yoy: numericData.quarterly_earnings_growth_yoy || null,
+        quarterly_revenue_growth_yoy: numericData.quarterly_revenue_growth_yoy || null,
+        analyst_target_price: numericData.analyst_target_price || null,
+        trailing_pe: numericData.trailing_pe || null,
+        forward_pe: numericData.forward_pe || null,
+        price_to_sales_ratio_ttm: numericData.price_to_sales_ratio_ttm || null,
+        ev_to_revenue: numericData.ev_to_revenue || null,
+        ev_to_ebitda: numericData.ev_to_ebitda || null
+      }
+      setFinancials(financialData)
     }
-  }, [ticker, assetId])
+  }, [assetBundle])
 
   useEffect(() => {
     if (financials) {
@@ -68,33 +113,7 @@ export default function FinancialDataBlock({ ticker, assetId, financialData, onS
     }
   }, [financials])
 
-  const fetchFinancialData = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      
-      // 올바른 API 엔드포인트 사용
-      const response = await fetch(`https://backend.firemarkets.net/api/v1/assets/stock-financials/asset/${ticker || assetId}?limit=10`)
-      if (!response.ok) {
-        throw new Error('재무 데이터를 가져올 수 없습니다.')
-      }
-      
-      const data = await response.json()
-      console.log('📊 FinancialDataBlock - API Response:', data)
-      
-      // API 응답 구조에 맞춰 데이터 처리
-      if (data.data && data.data.length > 0) {
-        setFinancials(data.data[0]) // 가장 최근 데이터 사용
-      } else {
-        setFinancials(null)
-      }
-    } catch (err) {
-      console.error('❌ FinancialDataBlock - API Error:', err)
-      setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.')
-    } finally {
-      setLoading(false)
-    }
-  }
+  // fetchFinancialData 함수는 더 이상 필요하지 않음 (useAssetOverviewBundle에서 처리)
 
   const handleInputChange = (field: keyof FinancialData, value: string | number) => {
     setEditData(prev => ({
@@ -131,18 +150,12 @@ export default function FinancialDataBlock({ ticker, assetId, financialData, onS
     )
   }
 
-  if (error) {
+  if (bundleError) {
     return (
       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
         <div className="text-center">
           <div className="text-red-600 mb-2">⚠️</div>
-          <p className="text-red-600 text-sm">{error}</p>
-          <button
-            onClick={fetchFinancialData}
-            className="mt-2 px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 text-sm"
-          >
-            다시 시도
-          </button>
+          <p className="text-red-600 text-sm">{bundleError.message}</p>
         </div>
       </div>
     )
@@ -679,16 +692,7 @@ export default function FinancialDataBlock({ ticker, assetId, financialData, onS
         </div>
       </div>
 
-      {!editing && (
-        <div className="mt-4 pt-3 border-t border-gray-200">
-          <button
-            onClick={fetchFinancialData}
-            className="w-full px-3 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm"
-          >
-            새로고침
-          </button>
-        </div>
-      )}
+      {/* 새로고침 버튼은 useAssetOverviewBundle에서 자동으로 처리됨 */}
     </div>
   )
 }

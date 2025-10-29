@@ -53,42 +53,6 @@ export default function EditPage() {
                 </div>
               </Link>
 
-              {/* Editor.js */}
-              <Link href="/edit/editorjs">
-                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors cursor-pointer">
-                  <div className="text-center">
-                    <div className="w-16 h-16 bg-purple-500 rounded-lg mx-auto mb-4 flex items-center justify-center">
-                      <span className="text-white text-2xl font-bold">E</span>
-                    </div>
-                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                      Editor.js
-                    </h3>
-                    <p className="text-gray-600 dark:text-gray-300 text-sm">
-                      Modern block-style editor with clean JSON output
-                    </p>
-                  </div>
-                </div>
-              </Link>
-
-              {/* Editor.js Light */}
-              <Link href="/edit/editorjs-light">
-                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors cursor-pointer">
-                  <div className="text-center">
-                    <div className="w-16 h-16 bg-green-500 rounded-lg mx-auto mb-4 flex items-center justify-center">
-                      <span className="text-white text-2xl font-bold">L</span>
-                    </div>
-                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                      Editor.js Light
-                    </h3>
-                    <p className="text-gray-600 dark:text-gray-300 text-sm">
-                      Optimized lightweight version with essential tools only
-                    </p>
-                    <div className="mt-2 px-2 py-1 bg-green-100 dark:bg-green-900 rounded text-xs text-green-800 dark:text-green-200">
-                      💡 69% 메모리 감소
-                    </div>
-                  </div>
-                </div>
-              </Link>
             </div>
           </div>
         </div>

@@ -157,7 +157,7 @@ async def get_posts(
         return {"error": str(e), "message": "Failed to fetch posts"}
 
 
-@router.get("/{post_id}", response_model=PostResponse)
+@router.get("/{post_id}")
 async def get_post(
     post_id: int = Path(..., description="포스트 ID"),
     db: Session = Depends(get_postgres_db)
@@ -170,10 +170,81 @@ async def get_post(
     # 조회수 증가
     post.increment_view_count(db=db, post_id=post_id)
 
-    return post_obj
+    # 작성자 정보 조회
+    author = None
+    if post_obj.author_id:
+        author = db.query(User).filter(User.id == post_obj.author_id).first()
+    
+    # 카테고리 정보 조회
+    category = None
+    if post_obj.category_id:
+        category = db.query(PostCategory).filter(PostCategory.id == post_obj.category_id).first()
+    
+    # 태그 정보 조회 (blog_post_tags 테이블 사용)
+    tags = []
+    if post_obj.id:
+        # Raw SQL로 태그 조회
+        tag_result = db.execute(
+            text("SELECT pt.id, pt.name, pt.slug FROM post_tags pt "
+                 "JOIN blog_post_tags bpt ON pt.id = bpt.tag_id "
+                 "WHERE bpt.blog_id = :blog_id"),
+            {"blog_id": post_obj.id}
+        )
+        tags = [{"id": row[0], "name": row[1], "slug": row[2]} for row in tag_result.fetchall()]
+
+    # 응답 데이터 구성
+    post_dict = {
+        "id": post_obj.id,
+        "title": post_obj.title,
+        "slug": post_obj.slug,
+        "content": post_obj.content,  # 영문
+        "content_ko": post_obj.content_ko,  # 한글
+        "description": post_obj.description,
+        "excerpt": post_obj.excerpt,
+        "status": post_obj.status,
+        "post_type": post_obj.post_type,
+        "featured": post_obj.featured,
+        "view_count": post_obj.view_count,
+        "created_at": post_obj.created_at,
+        "updated_at": post_obj.updated_at,
+        "published_at": post_obj.published_at,
+        "scheduled_at": post_obj.scheduled_at,
+        "author_id": post_obj.author_id,
+        "author": {
+            "id": author.id,
+            "username": author.username,
+            "email": author.email
+        } if author else None,
+        "category_id": post_obj.category_id,
+        "category": {
+            "id": category.id,
+            "name": category.name,
+            "slug": category.slug
+        } if category else None,
+        "cover_image": post_obj.cover_image,
+        "cover_image_alt": post_obj.cover_image_alt,
+        "keywords": post_obj.keywords,
+        "canonical_url": post_obj.canonical_url,
+        "meta_title": post_obj.meta_title,
+        "meta_description": post_obj.meta_description,
+        "read_time_minutes": post_obj.read_time_minutes,
+        "sync_with_asset": post_obj.sync_with_asset,
+        "auto_sync_content": post_obj.auto_sync_content,
+        "asset_id": post_obj.asset_id,
+        "post_parent": post_obj.post_parent,
+        "menu_order": post_obj.menu_order,
+        "comment_count": post_obj.comment_count,
+        "post_password": post_obj.post_password,
+        "ping_status": post_obj.ping_status,
+        "last_sync_at": post_obj.last_sync_at,
+        "sync_status": post_obj.sync_status,
+        "tags": tags
+    }
+
+    return post_dict
 
 
-@router.get("/slug/{slug}", response_model=PostResponse)
+@router.get("/slug/{slug}")
 async def get_post_by_slug(
     slug: str = Path(..., description="포스트 슬러그"),
     db: Session = Depends(get_postgres_db)
@@ -186,7 +257,78 @@ async def get_post_by_slug(
     # 조회수 증가
     post.increment_view_count(db=db, post_id=post_obj.id)
 
-    return post_obj
+    # 작성자 정보 조회
+    author = None
+    if post_obj.author_id:
+        author = db.query(User).filter(User.id == post_obj.author_id).first()
+    
+    # 카테고리 정보 조회
+    category = None
+    if post_obj.category_id:
+        category = db.query(PostCategory).filter(PostCategory.id == post_obj.category_id).first()
+    
+    # 태그 정보 조회 (blog_post_tags 테이블 사용)
+    tags = []
+    if post_obj.id:
+        # Raw SQL로 태그 조회
+        tag_result = db.execute(
+            text("SELECT pt.id, pt.name, pt.slug FROM post_tags pt "
+                 "JOIN blog_post_tags bpt ON pt.id = bpt.tag_id "
+                 "WHERE bpt.blog_id = :blog_id"),
+            {"blog_id": post_obj.id}
+        )
+        tags = [{"id": row[0], "name": row[1], "slug": row[2]} for row in tag_result.fetchall()]
+
+    # 응답 데이터 구성
+    post_dict = {
+        "id": post_obj.id,
+        "title": post_obj.title,
+        "slug": post_obj.slug,
+        "content": post_obj.content,  # 영문
+        "content_ko": post_obj.content_ko,  # 한글
+        "description": post_obj.description,
+        "excerpt": post_obj.excerpt,
+        "status": post_obj.status,
+        "post_type": post_obj.post_type,
+        "featured": post_obj.featured,
+        "view_count": post_obj.view_count,
+        "created_at": post_obj.created_at,
+        "updated_at": post_obj.updated_at,
+        "published_at": post_obj.published_at,
+        "scheduled_at": post_obj.scheduled_at,
+        "author_id": post_obj.author_id,
+        "author": {
+            "id": author.id,
+            "username": author.username,
+            "email": author.email
+        } if author else None,
+        "category_id": post_obj.category_id,
+        "category": {
+            "id": category.id,
+            "name": category.name,
+            "slug": category.slug
+        } if category else None,
+        "cover_image": post_obj.cover_image,
+        "cover_image_alt": post_obj.cover_image_alt,
+        "keywords": post_obj.keywords,
+        "canonical_url": post_obj.canonical_url,
+        "meta_title": post_obj.meta_title,
+        "meta_description": post_obj.meta_description,
+        "read_time_minutes": post_obj.read_time_minutes,
+        "sync_with_asset": post_obj.sync_with_asset,
+        "auto_sync_content": post_obj.auto_sync_content,
+        "asset_id": post_obj.asset_id,
+        "post_parent": post_obj.post_parent,
+        "menu_order": post_obj.menu_order,
+        "comment_count": post_obj.comment_count,
+        "post_password": post_obj.post_password,
+        "ping_status": post_obj.ping_status,
+        "last_sync_at": post_obj.last_sync_at,
+        "sync_status": post_obj.sync_status,
+        "tags": tags
+    }
+
+    return post_dict
 
 
 @router.post("/", response_model=PostResponse)

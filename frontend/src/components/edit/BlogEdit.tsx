@@ -51,7 +51,11 @@ export default function BlogEdit({
     post_password: null,
     ping_status: 'open',
     last_sync_at: null,
-    sync_status: 'pending'
+    sync_status: 'pending',
+    // author와 category 객체 초기화
+    author: null,
+    category: null,
+    tags: []
   })
 
   const [activeLanguage] = useState<'ko' | 'en'>('ko')
@@ -138,7 +142,7 @@ export default function BlogEdit({
         postType={formData.post_type}
         onPostTypeChange={(postType) => updateFormDataField('post_type', postType)}
         authorId={formData.author_id || null}
-        onAuthorIdChange={(authorId) => updateFormDataField('author_id', authorId)}
+        authorUsername={formData.author?.username || null}
         categoryId={formData.category_id || null}
         onCategoryIdChange={(categoryId) => updateFormDataField('category_id', categoryId)}
         postParent={formData.post_parent || null}

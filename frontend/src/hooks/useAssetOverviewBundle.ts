@@ -126,8 +126,30 @@ export const useAssetOverviewBundle = (
       setLoading(true)
       setError(null)
 
-      const BACKEND_BASE = process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'
-      const response = await fetch(`${BACKEND_BASE}/assets/overview-bundle/${assetIdentifier}`, {
+      // assetIdentifier가 비어있으면 호출하지 않음
+      if (!assetIdentifier || !assetIdentifier.trim()) {
+        setLoading(false)
+        return
+      }
+
+      const BACKEND_BASE = process.env.NEXT_PUBLIC_BACKEND_API_BASE || process.env.NEXT_PUBLIC_API_URL || 'https://backend.firemarkets.net/api/v1'
+      
+      // HTTPS 강제 적용 (Mixed Content 방지)
+      let apiUrl = BACKEND_BASE
+      if (apiUrl.startsWith('http://')) {
+        apiUrl = apiUrl.replace('http://', 'https://')
+      } else if (!apiUrl.startsWith('https://')) {
+        // 프로토콜이 없으면 https:// 추가
+        apiUrl = `https://${apiUrl}`
+      }
+      
+      console.log('🔍 useAssetOverviewBundle - BACKEND_BASE:', BACKEND_BASE)
+      console.log('🔍 useAssetOverviewBundle - apiUrl:', apiUrl)
+      
+      const fullUrl = `${apiUrl}/assets/overview-bundle/${assetIdentifier}?lang=ko`
+      console.log('🔍 useAssetOverviewBundle - Fetching URL:', fullUrl)
+      
+      const response = await fetch(fullUrl, {
         cache: 'no-store'
       })
 
@@ -151,7 +173,7 @@ export const useAssetOverviewBundle = (
   }
 
   useEffect(() => {
-    if (!options.initialData) {
+    if (!options.initialData && assetIdentifier && assetIdentifier.trim()) {
       fetchData()
     }
   }, [assetIdentifier])

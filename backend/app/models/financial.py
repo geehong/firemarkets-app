@@ -106,3 +106,5 @@ class CompanyFinancials(Base):
     asset = relationship("Asset", back_populates="company_financials")
 
 
+
+

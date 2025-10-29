@@ -1,12 +1,13 @@
 'use client'
 
 import React from 'react'
+import { useCategories } from '@/hooks/usePosts'
 
 interface ContentBlockProps {
   postType: 'post' | 'page' | 'tutorial' | 'news' | 'assets' | 'onchain'
   onPostTypeChange: (postType: 'post' | 'page' | 'tutorial' | 'news' | 'assets' | 'onchain') => void
   authorId: number | null
-  onAuthorIdChange: (authorId: number | null) => void
+  authorUsername?: string | null
   categoryId: number | null
   onCategoryIdChange: (categoryId: number | null) => void
   postParent: number | null
@@ -21,7 +22,7 @@ export default function ContentBlock({
   postType,
   onPostTypeChange,
   authorId,
-  onAuthorIdChange,
+  authorUsername,
   categoryId,
   onCategoryIdChange,
   postParent,
@@ -31,6 +32,8 @@ export default function ContentBlock({
   featured,
   onFeaturedChange
 }: ContentBlockProps) {
+  // 카테고리 목록 조회
+  const { data: categories, isLoading: categoriesLoading } = useCategories()
   return (
     <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
       <div className="border-b px-4 py-3 bg-gray-50">
@@ -58,28 +61,30 @@ export default function ContentBlock({
         
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            작성자 ID
+            작성자
           </label>
-          <input
-            type="number"
-            value={authorId ?? ''}
-            onChange={(e) => onAuthorIdChange(e.target.value ? parseInt(e.target.value) : null)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="작성자 ID"
-          />
+          <div className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-gray-600">
+            {authorUsername || `ID: ${authorId}` || '작성자 없음'}
+          </div>
         </div>
         
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            카테고리 ID
+            카테고리
           </label>
-          <input
-            type="number"
+          <select
             value={categoryId ?? ''}
             onChange={(e) => onCategoryIdChange(e.target.value ? parseInt(e.target.value) : null)}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="카테고리 ID"
-          />
+            disabled={categoriesLoading}
+          >
+            <option value="">카테고리 선택</option>
+            {categories?.map((category: any) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
         </div>
         
         <div>

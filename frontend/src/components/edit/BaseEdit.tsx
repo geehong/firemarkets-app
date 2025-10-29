@@ -3,103 +3,12 @@
 import React, { useState, useEffect, useRef, useCallback, ReactNode } from 'react'
 import SimpleCKEditor from './SimpleCKEditor'
 import FinancialDataBlock from './editorblock/FinancialDataBlock'
+import { usePost, useCreatePost, useUpdatePost, Post, PostCreateData, PostUpdateData } from '@/hooks/usePosts'
+import { useAssetOverviewBundle } from '@/hooks/useAssetOverviewBundle'
 
-// 인증 헤더를 가져오는 헬퍼 함수
-const getAuthHeaders = (): Record<string, string> => {
-  const token = localStorage.getItem('access_token') || localStorage.getItem('accessToken')
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  }
-  
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-  
-  return headers
-}
 
-// FinancialData 타입 정의
-interface FinancialData {
-  financial_id: number
-  asset_id: number
-  snapshot_date: string
-  currency: string | null
-  market_cap: number | null
-  ebitda: number | null
-  shares_outstanding: number | null
-  pe_ratio: number | null
-  peg_ratio: number | null
-  beta: number | null
-  eps: number | null
-  dividend_yield: number | null
-  dividend_per_share: number | null
-  profit_margin_ttm: number | null
-  return_on_equity_ttm: number | null
-  revenue_ttm: number | null
-  price_to_book_ratio: number | null
-  week_52_high: number | null
-  week_52_low: number | null
-  day_50_moving_avg: number | null
-  day_200_moving_avg: number | null
-  updated_at: string
-  // 추가 필드들
-  book_value: number | null
-  revenue_per_share_ttm: number | null
-  operating_margin_ttm: number | null
-  return_on_assets_ttm: number | null
-  gross_profit_ttm: number | null
-  quarterly_earnings_growth_yoy: number | null
-  quarterly_revenue_growth_yoy: number | null
-  analyst_target_price: number | null
-  trailing_pe: number | null
-  forward_pe: number | null
-  price_to_sales_ratio_ttm: number | null
-  ev_to_revenue: number | null
-  ev_to_ebitda: number | null
-}
-
-// 실제 API 응답 구조에 맞춘 PostFormState 타입
-export type PostFormState = {
-  // API에서 실제로 제공하는 필드들
-  id?: number
-  title: { ko: string; en: string }
-  content: string // 영문 content
-  content_ko: string // 한글 content
-  description: { ko: string; en: string }
-  excerpt: { ko: string; en: string }
-  slug: string
-  status: 'draft' | 'published' | 'private' | 'scheduled'
-  featured: boolean
-  post_type: 'post' | 'page' | 'tutorial' | 'news' | 'assets' | 'onchain'
-  view_count: number
-  created_at?: string
-  updated_at?: string
-  published_at?: string
-  scheduled_at?: string
-  
-  // API에서 실제로 제공하는 필수 필드들
-  author_id: number | null
-  category_id: number | null
-  cover_image: string | null
-  cover_image_alt: string | null
-  keywords: string[] | null
-  canonical_url: string | null
-  meta_title: { ko: string; en: string }
-  meta_description: { ko: string; en: string }
-  read_time_minutes: number | null
-  
-  // 추가 API 필드들
-  sync_with_asset?: boolean
-  auto_sync_content?: boolean
-  asset_id?: number | null
-  post_parent?: number | null
-  menu_order?: number
-  comment_count?: number
-  post_password?: string | null
-  ping_status?: string
-  last_sync_at?: string | null
-  sync_status?: 'pending' | 'synced' | 'failed'
-}
+// PostFormState는 usePosts의 Post 타입을 기반으로 함
+export type PostFormState = Post
 
 export interface BaseEditProps {
   postId?: number
@@ -112,8 +21,11 @@ export interface BaseEditProps {
   showFinancialData?: boolean
   financialTicker?: string
   financialAssetId?: number | null
-  financialData?: FinancialData | null
-  onSaveFinancial?: (data: Partial<FinancialData>) => Promise<void>
+  financialData?: any | null
+  onSaveFinancial?: (data: any) => Promise<void>
+  // 자산 정보 표시 관련 props
+  showAssetInfo?: boolean
+  assetIdentifier?: string
   // PublishingBlock에서 사용할 handleSave 함수
   onHandleSave?: (handleSave: (status: 'draft' | 'published') => Promise<void>) => void
   // saving 상태 전달
@@ -135,13 +47,27 @@ export default function BaseEdit({
   financialAssetId,
   financialData,
   onSaveFinancial,
+  showAssetInfo = false,
+  assetIdentifier,
   onHandleSave,
   onSavingChange,
   onFormDataChange,
   onUpdateFormData
 }: BaseEditProps) {
+  // React Query 훅들 사용
+  const { data: postData, isLoading: postLoading, error: postError } = usePost(postId)
+  const createPostMutation = useCreatePost()
+  const updatePostMutation = useUpdatePost()
+  
+  // 자산 정보 훅 사용
+  const { data: assetData, loading: assetLoading, error: assetError } = useAssetOverviewBundle(
+    assetIdentifier || '',
+    { initialData: undefined }
+  )
+
   const [formData, setFormData] = useState<PostFormState>({
-    // API에서 실제로 제공하는 필드들
+    // 기본값 설정
+    id: 0,
     title: { ko: '', en: '' },
     content: '',
     content_ko: '',
@@ -152,8 +78,10 @@ export default function BaseEdit({
     featured: false,
     post_type: postType,
     view_count: 0,
-    
-    // API에서 실제로 제공하는 필수 필드들
+    created_at: '',
+    updated_at: '',
+    published_at: undefined,
+    scheduled_at: undefined,
     author_id: null,
     category_id: null,
     cover_image: null,
@@ -163,8 +91,6 @@ export default function BaseEdit({
     meta_title: { ko: '', en: '' },
     meta_description: { ko: '', en: '' },
     read_time_minutes: null,
-    
-    // 추가 API 필드들
     sync_with_asset: false,
     auto_sync_content: false,
     asset_id: null,
@@ -204,113 +130,100 @@ export default function BaseEdit({
     }
   }, [activeLanguage])
 
-  // 수정 모드일 때 기존 데이터 불러오기
+  // 수정 모드일 때 기존 데이터 불러오기 (React Query 사용)
   useEffect(() => {
-    if (mode === 'edit' && postId) {
-      const fetchPostData = async () => {
-        try {
-          setLoading(true)
-          console.log('📡 Fetching post data for ID:', postId)
-          
-          const apiUrl = `${process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'}/posts/${postId}`
-          const response = await fetch(apiUrl)
-          
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`)
-          }
-          
-          const data = await response.json()
-          console.log('📦 Raw API response:', data)
-          
-          if (data) {
-            // 다국어 필드를 안전하게 처리하는 헬퍼 함수
-            const processMultilingualField = (field: any) => {
-              if (typeof field === 'string') {
-                return { ko: field, en: field }
-              }
-              if (typeof field === 'object' && field !== null) {
-                // 중첩된 객체인 경우 (예: {ko: {…}, en: {…}})
-                if (field.ko && typeof field.ko === 'object') {
-                  return {
-                    ko: field.ko.ko || field.ko || '',
-                    en: field.en?.en || field.en || ''
-                  }
-                }
-                // 일반적인 객체인 경우 (예: {ko: 'text', en: 'text'})
-                return {
-                  ko: field.ko || '',
-                  en: field.en || ''
-                }
-              }
-              return { ko: '', en: '' }
-            }
-
-            // 실제 API 응답 구조에 맞춘 데이터 처리
-            const processedData = {
-              id: data.id,
-              title: processMultilingualField(data.title),
-              content: data.content || '',
-              content_ko: data.content_ko || '',
-              description: processMultilingualField(data.description),
-              excerpt: processMultilingualField(data.excerpt),
-              slug: data.slug || '',
-              status: data.status || 'draft',
-              featured: data.featured || false,
-              post_type: data.post_type || postType,
-              view_count: data.view_count || 0,
-              created_at: data.created_at,
-              updated_at: data.updated_at,
-              published_at: data.published_at,
-              scheduled_at: data.scheduled_at,
-              
-              // API에서 실제로 제공하는 필수 필드들
-              author_id: data.author_id || null,
-              category_id: data.category_id || null,
-              cover_image: data.cover_image || null,
-              cover_image_alt: data.cover_image_alt || null,
-              keywords: data.keywords || null,
-              canonical_url: data.canonical_url || null,
-              meta_title: processMultilingualField(data.meta_title),
-              meta_description: processMultilingualField(data.meta_description),
-              read_time_minutes: data.read_time_minutes || null,
-              
-              // 추가 API 필드들
-              sync_with_asset: data.sync_with_asset || false,
-              auto_sync_content: data.auto_sync_content || false,
-              asset_id: data.asset_id || null,
-              post_parent: data.post_parent || null,
-              menu_order: data.menu_order || 0,
-              comment_count: data.comment_count || 0,
-              post_password: data.post_password || null,
-              ping_status: data.ping_status || 'open',
-              last_sync_at: data.last_sync_at || null,
-              sync_status: data.sync_status || 'pending'
-            }
-            
-            console.log('📝 Processed data:', {
-              title: processedData.title,
-              description: processedData.description,
-              excerpt: processedData.excerpt
-            })
-            setFormData(processedData)
-            console.log('✅ Post data loaded and set successfully')
-          }
-        } catch (error) {
-          console.error('❌ Error fetching post data:', error)
-        } finally {
-          setLoading(false)
+    if (mode === 'edit' && postData) {
+      console.log('📦 Post data loaded from React Query:', postData)
+      
+      // 다국어 필드를 안전하게 처리하는 헬퍼 함수
+      const processMultilingualField = (field: any) => {
+        if (typeof field === 'string') {
+          return { ko: field, en: field }
         }
+        if (typeof field === 'object' && field !== null) {
+          // 중첩된 객체인 경우 (예: {ko: {…}, en: {…}})
+          if (field.ko && typeof field.ko === 'object') {
+            return {
+              ko: field.ko.ko || field.ko || '',
+              en: field.en?.en || field.en || ''
+            }
+          }
+          // 일반적인 객체인 경우 (예: {ko: 'text', en: 'text'})
+          return {
+            ko: field.ko || '',
+            en: field.en || ''
+          }
+        }
+        return { ko: '', en: '' }
       }
 
-      fetchPostData()
+      // 실제 API 응답 구조에 맞춘 데이터 처리
+      const processedData = {
+        id: postData.id,
+        title: processMultilingualField(postData.title),
+        content: postData.content || '',
+        content_ko: postData.content_ko || '',
+        description: processMultilingualField(postData.description),
+        excerpt: processMultilingualField(postData.excerpt),
+        slug: postData.slug || '',
+        status: postData.status || 'draft',
+        featured: postData.featured || false,
+        post_type: postData.post_type || postType,
+        view_count: postData.view_count || 0,
+        created_at: postData.created_at,
+        updated_at: postData.updated_at,
+        published_at: postData.published_at,
+        scheduled_at: postData.scheduled_at,
+        
+        // API에서 실제로 제공하는 필수 필드들
+        author_id: postData.author_id || null,
+        category_id: postData.category_id || null,
+        cover_image: postData.cover_image || null,
+        cover_image_alt: postData.cover_image_alt || null,
+        keywords: postData.keywords || null,
+        canonical_url: postData.canonical_url || null,
+        meta_title: processMultilingualField(postData.meta_title),
+        meta_description: processMultilingualField(postData.meta_description),
+        read_time_minutes: postData.read_time_minutes || null,
+        
+        // 추가 API 필드들
+        sync_with_asset: postData.sync_with_asset || false,
+        auto_sync_content: postData.auto_sync_content || false,
+        asset_id: postData.asset_id || null,
+        post_parent: postData.post_parent || null,
+        menu_order: postData.menu_order || 0,
+        comment_count: postData.comment_count || 0,
+        post_password: postData.post_password || null,
+        ping_status: postData.ping_status || 'open',
+        last_sync_at: postData.last_sync_at || null,
+        sync_status: postData.sync_status || 'pending',
+        
+        // author와 category 객체 포함
+        author: postData.author || null,
+        category: postData.category || null,
+        tags: postData.tags || []
+      }
+      
+      console.log('📝 Processed data:', {
+        title: processedData.title,
+        description: processedData.description,
+        excerpt: processedData.excerpt
+      })
+      setFormData(processedData)
+      console.log('✅ Post data loaded and set successfully')
     }
-  }, [mode, postId, postType])
+  }, [mode, postData, postType])
+
+  // 로딩 상태 업데이트
+  useEffect(() => {
+    setLoading(postLoading)
+  }, [postLoading])
 
   // 내용이 변경될 때마다 읽기 시간 업데이트
   useEffect(() => {
     const currentContent = activeLanguage === 'ko' ? formData.content_ko : formData.content
     const readTime = calculateReadTime(currentContent)
-    setFormData(prev => ({
+    setFormData((prev: PostFormState) => ({
       ...prev,
       read_time_minutes: readTime
     }))
@@ -324,7 +237,7 @@ export default function BaseEdit({
 
   // 폼 데이터 업데이트
   const updateFormData = (field: keyof PostFormState, value: string | number | boolean | string[] | { ko: string; en: string } | null) => {
-    setFormData(prev => ({
+    setFormData((prev: PostFormState) => ({
       ...prev,
       [field]: value
     }))
@@ -340,7 +253,7 @@ export default function BaseEdit({
       [activeLanguage]: value
     }
     
-    setFormData(prev => ({
+    setFormData((prev: PostFormState) => ({
       ...prev,
       [field]: newValue
     }))
@@ -377,7 +290,7 @@ export default function BaseEdit({
     return Math.max(1, readTime) // 최소 1분
   }
 
-  // 저장 함수
+  // 저장 함수 (React Query 사용)
   const handleSave = React.useCallback(async (status: 'draft' | 'published' = 'draft') => {
     try {
       setSaving(true)
@@ -436,73 +349,32 @@ export default function BaseEdit({
       console.log('📝 Sending post data:', JSON.stringify(postData, null, 2))
 
       if (mode === 'create') {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'}/posts`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify(postData)
-        })
+        // React Query mutation 사용
+        const result = await createPostMutation.mutateAsync(postData as PostCreateData)
+        console.log('✅ Post created:', result)
         
-        if (!response.ok) {
-          if (response.status === 401) {
-            throw new Error('인증이 필요합니다. 로그인해주세요.')
-          }
-          const errorData = await response.json().catch(() => ({}))
-          throw new Error(errorData.detail || `서버 오류: ${response.status}`)
+        if (onSave) {
+          onSave(result)
         }
-        
-        const result = await response.json()
-        console.log('Post created:', result)
       } else if (mode === 'edit' && postId) {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'}/posts/${postId}`, {
-          method: 'PUT',
-          headers: getAuthHeaders(),
-          body: JSON.stringify(postData)
+        // React Query mutation 사용
+        const result = await updatePostMutation.mutateAsync({
+          postId,
+          postData: postData as PostUpdateData
         })
+        console.log('✅ Post updated:', result)
         
-        if (!response.ok) {
-          if (response.status === 401) {
-            throw new Error('인증이 필요합니다. 로그인해주세요.')
-          }
-          const errorData = await response.json().catch(() => ({}))
-          console.error('API Error Details:', errorData)
-          console.error('API Error Details (full):', JSON.stringify(errorData, null, 2))
-          
-          // 422 오류의 경우 상세한 유효성 검사 오류 표시
-          if (response.status === 422) {
-            const validationErrors = errorData.detail || errorData.errors || errorData
-            console.error('Validation errors:', validationErrors)
-            
-            if (Array.isArray(validationErrors)) {
-              const errorMessages = validationErrors.map(err => {
-                if (typeof err === 'object' && err !== null) {
-                  return `${err.field || err.loc?.join('.') || '필드'}: ${err.message || err.msg || err.type || JSON.stringify(err)}`
-                }
-                return String(err)
-              }).join(', ')
-              throw new Error(`유효성 검사 오류: ${errorMessages}`)
-            } else if (typeof validationErrors === 'string') {
-              throw new Error(`유효성 검사 오류: ${validationErrors}`)
-            } else {
-              throw new Error(`유효성 검사 오류: ${JSON.stringify(validationErrors)}`)
-            }
-          }
-          
-          throw new Error(errorData.detail || `서버 오류: ${response.status}`)
+        if (onSave) {
+          onSave(result)
         }
-        
-        const result = await response.json()
-        console.log('Post updated:', result)
-      }
-
-      if (onSave) {
-        onSave(postData)
       }
     } catch (error) {
-      console.error('Failed to save post:', error)
+      console.error('❌ Failed to save post:', error)
+      // 에러는 React Query가 자동으로 처리하므로 여기서는 로깅만
     } finally {
       setSaving(false)
     }
-  }, [formData, mode, postId, postType, onSave])
+  }, [formData, mode, postId, postType, onSave, createPostMutation, updatePostMutation])
 
   // 취소 함수
   const handleCancel = () => {
@@ -543,6 +415,18 @@ export default function BaseEdit({
       onFormDataChange(safeFormData)
     }
   }, [formData, onFormDataChange])
+
+  // 에러 상태 처리
+  if (postError) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="text-center">
+          <div className="text-red-600 text-lg font-semibold mb-2">오류가 발생했습니다</div>
+          <div className="text-gray-600">{postError.message}</div>
+        </div>
+      </div>
+    )
+  }
 
   if (loading) {
     return (
@@ -635,7 +519,7 @@ export default function BaseEdit({
                       ? (formData.title[activeLanguage] || '')
                       : (typeof formData.title === 'string' ? formData.title : '')
                   }
-                  onChange={(e) => updateMultilingualField('title', e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateMultilingualField('title', e.target.value)}
                   className="w-full text-2xl font-semibold border-none outline-none"
                   placeholder="제목을 입력하세요..."
                 />
@@ -648,7 +532,7 @@ export default function BaseEdit({
                   <input
                     type="text"
                     value={formData.slug}
-                    onChange={(e) => updateFormData('slug', e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateFormData('slug', e.target.value)}
                     className="flex-1 text-sm border-none bg-transparent outline-none"
                     placeholder="url-slug"
                   />
@@ -675,7 +559,7 @@ export default function BaseEdit({
                       ? (formData.excerpt[activeLanguage] || '')
                       : (typeof formData.excerpt === 'string' ? formData.excerpt : '')
                   }
-                  onChange={(e) => updateMultilingualField('excerpt', e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => updateMultilingualField('excerpt', e.target.value)}
                   rows={3}
                   className="w-full border-none outline-none resize-none"
                   placeholder="요약을 입력하세요..."
@@ -701,6 +585,144 @@ export default function BaseEdit({
                     financialData={financialData}
                     onSaveFinancial={onSaveFinancial}
                   />
+                </div>
+              )}
+
+              {/* 자산 정보 블럭 */}
+              {showAssetInfo && assetData && (
+                <div className="p-6 border-t">
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">자산 정보</h3>
+                    
+                    {assetData.numeric_overview && (
+                      <div className="space-y-4">
+                        {/* 기본 정보 */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-sm font-medium text-gray-600">티커</label>
+                            <p className="text-lg font-semibold text-gray-900">
+                              {assetData.numeric_overview.ticker}
+                            </p>
+                          </div>
+                          <div>
+                            <label className="text-sm font-medium text-gray-600">이름</label>
+                            <p className="text-lg font-semibold text-gray-900">
+                              {assetData.numeric_overview.name}
+                            </p>
+                          </div>
+                          <div>
+                            <label className="text-sm font-medium text-gray-600">거래소</label>
+                            <p className="text-gray-900">{assetData.numeric_overview.exchange}</p>
+                          </div>
+                          <div>
+                            <label className="text-sm font-medium text-gray-600">통화</label>
+                            <p className="text-gray-900">{assetData.numeric_overview.currency}</p>
+                          </div>
+                        </div>
+
+                        {/* 가격 정보 */}
+                        {assetData.numeric_overview.current_price && (
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                              <label className="text-sm font-medium text-gray-600">현재 가격</label>
+                              <p className="text-xl font-bold text-gray-900">
+                                ${assetData.numeric_overview.current_price.toLocaleString()}
+                              </p>
+                            </div>
+                            <div>
+                              <label className="text-sm font-medium text-gray-600">24시간 변동률</label>
+                              <p className={`text-lg font-semibold ${
+                                (assetData.numeric_overview.price_change_percentage_24h || 0) >= 0 
+                                  ? 'text-green-600' 
+                                  : 'text-red-600'
+                              }`}>
+                                {assetData.numeric_overview.price_change_percentage_24h?.toFixed(2)}%
+                              </p>
+                            </div>
+                            <div>
+                              <label className="text-sm font-medium text-gray-600">시가총액</label>
+                              <p className="text-lg font-semibold text-gray-900">
+                                ${assetData.numeric_overview.market_cap?.toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 암호화폐 정보 */}
+                        {assetData.numeric_overview.asset_category === 'crypto' && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="text-sm font-medium text-gray-600">순환 공급량</label>
+                              <p className="text-gray-900">
+                                {assetData.numeric_overview.circulating_supply?.toLocaleString()}
+                              </p>
+                            </div>
+                            <div>
+                              <label className="text-sm font-medium text-gray-600">총 공급량</label>
+                              <p className="text-gray-900">
+                                {assetData.numeric_overview.total_supply?.toLocaleString()}
+                              </p>
+                            </div>
+                            <div>
+                              <label className="text-sm font-medium text-gray-600">24시간 거래량</label>
+                              <p className="text-gray-900">
+                                ${assetData.numeric_overview.volume_24h?.toLocaleString()}
+                              </p>
+                            </div>
+                            <div>
+                              <label className="text-sm font-medium text-gray-600">CMC 순위</label>
+                              <p className="text-gray-900">#{assetData.numeric_overview.cmc_rank}</p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 주식 정보 */}
+                        {assetData.numeric_overview.asset_category === 'stocks' && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="text-sm font-medium text-gray-600">회사명</label>
+                              <p className="text-gray-900">{assetData.numeric_overview.company_name}</p>
+                            </div>
+                            <div>
+                              <label className="text-sm font-medium text-gray-600">섹터</label>
+                              <p className="text-gray-900">{assetData.numeric_overview.sector}</p>
+                            </div>
+                            <div>
+                              <label className="text-sm font-medium text-gray-600">산업</label>
+                              <p className="text-gray-900">{assetData.numeric_overview.industry}</p>
+                            </div>
+                            <div>
+                              <label className="text-sm font-medium text-gray-600">국가</label>
+                              <p className="text-gray-900">{assetData.numeric_overview.country}</p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 설명 */}
+                        {assetData.numeric_overview.description && (
+                          <div>
+                            <label className="text-sm font-medium text-gray-600">설명</label>
+                            <p className="text-gray-700 text-sm leading-relaxed">
+                              {assetData.numeric_overview.description}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {assetLoading && (
+                      <div className="flex items-center justify-center py-4">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                        <span className="ml-2 text-gray-600">자산 정보 로딩 중...</span>
+                      </div>
+                    )}
+
+                    {assetError && (
+                      <div className="text-red-600 text-sm">
+                        자산 정보를 불러올 수 없습니다: {assetError.message}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
