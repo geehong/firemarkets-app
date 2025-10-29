@@ -110,11 +110,13 @@ const SimpleCKEditor: React.FC<SimpleCKEditorProps> = ({
           on: {
             instanceReady: () => {
               console.log(`✅ Local CKEditor ready with ID: ${uniqueId}`)
-              // 초기 값 설정
+              isInitialized.current = true
+              
+              // 초기화 완료 후 현재 value가 있으면 설정
               if (value && ckEditorRef.current) {
+                console.log(`🔄 SimpleCKEditor - Setting initial data after initialization:`, value)
                 ckEditorRef.current.setData(value)
               }
-              isInitialized.current = true
             },
             change: (evt: { editor: { getData: () => string } }) => {
               const data = evt.editor.getData()
@@ -141,12 +143,26 @@ const SimpleCKEditor: React.FC<SimpleCKEditorProps> = ({
 
   // 값이 변경될 때 에디터 내용 업데이트 (무한 루프 방지를 위한 가드 추가)
   useEffect(() => {
-    if (ckEditorRef.current && isInitialized.current && value !== undefined) {
+    console.log('🔄 SimpleCKEditor - value changed:', { value, isInitialized: isInitialized.current, hasEditor: !!ckEditorRef.current })
+    
+    // CKEditor가 초기화되지 않았으면 대기
+    if (!ckEditorRef.current || !isInitialized.current) {
+      console.log('🔄 SimpleCKEditor - CKEditor not ready, skipping value update')
+      return
+    }
+    
+    if (value !== undefined) {
       const currentData = ckEditorRef.current.getData()
+      console.log('🔄 SimpleCKEditor - current data vs new value:', { currentData, newValue: value, isDifferent: currentData !== value })
       // 값이 실제로 다를 때만 업데이트 (빈 문자열과 undefined 구분)
       if (currentData !== value) {
+        console.log('🔄 SimpleCKEditor - Updating editor content')
         ckEditorRef.current.setData(value || '')
       }
+    } else {
+      // value가 undefined인 경우 빈 문자열로 설정
+      console.log('🔄 SimpleCKEditor - Setting empty content')
+      ckEditorRef.current.setData('')
     }
   }, [value]) // value는 의도적으로 의존성에 포함 (에디터 내용 동기화용)
 

@@ -243,6 +243,7 @@ export default function AssetsEditorPage() {
                 onCancel={handleBackToList}
                 categoryId={1}
                 authorId={1}
+                assetId={selectedAsset.asset_id}
               />
             )
           }

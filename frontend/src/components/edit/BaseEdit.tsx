@@ -33,6 +33,8 @@ export interface BaseEditProps {
   // formData와 updateFormData를 children에 전달하기 위한 props
   onFormDataChange?: (formData: PostFormState) => void
   onUpdateFormData?: (field: keyof PostFormState, value: string | number | boolean | string[] | { ko: string; en: string } | null) => void
+  // activeLanguage를 children에 전달하기 위한 props
+  onActiveLanguageChange?: (activeLanguage: 'ko' | 'en') => void
 }
 
 export default function BaseEdit({ 
@@ -52,18 +54,37 @@ export default function BaseEdit({
   onHandleSave,
   onSavingChange,
   onFormDataChange,
-  onUpdateFormData
+  onUpdateFormData,
+  onActiveLanguageChange
 }: BaseEditProps) {
+  console.log('🔍 BaseEdit - postId received:', postId)
+  
   // React Query 훅들 사용
   const { data: postData, isLoading: postLoading, error: postError } = usePost(postId)
   const createPostMutation = useCreatePost()
   const updatePostMutation = useUpdatePost()
   
+  console.log('🔍 BaseEdit - usePost result:', { postData: postData ? 'exists' : 'null', postLoading, postError })
+  
+  const [activeLanguage, setActiveLanguage] = useState<'ko' | 'en'>('ko')
+  
+  // activeLanguage 변경 시 children에 알림
+  useEffect(() => {
+    if (onActiveLanguageChange) {
+      onActiveLanguageChange(activeLanguage)
+    }
+  }, [activeLanguage, onActiveLanguageChange])
+  
   // 자산 정보 훅 사용
   const { data: assetData, loading: assetLoading, error: assetError } = useAssetOverviewBundle(
     assetIdentifier || '',
-    { initialData: undefined }
+    { initialData: undefined },
+    activeLanguage
   )
+
+  console.log('🔍 BaseEdit - assetIdentifier received:', assetIdentifier)
+  console.log('🔍 BaseEdit - activeLanguage:', activeLanguage)
+  console.log('🔍 BaseEdit - assetData received:', assetData)
 
   const [formData, setFormData] = useState<PostFormState>({
     // 기본값 설정
@@ -103,7 +124,6 @@ export default function BaseEdit({
     sync_status: 'pending'
   })
 
-  const [activeLanguage, setActiveLanguage] = useState<'ko' | 'en'>('ko')
   const [loading, setLoading] = useState(mode === 'edit')
   const [saving, setSaving] = useState(false)
   
@@ -130,10 +150,51 @@ export default function BaseEdit({
     }
   }, [activeLanguage])
 
+  // assetData의 post_overview를 사용하여 formData 업데이트
+  useEffect(() => {
+    if (assetData?.post_overview) {
+      console.log('📦 BaseEdit - Updating formData with assetData.post_overview:', assetData.post_overview)
+      console.log('📦 BaseEdit - Current activeLanguage:', activeLanguage)
+      console.log('📦 BaseEdit - postOverview.title:', assetData.post_overview.title)
+      console.log('📦 BaseEdit - postOverview.content:', assetData.post_overview.content)
+      console.log('📦 BaseEdit - postOverview.description:', assetData.post_overview.description)
+      
+      const postOverview = assetData.post_overview
+      setFormData(prev => {
+        const newFormData = {
+          ...prev,
+          title: postOverview.title || { ko: '', en: '' },
+          content: activeLanguage === 'en' ? (postOverview.content || '') : prev.content,
+          content_ko: activeLanguage === 'ko' ? (postOverview.content || '') : prev.content_ko,
+          description: postOverview.description || { ko: '', en: '' },
+          excerpt: postOverview.excerpt || { ko: '', en: '' },
+          slug: postOverview.slug || '',
+          cover_image: postOverview.cover_image || null,
+          cover_image_alt: postOverview.cover_image_alt || null,
+          keywords: postOverview.keywords || null,
+          canonical_url: postOverview.canonical_url || null,
+          meta_title: postOverview.meta_title || { ko: '', en: '' },
+          meta_description: postOverview.meta_description || { ko: '', en: '' }
+        }
+        console.log('📦 BaseEdit - New formData after update:', {
+          title: newFormData.title,
+          content: newFormData.content,
+          content_ko: newFormData.content_ko,
+          description: newFormData.description,
+          activeLanguage: activeLanguage
+        })
+        console.log('📦 BaseEdit - CKEditor value will be:', activeLanguage === 'ko' ? newFormData.content_ko : newFormData.content)
+        return newFormData
+      })
+    }
+  }, [assetData, activeLanguage])
+
   // 수정 모드일 때 기존 데이터 불러오기 (React Query 사용)
   useEffect(() => {
+    console.log('🔍 BaseEdit - useEffect triggered:', { mode, postData: postData ? 'exists' : 'null', postId })
+    
     if (mode === 'edit' && postData) {
-      console.log('📦 Post data loaded from React Query:', postData)
+      console.log('📦 BaseEdit - Post data loaded from React Query:', postData)
       
       // 다국어 필드를 안전하게 처리하는 헬퍼 함수
       const processMultilingualField = (field: any) => {
@@ -237,11 +298,36 @@ export default function BaseEdit({
 
   // 폼 데이터 업데이트
   const updateFormData = (field: keyof PostFormState, value: string | number | boolean | string[] | { ko: string; en: string } | null) => {
-    setFormData((prev: PostFormState) => ({
-      ...prev,
+    const newFormData = {
+      ...formData,
       [field]: value
-    }))
+    }
+    setFormData(newFormData)
+    
+    // 부모 컴포넌트에 변경사항 전달
+    if (onFormDataChange) {
+      onFormDataChange(newFormData)
+    }
+    if (onUpdateFormData) {
+      onUpdateFormData(field, value)
+    }
   }
+
+  // 부모 컴포넌트에서 formData 변경사항을 받아서 내부 상태 업데이트
+  useEffect(() => {
+    if (onFormDataChange) {
+      // 부모 컴포넌트에 현재 formData 전달
+      onFormDataChange(formData)
+    }
+  }, [formData, onFormDataChange])
+
+  // onFormDataChange가 호출될 때 내부 formData 업데이트
+  useEffect(() => {
+    if (onFormDataChange) {
+      // onFormDataChange가 변경될 때마다 현재 formData를 부모에게 전달
+      onFormDataChange(formData)
+    }
+  }, [onFormDataChange])
 
   // 다국어 필드 업데이트
   const updateMultilingualField = (field: keyof Pick<PostFormState, 'title' | 'description' | 'excerpt' | 'meta_title' | 'meta_description'>, value: string) => {
@@ -450,6 +536,7 @@ export default function BaseEdit({
                 type="button"
                 onClick={() => {
                   console.log('🇰🇷 Switching to Korean')
+                  console.log('🔍 BaseEdit - Before language change:', { activeLanguage, assetIdentifier })
                   setActiveLanguage('ko')
                 }}
                 className={`px-3 py-1 rounded text-sm font-medium ${
@@ -464,6 +551,7 @@ export default function BaseEdit({
                 type="button"
                 onClick={() => {
                   console.log('🇺🇸 Switching to English')
+                  console.log('🔍 BaseEdit - Before language change:', { activeLanguage, assetIdentifier })
                   setActiveLanguage('en')
                 }}
                 className={`px-3 py-1 rounded text-sm font-medium ${

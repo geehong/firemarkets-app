@@ -97,9 +97,9 @@ export default function SEOSettings({
           </label>
           <input
             type="text"
-            value={metaTitle[activeLanguage]}
+            value={metaTitle?.[activeLanguage] || ''}
             onChange={(e) => onMetaTitleChange({
-              ...metaTitle,
+              ...(metaTitle || { ko: '', en: '' }),
               [activeLanguage]: e.target.value
             })}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -113,9 +113,9 @@ export default function SEOSettings({
           </label>
           <textarea
             rows={2}
-            value={metaDescription[activeLanguage]}
+            value={metaDescription?.[activeLanguage] || ''}
             onChange={(e) => onMetaDescriptionChange({
-              ...metaDescription,
+              ...(metaDescription || { ko: '', en: '' }),
               [activeLanguage]: e.target.value
             })}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"

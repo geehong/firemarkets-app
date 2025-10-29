@@ -128,6 +128,7 @@ const TickerEditorPage = () => {
             }}
             categoryId={1} // 기본 카테고리
             authorId={1} // 기본 작성자
+            assetId={assetInfo?.asset_id}
           />
         )
       

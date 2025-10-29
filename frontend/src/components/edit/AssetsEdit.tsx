@@ -56,6 +56,7 @@ interface AssetsEditProps extends Omit<BaseEditProps, 'postType'> {
   // AssetsEdit 특화 props
   categoryId?: number
   authorId?: number
+  assetId?: number // 자산 ID 추가
 }
 
 export default function AssetsEdit({
@@ -65,8 +66,10 @@ export default function AssetsEdit({
   onCancel,
   categoryId,
   authorId,
+  assetId,
   ...props 
 }: AssetsEditProps) {
+  console.log('🚀 AssetsEdit - Component initialized with:', { postId, mode, categoryId, authorId, assetId })
   // 자산 정보와 재무 정보 상태
   const [assetInfo, setAssetInfo] = useState<Asset | null>(null)
   const [financialData, setFinancialData] = useState<FinancialData | null>(null)
@@ -109,7 +112,7 @@ export default function AssetsEdit({
     tags: []
   })
 
-  const [activeLanguage] = useState<'ko' | 'en'>('ko')
+  const [activeLanguage, setActiveLanguage] = useState<'ko' | 'en'>('ko')
   const [saving] = useState(false)
   const [assets, setAssets] = useState<Asset[]>([])
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
@@ -118,8 +121,23 @@ export default function AssetsEdit({
   // 자산 개요 번들 훅 사용
   const { data: assetBundle, loading: assetBundleLoading, error: assetBundleError } = useAssetOverviewBundle(
     assetIdentifier || '',
-    { initialData: undefined }
+    { initialData: undefined },
+    activeLanguage // activeLanguage 전달
   )
+
+  console.log('🔍 AssetsEdit - Current state:', {
+    assetIdentifier,
+    assetId,
+    assetBundleLoading,
+    assetBundleError,
+    assetBundle: assetBundle ? 'exists' : 'null',
+    formData: {
+      asset_id: formData.asset_id,
+      title: formData.title,
+      content: formData.content,
+      slug: formData.slug
+    }
+  })
 
   // 폼 데이터 업데이트 함수
   const updateFormData = (field: keyof PostFormState, value: string | number | boolean | string[] | { ko: string; en: string } | null) => {
@@ -129,71 +147,7 @@ export default function AssetsEdit({
     }))
   }
 
-  // 포스트 데이터 가져오기 (편집 모드일 때만)
-  useEffect(() => {
-    const fetchPostData = async () => {
-      if (!postId || mode !== 'edit') return
-      
-      try {
-        console.log('📡 AssetsEdit - Fetching post data for ID:', postId)
-        const postResponse = await fetch(`https://backend.firemarkets.net/api/v1/posts/asset/${postId}`)
-        if (!postResponse.ok) {
-          throw new Error('Failed to fetch asset post info')
-        }
-        const postData = await postResponse.json()
-        console.log('✅ AssetsEdit - Asset post data received:', postData)
-        
-        // 포스트 데이터가 배열로 반환되므로 첫 번째 항목 사용
-        const assetPost = Array.isArray(postData) ? postData[0] : postData
-        if (assetPost) {
-          // 포스트 데이터를 formData에 설정
-          setFormData(prev => ({
-            ...prev,
-            title: assetPost.title || { ko: '', en: '' },
-            content: assetPost.content || '',
-            content_ko: assetPost.content_ko || '',
-            description: assetPost.description || { ko: '', en: '' },
-            excerpt: assetPost.excerpt || { ko: '', en: '' },
-            slug: assetPost.slug || '',
-            status: assetPost.status || 'draft',
-            featured: assetPost.featured || false,
-            author_id: assetPost.author_id || null,
-            category_id: assetPost.category_id || null,
-            cover_image: assetPost.cover_image || null,
-            cover_image_alt: assetPost.cover_image_alt || null,
-            keywords: assetPost.keywords || null,
-            canonical_url: assetPost.canonical_url || null,
-            meta_title: assetPost.meta_title || { ko: '', en: '' },
-            meta_description: assetPost.meta_description || { ko: '', en: '' },
-            read_time_minutes: assetPost.read_time_minutes || null,
-            sync_with_asset: assetPost.sync_with_asset || false,
-            auto_sync_content: assetPost.auto_sync_content || false,
-            asset_id: assetPost.asset_id || null,
-            post_parent: assetPost.post_parent || null,
-            menu_order: assetPost.menu_order || 0,
-            comment_count: assetPost.comment_count || 0,
-            post_password: assetPost.post_password || null,
-            ping_status: assetPost.ping_status || 'open',
-            last_sync_at: assetPost.last_sync_at || null,
-            sync_status: assetPost.sync_status || 'pending',
-            // author와 category 객체 포함
-            author: assetPost.author || null,
-            category: assetPost.category || null,
-            tags: assetPost.tags || []
-          }))
-
-          // 자산 ID 설정 (bundle API 호출을 위해)
-          if (assetPost.asset_id) {
-            setAssetIdentifier(assetPost.asset_id.toString())
-          }
-        }
-      } catch (err) {
-        console.error('❌ AssetsEdit - Failed to fetch post data:', err)
-      }
-    }
-
-    fetchPostData()
-  }, [postId, mode])
+  // 포스트 데이터는 usePost 훅에서 가져오므로 제거
 
   // 자산 번들 데이터 처리
   useEffect(() => {
@@ -202,34 +156,29 @@ export default function AssetsEdit({
       
       // numeric_overview 데이터를 assetInfo에 설정
       if (assetBundle.numeric_overview) {
+        console.log('📊 AssetsEdit - Setting numeric_overview:', assetBundle.numeric_overview)
         setAssetInfo(assetBundle.numeric_overview as any)
       }
       
-      // post_overview 데이터가 있으면 formData 업데이트 (편집 모드가 아닐 때)
-      if (assetBundle.post_overview && mode !== 'edit') {
-        const postOverview = assetBundle.post_overview
-        setFormData(prev => ({
-          ...prev,
-          title: postOverview.title || { ko: '', en: '' },
-          content: postOverview.content || '',
-          content_ko: postOverview.content || '',
-          description: postOverview.description || { ko: '', en: '' },
-          excerpt: postOverview.excerpt || { ko: '', en: '' },
-          slug: postOverview.slug || '',
-          cover_image: postOverview.cover_image || null,
-          cover_image_alt: postOverview.cover_image_alt || null,
-          keywords: postOverview.keywords || null,
-          canonical_url: postOverview.canonical_url || null,
-          meta_title: postOverview.meta_title || { ko: '', en: '' },
-          meta_description: postOverview.meta_description || { ko: '', en: '' }
-        }))
-      }
+      // post_overview는 BaseEdit에서 처리하므로 여기서는 제거
+    } else {
+      console.log('⚠️ AssetsEdit - No assetBundle data')
     }
-  }, [assetBundle, mode])
+  }, [assetBundle])
+
+  // assetId prop이 있으면 assetIdentifier 설정
+  useEffect(() => {
+    if (assetId) {
+      console.log('✅ AssetsEdit - Setting assetIdentifier from assetId prop:', assetId.toString())
+      setAssetIdentifier(assetId.toString())
+    }
+  }, [assetId])
 
   // formData.asset_id가 설정되면 assetIdentifier도 동기화
   useEffect(() => {
+    console.log('🔍 AssetsEdit - formData.asset_id changed:', formData.asset_id)
     if (formData.asset_id) {
+      console.log('✅ AssetsEdit - Setting assetIdentifier to:', formData.asset_id.toString())
       setAssetIdentifier(formData.asset_id.toString())
     }
   }, [formData.asset_id])
@@ -400,6 +349,7 @@ export default function AssetsEdit({
       onSaveFinancial={saveFinancialData}
       showAssetInfo={true}
       assetIdentifier={assetIdentifier}
+      onActiveLanguageChange={setActiveLanguage} // activeLanguage 변경 전달
       {...props}
     >
       {/* 퍼블리싱 블럭 */}
@@ -431,7 +381,7 @@ export default function AssetsEdit({
 
       {/* 동기화 설정 */}
       <SyncSettings
-        assetId={formData.asset_id || null}
+        assetId={assetInfo?.asset_id || formData.asset_id || null}
         onAssetIdChange={(assetId) => {
           updateFormData('asset_id', assetId)
           setAssetIdentifier(assetId?.toString() || null)
@@ -440,13 +390,14 @@ export default function AssetsEdit({
         onSyncWithAssetChange={(syncWithAsset) => updateFormData('sync_with_asset', syncWithAsset)}
         autoSyncContent={formData.auto_sync_content || false}
         onAutoSyncContentChange={(autoSyncContent) => updateFormData('auto_sync_content', autoSyncContent)}
-        ticker={assetInfo?.ticker || selectedAsset?.symbol}
+        ticker={assetInfo?.ticker || selectedAsset?.symbol || formData.slug}
         onTickerChange={(ticker) => {
           // Ticker 변경 시 해당 Asset 찾기
           const asset = assets.find(a => a.ticker === ticker || a.symbol === ticker)
           if (asset) {
             setSelectedAsset(asset)
             setAssetIdentifier(asset.asset_id.toString())
+            updateFormData('asset_id', asset.asset_id)
           }
         }}
       />

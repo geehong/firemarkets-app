@@ -115,7 +115,8 @@ interface UseAssetOverviewBundleReturn {
 
 export const useAssetOverviewBundle = (
   assetIdentifier: string,
-  options: UseAssetOverviewBundleOptions = {}
+  options: UseAssetOverviewBundleOptions = {},
+  activeLanguage: 'ko' | 'en' = 'ko'
 ): UseAssetOverviewBundleReturn => {
   const [data, setData] = useState<AssetOverviewBundle | null>(options.initialData || null)
   const [loading, setLoading] = useState(!options.initialData)
@@ -128,6 +129,7 @@ export const useAssetOverviewBundle = (
 
       // assetIdentifier가 비어있으면 호출하지 않음
       if (!assetIdentifier || !assetIdentifier.trim()) {
+        console.log('⚠️ useAssetOverviewBundle - Empty assetIdentifier, skipping fetch')
         setLoading(false)
         return
       }
@@ -146,23 +148,35 @@ export const useAssetOverviewBundle = (
       console.log('🔍 useAssetOverviewBundle - BACKEND_BASE:', BACKEND_BASE)
       console.log('🔍 useAssetOverviewBundle - apiUrl:', apiUrl)
       
-      const fullUrl = `${apiUrl}/assets/overview-bundle/${assetIdentifier}?lang=ko`
+      const fullUrl = `${apiUrl}/assets/overview-bundle/${assetIdentifier}?lang=${activeLanguage}`
       console.log('🔍 useAssetOverviewBundle - Fetching URL:', fullUrl)
+      console.log('🔍 useAssetOverviewBundle - activeLanguage:', activeLanguage)
       
+      console.log('🚀 useAssetOverviewBundle - Starting fetch...')
       const response = await fetch(fullUrl, {
         cache: 'no-store'
       })
 
+      console.log('📡 useAssetOverviewBundle - Response status:', response.status)
+      console.log('📡 useAssetOverviewBundle - Response ok:', response.ok)
+
       if (!response.ok) {
+        const errorText = await response.text()
+        console.error('❌ useAssetOverviewBundle - Response error:', errorText)
         throw new Error(`Failed to fetch asset overview bundle: ${response.status} ${response.statusText}`)
       }
 
       const bundleData: AssetOverviewBundle = await response.json()
+      console.log('✅ useAssetOverviewBundle - Data received:', bundleData)
+      console.log('📝 useAssetOverviewBundle - post_overview:', bundleData.post_overview)
+      console.log('📝 useAssetOverviewBundle - title:', bundleData.post_overview?.title)
+      console.log('📝 useAssetOverviewBundle - content:', bundleData.post_overview?.content)
+      console.log('📝 useAssetOverviewBundle - description:', bundleData.post_overview?.description)
       setData(bundleData)
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Unknown error occurred')
       setError(error)
-      console.error('Error fetching asset overview bundle:', error)
+      console.error('❌ useAssetOverviewBundle - Error fetching asset overview bundle:', error)
     } finally {
       setLoading(false)
     }
@@ -176,7 +190,7 @@ export const useAssetOverviewBundle = (
     if (!options.initialData && assetIdentifier && assetIdentifier.trim()) {
       fetchData()
     }
-  }, [assetIdentifier])
+  }, [assetIdentifier, activeLanguage])
 
   return {
     data,
