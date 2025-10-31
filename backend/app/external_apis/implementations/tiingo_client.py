@@ -278,6 +278,23 @@ class TiingoClient(TradFiAPIClient):
         
         return None
 
+    async def get_financial_statements(
+        self,
+        symbol: str,
+        statement_type: str,
+        period: str = "annual",
+        limit: int = 4
+    ) -> List[Dict[str, Any]]:
+        """
+        Required by TradFiAPIClient. Tiingo public API does not expose
+        standardized financial statements; return an empty list to indicate
+        unsupported, allowing the strategy manager to fall back to other providers.
+        """
+        logger.info(
+            f"TiingoClient.get_financial_statements unsupported for {symbol} ({statement_type}, {period}, limit={limit})"
+        )
+        return []
+
     async def get_analyst_estimates(self, symbol: str) -> Optional[List[StockAnalystEstimatesData]]:
         """Tiingo does not provide analyst estimates; return None."""
         logger.warning("TiingoClient does not support analyst estimates")

@@ -167,6 +167,7 @@ docker-compose --profile processing down
 docker-compose --profile processing up -d --no-deps
 
 docker-compose --profile processing down data_processor && docker-compose --profile processing up -d --build data_processor
+cd /home/geehong/firemarkets-app && docker-compose --profile processing down && docker-compose --profile processing up -d --no-deps
 ```
 
 ---
@@ -229,6 +230,13 @@ docker-compose logs data_processor --tail 50 -f | grep -Ei "(실패|오류|error
 
 # 자산 매칭 및 DB 저장 로그
 docker-compose logs data_processor --tail 100 -f | grep -E "(자산 매칭 성공|DB 저장 성공|✅.*성공)"
+
+docker-compose logs data_processor --tail=200 -f | grep --line-buffered -E --color=always '✅|DB 저장 성공|macrotrends_financials 저장 완료|processed successfully|배치 태스크 처리 시작|Enqueued|저장 완료|성공'
+
+docker-compose logs scheduler --tail=200 -f | grep --line-buffered -E --color=always '✅ Scheduled cron job|stock_financials_macrotrends_clients|Starting|Completed|success|cron'
+
+docker-compose logs data_processor --since=15m | grep -E --color=always '✅|DB 저장 성공|macrotrends_financials 저장 완료'
+
 ```
 
 ### 웹소켓 오케스트레이터 로그

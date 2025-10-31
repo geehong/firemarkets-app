@@ -27,6 +27,7 @@ from app.collectors.etf_collector import ETFCollector
 from app.collectors.crypto_data_collector import CryptoDataCollector
 from app.collectors.world_assets_collector import WorldAssetsCollector
 # from app.collectors.index_collector import IndexCollector  # Temporarily disabled
+from app.collectors.macrotrends_financials_collector import MacrotrendsFinancialsCollector
 
 
 class SchedulerService:
@@ -41,6 +42,7 @@ class SchedulerService:
         "ETFInfo": {"class": ETFCollector, "config_key": "is_etf_collection_enabled"},
         "CryptoInfo": {"class": CryptoDataCollector, "config_key": "is_crypto_collection_enabled"},
         "WorldAssets": {"class": WorldAssetsCollector, "config_key": "is_world_assets_collection_enabled"},
+        "StockFinancialsMacrotrends": {"class": MacrotrendsFinancialsCollector, "config_key": "is_stock_collection_enabled"},
     }
 
     def __init__(self):
@@ -248,6 +250,7 @@ class SchedulerService:
                                                 "crypto_clients": ["CryptoInfo"],
                                                 "onchain_clients": ["Onchain"],
                                                 "stock_financials_clients": [],
+                                                "stock_financials_macrotrends_clients": ["StockFinancialsMacrotrends"],
                                                 "stock_analyst_estimates_clients": [],
                                                 "etf_clients": ["ETFInfo"],
                                                 "world_assets_clients": ["WorldAssets"],

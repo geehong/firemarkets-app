@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
-import { useAssetOverview } from '@/hooks/useAssetOverview'
+import { useAssetOverviewBundle } from '@/hooks/useAssetOverviewBundle'
 import { useRealtimePrices } from '@/hooks/useSocket'
 import ComponentCard from '@/components/common/ComponentCard'
 import Badge from '@/components/ui/badge/Badge'
@@ -45,8 +45,25 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
   const { assetIdentifier } = useParams() as { assetIdentifier: string }
   const [isMobile, setIsMobile] = useState(false)
   
-  // 자산 개요 데이터 fetching (initialData가 있으면 사용)
-  const { data: overviewData, loading: overviewLoading, error: overviewError } = useAssetOverview(assetIdentifier as string, { initialData })
+  // 자산 개요 번들 데이터 fetching (BaseEdit과 동일 엔드포인트 사용)
+  // 초기데이터로 인한 fetch 건너뛰기 방지를 위해 initialData는 사용하지 않음
+  const { data: bundleData, loading: overviewLoading, error: overviewError, refetch } = useAssetOverviewBundle(assetIdentifier as string, { initialData: undefined })
+  
+  // 디버그 로그
+  useEffect(() => {
+    try {
+      console.log('[AssetOverview][bundle]', {
+        assetIdentifier,
+        overviewLoading,
+        overviewError: overviewError ? overviewError.message : null,
+        hasBundle: !!bundleData,
+        hasNumeric: !!bundleData?.numeric_overview,
+        ticker: bundleData?.numeric_overview?.ticker,
+        market_status: bundleData?.numeric_overview?.market_status,
+        updated_at: bundleData?.numeric_overview?.updated_at,
+      })
+    } catch {}
+  }, [assetIdentifier, overviewLoading, overviewError, bundleData])
   
   // 실시간 가격 데이터
   const { latestPrice, isConnected } = useRealtimePrices(assetIdentifier as string)
@@ -102,7 +119,7 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
     )
   }
 
-  if (!overviewData) {
+  if (!bundleData || !bundleData.numeric_overview) {
     return (
       <div className={className}>
         <Alert 
@@ -114,7 +131,7 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
     )
   }
 
-  const asset = overviewData
+  const asset = bundleData.numeric_overview
 
   return (
     <div className={`space-y-6 ${className}`}>

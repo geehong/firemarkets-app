@@ -890,6 +890,10 @@ class DataProcessor:
                 data_source = metadata.get('data_source', 'unknown')
                 logger.info(f"배치 태스크 처리 시작: world_assets_ranking, data_source: {data_source}, items: {len(items)}개")
                 return await self._save_world_assets_ranking(items, metadata)
+            elif task_type in ("macrotrends_financials", "stock_fundamentals_ingested"):
+                metadata = payload.get("metadata", {}) if isinstance(payload, dict) else {}
+                logger.info(f"배치 태스크 처리 시작: macrotrends_financials, items: {len(items)}개")
+                return await self._save_macrotrends_financials(items, metadata)
             elif task_type == "asset_settings_update":
                 return await self._update_asset_settings(payload)
             else:
@@ -898,6 +902,78 @@ class DataProcessor:
                 
         except Exception as e:
             logger.error(f"배치 태스크 처리 실패: {e}")
+            return False
+
+
+    async def _save_macrotrends_financials(self, items: List[Dict[str, Any]], metadata: Dict[str, Any]) -> bool:
+        """macrotrends_financials 테이블에 upsert 저장"""
+        try:
+            from ..core.database import get_postgres_db
+            from ..models import MacrotrendsFinancial
+            from sqlalchemy import and_
+
+            pg_db = next(get_postgres_db())
+            try:
+                added = 0
+                for it in items:
+                    asset_id = it.get("assetId") or it.get("asset_id")
+                    section = it.get("section")
+                    field_name = it.get("fieldName") or it.get("field_name")
+                    snapshot_date = it.get("snapshotDate") or it.get("snapshot_date")
+                    value_numeric = it.get("valueNumeric")
+                    value_text = it.get("valueText")
+                    unit = it.get("unit")
+                    currency = it.get("currency")
+                    source_url = it.get("sourceUrl")
+
+                    if not (asset_id and section and field_name and snapshot_date):
+                        continue
+
+                    exists = (
+                        pg_db.query(MacrotrendsFinancial)
+                        .filter(
+                            and_(
+                                MacrotrendsFinancial.asset_id == asset_id,
+                                MacrotrendsFinancial.section == section,
+                                MacrotrendsFinancial.field_name == field_name,
+                                MacrotrendsFinancial.snapshot_date == snapshot_date,
+                            )
+                        )
+                        .first()
+                    )
+                    if exists:
+                        continue
+
+                    pg_db.add(MacrotrendsFinancial(
+                        asset_id=asset_id,
+                        section=section,
+                        field_name=field_name,
+                        snapshot_date=snapshot_date,
+                        value_numeric=value_numeric,
+                        value_text=value_text,
+                        unit=unit,
+                        currency=currency,
+                        source_url=source_url,
+                    ))
+                    added += 1
+
+                pg_db.commit()
+                logger.info(f"macrotrends_financials 저장 완료: inserted={added}")
+                return True
+            except Exception as e:
+                try:
+                    pg_db.rollback()
+                except Exception:
+                    pass
+                logger.error(f"macrotrends_financials 저장 실패: {e}")
+                return False
+            finally:
+                try:
+                    pg_db.close()
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.error(f"macrotrends_financials 처리 중 오류: {e}")
             return False
 
 

@@ -250,7 +250,15 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
   const options = {
     chart: {
       height,
-      backgroundColor
+      backgroundColor,
+      events: {
+        load: function () {
+          try { (this as any).reflow?.() } catch {}
+        },
+        render: function () {
+          try { (this as any).reflow?.() } catch {}
+        }
+      }
     },
     stockTools: {
       gui: {
@@ -273,8 +281,8 @@ const OHLCVChart: React.FC<OHLCVChartProps> = ({
       }
     ],
     rangeSelector: {
-      enabled: showRangeSelector && !isMobile,
-      selected: showRangeSelector && !isMobile ? 4 : undefined
+      enabled: showRangeSelector && !isMobile && (chartData?.length || 0) > 0,
+      selected: showRangeSelector && !isMobile && (chartData?.length || 0) > 0 ? 4 : undefined
     },
     tooltip: {
       shape: 'square',
