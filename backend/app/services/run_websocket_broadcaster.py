@@ -175,10 +175,12 @@ async def listen_to_redis_and_broadcast():
                         logger.info(f"[Broadcaster] XREADGROUP result for '{stream_name}': {len(stream_data) if stream_data else 0} batches")
                         if stream_data:
                             for stream_name_bytes, messages in stream_data:
-                                logger.info(f"[Broadcaster] Processing {len(messages)} messages from {stream_name_bytes}")
+                                stream_name_str = stream_name_bytes.decode('utf-8') if isinstance(stream_name_bytes, bytes) else str(stream_name_bytes)
+                                logger.info(f"📥 [BROADCASTER←REDIS] 스트림 '{stream_name_str}'에서 {len(messages)}개 메시지 수신")
                                 for message_id, message_data in messages:
                                     symbol = message_data.get(b'symbol', b'').decode('utf-8').upper()
-                                    logger.info(f"[Broadcaster] Processing symbol: {symbol}")
+                                    price = message_data.get(b'price', b'').decode('utf-8')
+                                    logger.info(f"📥 [BROADCASTER←REDIS] 메시지 처리: {symbol} = ${price}")
                         if stream_data:
                             # (stream_name, messages) 튜플을 리스트에 추가
                             all_messages.extend(stream_data)
@@ -232,10 +234,11 @@ async def listen_to_redis_and_broadcast():
                             }
 
                             if sio_client.connected:
+                                logger.info(f"📤 [BROADCASTER→BACKEND] 전송 시도: {symbol} = ${price} (asset_id: {asset_id})")
                                 await sio_client.emit('broadcast_quote', quote_data)
-                                logger.info(f"🚀 백엔드로 '{symbol}' 데이터 전송 완료")
+                                logger.info(f"✅ [BROADCASTER→BACKEND] 전송 완료: {symbol} = ${price}")
                             else:
-                                logger.warning("백엔드와 연결되지 않아 메시지를 전송할 수 없습니다.")
+                                logger.warning(f"⚠️ [BROADCASTER→BACKEND] 백엔드 연결 실패: {symbol} 전송 불가")
 
                             # 메시지 ACK
                             await redis_client.xack(stream_name, group_name, message_id)

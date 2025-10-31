@@ -6,7 +6,9 @@ import PublishingBlock from './editorblock/PublishingBlock'
 import ContentBlock from './editorblock/ContentBlock'
 import SEOSettings from './editorblock/SEOSettings'
 import SyncSettings from './editorblock/SyncSettings'
-import { useAssetOverviewBundle } from '@/hooks/useAssetOverviewBundle'
+import { useAssets } from '@/hooks/useAssets'
+import { apiClient } from '@/lib/api'
+import { useAuth } from '@/hooks/useAuthNew'
 
 interface Asset {
   asset_id: number
@@ -70,12 +72,19 @@ export default function AssetsEdit({
   ...props 
 }: AssetsEditProps) {
   console.log('🚀 AssetsEdit - Component initialized with:', { postId, mode, categoryId, authorId, assetId })
-  // 자산 정보와 재무 정보 상태
-  const [assetInfo, setAssetInfo] = useState<Asset | null>(null)
-  const [financialData, setFinancialData] = useState<FinancialData | null>(null)
+  // assetIdentifier만 관리 (BaseEdit에서 assetData를 useAssetOverviewBundle로 가져옴)
   const [assetIdentifier, setAssetIdentifier] = useState<string | null>(null)
+  // BaseEdit에서 받아올 assetData를 저장할 상태 (BaseEdit 콜백으로 받음)
+  const [assetDataFromBase, setAssetDataFromBase] = useState<any>(null)
 
+  // 현재 사용자 정보 가져오기 (authorId가 없을 경우 사용)
+  const { user } = useAuth()
+  const currentUserId = user?.user_id || user?.id || null
+  
   // BaseEdit에서 사용할 상태들
+  // authorId는 prop으로 받거나, 없으면 현재 사용자 ID 사용 (관리자/슈퍼관리자만 접근 가능)
+  const effectiveAuthorId = authorId || currentUserId
+  
   const [formData, setFormData] = useState<PostFormState>({
     title: { ko: '', en: '' },
     content: '',
@@ -87,7 +96,7 @@ export default function AssetsEdit({
     featured: false,
     post_type: 'assets',
     view_count: 0,
-    author_id: authorId || null,
+    author_id: effectiveAuthorId || null,
     category_id: categoryId || null,
     cover_image: null,
     cover_image_alt: null,
@@ -114,23 +123,24 @@ export default function AssetsEdit({
 
   const [activeLanguage, setActiveLanguage] = useState<'ko' | 'en'>('ko')
   const [saving] = useState(false)
-  const [assets, setAssets] = useState<Asset[]>([])
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  // 자산 개요 번들 훅 사용
-  const { data: assetBundle, loading: assetBundleLoading, error: assetBundleError } = useAssetOverviewBundle(
-    assetIdentifier || '',
-    { initialData: undefined },
-    activeLanguage // activeLanguage 전달
-  )
+  
+  // BaseEdit에서 이미 useAssetOverviewBundle을 호출하므로 중복 제거
+  // assetBundle 데이터는 BaseEdit의 assetData를 props로 받아서 사용
+  
+  // 드롭다운용 자산 목록은 useAssets 훅 사용 (컴포넌트에서 직접 API 호출 대신)
+  const { data: assetsData, loading: assetsLoading, error: assetsError } = useAssets({
+    limit: 100,
+    offset: 0
+  })
+  
+  // useAssets 훅의 응답 구조에 맞게 변환
+  const assets: Asset[] = assetsData?.data || assetsData || []
 
   console.log('🔍 AssetsEdit - Current state:', {
     assetIdentifier,
     assetId,
-    assetBundleLoading,
-    assetBundleError,
-    assetBundle: assetBundle ? 'exists' : 'null',
+    assetsCount: assets.length,
     formData: {
       asset_id: formData.asset_id,
       title: formData.title,
@@ -141,30 +151,14 @@ export default function AssetsEdit({
 
   // 폼 데이터 업데이트 함수
   const updateFormData = (field: keyof PostFormState, value: string | number | boolean | string[] | { ko: string; en: string } | null) => {
-    setFormData(prev => ({
+    setFormData((prev: PostFormState) => ({
       ...prev,
       [field]: value
     }))
   }
 
-  // 포스트 데이터는 usePost 훅에서 가져오므로 제거
-
-  // 자산 번들 데이터 처리
-  useEffect(() => {
-    if (assetBundle) {
-      console.log('📦 AssetsEdit - Asset bundle data received:', assetBundle)
-      
-      // numeric_overview 데이터를 assetInfo에 설정
-      if (assetBundle.numeric_overview) {
-        console.log('📊 AssetsEdit - Setting numeric_overview:', assetBundle.numeric_overview)
-        setAssetInfo(assetBundle.numeric_overview as any)
-      }
-      
-      // post_overview는 BaseEdit에서 처리하므로 여기서는 제거
-    } else {
-      console.log('⚠️ AssetsEdit - No assetBundle data')
-    }
-  }, [assetBundle])
+  // BaseEdit에서 assetData를 props로 받아서 assetInfo 설정
+  // BaseEdit의 assetData.numeric_overview를 사용하므로 별도 처리는 필요 없음
 
   // assetId prop이 있으면 assetIdentifier 설정
   useEffect(() => {
@@ -183,109 +177,26 @@ export default function AssetsEdit({
     }
   }, [formData.asset_id])
 
-  // 로딩 상태 업데이트
-  useEffect(() => {
-    setLoading(assetBundleLoading)
-  }, [assetBundleLoading])
-
-  // 자산 데이터 로드 (드롭다운용)
-  useEffect(() => {
-    const fetchAssets = async () => {
-      try {
-        // 자산 목록 API 호출 (드롭다운용)
-        const response = await fetch('https://backend.firemarkets.net/api/v1/assets/assets?limit=100&offset=0')
-        if (response.ok) {
-          const data = await response.json()
-          setAssets(data.data || [])
-        }
-      } catch (error) {
-        console.error('Failed to fetch assets:', error)
-        // Mock 데이터 사용 (API 실패 시)
-        setAssets([
-          { 
-            asset_id: 1, 
-            ticker: 'BTCUSDT', 
-            name: 'Bitcoin', 
-            type_name: 'Crypto',
-            exchange: 'Binance',
-            currency: 'USDT',
-            is_active: true,
-            description: 'Bitcoin cryptocurrency',
-            data_source: 'binance',
-            created_at: '2025-01-01T00:00:00Z',
-            updated_at: '2025-01-01T00:00:00Z',
-            id: 1, 
-            symbol: 'BTCUSDT', 
-            price: 112954.70, 
-            change_24h: 0.10 
-          },
-          { 
-            asset_id: 2, 
-            ticker: 'ETHUSDT', 
-            name: 'Ethereum', 
-            type_name: 'Crypto',
-            exchange: 'Binance',
-            currency: 'USDT',
-            is_active: true,
-            description: 'Ethereum cryptocurrency',
-            data_source: 'binance',
-            created_at: '2025-01-01T00:00:00Z',
-            updated_at: '2025-01-01T00:00:00Z',
-            id: 2, 
-            symbol: 'ETHUSDT', 
-            price: 3456.78, 
-            change_24h: -1.25 
-          },
-          { 
-            asset_id: 3, 
-            ticker: 'AAPL', 
-            name: 'Apple Inc.', 
-            type_name: 'Stocks',
-            exchange: 'NASDAQ',
-            currency: 'USD',
-            is_active: true,
-            description: 'Apple Inc. stock',
-            data_source: 'twelvedata',
-            created_at: '2025-01-01T00:00:00Z',
-            updated_at: '2025-01-01T00:00:00Z',
-            id: 3, 
-            symbol: 'AAPL', 
-            price: 175.43, 
-            change_24h: 0.85 
-          }
-        ])
-      }
-    }
-
-    fetchAssets()
-  }, [])
+  // assetData는 BaseEdit에서 받아오므로 여기서는 assetIdentifier만 관리
 
   // 재무 정보 저장 함수 (자산 개요 정보 업데이트)
+  // apiClient를 사용하여 아키텍처 일관성 유지
   const saveFinancialData = async (data: Partial<FinancialData>) => {
     try {
-      // 자산 개요 정보 업데이트 API 호출
-      const response = await fetch(`https://backend.firemarkets.net/api/v1/assets/overview/${formData.asset_id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...data
-        })
-      })
-      
-      if (!response.ok) {
-        throw new Error('Failed to save financial data')
+      if (!formData.asset_id && !assetIdentifier) {
+        throw new Error('Asset ID is required to save financial data')
       }
       
-      const result = await response.json()
+      const assetIdToUse = assetIdentifier || formData.asset_id?.toString()
+      if (!assetIdToUse) {
+        throw new Error('Asset identifier is required')
+      }
+      
+      const result = await apiClient.updateAssetOverview(assetIdToUse, data)
       console.log('Financial data saved:', result)
       
-      // 업데이트된 자산 정보를 상태에 반영
-      setAssetInfo(prev => ({
-        ...prev,
-        ...result
-      }))
+      // assetInfo는 BaseEdit의 assetData를 사용하므로 별도 업데이트 불필요
+      // BaseEdit에서 자동으로 refetch됨
       
       return result
     } catch (error) {
@@ -323,17 +234,7 @@ export default function AssetsEdit({
     }
   }
 
-  // 에러 상태 처리
-  if (assetBundleError) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <div className="text-center">
-          <div className="text-red-600 text-lg font-semibold mb-2">자산 정보를 불러올 수 없습니다</div>
-          <div className="text-gray-600">{assetBundleError.message}</div>
-        </div>
-      </div>
-    )
-  }
+  // 에러 상태는 BaseEdit에서 처리하므로 여기서는 제거
 
   return (
     <BaseEdit
@@ -343,13 +244,15 @@ export default function AssetsEdit({
       onSave={handleAssetsSave}
       onCancel={onCancel}
       showFinancialData={true}
-      financialTicker={assetInfo?.ticker}
-      financialAssetId={assetInfo?.asset_id}
-      financialData={assetInfo as any} // assetInfo에 모든 재무 데이터가 포함되어 있음
+      financialTicker={assetDataFromBase?.numeric_overview?.ticker}
+      financialAssetId={assetDataFromBase?.numeric_overview?.asset_id || formData.asset_id}
+      financialData={assetDataFromBase?.numeric_overview || null}
       onSaveFinancial={saveFinancialData}
       showAssetInfo={true}
       assetIdentifier={assetIdentifier}
-      onActiveLanguageChange={setActiveLanguage} // activeLanguage 변경 전달
+      onActiveLanguageChange={setActiveLanguage}
+      // BaseEdit의 assetData를 받기 위한 콜백 (BaseEdit에 이 prop을 추가해야 함)
+      onAssetDataChange={setAssetDataFromBase}
       {...props}
     >
       {/* 퍼블리싱 블럭 */}
@@ -359,7 +262,7 @@ export default function AssetsEdit({
         onPreview={() => console.log('미리보기')}
         onPublish={() => handleAssetsSave({ ...formData, status: 'published' })}
         onSaveDraft={() => handleAssetsSave({ ...formData, status: 'draft' })}
-        saving={loading}
+        saving={saving}
       />
 
       {/* 작성내용 블럭 */}
@@ -381,7 +284,7 @@ export default function AssetsEdit({
 
       {/* 동기화 설정 */}
       <SyncSettings
-        assetId={assetInfo?.asset_id || formData.asset_id || null}
+        assetId={assetDataFromBase?.numeric_overview?.asset_id || formData.asset_id || null}
         onAssetIdChange={(assetId) => {
           updateFormData('asset_id', assetId)
           setAssetIdentifier(assetId?.toString() || null)
@@ -390,7 +293,7 @@ export default function AssetsEdit({
         onSyncWithAssetChange={(syncWithAsset) => updateFormData('sync_with_asset', syncWithAsset)}
         autoSyncContent={formData.auto_sync_content || false}
         onAutoSyncContentChange={(autoSyncContent) => updateFormData('auto_sync_content', autoSyncContent)}
-        ticker={assetInfo?.ticker || selectedAsset?.symbol || formData.slug}
+        ticker={assetDataFromBase?.numeric_overview?.ticker || selectedAsset?.symbol || formData.slug}
         onTickerChange={(ticker) => {
           // Ticker 변경 시 해당 Asset 찾기
           const asset = assets.find(a => a.ticker === ticker || a.symbol === ticker)

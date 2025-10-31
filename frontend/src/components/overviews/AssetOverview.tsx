@@ -52,14 +52,14 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
   const { latestPrice, isConnected } = useRealtimePrices(assetIdentifier as string)
 
   // 실시간 가격 수신 로깅 (웹소켓)
-  useEffect(() => {
-    if (!assetIdentifier) return
-    console.log('[AssetOverview][Realtime]', {
-      assetIdentifier,
-      isConnected,
-      latestPrice,
-    })
-  }, [assetIdentifier, isConnected, latestPrice])
+  // useEffect(() => {
+  //   if (!assetIdentifier) return
+  //   console.log('[AssetOverview][Realtime]', {
+  //     assetIdentifier,
+  //     isConnected,
+  //     latestPrice,
+  //   })
+  // }, [assetIdentifier, isConnected, latestPrice])
 
   // 모바일 감지
   useEffect(() => {

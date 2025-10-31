@@ -127,7 +127,7 @@ const TickerEditorPage = () => {
               window.history.back()
             }}
             categoryId={1} // 기본 카테고리
-            authorId={1} // 기본 작성자
+            // authorId는 컴포넌트 내부에서 현재 사용자 정보로 자동 설정됨 (관리자/슈퍼관리자만 접근 가능)
             assetId={assetInfo?.asset_id}
           />
         )

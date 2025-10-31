@@ -236,6 +236,7 @@ docker-compose logs data_processor --tail 100 -f | grep -E "(자산 매칭 성�
 docker logs --tail 400 fire_markets_backend | grep -E "AAPL|MSFT|NVDA|META|GOOG|AMZN|SPY|QQQ|prices_" -n || true
 # Binance 관련 로그
 docker-compose logs websocket_orchestrator --tail 50 -f | grep -Ei "connection failed|error|ERROR|fail|FAIL"
+docker-compose logs websocket_orchestrator --tail 50 -f | grep -Ei "binance"
 
 # 연결 실패 로그
 docker logs fire_markets_websocket_orchestrator --tail 20 | grep -A 5 -B 5 "connection failed"

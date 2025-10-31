@@ -110,7 +110,7 @@ export const useSocket = () => {
           const symbols = Array.from(globalSubscriptions)
           socket.emit('subscribe_prices', { symbols })
         } catch (e) {
-          console.warn('[useSocket] 재구독 중 예외 발생:', e)
+          // 재구독 중 예외 발생 시 무시
         }
       }
     })
@@ -146,7 +146,7 @@ export const useSocket = () => {
           const symbols = Array.from(globalSubscriptions)
           socket.emit('subscribe_prices', { symbols })
         } catch (e) {
-          console.warn('[useSocket] 재구독 중 예외 발생:', e)
+          // 재구독 중 예외 발생 시 무시
         }
       }
     })
@@ -191,6 +191,7 @@ export const useRealtimePrices = (assetIdentifier: string) => {
   const { socket, isConnected } = useSocket()
   const [latestPrice, setLatestPrice] = useState<RealtimePrice | null>(null)
   const [priceHistory, setPriceHistory] = useState<RealtimePrice[]>([])
+  const [isUsingDummyData, setIsUsingDummyData] = useState<boolean>(false)
   
   // 구독 상태를 관리하기 위한 Ref
   const subscriptionsRef = useRef<Set<string>>(new Set())
@@ -207,6 +208,18 @@ export const useRealtimePrices = (assetIdentifier: string) => {
     }
   }, [])
 
+  // 연결 상태 체크 및 더미 데이터 모드 감지
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    
+    // 연결되지 않았고 소켓이 존재하지 않거나 연결 실패 시 더미 데이터 모드
+    if (!socket || (!isConnected && !(socket && socket.connected))) {
+      setIsUsingDummyData(true)
+    } else {
+      setIsUsingDummyData(false)
+    }
+  }, [socket, isConnected])
+
   useEffect(() => {
     // 클라이언트 사이드에서만 실행
     if (typeof window === 'undefined') {
@@ -221,11 +234,6 @@ export const useRealtimePrices = (assetIdentifier: string) => {
     if (!globalSubscriptions) globalSubscriptions = new Set<string>()
     if (!subscriptionsRef.current) subscriptionsRef.current = new Set<string>()
 
-    // 항상 구독 요청 (idempotent 처리 가정)
-    socket.emit('subscribe_prices', { symbols: [assetIdentifier] })
-    globalSubscriptions.add(assetIdentifier)
-    subscriptionsRef.current.add(assetIdentifier)
-
     // 구독 확인 수신
     const handleSubscriptionConfirmed = (data: any) => {
       // 구독 확인 처리
@@ -233,7 +241,11 @@ export const useRealtimePrices = (assetIdentifier: string) => {
 
     // 실시간 가격 데이터 수신
     const handleRealtimeQuote = (data: any) => {
-      if (data.ticker === assetIdentifier) {
+      // 티커 매칭 (대소문자 무시, 공백 제거)
+      const receivedTicker = String(data.ticker || '').trim().toUpperCase()
+      const targetTicker = String(assetIdentifier || '').trim().toUpperCase()
+      
+      if (receivedTicker === targetTicker) {
         setLatestPrice({
           price: data.price,
           volume: data.volume,
@@ -254,26 +266,33 @@ export const useRealtimePrices = (assetIdentifier: string) => {
       }
     }
 
-    // 이벤트 리스너 등록
+    // 이벤트 리스너 등록 (연결 상태와 무관하게 항상 등록)
     socket.on('subscription_confirmed', handleSubscriptionConfirmed)
     socket.on('realtime_quote', handleRealtimeQuote)
 
+    // 연결된 경우에만 구독 요청
+    if (isConnected && socket && socket.connected) {
+      socket.emit('subscribe_prices', { symbols: [assetIdentifier] })
+      globalSubscriptions.add(assetIdentifier)
+      subscriptionsRef.current.add(assetIdentifier)
+    } else {
+      // 연결이 안 되어 있으면 전역 구독에만 추가 (연결되면 자동으로 구독됨)
+      globalSubscriptions.add(assetIdentifier)
+      subscriptionsRef.current.add(assetIdentifier)
+    }
+
     // 정리 함수
     return () => {
-      // 전역 구독 해제 (실제로는 다른 컴포넌트에서 사용 중일 수 있으므로 해제하지 않음)
-      // socket.emit('unsubscribe_prices', { symbols: [assetIdentifier] })
-      // globalSubscriptions?.delete(assetIdentifier)
-      // subscriptionsRef.current?.delete(assetIdentifier)
-
       socket.off('subscription_confirmed', handleSubscriptionConfirmed)
       socket.off('realtime_quote', handleRealtimeQuote)
     }
-  }, [socket, assetIdentifier])
+  }, [socket, assetIdentifier, isConnected])
 
   return {
     latestPrice,
     priceHistory,
     isConnected,
+    isUsingDummyData,
   }
 }
 
@@ -281,9 +300,22 @@ export const useRealtimePrices = (assetIdentifier: string) => {
 export const useBroadcastData = () => {
   const { socket, isConnected } = useSocket()
   const [broadcastData, setBroadcastData] = useState<BroadcastData[]>([])
+  const [isUsingDummyData, setIsUsingDummyData] = useState<boolean>(false)
+
+  // 연결 상태 체크 및 더미 데이터 모드 감지
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    
+    // 연결되지 않았고 소켓이 존재하지 않거나 연결 실패 시 더미 데이터 모드
+    if (!socket || (!isConnected && !(socket && socket.connected))) {
+      setIsUsingDummyData(true)
+    } else {
+      setIsUsingDummyData(false)
+    }
+  }, [socket, isConnected])
 
   useEffect(() => {
-    if (!socket || !isConnected) {
+    if (!socket) {
       return
     }
 
@@ -301,7 +333,7 @@ export const useBroadcastData = () => {
       })
     }
 
-    // 이벤트 리스너 등록
+    // 이벤트 리스너 등록 (연결 상태와 무관하게 항상 등록)
     socket.on('broadcast_quote', handleBroadcastQuote)
 
     // 정리 함수
@@ -313,5 +345,7 @@ export const useBroadcastData = () => {
   return {
     broadcastData,
     isConnected,
+    isUsingDummyData,
   }
 }
+

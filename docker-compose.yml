@@ -329,8 +329,9 @@ services:
       NEXT_PUBLIC_API_URL: https://backend.firemarkets.net/api/v1
       NEXT_TELEMETRY_DISABLED: 1
       # 개발 모드 추가 설정
-      WATCHPACK_POLLING: true
-      CHOKIDAR_USEPOLLING: true
+      WATCHPACK_POLLING: false
+      CHOKIDAR_USEPOLLING: false
+      TURBOPACK_THREADS: 2
       FAST_REFRESH: true
     volumes:
       - ./frontend:/app:delegated

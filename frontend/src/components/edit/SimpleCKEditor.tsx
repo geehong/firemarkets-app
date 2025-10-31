@@ -30,6 +30,8 @@ const SimpleCKEditor: React.FC<SimpleCKEditorProps> = ({
   const ckEditorRef = useRef<{ getData: () => string; setData: (data: string) => void; destroy: () => void; on: (event: string, callback: (evt: { editor: { getData: () => string } }) => void) => void } | null>(null)
   const isInitialized = useRef(false)
   const editorId = useRef(`editor_${Math.random().toString(36).substr(2, 9)}`)
+  // 최신 value를 ref로 추적하여 초기화 후에도 최신 값 사용
+  const pendingValueRef = useRef<string | undefined>(value)
 
   useEffect(() => {
     // 현재 에디터 ID를 변수로 저장 (cleanup에서 사용)
@@ -112,10 +114,11 @@ const SimpleCKEditor: React.FC<SimpleCKEditorProps> = ({
               console.log(`✅ Local CKEditor ready with ID: ${uniqueId}`)
               isInitialized.current = true
               
-              // 초기화 완료 후 현재 value가 있으면 설정
-              if (value && ckEditorRef.current) {
-                console.log(`🔄 SimpleCKEditor - Setting initial data after initialization:`, value)
-                ckEditorRef.current.setData(value)
+              // 초기화 완료 후 최신 value(ref에 저장된 값) 설정
+              if (ckEditorRef.current) {
+                const initialValue = pendingValueRef.current ?? ''
+                console.log(`🔄 SimpleCKEditor - Setting initial data after initialization:`, initialValue)
+                ckEditorRef.current.setData(initialValue)
               }
             },
             change: (evt: { editor: { getData: () => string } }) => {
@@ -143,11 +146,14 @@ const SimpleCKEditor: React.FC<SimpleCKEditorProps> = ({
 
   // 값이 변경될 때 에디터 내용 업데이트 (무한 루프 방지를 위한 가드 추가)
   useEffect(() => {
+    // 최신 value를 ref에 저장 (초기화 전에도 최신 값 유지)
+    pendingValueRef.current = value
+    
     console.log('🔄 SimpleCKEditor - value changed:', { value, isInitialized: isInitialized.current, hasEditor: !!ckEditorRef.current })
     
-    // CKEditor가 초기화되지 않았으면 대기
+    // CKEditor가 초기화되지 않았으면 대기 (값은 ref에 저장되어 있으므로 instanceReady에서 설정됨)
     if (!ckEditorRef.current || !isInitialized.current) {
-      console.log('🔄 SimpleCKEditor - CKEditor not ready, skipping value update')
+      console.log('🔄 SimpleCKEditor - CKEditor not ready, value saved to ref for later:', value)
       return
     }
     

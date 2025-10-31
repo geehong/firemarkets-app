@@ -113,7 +113,13 @@ export const useAssets = (
       setLoading(true)
       setError(null)
       try {
-        const result = await apiClient.getAssets(options)
+        // getAssetsList를 사용하여 /assets/assets 엔드포인트 호출 (getAssets는 /assets로 404 발생)
+        const result = await apiClient.getAssetsList({
+          limit: options?.limit,
+          offset: options?.offset,
+          search: options?.search,
+          // assetTypeId는 type_name으로 매핑할 수 없으므로 제외
+        })
         setData(result)
       } catch (err) {
         setError(err)

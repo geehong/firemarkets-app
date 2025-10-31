@@ -1,41 +1,78 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
+import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api'
 
-export const usePosts = () => {
-  return useQuery({
-    queryKey: ['posts'],
-    queryFn: async () => {
-      console.log('🔍 [usePosts] Post API 호출 시작')
-      
-      try {
-        // apiClient를 사용하여 포스트 데이터 가져오기
-        const result = await apiClient.getPosts({
-          page: 1,
-          page_size: 10,
-          status: 'published'
-        })
-        
-        console.log('✅ [usePosts] Post API 호출 성공:', result)
-        return result
-        
-      } catch (error) {
-        console.error('❌ [usePosts] Post API 호출 실패:', error)
-        
-        // Log more details about the error
-        if (error instanceof TypeError && error.message === 'Failed to fetch') {
-          console.error('🔥 [usePosts] Network error - 가능한 원인:')
-          console.error('  1. CORS 정책 위반')
-          console.error('  2. Mixed Content (HTTP/HTTPS 혼용)')
-          console.error('  3. 네트워크 연결 문제')
-          console.error('  4. 백엔드 서버 다운')
-        }
-        
-        throw error
-      }
-    },
-    staleTime: 5 * 60 * 1000, // 5분 캐싱
-    retry: 1, // 재시도 1회만
-  })
+export interface Blog {
+  id: number
+  title: string
+  slug: string
+  content: string
+  excerpt?: string
+  cover_image?: string
+  status: 'draft' | 'published' | 'archived'
+  view_count: number
+  created_at: string
+  updated_at: string
+  published_at?: string
+  author?: {
+    id: number
+    username: string
+    email: string
+  }
+  category?: {
+    id: number
+    name: string
+    slug: string
+  }
+  tags?: Array<{
+    id: number
+    name: string
+    slug: string
+  }>
+  asset?: {
+    id: number
+    ticker: string
+    name: string
+  }
+}
+
+export const useBlog = (slug: string) => {
+  const [blog, setBlog] = useState<Blog | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [isClient, setIsClient] = useState(false)
+
+  const fetchBlog = async () => {
+    if (!slug) return
+
+    try {
+      setLoading(true)
+      setError(null)
+      const data = await apiClient.getBlog(slug)
+      setBlog(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch blog')
+      console.error('Error fetching blog:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
+
+  useEffect(() => {
+    if (isClient && slug) {
+      fetchBlog()
+    }
+  }, [isClient, slug])
+
+  return {
+    blog,
+    loading,
+    error,
+    refetch: fetchBlog,
+  }
 }

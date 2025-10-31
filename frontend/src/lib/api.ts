@@ -290,6 +290,14 @@ export class ApiClient {
     return this.request(`/assets/overview/${assetIdentifier}`);
   }
 
+  // Update Asset Overview - 자산 개요 정보 업데이트
+  updateAssetOverview(assetIdentifier: string, data: Record<string, any>) {
+    return this.request(`/assets/overview/${assetIdentifier}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
   // Assets List with filters
   getAssetsList(params?: { 
     type_name?: string; 

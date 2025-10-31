@@ -60,8 +60,12 @@ async def disconnect(sid):
 @sio.event
 async def broadcast_quote(sid, data):
     """websocket_broadcaster 서비스로부터 받은 데이터를 클라이언트에게 브로드캐스트합니다."""
-    print(f"📢 Broadcaster로부터 수신: {data.get('ticker')}")
+    ticker = data.get('ticker')
+    price = data.get('price')
+    provider = data.get('data_source', 'unknown')
+    print(f"📢 [BACKEND←BROADCASTER] 수신: {ticker} = ${price} (provider: {provider})")
     await broadcast_realtime_quote(data)
+    print(f"✅ [BACKEND←BROADCASTER] 브로드캐스트 완료: {ticker}")
 
 # 실시간 가격 데이터 구독 이벤트
 @sio.event

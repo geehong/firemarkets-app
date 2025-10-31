@@ -8,7 +8,7 @@ export * from './useGoBack'
 export * from './useModal'
 export * from './useAssetOverview'
 export * from './useOnchain'
-export * from './useBlog'
+export { useBlog } from './useBlog'
 export * from './usePosts'
 
 // Re-export commonly used hooks with shorter names

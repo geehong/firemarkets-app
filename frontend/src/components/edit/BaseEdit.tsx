@@ -35,6 +35,8 @@ export interface BaseEditProps {
   onUpdateFormData?: (field: keyof PostFormState, value: string | number | boolean | string[] | { ko: string; en: string } | null) => void
   // activeLanguage를 children에 전달하기 위한 props
   onActiveLanguageChange?: (activeLanguage: 'ko' | 'en') => void
+  // assetData를 children에 전달하기 위한 props
+  onAssetDataChange?: (assetData: any) => void
 }
 
 export default function BaseEdit({ 
@@ -55,7 +57,8 @@ export default function BaseEdit({
   onSavingChange,
   onFormDataChange,
   onUpdateFormData,
-  onActiveLanguageChange
+  onActiveLanguageChange,
+  onAssetDataChange
 }: BaseEditProps) {
   console.log('🔍 BaseEdit - postId received:', postId)
   
@@ -85,6 +88,13 @@ export default function BaseEdit({
   console.log('🔍 BaseEdit - assetIdentifier received:', assetIdentifier)
   console.log('🔍 BaseEdit - activeLanguage:', activeLanguage)
   console.log('🔍 BaseEdit - assetData received:', assetData)
+  
+  // assetData를 부모 컴포넌트에 전달
+  useEffect(() => {
+    if (onAssetDataChange) {
+      onAssetDataChange(assetData)
+    }
+  }, [assetData, onAssetDataChange])
 
   const [formData, setFormData] = useState<PostFormState>({
     // 기본값 설정
