@@ -63,6 +63,12 @@
       "minute": 23,
       "collectors": ["stock_financials_macrotrends_clients"],
       "day_of_week": "fri"
+    },
+    {
+      "hour": 16,
+      "minute": 53,
+      "collectors": ["stock_financials_macrotrends_clients"],
+      "day_of_week": "fri"
     }
   ],
   "client_overrides": {

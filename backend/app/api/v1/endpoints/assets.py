@@ -1846,15 +1846,101 @@ def get_asset_overview_bundle(
         
         asset, type_name = asset_with_type
         
-        # 1. 숫자 데이터 (기존 overview 로직)
+        # 1. 숫자 데이터 (유형별 소스 지정)
         numeric_overview = None
         try:
-            # posts 기반 개요 우선 시도
-            overview_from_posts = get_overview_from_posts(db, asset_id)
-            if overview_from_posts:
-                numeric_overview = overview_from_posts
+            if type_name == 'Stocks':
+                # v_financials_unified + 최신 OHLCV
+                fin = db.execute(text(
+                    """
+                    SELECT * FROM v_financials_unified WHERE asset_id = :asset_id
+                    """
+                ), {"asset_id": asset_id}).mappings().first()
+
+                ohlcv_latest = db.execute(text(
+                    """
+                    SELECT timestamp_utc, close_price
+                    FROM ohlcv_day_data
+                    WHERE asset_id = :asset_id
+                    ORDER BY timestamp_utc DESC
+                    LIMIT 1
+                    """
+                ), {"asset_id": asset_id}).mappings().first()
+
+                numeric_overview = {
+                    "source": "v_financials_unified",
+                    "financials": dict(fin) if fin else None,
+                    "ohlcv_latest": dict(ohlcv_latest) if ohlcv_latest else None,
+                }
+                # 폴백: v_financials_unified가 없으면 treemap_live_view 기반 개요
+                if not fin:
+                    fallback = get_unified_overview_data(db, asset_id)
+                    if fallback:
+                        numeric_overview.update({
+                            "source": "treemap_live_view",
+                            "fallback_overview": fallback
+                        })
+            elif type_name == 'Crypto':
+                # crypto_overview (뷰) + crypto_data 폴백 + 최신 OHLCV
+                crypto_overview_row = db.execute(text(
+                    """
+                    SELECT * FROM crypto_overview WHERE asset_id = :asset_id
+                    """
+                ), {"asset_id": asset_id}).mappings().first()
+
+                # 기존 헬퍼도 유지(스키마 정규화된 값이 필요할 때)
+                crypto_overview = get_crypto_overview_data(db, asset_id)
+                if crypto_overview is not None and hasattr(crypto_overview, 'model_dump'):
+                    crypto_payload = crypto_overview.model_dump()
+                else:
+                    crypto_payload = crypto_overview
+
+                ohlcv_latest = db.execute(text(
+                    """
+                    SELECT timestamp_utc, close_price
+                    FROM ohlcv_day_data
+                    WHERE asset_id = :asset_id
+                    ORDER BY timestamp_utc DESC
+                    LIMIT 1
+                    """
+                ), {"asset_id": asset_id}).mappings().first()
+
+                # 폴백: crypto_overview가 없으면 crypto_data 사용
+                if not crypto_payload:
+                    try:
+                        cd = db.execute(text(
+                            """
+                            SELECT * FROM crypto_data WHERE asset_id = :asset_id LIMIT 1
+                            """
+                        ), {"asset_id": asset_id}).mappings().first()
+                        crypto_payload = dict(cd) if cd else None
+                    except Exception:
+                        crypto_payload = None
+
+                # 최종 구성
+                extra_fields = {}
+                if crypto_overview_row:
+                    # crypto_overview에서 추가로 노출할 유용 필드들
+                    for k in [
+                        'treemap_current_price',
+                        'treemap_change_24h',
+                        'market_status',
+                        'realtime_updated_at',
+                        'daily_data_updated_at',
+                    ]:
+                        if k in crypto_overview_row and crypto_overview_row[k] is not None:
+                            extra_fields[k] = crypto_overview_row[k]
+
+                numeric_overview = {
+                    "source": "crypto_overview" if crypto_overview_row else ("crypto_overview_helper" if crypto_overview else ("crypto_data" if crypto_payload else "ohlcv_only")),
+                    # 전체 개요 뷰 결과(부족했던 treemap/상태 관련 필드 포함)
+                    "overview": dict(crypto_overview_row) if crypto_overview_row else None,
+                    "crypto": crypto_payload,
+                    "ohlcv_latest": dict(ohlcv_latest) if ohlcv_latest else None,
+                    **extra_fields,
+                }
             else:
-                # treemap_live_view 기반 개요
+                # 기존 폴백: treemap_live_view 기반 개요
                 numeric_overview = get_unified_overview_data(db, asset_id)
         except Exception as e:
             logger.warning(f"Failed to get numeric overview for {asset_identifier}: {str(e)}")
@@ -1864,13 +1950,33 @@ def get_asset_overview_bundle(
         post_overview = None
         try:
             from ....models import Post
+            # 1) 우선 published_at NOT NULL 을 최신순으로 선택 (status 무관 - 데이터 무결성 이슈 대응)
             post_obj = db.query(Post).filter(
                 Post.asset_id == asset_id,
-                Post.post_type == 'assets'
+                Post.post_type == 'assets',
+                Post.published_at.isnot(None)
             ).order_by(
-                Post.status.desc(),  # published 우선
-                Post.updated_at.desc()
+                Post.published_at.desc()
             ).first()
+
+            # 2) 폴백: 'published' 이지만 published_at NULL인 경우 중 최신 updated_at
+            if not post_obj:
+                post_obj = db.query(Post).filter(
+                    Post.asset_id == asset_id,
+                    Post.post_type == 'assets',
+                    Post.status == 'published'
+                ).order_by(
+                    Post.updated_at.desc()
+                ).first()
+
+            # 3) 최종 폴백: 어떤 상태든 updated_at 최신
+            if not post_obj:
+                post_obj = db.query(Post).filter(
+                    Post.asset_id == asset_id,
+                    Post.post_type == 'assets'
+                ).order_by(
+                    Post.updated_at.desc()
+                ).first()
             
             if post_obj:
                 post_overview = {
@@ -1891,6 +1997,13 @@ def get_asset_overview_bundle(
                     "updated_at": post_obj.updated_at,
                     "published_at": post_obj.published_at
                 }
+                # Stocks의 경우 stock_overview를 함께 포함
+                if type_name == 'Stocks':
+                    stock_ov = get_stock_overview_data(db, asset_id)
+                    if stock_ov is not None and hasattr(stock_ov, 'model_dump'):
+                        post_overview["stock_overview"] = stock_ov.model_dump()
+                    else:
+                        post_overview["stock_overview"] = stock_ov
         except Exception as e:
             logger.warning(f"Failed to get post overview for {asset_identifier}: {str(e)}")
             post_overview = None

@@ -82,7 +82,7 @@ class OHLCVCollector(BaseCollector):
     def _get_target_asset_ids(self) -> List[int]:
         """Fetches the IDs of assets that are configured for OHLCV collection."""
         try:
-            # SQLAlchemy 2.0+ 스타일의 쿼리로 가독성 향상
+            # 원래 로직: 가격 수집 활성 자산 전체
             query = (
                 self.db.query(Asset.asset_id)
                 .join(AssetType)

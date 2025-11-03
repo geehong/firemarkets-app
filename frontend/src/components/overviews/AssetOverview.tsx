@@ -14,16 +14,18 @@ import { ArrowUpIcon, ArrowDownIcon, DollarLineIcon, PieChartIcon, UserIcon } fr
 import OHLCVChart from '@/components/charts/ohlcvcharts/OHLCVChart'
 
 // 일관된 날짜 포맷팅 함수 (SSR/CSR 일관성 보장)
-const formatDate = (dateString: string) => {
-  const date = new Date(dateString)
-  // 서버와 클라이언트에서 동일한 결과를 보장하기 위해 고정 포맷 사용
+const formatDate = (dateInput: any) => {
+  if (!dateInput) return '-'
+  const date = new Date(dateInput)
+  if (isNaN(date.getTime())) return '-'
   return date.toISOString().split('T')[0] // YYYY-MM-DD 형식
 }
 
 // IPO 날짜 포맷팅 함수 (더 읽기 쉬운 형식)
-const formatIPODate = (dateString: string) => {
-  const date = new Date(dateString)
-  // 서버와 클라이언트에서 동일한 결과를 보장하기 위해 고정 포맷 사용
+const formatIPODate = (dateInput: any) => {
+  if (!dateInput) return '-'
+  const date = new Date(dateInput)
+  if (isNaN(date.getTime())) return '-'
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
@@ -31,9 +33,10 @@ const formatIPODate = (dateString: string) => {
 }
 
 // 시간 포맷팅 함수 (SSR/CSR 일관성 보장)
-const formatTime = (timestamp: string) => {
+const formatTime = (timestamp: any) => {
+  if (!timestamp) return '-'
   const date = new Date(timestamp)
-  // 서버와 클라이언트에서 동일한 결과를 보장하기 위해 고정 포맷 사용
+  if (isNaN(date.getTime())) return '-'
   return date.toISOString().split('T')[1].split('.')[0] // HH:MM:SS 형식
 }
 import HistoryTable from '@/components/tables/HistoryTable'
@@ -146,8 +149,26 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
     )
   }
 
-  // Stocks일 때는 assetDetail 사용, Stocks가 아닐 때는 bundleData의 numeric_overview 사용
-  const asset = isStock ? assetDetail : (bundleData?.numeric_overview || assetDetail)
+  // Stocks가 아닐 때는 overview-bundle의 여러 소스를 병합하여 표시 객체 생성
+  const numericOverview: any = shouldUseBundle ? (bundleData as any)?.numeric_overview : null
+  const bundleOverview = numericOverview?.overview || null
+  const cryptoMeta = numericOverview?.crypto || null
+  const treemapExtras = numericOverview ? {
+    treemap_current_price: numericOverview.treemap_current_price,
+    treemap_change_24h: numericOverview.treemap_change_24h,
+    market_status: numericOverview.market_status,
+    realtime_updated_at: numericOverview.realtime_updated_at,
+    daily_data_updated_at: numericOverview.daily_data_updated_at,
+  } : {}
+
+  const mergedAsset = !isStock ? {
+    ...(assetDetail || {}),
+    ...(bundleOverview || {}),
+    ...(cryptoMeta || {}),
+    ...treemapExtras,
+  } : null
+
+  const asset = isStock ? assetDetail : (mergedAsset || assetDetail)
   
   if (!asset) {
     return (
@@ -192,11 +213,15 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
             )}
           </div>
         </div>
-        {asset.description && (
+        {(shouldUseBundle && (bundleData as any)?.post_overview?.description?.ko) ? (
+          <p className="text-sm text-gray-500 mb-4">
+            {(bundleData as any).post_overview.description.ko}
+          </p>
+        ) : asset.description ? (
           <p className="text-sm text-gray-500 mb-4">
             {asset.description}
           </p>
-        )}
+        ) : null}
         
         {/* 자산 타입별 추가 정보 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -490,24 +515,26 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
       </ComponentCard> */}
 
       {/* 시장 상태 정보 */}
-      {asset.market_status && (
+            {(asset.market_status || (numericOverview && numericOverview.market_status)) && (
         <ComponentCard title="Market Status">
           <div className="flex items-center gap-4">
+                  {(() => { const ms = asset.market_status || (numericOverview && numericOverview.market_status); return (
             <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-              asset.market_status === 'REALTIME' ? 'bg-green-100 text-green-800' :
-              asset.market_status === 'DAILY_DATA' ? 'bg-blue-100 text-blue-800' :
-              asset.market_status === 'INTRADAY_DATA' ? 'bg-yellow-100 text-yellow-800' :
+                    ms === 'REALTIME' ? 'bg-green-100 text-green-800' :
+                    ms === 'DAILY_DATA' ? 'bg-blue-100 text-blue-800' :
+                    ms === 'INTRADAY_DATA' ? 'bg-yellow-100 text-yellow-800' :
               'bg-gray-100 text-gray-800'
             }`}>
-              {asset.market_status === 'REALTIME' ? 'Real-time' :
-               asset.market_status === 'DAILY_DATA' ? 'Daily Data' :
-               asset.market_status === 'INTRADAY_DATA' ? 'Intraday Data' :
+                    {ms === 'REALTIME' ? 'Real-time' :
+                     ms === 'DAILY_DATA' ? 'Daily Data' :
+                     ms === 'INTRADAY_DATA' ? 'Intraday Data' :
                'Static Data'}
             </div>
+                  )})()}
             <div className="text-sm text-gray-600">
-              {asset.market_status === 'REALTIME' ? 'Live market data' :
-               asset.market_status === 'DAILY_DATA' ? 'End-of-day data' :
-               asset.market_status === 'INTRADAY_DATA' ? 'Intraday data' :
+                    {(asset.market_status || (numericOverview && numericOverview.market_status)) === 'REALTIME' ? 'Live market data' :
+                     (asset.market_status || (numericOverview && numericOverview.market_status)) === 'DAILY_DATA' ? 'End-of-day data' :
+                     (asset.market_status || (numericOverview && numericOverview.market_status)) === 'INTRADAY_DATA' ? 'Intraday data' :
                'Historical data'}
             </div>
           </div>
@@ -641,10 +668,10 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
             <div>
               <h4 className="font-medium mb-2">Crypto Metrics</h4>
               <div className="space-y-2 text-sm">
-                {asset.crypto_current_price && (
+                {(asset.crypto_current_price || (asset as any).treemap_current_price) && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">Current Price:</span>
-                    <span>${asset.crypto_current_price.toLocaleString(undefined, { 
+                    <span>${(asset.crypto_current_price || (asset as any).treemap_current_price).toLocaleString(undefined, { 
                       minimumFractionDigits: 2, 
                       maximumFractionDigits: 6 
                     })}</span>
@@ -656,12 +683,17 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
                     <span>${(asset.volume_24h / 1e9).toFixed(2)}B</span>
                   </div>
                 )}
-                {asset.percent_change_24h && (
+                {(asset.percent_change_24h || (asset as any).treemap_change_24h) && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">24h Change:</span>
-                    <span className={asset.percent_change_24h >= 0 ? 'text-green-600' : 'text-red-600'}>
-                      {asset.percent_change_24h >= 0 ? '+' : ''}{asset.percent_change_24h.toFixed(2)}%
-                    </span>
+                    {(() => {
+                      const change = (asset.percent_change_24h ?? (asset as any).treemap_change_24h) as number
+                      return (
+                        <span className={change >= 0 ? 'text-green-600' : 'text-red-600'}>
+                          {change >= 0 ? '+' : ''}{change.toFixed(2)}%
+                        </span>
+                      )
+                    })()}
                   </div>
                 )}
                 {asset.percent_change_7d && (
