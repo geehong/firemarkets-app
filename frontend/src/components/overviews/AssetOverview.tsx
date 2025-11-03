@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
+import { useAssetDetail } from '@/hooks/useAssets'
+import { useUnifiedFinancials } from '@/hooks/useUnifiedFinancials'
 import { useAssetOverviewBundle } from '@/hooks/useAssetOverviewBundle'
 import { useRealtimePrices } from '@/hooks/useSocket'
 import ComponentCard from '@/components/common/ComponentCard'
@@ -35,6 +37,8 @@ const formatTime = (timestamp: string) => {
   return date.toISOString().split('T')[1].split('.')[0] // HH:MM:SS 형식
 }
 import HistoryTable from '@/components/tables/HistoryTable'
+import RealtimeQuotesPriceWidget from '@/components/widget/RealtimeQuotesPriceWidget'
+import StocksFinancialDataTab from '@/components/overviews/tab/StocksFinancialDataTab'
 
 interface AssetOverviewProps {
   className?: string
@@ -45,25 +49,48 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
   const { assetIdentifier } = useParams() as { assetIdentifier: string }
   const [isMobile, setIsMobile] = useState(false)
   
-  // 자산 개요 번들 데이터 fetching (BaseEdit과 동일 엔드포인트 사용)
-  // 초기데이터로 인한 fetch 건너뛰기 방지를 위해 initialData는 사용하지 않음
-  const { data: bundleData, loading: overviewLoading, error: overviewError, refetch } = useAssetOverviewBundle(assetIdentifier as string, { initialData: undefined })
+  // 기본 자산 정보 fetching
+  const { data: assetDetail, loading: assetDetailLoading, error: assetDetailError } = useAssetDetail(assetIdentifier as string)
+  
+  // Stocks 여부 확인
+  const isStock = assetDetail && !assetDetailLoading && assetDetail.type_name === 'Stocks'
+  
+  // Stocks일 때: 새로운 통합 재무 정보 API 사용
+  const { data: financialsData, loading: financialsLoading, error: financialsError } = useUnifiedFinancials(
+    isStock ? assetIdentifier as string : '', // Stocks가 아니면 빈 문자열 전달하여 호출 방지
+    { initialData: null }
+  )
+  
+  // Stocks가 아닐 때: 기존 bundle API 사용 (Crypto, ETF 등)
+  // assetDetail이 로드되고 Stocks가 아닐 때만 호출
+  const shouldUseBundle = assetDetail && !assetDetailLoading && assetDetail.type_name !== 'Stocks'
+  const { data: bundleData, loading: bundleLoading, error: bundleError } = useAssetOverviewBundle(
+    shouldUseBundle ? assetIdentifier as string : '',
+    { initialData: undefined }
+  )
+  
+  // 로딩 상태 통합
+  const overviewLoading = assetDetailLoading || (isStock && financialsLoading) || (shouldUseBundle && bundleLoading)
+  const overviewError = assetDetailError || (isStock && financialsError) || (shouldUseBundle && bundleError)
   
   // 디버그 로그
   useEffect(() => {
     try {
-      console.log('[AssetOverview][bundle]', {
+      console.log('[AssetOverview]', {
         assetIdentifier,
-        overviewLoading,
-        overviewError: overviewError ? overviewError.message : null,
-        hasBundle: !!bundleData,
-        hasNumeric: !!bundleData?.numeric_overview,
-        ticker: bundleData?.numeric_overview?.ticker,
-        market_status: bundleData?.numeric_overview?.market_status,
-        updated_at: bundleData?.numeric_overview?.updated_at,
+        isStock,
+        shouldUseBundle,
+        assetDetailLoading,
+        financialsLoading: isStock ? financialsLoading : undefined,
+        bundleLoading: shouldUseBundle ? bundleLoading : undefined,
+        hasAssetDetail: !!assetDetail,
+        hasFinancials: isStock ? !!financialsData : undefined,
+        hasBundle: shouldUseBundle ? !!bundleData : undefined,
+        ticker: assetDetail?.ticker,
+        type_name: assetDetail?.type_name,
       })
     } catch {}
-  }, [assetIdentifier, overviewLoading, overviewError, bundleData])
+  }, [assetIdentifier, isStock, shouldUseBundle, assetDetailLoading, financialsLoading, bundleLoading, assetDetail, financialsData, bundleData])
   
   // 실시간 가격 데이터
   const { latestPrice, isConnected } = useRealtimePrices(assetIdentifier as string)
@@ -119,7 +146,10 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
     )
   }
 
-  if (!bundleData || !bundleData.numeric_overview) {
+  // Stocks일 때는 assetDetail 사용, Stocks가 아닐 때는 bundleData의 numeric_overview 사용
+  const asset = isStock ? assetDetail : (bundleData?.numeric_overview || assetDetail)
+  
+  if (!asset) {
     return (
       <div className={className}>
         <Alert 
@@ -131,7 +161,12 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
     )
   }
 
-  const asset = bundleData.numeric_overview
+  // Stocks일 때만 재무 정보 사용
+  const stockFinancials = isStock ? financialsData?.stock_financials_data : null
+  const incomeData = isStock ? financialsData?.income_json : null
+  const balanceData = isStock ? financialsData?.balance_json : null
+  const cashFlowData = isStock ? financialsData?.cash_flow_json : null
+  const ratiosData = isStock ? financialsData?.ratios_json : null
 
   return (
     <div className={`space-y-6 ${className}`}>
@@ -390,8 +425,14 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
         </div>
       </ComponentCard>
 
+      {/* 딜레이된 실시간 가격 정보 (15분 딜레이) */}
+      <RealtimeQuotesPriceWidget 
+        assetIdentifier={assetIdentifier as string}
+        className=""
+      />
+
       {/* 실시간 가격 정보 */}
-      <ComponentCard title="Real-time Price">
+      {/* <ComponentCard title="Real-time Price">
         {(latestPrice || asset.current_price) ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="text-center p-4 border rounded-lg">
@@ -446,7 +487,7 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
             </div>
           </div>
         )}
-      </ComponentCard>
+      </ComponentCard> */}
 
       {/* 시장 상태 정보 */}
       {asset.market_status && (
@@ -508,34 +549,88 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
             <div>
               <h4 className="font-medium mb-2">Financial Metrics</h4>
               <div className="space-y-2 text-sm">
-                {asset.pe_ratio && (
+                {(stockFinancials?.pe_ratio ?? asset.pe_ratio) && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">P/E Ratio:</span>
-                    <span>{asset.pe_ratio.toFixed(2)}</span>
+                    <span>{(stockFinancials?.pe_ratio ?? asset.pe_ratio)?.toFixed(2)}</span>
                   </div>
                 )}
-                {asset.eps && (
+                {(stockFinancials?.eps ?? asset.eps) && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">EPS:</span>
-                    <span>${asset.eps.toFixed(2)}</span>
+                    <span>${(stockFinancials?.eps ?? asset.eps)?.toFixed(2)}</span>
                   </div>
                 )}
-                {asset.beta && (
+                {(stockFinancials?.beta ?? asset.beta) && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">Beta:</span>
-                    <span>{asset.beta.toFixed(3)}</span>
+                    <span>{(stockFinancials?.beta ?? asset.beta)?.toFixed(3)}</span>
                   </div>
                 )}
-                {asset.dividend_yield && (
+                {(stockFinancials?.dividend_yield ?? asset.dividend_yield) && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">Dividend Yield:</span>
-                    <span>{(asset.dividend_yield * 100).toFixed(2)}%</span>
+                    <span>{((stockFinancials?.dividend_yield ?? asset.dividend_yield) * 100)?.toFixed(2)}%</span>
                   </div>
                 )}
-                {asset.shares_outstanding && (
+                {(stockFinancials?.shares_outstanding ?? asset.shares_outstanding) && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">Shares Outstanding:</span>
-                    <span>{asset.shares_outstanding.toLocaleString('en-US')}</span>
+                    <span>{(stockFinancials?.shares_outstanding ?? asset.shares_outstanding)?.toLocaleString('en-US')}</span>
+                  </div>
+                )}
+                {stockFinancials?.market_cap && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Market Cap:</span>
+                    <span>${(stockFinancials.market_cap / 1e9).toFixed(2)}B</span>
+                  </div>
+                )}
+                {stockFinancials?.revenue_ttm && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Revenue (TTM):</span>
+                    <span>${(stockFinancials.revenue_ttm / 1e9).toFixed(2)}B</span>
+                  </div>
+                )}
+                {stockFinancials?.ebitda && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">EBITDA:</span>
+                    <span>${(stockFinancials.ebitda / 1e9).toFixed(2)}B</span>
+                  </div>
+                )}
+                {stockFinancials?.profit_margin_ttm && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Profit Margin (TTM):</span>
+                    <span>{(stockFinancials.profit_margin_ttm * 100).toFixed(2)}%</span>
+                  </div>
+                )}
+                {stockFinancials?.return_on_equity_ttm && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">ROE (TTM):</span>
+                    <span>{(stockFinancials.return_on_equity_ttm * 100).toFixed(2)}%</span>
+                  </div>
+                )}
+                {stockFinancials?.return_on_assets_ttm && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">ROA (TTM):</span>
+                    <span>{(stockFinancials.return_on_assets_ttm * 100).toFixed(2)}%</span>
+                  </div>
+                )}
+                {stockFinancials?.price_to_book_ratio && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">P/B Ratio:</span>
+                    <span>{stockFinancials.price_to_book_ratio.toFixed(2)}</span>
+                  </div>
+                )}
+                {stockFinancials?.dividend_per_share && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Dividend Per Share:</span>
+                    <span>${stockFinancials.dividend_per_share.toFixed(2)}</span>
+                  </div>
+                )}
+                {stockFinancials?.book_value && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Book Value:</span>
+                    <span>${stockFinancials.book_value.toFixed(2)}</span>
                   </div>
                 )}
               </div>
@@ -708,6 +803,16 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
             )}
           </div>
         </ComponentCard>
+      )}
+
+      {/* Macrotrends 재무 정보 */}
+      {financialsData && asset.type_name === 'Stocks' && (
+        <StocksFinancialDataTab
+          incomeData={incomeData}
+          balanceData={balanceData}
+          cashFlowData={cashFlowData}
+          ratiosData={ratiosData}
+        />
       )}
 
       {/* 히스토리 데이터 */}

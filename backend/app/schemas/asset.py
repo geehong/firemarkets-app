@@ -717,3 +717,14 @@ class AssetOverviewResponse(BaseModel):
     daily_data_updated_at: Optional[datetime] = None
 
 
+class UnifiedFinancialsResponse(BaseModel):
+    """Response model for /assets/overview_financials_unified/{asset_identifier} endpoint"""
+    ticker: str = Field(..., description="Asset ticker")
+    asset_id: int = Field(..., description="Asset ID")
+    stock_financials_data: Optional[Dict[str, Any]] = Field(None, description="Latest stock_financials data as JSON")
+    income_json: Optional[Dict[str, Dict[str, Any]]] = Field(None, description="Income statement data by snapshot_date (YYYY-MM-DD)")
+    balance_json: Optional[Dict[str, Dict[str, Any]]] = Field(None, description="Balance sheet data by snapshot_date (YYYY-MM-DD)")
+    cash_flow_json: Optional[Dict[str, Dict[str, Any]]] = Field(None, description="Cash flow data by snapshot_date (YYYY-MM-DD)")
+    ratios_json: Optional[Dict[str, Dict[str, Any]]] = Field(None, description="Financial ratios data by snapshot_date (YYYY-MM-DD)")
+
+

@@ -50,7 +50,7 @@ export default function AgGridBaseTable<T = any>({
         pagination
         paginationPageSize={10}
         paginationPageSizeSelector={[10, 25, 50, 100, 200]}
-        defaultColDef={{ resizable: true, sortable: true, filter: true, flex: 1 }}
+        defaultColDef={{ resizable: true, sortable: true, filter: true }}
         gridOptions={gridOptions as any}
       />
     </div>

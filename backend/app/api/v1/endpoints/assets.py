@@ -16,7 +16,7 @@ from ....schemas.asset import (
     OHLCVResponse, StockProfileResponse, StockFinancialsResponse, StockEstimatesResponse,
     IndexInfoResponse, ETFInfoResponse, ETFSectorExposureResponse, ETFHoldingsResponse,
     CryptoMetricsResponse, TechnicalIndicatorsResponse, PriceResponse,
-    TreemapLiveResponse, TreemapLiveItem, AssetOverviewResponse
+    TreemapLiveResponse, TreemapLiveItem, AssetOverviewResponse, UnifiedFinancialsResponse
 )
 from ....schemas.common import TickerSummaryResponse
 
@@ -2290,3 +2290,51 @@ def get_etf_additional_data(db: Session, asset_id: int):
 def get_basic_overview_data(db: Session, asset_id: int):
     """기본 자산 개요 데이터 조회 (기타 자산 타입용) - deprecated"""
     return get_unified_overview_data(db, asset_id)
+
+
+@router.get("/overview_financials_unified/{asset_identifier}", response_model=UnifiedFinancialsResponse)
+def get_overview_financials_unified(
+    asset_identifier: str = Path(..., description="Asset ID (integer) or Ticker (string)"),
+    db: Session = Depends(get_postgres_db)
+):
+    """통합 재무 정보 조회 (stock_financials + macrotrends_financials)"""
+    try:
+        asset_id = resolve_asset_identifier(db, asset_identifier)
+        
+        # v_financials_unified 뷰에서 데이터 조회
+        query = text("""
+            SELECT 
+                ticker,
+                asset_id,
+                stock_financials_data,
+                income_json,
+                balance_json,
+                cash_flow_json,
+                ratios_json
+            FROM v_financials_unified
+            WHERE asset_id = :asset_id
+        """)
+        
+        result = db.execute(query, {"asset_id": asset_id}).fetchone()
+        
+        if not result:
+            raise HTTPException(status_code=404, detail=f"Financial data not found for asset: {asset_identifier}")
+        
+        # 결과를 딕셔너리로 변환
+        response_data = {
+            "ticker": result.ticker,
+            "asset_id": result.asset_id,
+            "stock_financials_data": result.stock_financials_data,
+            "income_json": result.income_json,
+            "balance_json": result.balance_json,
+            "cash_flow_json": result.cash_flow_json,
+            "ratios_json": result.ratios_json
+        }
+        
+        return UnifiedFinancialsResponse(**response_data)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error getting unified financials for {asset_identifier}")
+        raise HTTPException(status_code=500, detail=f"Failed to get unified financials: {str(e)}")
