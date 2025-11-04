@@ -8,3 +8,4 @@ export { default as MiniPriceWidget } from './MiniPriceWidget';
 
 
 
+

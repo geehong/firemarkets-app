@@ -32,9 +32,9 @@ class ApiStrategyManager:
         self.config_manager = config_manager or ConfigManager()
         # 1. 일봉 OHLCV 클라이언트 (주식, ETF, 지수, 커머디티, 통화)
         self.ohlcv_day_clients = [
-            #TiingoClient(),       # 1순위 복구
+            TiingoClient(),       # 1순위 복구
             #FMPClient(),          # 2순위 (WebSocket 백업용)
-            FinnhubClient(),
+            #FinnhubClient(),
             PolygonClient(),      # 3순위
             TwelveDataClient(),   # 4순위
         ]
@@ -44,7 +44,9 @@ class ApiStrategyManager:
         self.ohlcv_intraday_clients = [
             TwelveDataClient(),  
             #AlphaVantageClient(), # (4h, 1h 데이터 지원) - 주석처리
-            FMPClient(),          # 재활성화
+            PolygonClient(),
+            TiingoClient(),
+            #FMPClient(),          # 재활성화
         ]
         
         # 3. 암호화폐 OHLCV 클라이언트 (1d, 4h, 1h 등)
@@ -65,12 +67,7 @@ class ApiStrategyManager:
         # 4-1. FMP 전용 주식 프로필 클라이언트 (주말 수집용)
         # 주말에만 실행하여 API 제한을 우회
         self.stock_profiles_fmp_clients = [
-            FMPClient(),          # FMP만 사용 (상세한 데이터)
-            TiingoClient(),
-            PolygonClient(),
-            TwelveDataClient(),
-            #AlphaVantageClient(),
-            FinnhubClient(),
+           FMPClient(),          # FMP만 사용 (상세한 데이터)
         ]
         
         # 5. 주식 재무용 클라이언트 (재무 데이터) - 원상복구 (FMP 단독)

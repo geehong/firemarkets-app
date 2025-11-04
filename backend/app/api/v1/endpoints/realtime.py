@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from typing import Optional, List
 import logging
 from pydantic import BaseModel
+from datetime import datetime, timedelta, timezone, time as dt_time
 
 from ....core.database import get_postgres_db
 # Tiingo consumer import removed - using direct implementation
@@ -226,17 +227,20 @@ async def get_realtime_quotes_price_postgres(
 async def get_realtime_quotes_delay_price_postgres(
     asset_identifier: str = Query(..., description="Asset ID (integer) or Ticker (string)"),
     data_interval: str = Query("15m", description="Data interval (15m, 30m, 1h, 2h, 3h)"),
-    days: int = Query(1, ge=1, le=1, description="Number of days to fetch (limited to 1 day)"),
+    days: str = Query("1", description="Number of days to fetch (1) or 'last' for latest value only"),
+    data_source: Optional[str] = Query(None, description="Data source filter (optional, only for crypto assets)"),
     postgres_db: Session = Depends(get_postgres_db)
 ):
     """
     실시간 가격 데이터 조회 (지연 데이터, PostgreSQL 전용)
     asset_identifier: Asset ID (integer) 또는 Ticker (string)
     data_interval: 데이터 간격 (15m, 30m, 1h, 2h, 3h)
+    days: 조회할 일수 (1) 또는 'last' (최신값만)
+    data_source: 데이터 소스 필터 (선택적, 암호화폐일 때만 사용)
     """
     try:
         from ....models.asset import RealtimeQuoteTimeDelay, Asset
-        from sqlalchemy import desc
+        from sqlalchemy import desc, and_, func
         
         # 지원되는 간격 확인
         supported_intervals = ["15m", "30m", "1h", "2h", "3h"]
@@ -246,53 +250,169 @@ async def get_realtime_quotes_delay_price_postgres(
                 detail=f"Unsupported interval: {data_interval}. Supported: {supported_intervals}"
             )
         
-        # asset_identifier가 숫자인지 확인 (Asset ID)
+        # days 파라미터 처리
+        is_last_only = days.lower() == "last"
+        
+        # data_source 필터 설정 (제공된 경우에만 사용)
+        target_data_source = data_source.lower() if data_source else None
+        
+        # asset_id 조회
         if asset_identifier.isdigit():
             asset_id = int(asset_identifier)
-            quotes = postgres_db.query(RealtimeQuoteTimeDelay)\
-                .filter(RealtimeQuoteTimeDelay.asset_id == asset_id)\
-                .filter(RealtimeQuoteTimeDelay.data_interval == data_interval)\
-                .order_by(desc(RealtimeQuoteTimeDelay.timestamp_utc))\
-                .limit(100)\
-                .all()
         else:
             # Ticker로 조회 (대소문자 정규화 및 USDT 페어 폴백 지원)
             ticker = asset_identifier.upper()
-            quotes = []
-
-            # 1) 정확히 동일한 ticker 자산 조회
             asset = postgres_db.query(Asset).filter(Asset.ticker == ticker).first()
-            if asset:
-                quotes = postgres_db.query(RealtimeQuoteTimeDelay)\
-                    .filter(RealtimeQuoteTimeDelay.asset_id == asset.asset_id)\
-                    .filter(RealtimeQuoteTimeDelay.data_interval == data_interval)\
-                    .order_by(desc(RealtimeQuoteTimeDelay.timestamp_utc))\
-                    .limit(100)\
-                    .all()
-
-            # 2) 지연 데이터가 없고, 기본 코인 티커인 경우 USDT 페어로 폴백 시도 (예: DOT -> DOTUSDT)
-            if not quotes and not ticker.endswith("USDT"):
-                usdt_ticker = f"{ticker}USDT"
-                asset_usdt = postgres_db.query(Asset).filter(Asset.ticker == usdt_ticker).first()
-                if asset_usdt:
-                    quotes = postgres_db.query(RealtimeQuoteTimeDelay)\
-                        .filter(RealtimeQuoteTimeDelay.asset_id == asset_usdt.asset_id)\
-                        .filter(RealtimeQuoteTimeDelay.data_interval == data_interval)\
-                        .order_by(desc(RealtimeQuoteTimeDelay.timestamp_utc))\
-                        .limit(100)\
-                        .all()
+            
+            if not asset:
+                # USDT 페어로 폴백 시도
+                if not ticker.endswith("USDT"):
+                    usdt_ticker = f"{ticker}USDT"
+                    asset = postgres_db.query(Asset).filter(Asset.ticker == usdt_ticker).first()
+            
+            if not asset:
+                raise HTTPException(status_code=404, detail=f"Asset not found with ticker: {asset_identifier}")
+            
+            asset_id = asset.asset_id
+        
+        # 쿼리 구성
+        query = postgres_db.query(RealtimeQuoteTimeDelay)\
+            .filter(RealtimeQuoteTimeDelay.asset_id == asset_id)\
+            .filter(RealtimeQuoteTimeDelay.data_interval == data_interval)
+        
+        # data_source가 제공된 경우에만 필터링
+        if target_data_source:
+            query = query.filter(RealtimeQuoteTimeDelay.data_source == target_data_source)
+        
+        query = query.order_by(desc(RealtimeQuoteTimeDelay.timestamp_utc))
+        
+        # days="last"인 경우 최신값만
+        if is_last_only:
+            query = query.limit(1)
+        else:
+            # days가 숫자인 경우 처리
+            try:
+                days_int = int(days)
+                if days_int > 0:
+                    # 최근 N일 데이터 조회를 위한 날짜 계산
+                    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_int)
+                    query = query.filter(RealtimeQuoteTimeDelay.timestamp_utc >= cutoff_date)
+                query = query.limit(100)
+            except ValueError:
+                # 숫자가 아니면 기본값 1일
+                cutoff_date = datetime.now(timezone.utc) - timedelta(days=1)
+                query = query.filter(RealtimeQuoteTimeDelay.timestamp_utc >= cutoff_date).limit(100)
+        
+        quotes = query.all()
         
         if not quotes:
             raise HTTPException(status_code=404, detail="No delay quotes found")
         
-        return {
-            "asset_identifier": asset_identifier,
-            "quotes": quotes,
-            "data_source": "realtime_quotes_time_delay",
-            "data_interval": data_interval,
-            "database": "postgresql",
-            "timestamp": quotes[0].timestamp_utc if quotes else None
-        }
+        # change_amount, change_percent 계산 로직
+        processed_quotes = []
+        for quote in quotes:
+            quote_dict = {
+                "id": quote.id,
+                "asset_id": quote.asset_id,
+                "timestamp_utc": quote.timestamp_utc.isoformat() if quote.timestamp_utc else None,
+                "price": float(quote.price) if quote.price else None,
+                "volume": float(quote.volume) if quote.volume else None,
+                "change_amount": float(quote.change_amount) if quote.change_amount else None,
+                "change_percent": float(quote.change_percent) if quote.change_percent else None,
+                "data_source": quote.data_source,
+                "data_interval": quote.data_interval
+            }
+            
+            # change_amount 또는 change_percent가 null인 경우 이전일 마지막 데이터로 계산
+            if quote.price and (quote.change_amount is None or quote.change_percent is None):
+                current_price = float(quote.price)
+                current_timestamp = quote.timestamp_utc
+                
+                if current_timestamp:
+                    # 현재 타임스탬프의 날짜 계산 (UTC 기준)
+                    if isinstance(current_timestamp, datetime):
+                        current_date = current_timestamp.date()
+                    else:
+                        # 문자열인 경우 파싱
+                        if isinstance(current_timestamp, str):
+                            current_timestamp = datetime.fromisoformat(current_timestamp.replace('Z', '+00:00'))
+                            current_date = current_timestamp.date()
+                        else:
+                            current_date = current_timestamp
+                    
+                    previous_date = current_date - timedelta(days=1)
+                    
+                    # 이전일 마지막 데이터 조회 (같은 asset_id, data_interval, data_source)
+                    # 전날 날짜 범위 내의 가장 마지막 데이터
+                    previous_day_start = datetime.combine(previous_date, dt_time.min)
+                    if previous_day_start.tzinfo is None:
+                        previous_day_start = previous_day_start.replace(tzinfo=timezone.utc)
+                    
+                    # 전날의 끝 (다음날 00:00:00 미만)
+                    next_day = previous_date + timedelta(days=1)
+                    previous_day_end = datetime.combine(next_day, dt_time.min)
+                    if previous_day_end.tzinfo is None:
+                        previous_day_end = previous_day_end.replace(tzinfo=timezone.utc)
+                    
+                    # 이전일 데이터 조회 쿼리 구성
+                    previous_day_query = postgres_db.query(RealtimeQuoteTimeDelay)\
+                        .filter(
+                            and_(
+                                RealtimeQuoteTimeDelay.asset_id == asset_id,
+                                RealtimeQuoteTimeDelay.data_interval == data_interval,
+                                RealtimeQuoteTimeDelay.timestamp_utc >= previous_day_start,
+                                RealtimeQuoteTimeDelay.timestamp_utc < previous_day_end
+                            )
+                        )
+                    
+                    # data_source가 제공된 경우에만 필터링
+                    if target_data_source:
+                        previous_day_query = previous_day_query.filter(
+                            RealtimeQuoteTimeDelay.data_source == target_data_source
+                        )
+                    
+                    previous_day_last = previous_day_query\
+                        .order_by(desc(RealtimeQuoteTimeDelay.timestamp_utc))\
+                        .first()
+                    
+                    if previous_day_last and previous_day_last.price:
+                        previous_price = float(previous_day_last.price)
+                        
+                        if previous_price > 0:
+                            # change_amount 계산
+                            if quote.change_amount is None:
+                                calculated_change_amount = current_price - previous_price
+                                quote_dict["change_amount"] = round(calculated_change_amount, 8)
+                            
+                            # change_percent 계산
+                            if quote.change_percent is None:
+                                calculated_change_percent = ((current_price - previous_price) / previous_price) * 100
+                                quote_dict["change_percent"] = round(calculated_change_percent, 4)
+            
+            processed_quotes.append(quote_dict)
+        
+        # 응답 형식 구성
+        if is_last_only and processed_quotes:
+            # days="last"인 경우 단일 객체 반환
+            return {
+                "asset_identifier": asset_identifier,
+                "quote": processed_quotes[0],
+                "data_source": "realtime_quotes_time_delay",
+                "data_interval": data_interval,
+                "database": "postgresql",
+                "timestamp": processed_quotes[0]["timestamp_utc"]
+            }
+        else:
+            # 여러 데이터 반환
+            return {
+                "asset_identifier": asset_identifier,
+                "quotes": processed_quotes,
+                "data_source": "realtime_quotes_time_delay",
+                "data_interval": data_interval,
+                "database": "postgresql",
+                "count": len(processed_quotes),
+                "timestamp": processed_quotes[0]["timestamp_utc"] if processed_quotes else None
+            }
         
     except HTTPException:
         raise

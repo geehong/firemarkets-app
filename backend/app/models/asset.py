@@ -331,7 +331,7 @@ class IndexInfo(Base):
 class CryptoData(Base):
     __tablename__ = "crypto_data"
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
     asset_id = Column(Integer, ForeignKey("assets.asset_id"), nullable=False, unique=True, index=True)
     symbol = Column(String(20), nullable=False, index=True)
     name = Column(String(100), nullable=False)

@@ -1457,10 +1457,11 @@ class DataProcessor:
                             'is_active': True
                         }
                         
-                        # None 값 제거
+                        # None 값 제거 및 id 필드 명시적 제외 (autoincrement이므로)
+                        crypto_data_dict.pop('id', None)  # id 필드가 있으면 제거
                         crypto_data_dict = {k: v for k, v in crypto_data_dict.items() if v is not None}
                         
-                        # PostgreSQL UPSERT
+                        # PostgreSQL UPSERT (id 필드는 명시적으로 제외)
                         stmt = pg_insert(PGCryptoData).values(**crypto_data_dict)
                         stmt = stmt.on_conflict_do_update(
                             index_elements=['asset_id'],

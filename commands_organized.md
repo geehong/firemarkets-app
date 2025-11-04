@@ -84,6 +84,8 @@ fire_markets_websocket_broadcaster    firemarkets-app-websocket_broadcaster     
 fire_markets_websocket_orchestrator   sha256:7fa8176180184081f032a0d727a26594eceda3a40ded2bb2792d0f4d4c739448   "sh -c 'cd /app && p…"   websocket_orchestrator   29 hours ago     Up 28 hours             8000/tcp
 nginx-proxy-manager                   jc21/nginx-proxy-manager:latest                                           "/init"                   nginx-proxy-manager      47 hours ago     Up 25 hours             0.0.0.0:80-81->80-81/tcp, [::]:80-81->80-81/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp
 portainer                             portainer/portainer-ce:latest                                             "/portainer"              portainer                47 hours ago     Up 47 hours             0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp, 0.0.0.0:9000->9000/tcp, [::]:9000->9000/tcp, 0.0.0.0:9443->9443/tcp, [::]:9443->9443/tcp
+
+
 docker-compose logs data_processor --tail 50 -f
 docker-compose logs websocket_orchestrator --tail 50 -f
 docker-compose logs scheduler --tail 50 -f
@@ -128,8 +130,10 @@ docker-compose build data_processor && docker-compose restart data_processor
 ### 서비스 재시작
 ```bash
 docker-compose restart scheduler
-docker-compose restart backend_temp
+docker-compose restart backend
 docker-compose restart nginx-proxy-manager
+docker-compose restart data_processor
+
 ```
 
 ### 복합 빌드 및 실행
@@ -163,10 +167,14 @@ docker-compose down backend && docker-compose build backend && docker-compose up
 
 docker-compose down websocket_orchestrator && docker-compose build websocket_orchestrator && docker-compose up -d websocket_orchestrator
 
-docker-compose --profile processing down
-docker-compose --profile processing up -d --no-deps
+docker-compose --profile processing down && docker-compose --profile processing up -d --no-deps
 
 docker-compose --profile processing down data_processor && docker-compose --profile processing up -d --build data_processor
+
+docker-compose --profile processing down data_processor && docker-compose --profile processing up -d --build data_processor
+
+
+
 cd /home/geehong/firemarkets-app && docker-compose --profile processing down && docker-compose --profile processing up -d --no-deps
 ```
 
@@ -263,7 +271,41 @@ docker-compose logs websocket_orchestrator --tail 50 -f | grep -E "(enabled stat
  docker-compose logs -f scheduler | grep -E "(crypto_clients|etf_clients|stock_profiles_clients|error|exception|failed|PostgreSQL|jsonb|operator does not exist)"
  docker-compose logs -f scheduler | grep -E "(stock_profiles_clients|저장|실패|오류류|error|exception|failed|PostgreSQL|jsonb|operator does not exist)"
 
- ```
+```
+
+### 실시간 스케줄러 및 데이터 프로세서 로그 모니터링
+```bash
+# 스케줄러와 데이터 프로세서 동시 모니터링 (실시간)
+docker logs -f fire_markets_scheduler fire_markets_data_processor 2>&1 | grep --line-buffered -E --color=always "(crypto_clients|etf_clients|commodity_ohlcv_clients|Starting|Completed|success|error|ERROR|exception|Exception|저장|실패|오류)"
+
+docker-compose logs -f scheduler data_processor 2>&1 | grep --line-buffered -E --color=always "(crypto_clients|etf_clients|commodity_ohlcv_clients|Starting|Completed|success|error|ERROR|exception|Exception|저장|실패|오류)"
+
+
+# 스케줄러만 실시간 모니터링 (전체 로그)
+docker logs -f fire_markets_scheduler --tail 100
+
+# 데이터 프로세서만 실시간 모니터링 (전체 로그)
+docker logs -f fire_markets_data_processor --tail 100
+
+# 스케줄러 + 데이터 프로세서 동시 모니터링 (전체 로그, 컬러 구분)
+docker logs -f fire_markets_scheduler --tail 50 2>&1 | sed 's/^/[SCHEDULER] /' & \
+docker logs -f fire_markets_data_processor --tail 50 2>&1 | sed 's/^/[DATA_PROC] /'
+
+# 특정 collector 그룹 필터링 (crypto_clients, etf_clients, commodity_ohlcv_clients)
+docker logs -f fire_markets_scheduler --tail 100 2>&1 | grep --line-buffered -E --color=always "(crypto_clients|etf_clients|commodity_ohlcv_clients|CryptoInfo|ETFInfo|OHLCV.*commodity)"
+
+# 스케줄러 실행 상태 및 수집 시작/완료 로그만
+docker logs -f fire_markets_scheduler --tail 100 2>&1 | grep --line-buffered -E --color=always "(Scheduled cron job|Starting.*collection|collection.*Starting|Completed|success|processed.*assets|enqueued)"
+
+# 데이터 프로세서 저장 성공/실패 로그만
+docker logs -f fire_markets_data_processor --tail 100 2>&1 | grep --line-buffered -E --color=always "(저장|DB 저장|success|✅|실패|error|ERROR|오류|exception)"
+
+# 스케줄러 재시작 후 실시간 로그 확인
+docker restart fire_markets_scheduler && sleep 2 && docker logs -f fire_markets_scheduler --tail 50
+
+# 에러 및 예외만 실시간 모니터링
+docker logs -f fire_markets_scheduler fire_markets_data_processor 2>&1 | grep --line-buffered -E --color=always "(error|ERROR|exception|Exception|Traceback|실패|오류|failed|FAILED)" | grep -v "429"
+```
 ### 에러 및 예외 로그
 ```bash
 # 모든 서비스 에러 로그

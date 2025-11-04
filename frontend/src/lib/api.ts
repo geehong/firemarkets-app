@@ -160,11 +160,23 @@ export class ApiClient {
     return this.request(`/realtime/pg/quotes-delay-price${qs ? `?${qs}` : ''}`)
   }
   
-  getRealtimePricesPg(params: { asset_identifier: string; data_interval?: string; days?: number; }) {
+  getDelayedQuoteLast(assetIdentifier: string, dataInterval: string = '15m', dataSource?: string) {
+    const search = new URLSearchParams()
+    search.append('asset_identifier', assetIdentifier)
+    search.append('data_interval', dataInterval)
+    search.append('days', 'last')
+    // dataSource가 제공된 경우에만 추가 (암호화폐일 때만 binance 사용)
+    if (dataSource) {
+      search.append('data_source', dataSource)
+    }
+    return this.request(`/realtime/pg/quotes-delay-price?${search.toString()}`)
+  }
+  
+  getRealtimePricesPg(params: { asset_identifier: string; data_interval?: string; days?: number | string; }) {
     const search = new URLSearchParams()
     if (params.asset_identifier) search.append('asset_identifier', params.asset_identifier)
     if (params.data_interval) search.append('data_interval', params.data_interval)
-    if (typeof params.days === 'number') search.append('days', String(params.days))
+    if (params.days !== undefined) search.append('days', String(params.days))
     const qs = search.toString()
     return this.request(`/realtime/pg/quotes-delay-price${qs ? `?${qs}` : ''}`)
   }

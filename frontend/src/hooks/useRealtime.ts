@@ -87,3 +87,25 @@ export const useDelayedQuotes = (
     ...queryOptions,
   })
 }
+
+// Delayed Quote Last Hook (최신값만)
+export const useDelayedQuoteLast = (
+  assetIdentifier: string,
+  options?: {
+    dataInterval?: string
+    dataSource?: string
+  },
+  queryOptions?: UseQueryOptions
+) => {
+  return useQuery({
+    queryKey: ['delayed-quote-last', assetIdentifier, options],
+    queryFn: () => apiClient.getDelayedQuoteLast(
+      assetIdentifier,
+      options?.dataInterval || '15m',
+      options?.dataSource // undefined일 수 있음 (주식 등은 data_source 지정 안 함)
+    ),
+    enabled: !!assetIdentifier,
+    refetchInterval: 15 * 60 * 1000, // 15분마다 자동 갱신
+    ...queryOptions,
+  })
+}
