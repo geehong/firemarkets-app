@@ -575,17 +575,22 @@ class NextHalvingInfo(BaseModel):
 class CryptoDataResponse(BaseModel):
     """암호화폐 데이터 응답 스키마"""
     symbol: str
+    name: str
     price: float
-    market_cap: Optional[float]
-    volume_24h: Optional[float]
-    change_24h: Optional[float]
-    last_updated: datetime
+    market_cap: Optional[float] = None
+    volume_24h: Optional[float] = None
+    price_change_24h: Optional[float] = None
+    price_change_percent_24h: Optional[float] = None
+    circulating_supply: Optional[float] = None
+    total_supply: Optional[float] = None
+    max_supply: Optional[float] = None
+    rank: Optional[int] = None
+    last_updated: Optional[datetime] = None
 
 class TopCryptosResponse(BaseModel):
     """상위 암호화폐 응답 스키마"""
-    cryptos: List[CryptoDataResponse]
+    data: List[CryptoDataResponse]
     total_count: int
-    last_updated: datetime
 
 class GlobalCryptoMetrics(BaseModel):
     """글로벌 암호화폐 메트릭스 스키마"""

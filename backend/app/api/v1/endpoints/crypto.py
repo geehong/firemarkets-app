@@ -346,19 +346,37 @@ async def get_crypto_data_by_asset(
         if not crypto_data:
             raise HTTPException(status_code=404, detail=f"Crypto data not found for {asset_identifier}")
         
-        # Format the response to match CryptoDataResponse (no extra wrapper)
+        # 가격 처리 (current_price 우선, 없으면 price 사용)
+        price_value = 0.0
+        if crypto_data.current_price is not None:
+            price_value = float(crypto_data.current_price)
+        elif hasattr(crypto_data, 'price') and crypto_data.price is not None:
+            price_value = float(crypto_data.price)
+        
+        # name이 비어있으면 symbol 사용
+        name_value = crypto_data.name if crypto_data.name else crypto_data.symbol
+        
+        # Format the response to match CryptoDataResponse
         return {
             "symbol": crypto_data.symbol,
-            "price": float(crypto_data.current_price) if crypto_data.current_price else float(crypto_data.price) if crypto_data.price else 0.0,
+            "name": name_value,
+            "price": price_value,
             "market_cap": float(crypto_data.market_cap) if crypto_data.market_cap else None,
             "volume_24h": float(crypto_data.volume_24h) if crypto_data.volume_24h else None,
-            "change_24h": float(crypto_data.percent_change_24h) if crypto_data.percent_change_24h else None,
-            "last_updated": crypto_data.last_updated or datetime.now(),
+            "price_change_24h": 0.0,  # TODO: Calculate from OHLCV data
+            "price_change_percent_24h": float(crypto_data.percent_change_24h) if crypto_data.percent_change_24h else None,
+            "circulating_supply": float(crypto_data.circulating_supply) if crypto_data.circulating_supply else None,
+            "total_supply": float(crypto_data.total_supply) if crypto_data.total_supply else None,
+            "max_supply": float(crypto_data.max_supply) if crypto_data.max_supply else None,
+            "rank": crypto_data.cmc_rank if crypto_data.cmc_rank else None,
+            "last_updated": crypto_data.last_updated,
         }
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
         logger.error(f"Error getting crypto data for asset {asset_identifier}: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to get crypto data: {str(e)}")
 
 
@@ -379,27 +397,43 @@ async def get_top_cryptos(limit: int = 100, db: Session = Depends(get_postgres_d
         
         cryptos = []
         for crypto_data in crypto_data_list:
-            cryptos.append({
-                "symbol": crypto_data.symbol,
-                "name": crypto_data.name,
-                "price": float(crypto_data.current_price) if crypto_data.current_price else float(crypto_data.price) if crypto_data.price else 0.0,
-                "market_cap": float(crypto_data.market_cap) if crypto_data.market_cap else 0.0,
-                "volume_24h": float(crypto_data.volume_24h) if crypto_data.volume_24h else 0.0,
-                "price_change_24h": 0.0,  # TODO: Calculate from OHLCV data
-                "price_change_percent_24h": float(crypto_data.percent_change_24h) if crypto_data.percent_change_24h else 0.0,
-                "circulating_supply": float(crypto_data.circulating_supply) if crypto_data.circulating_supply else None,
-                "total_supply": float(crypto_data.total_supply) if crypto_data.total_supply else None,
-                "max_supply": float(crypto_data.max_supply) if crypto_data.max_supply else None,
-                "rank": crypto_data.cmc_rank if crypto_data.cmc_rank else 0,
-                "last_updated": crypto_data.last_updated
-            })
+            try:
+                # 가격 처리 (current_price 우선, 없으면 price 사용)
+                price_value = 0.0
+                if crypto_data.current_price is not None:
+                    price_value = float(crypto_data.current_price)
+                elif hasattr(crypto_data, 'price') and crypto_data.price is not None:
+                    price_value = float(crypto_data.price)
+                
+                # name이 비어있으면 symbol 사용
+                name_value = crypto_data.name if crypto_data.name else crypto_data.symbol
+                
+                cryptos.append({
+                    "symbol": crypto_data.symbol,
+                    "name": name_value,
+                    "price": price_value,
+                    "market_cap": float(crypto_data.market_cap) if crypto_data.market_cap else 0.0,
+                    "volume_24h": float(crypto_data.volume_24h) if crypto_data.volume_24h else 0.0,
+                    "price_change_24h": 0.0,  # TODO: Calculate from OHLCV data
+                    "price_change_percent_24h": float(crypto_data.percent_change_24h) if crypto_data.percent_change_24h else 0.0,
+                    "circulating_supply": float(crypto_data.circulating_supply) if crypto_data.circulating_supply else None,
+                    "total_supply": float(crypto_data.total_supply) if crypto_data.total_supply else None,
+                    "max_supply": float(crypto_data.max_supply) if crypto_data.max_supply else None,
+                    "rank": crypto_data.cmc_rank if crypto_data.cmc_rank else 0,
+                    "last_updated": crypto_data.last_updated
+                })
+            except Exception as row_error:
+                logger.warning(f"Error processing crypto row {crypto_data.symbol}: {row_error}")
+                continue
         
         return {
             "data": cryptos,
             "total_count": len(cryptos)
         }
     except Exception as e:
+        import traceback
         logger.error(f"Error getting top cryptos: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to get top cryptos: {str(e)}")
 
 # @router.get("/metrics/{symbol}", response_model=CryptoMetricsResponse)

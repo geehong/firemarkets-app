@@ -239,8 +239,9 @@ async def get_realtime_quotes_delay_price_postgres(
     data_source: 데이터 소스 필터 (선택적, 암호화폐일 때만 사용)
     """
     try:
-        from ....models.asset import RealtimeQuoteTimeDelay, Asset
+        from ....models.asset import RealtimeQuoteTimeDelay, Asset, OHLCVData
         from sqlalchemy import desc, and_, func
+        from datetime import time as dt_time
         
         # 지원되는 간격 확인
         supported_intervals = ["15m", "30m", "1h", "2h", "3h"]
@@ -305,8 +306,90 @@ async def get_realtime_quotes_delay_price_postgres(
         
         quotes = query.all()
         
+        # RealtimeQuoteTimeDelay에 데이터가 없으면 OHLCV 데이터로 폴백
         if not quotes:
-            raise HTTPException(status_code=404, detail="No delay quotes found")
+            logger.info(f"No realtime delay quotes found for {asset_identifier}, falling back to OHLCV data")
+            
+            # OHLCV 데이터로 폴백 (15m 간격은 1h로 매핑)
+            ohlcv_interval_map = {
+                "15m": "1h",
+                "30m": "1h", 
+                "1h": "1h",
+                "2h": "4h",
+                "3h": "4h"
+            }
+            ohlcv_interval = ohlcv_interval_map.get(data_interval, "1h")
+            
+            ohlcv_query = postgres_db.query(OHLCVData)\
+                .filter(OHLCVData.asset_id == asset_id)\
+                .filter(OHLCVData.data_interval == ohlcv_interval)\
+                .order_by(desc(OHLCVData.timestamp_utc))
+            
+            if is_last_only:
+                ohlcv_query = ohlcv_query.limit(1)
+            else:
+                try:
+                    days_int = int(days)
+                    if days_int > 0:
+                        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_int)
+                        ohlcv_query = ohlcv_query.filter(OHLCVData.timestamp_utc >= cutoff_date)
+                    ohlcv_query = ohlcv_query.limit(100)
+                except ValueError:
+                    cutoff_date = datetime.now(timezone.utc) - timedelta(days=1)
+                    ohlcv_query = ohlcv_query.filter(OHLCVData.timestamp_utc >= cutoff_date).limit(100)
+            
+            ohlcv_data = ohlcv_query.all()
+            
+            if not ohlcv_data:
+                raise HTTPException(status_code=404, detail=f"No data found for asset: {asset_identifier}")
+            
+            # OHLCV 데이터를 quote 형식으로 변환
+            processed_quotes = []
+            for idx, ohlcv in enumerate(ohlcv_data):
+                # 이전 데이터와 비교하여 변화율 계산
+                prev_close = ohlcv_data[idx + 1].close_price if idx + 1 < len(ohlcv_data) else None
+                
+                change_amount = None
+                change_percent = None
+                if ohlcv.close_price and prev_close:
+                    change_amount = float(ohlcv.close_price) - float(prev_close)
+                    change_percent = (change_amount / float(prev_close)) * 100 if prev_close > 0 else None
+                
+                quote_dict = {
+                    "id": ohlcv.id,
+                    "asset_id": ohlcv.asset_id,
+                    "timestamp_utc": ohlcv.timestamp_utc.isoformat() if ohlcv.timestamp_utc else None,
+                    "price": float(ohlcv.close_price) if ohlcv.close_price else None,
+                    "volume": float(ohlcv.volume) if ohlcv.volume else None,
+                    "change_amount": round(change_amount, 8) if change_amount is not None else None,
+                    "change_percent": round(change_percent, 4) if change_percent is not None else None,
+                    "data_source": "ohlcv_fallback",
+                    "data_interval": data_interval
+                }
+                processed_quotes.append(quote_dict)
+            
+            # 응답 반환
+            if is_last_only and processed_quotes:
+                return {
+                    "asset_identifier": asset_identifier,
+                    "quote": processed_quotes[0],
+                    "data_source": "ohlcv_fallback",
+                    "data_interval": data_interval,
+                    "database": "postgresql",
+                    "timestamp": processed_quotes[0]["timestamp_utc"]
+                }
+            else:
+                return {
+                    "asset_identifier": asset_identifier,
+                    "quotes": processed_quotes,
+                    "data_source": "ohlcv_fallback",
+                    "data_interval": data_interval,
+                    "database": "postgresql",
+                    "count": len(processed_quotes),
+                    "timestamp": processed_quotes[0]["timestamp_utc"] if processed_quotes else None
+                }
+        
+        # RealtimeQuoteTimeDelay 데이터가 있는 경우 기존 로직 계속
         
         # change_amount, change_percent 계산 로직
         processed_quotes = []

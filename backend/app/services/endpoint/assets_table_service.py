@@ -235,9 +235,9 @@ class AssetsTableService:
                 war_ticker_sq,
                 or_(
                     func.upper(func.trim(war_ticker_sq.c.war_ticker)) == func.upper(func.trim(Asset.ticker)),
-                    func.upper(func.trim(war_ticker_sq.c.war_ticker)) == func.upper(func.substring_index(Asset.ticker, '.', 1)),
-                    func.upper(func.trim(war_ticker_sq.c.war_ticker)) == func.upper(func.substring_index(Asset.ticker, '-', 1)),
-                    func.upper(func.trim(war_ticker_sq.c.war_ticker)) == func.upper(func.substring_index(Asset.ticker, ':', 1)),
+                    func.upper(func.trim(war_ticker_sq.c.war_ticker)) == func.upper(func.split_part(Asset.ticker, '.', 1)),
+                    func.upper(func.trim(war_ticker_sq.c.war_ticker)) == func.upper(func.split_part(Asset.ticker, '-', 1)),
+                    func.upper(func.trim(war_ticker_sq.c.war_ticker)) == func.upper(func.split_part(Asset.ticker, ':', 1)),
                 ),
             )
             .outerjoin(

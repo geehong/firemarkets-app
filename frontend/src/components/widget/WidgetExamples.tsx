@@ -1,7 +1,14 @@
 "use client";
 
 import React from 'react';
-import { RealtimePriceWidget, PriceWidgetGrid, MiniPriceWidget } from './index';
+import { 
+  RealtimePriceWidget,
+  RealtimeQuotesPriceWidget,
+  PriceWidgetGrid, 
+  MiniPriceWidget, 
+  CryptoPriceCard, 
+  CryptoMetricCard 
+} from './index';
 
 const WidgetExamples: React.FC = () => {
   // 예제 데이터
@@ -30,6 +37,123 @@ const WidgetExamples: React.FC = () => {
   return (
     <div className="p-6 space-y-8">
       <h1 className="text-3xl font-bold text-gray-800 mb-8">Price Widget Examples</h1>
+
+      {/* 크립토 카드 위젯 예제 */}
+      <section>
+        <h2 className="text-2xl font-semibold text-gray-700 mb-4">Crypto Card Widgets</h2>
+        <div className="space-y-6">
+          {/* 가격 카드 예제 */}
+          <div>
+            <h3 className="text-lg font-medium text-gray-600 mb-3">Price Cards</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <CryptoPriceCard
+                symbol="BTC"
+                name="Bitcoin"
+                price={106487.54}
+                change24h={-2.90}
+                icon="₿"
+                gradientFrom="from-orange-500"
+                gradientTo="to-yellow-500"
+                size="medium"
+              />
+              <CryptoPriceCard
+                symbol="ETH"
+                name="Ethereum"
+                price={3616.91}
+                change24h={5.23}
+                icon="Ξ"
+                gradientFrom="from-blue-500"
+                gradientTo="to-indigo-500"
+                size="medium"
+              />
+              <CryptoPriceCard
+                symbol="BNB"
+                name="BNB"
+                price={652.30}
+                change24h={1.45}
+                icon="🔶"
+                gradientFrom="from-yellow-400"
+                gradientTo="to-yellow-600"
+                size="medium"
+              />
+            </div>
+          </div>
+
+          {/* 메트릭 카드 예제 */}
+          <div>
+            <h3 className="text-lg font-medium text-gray-600 mb-3">Metric Cards</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <CryptoMetricCard
+                symbol="BTC"
+                name="Bitcoin Dominance"
+                metricValue="52.45%"
+                metricLabel="시장 점유율"
+                icon="👑"
+                gradientFrom="from-orange-500"
+                gradientTo="to-red-500"
+                size="medium"
+              />
+              <CryptoMetricCard
+                symbol="ETH"
+                name="Ethereum Dominance"
+                metricValue="18.32%"
+                metricLabel="시장 점유율"
+                icon="Ξ"
+                gradientFrom="from-blue-500"
+                gradientTo="to-purple-500"
+                size="medium"
+              />
+              <CryptoMetricCard
+                symbol="USDT"
+                name="Tether Market Cap"
+                metricValue="$120.5B"
+                metricLabel="총 시가총액"
+                icon="💵"
+                gradientFrom="from-green-500"
+                gradientTo="to-teal-500"
+                size="medium"
+              />
+            </div>
+          </div>
+
+          {/* 다양한 크기 예제 */}
+          <div>
+            <h3 className="text-lg font-medium text-gray-600 mb-3">Different Sizes</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <CryptoPriceCard
+                symbol="BTC"
+                name="Bitcoin"
+                price={106487.54}
+                change24h={-2.90}
+                icon="₿"
+                gradientFrom="from-orange-500"
+                gradientTo="to-yellow-500"
+                size="small"
+              />
+              <CryptoPriceCard
+                symbol="BTC"
+                name="Bitcoin"
+                price={106487.54}
+                change24h={-2.90}
+                icon="₿"
+                gradientFrom="from-orange-500"
+                gradientTo="to-yellow-500"
+                size="medium"
+              />
+              <CryptoPriceCard
+                symbol="BTC"
+                name="Bitcoin"
+                price={106487.54}
+                change24h={-2.90}
+                icon="₿"
+                gradientFrom="from-orange-500"
+                gradientTo="to-yellow-500"
+                size="large"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* 개별 위젯 예제 */}
       <section>
@@ -109,10 +233,55 @@ const WidgetExamples: React.FC = () => {
         </div>
       </section>
 
+      {/* Realtime Quotes 위젯 예제 */}
+      <section>
+        <h2 className="text-2xl font-semibold text-gray-700 mb-4">Realtime Quotes Widgets (15분 지연 가격)</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <RealtimeQuotesPriceWidget assetIdentifier="BTCUSDT" />
+          <RealtimeQuotesPriceWidget assetIdentifier="ETHUSDT" />
+          <RealtimeQuotesPriceWidget assetIdentifier="AAPL" />
+          <RealtimeQuotesPriceWidget assetIdentifier="GOOG" />
+          <RealtimeQuotesPriceWidget assetIdentifier="MSFT" />
+          <RealtimeQuotesPriceWidget assetIdentifier="TSLA" />
+        </div>
+      </section>
+
       {/* 사용법 안내 */}
       <section className="bg-gray-50 p-6 rounded-lg">
         <h2 className="text-2xl font-semibold text-gray-700 mb-4">Usage Examples</h2>
         <div className="space-y-4 text-sm">
+          <div>
+            <h3 className="font-semibold text-gray-800">Crypto Price Card:</h3>
+            <pre className="bg-gray-100 p-2 rounded mt-1 overflow-x-auto">
+{`<CryptoPriceCard
+  symbol="BTC"
+  name="Bitcoin"
+  price={106487.54}
+  change24h={-2.90}
+  icon="₿"
+  gradientFrom="from-orange-500"
+  gradientTo="to-yellow-500"
+  size="medium"
+/>`}
+            </pre>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-gray-800">Crypto Metric Card:</h3>
+            <pre className="bg-gray-100 p-2 rounded mt-1 overflow-x-auto">
+{`<CryptoMetricCard
+  symbol="ETH"
+  name="Ethereum Dominance"
+  metricValue="18.32%"
+  metricLabel="시장 점유율"
+  icon="Ξ"
+  gradientFrom="from-blue-500"
+  gradientTo="to-purple-500"
+  size="medium"
+/>`}
+            </pre>
+          </div>
+
           <div>
             <h3 className="font-semibold text-gray-800">Individual Widget:</h3>
             <pre className="bg-gray-100 p-2 rounded mt-1 overflow-x-auto">
@@ -149,6 +318,15 @@ const WidgetExamples: React.FC = () => {
 />`}
             </pre>
           </div>
+
+          <div>
+            <h3 className="font-semibold text-gray-800">Realtime Quotes Widget:</h3>
+            <pre className="bg-gray-100 p-2 rounded mt-1 overflow-x-auto">
+{`<RealtimeQuotesPriceWidget
+  assetIdentifier="BTCUSDT"
+/>`}
+            </pre>
+          </div>
         </div>
       </section>
     </div>
@@ -156,6 +334,7 @@ const WidgetExamples: React.FC = () => {
 };
 
 export default WidgetExamples;
+
 
 
 

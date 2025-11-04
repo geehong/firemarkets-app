@@ -1,17 +1,111 @@
 'use client'
 
-import { useState } from 'react'
-import LineChartOne from '@/components/charts/line/LineChartOne'
-import BarChartOne from '@/components/charts/bar/BarChartOne'
+import { useState, useEffect } from 'react'
+import dynamic from 'next/dynamic'
 import MiniPriceChart from '@/components/charts/minicharts/MiniPriceChart'
 import MiniPriceCryptoChart from '@/components/charts/minicharts/MiniPriceCryptoChart'
 import MiniPriceStocksEtfChart from '@/components/charts/minicharts/MiniPriceStocksEtfChart'
 import MiniPriceCommoditiesChart from '@/components/charts/minicharts/MiniPriceCommoditiesChart'
+import CompareMultipleAssetsChart from '@/components/charts/line/CompareMultipleAssetsChart'
+
+// Dynamic import로 ApexCharts 로드
+const ReactApexChart = dynamic(() => import('react-apexcharts'), { ssr: false })
+
+// 더미 라인 차트 컴포넌트
+const DummyLineChart = ({ height = 350 }: { height?: number }) => {
+  const options: any = {
+    chart: {
+      type: 'area',
+      height,
+      toolbar: { show: false },
+    },
+    colors: ['#3B82F6', '#10B981'],
+    dataLabels: { enabled: false },
+    stroke: { curve: 'smooth', width: 2 },
+    xaxis: {
+      categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+      labels: {
+        style: { fontSize: '12px', colors: '#6B7280' }
+      }
+    },
+    yaxis: {
+      labels: {
+        style: { fontSize: '12px', colors: '#6B7280' }
+      }
+    },
+    grid: {
+      borderColor: '#E5E7EB',
+    },
+    legend: {
+      position: 'top',
+      horizontalAlign: 'right',
+    },
+    tooltip: {
+      x: { format: 'MMM' }
+    }
+  }
+
+  const series = [
+    { name: 'BTC', data: [30000, 35000, 32000, 38000, 42000, 45000, 48000, 44000, 50000, 55000, 52000, 58000] },
+    { name: 'ETH', data: [2000, 2200, 2100, 2500, 2800, 3000, 3200, 2900, 3400, 3600, 3300, 3800] }
+  ]
+
+  return <ReactApexChart options={options} series={series} type="area" height={height} />
+}
+
+// 더미 바 차트 컴포넌트
+const DummyBarChart = ({ height = 350 }: { height?: number }) => {
+  const options: any = {
+    chart: {
+      type: 'bar',
+      height,
+      toolbar: { show: false },
+    },
+    colors: ['#3B82F6'],
+    plotOptions: {
+      bar: {
+        borderRadius: 4,
+        columnWidth: '60%',
+      }
+    },
+    dataLabels: { enabled: false },
+    xaxis: {
+      categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+      labels: {
+        style: { fontSize: '12px', colors: '#6B7280' }
+      }
+    },
+    yaxis: {
+      labels: {
+        style: { fontSize: '12px', colors: '#6B7280' }
+      }
+    },
+    grid: {
+      borderColor: '#E5E7EB',
+    },
+    legend: {
+      position: 'top',
+      horizontalAlign: 'right',
+    }
+  }
+
+  const series = [
+    { name: 'Volume', data: [168, 385, 201, 298, 187, 195, 291, 110, 215, 390, 280, 312] }
+  ]
+
+  return <ReactApexChart options={options} series={series} type="bar" height={height} />
+}
 
 export default function ChartsPage() {
   const [activeChart, setActiveChart] = useState('line')
+  const [isClient, setIsClient] = useState(false)
   
   console.log('📈 ChartsPage 렌더링:', { activeChart });
+
+  // 클라이언트 사이드에서만 차트 렌더링
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
 
   return (
     <main className="container mx-auto px-4 py-8">
@@ -26,7 +120,7 @@ export default function ChartsPage() {
 
       {/* Chart Type Selector */}
       <div className="mb-6">
-        <div className="flex space-x-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setActiveChart('line')}
             className={`px-4 py-2 rounded-lg font-medium transition-colors ${
@@ -57,31 +151,84 @@ export default function ChartsPage() {
           >
             Mini Charts
           </button>
+          <button
+            onClick={() => setActiveChart('compare')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              activeChart === 'compare'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            Compare Charts
+          </button>
         </div>
       </div>
 
       {/* Chart Display */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-8">
-        <div className="h-96">
-          {activeChart === 'line' && <LineChartOne />}
-          {activeChart === 'bar' && <BarChartOne />}
-          {activeChart === 'mini' && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="h-32">
-                <MiniPriceChart />
-              </div>
-              <div className="h-32">
-                <MiniPriceCryptoChart />
-              </div>
-              <div className="h-32">
-                <MiniPriceStocksEtfChart />
-              </div>
-              <div className="h-32">
-                <MiniPriceCommoditiesChart />
-              </div>
+        {!isClient ? (
+          <div className="flex items-center justify-center h-96">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span className="ml-3 text-sm text-gray-600">Loading charts...</span>
+          </div>
+        ) : activeChart === 'compare' ? (
+          <div key="compare-charts" className="space-y-8">
+            <div>
+              <h3 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">주요 암호화폐 비교</h3>
+              <CompareMultipleAssetsChart
+                assetIdentifiers={['BTCUSDT', 'ETHUSDT', 'BNB']}
+                assetNames={['Bitcoin', 'Ethereum', 'BNB']}
+                dataInterval="1d"
+                height={500}
+                title="Cryptocurrency Comparison"
+                subtitle="BTC vs ETH vs BNB - Percentage Change"
+              />
             </div>
-          )}
-        </div>
+            <div>
+              <h3 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">주요 기술주 비교</h3>
+              <CompareMultipleAssetsChart
+                assetIdentifiers={['AAPL', 'MSFT', 'GOOG', 'TSLA']}
+                assetNames={['Apple', 'Microsoft', 'Google', 'Tesla']}
+                dataInterval="1d"
+                height={500}
+                title="Tech Stocks Comparison"
+                subtitle="FAANG Stocks - Percentage Change"
+              />
+            </div>
+            <div>
+              <h3 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">암호화폐 vs 주식 비교</h3>
+              <CompareMultipleAssetsChart
+                assetIdentifiers={['BTCUSDT', 'ETHUSDT', 'AAPL', 'TSLA']}
+                assetNames={['Bitcoin', 'Ethereum', 'Apple', 'Tesla']}
+                dataInterval="1d"
+                height={500}
+                title="Crypto vs Stock Comparison"
+                subtitle="Asset Class Comparison - Percentage Change"
+              />
+            </div>
+          </div>
+        ) : (
+          <div key={activeChart} className="h-96">
+            {activeChart === 'line' && <DummyLineChart key="line-chart" />}
+            {activeChart === 'bar' && <DummyBarChart key="bar-chart" />}
+            {activeChart === 'mini' && (
+              <div key="mini-charts" className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="h-32">
+                  <MiniPriceChart key="mini-1" />
+                </div>
+                <div className="h-32">
+                  <MiniPriceCryptoChart key="mini-2" />
+                </div>
+                <div className="h-32">
+                  <MiniPriceStocksEtfChart key="mini-3" />
+                </div>
+                <div className="h-32">
+                  <MiniPriceCommoditiesChart key="mini-4" />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Chart Examples Grid */}
@@ -92,7 +239,7 @@ export default function ChartsPage() {
             Interactive line chart for time series data visualization.
           </p>
           <div className="h-48">
-            <LineChartOne />
+            {isClient && <DummyLineChart height={180} />}
           </div>
         </div>
         
@@ -102,7 +249,7 @@ export default function ChartsPage() {
             Bar chart for comparing categorical data.
           </p>
           <div className="h-48">
-            <BarChartOne />
+            {isClient && <DummyBarChart height={180} />}
           </div>
         </div>
         
@@ -118,6 +265,23 @@ export default function ChartsPage() {
             <div className="h-16">
               <MiniPriceCryptoChart />
             </div>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold mb-4">Compare Chart</h3>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">
+            Compare multiple assets with percentage change visualization.
+          </p>
+          <div className="h-48">
+            <CompareMultipleAssetsChart
+              assetIdentifiers={['BTCUSDT', 'ETHUSDT']}
+              assetNames={['Bitcoin', 'Ethereum']}
+              dataInterval="1d"
+              height={180}
+              showRangeSelector={false}
+              showNavigator={false}
+            />
           </div>
         </div>
         

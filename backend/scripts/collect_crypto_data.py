@@ -174,32 +174,54 @@ class CryptoDataCollector:
                 existing_crypto = db.query(CryptoData).filter(CryptoData.asset_id == asset_id).first()
                 
                 if existing_crypto:
-                    # 기존 데이터 업데이트
-                    if crypto_data:
-                        existing_crypto.symbol = getattr(crypto_data, 'symbol', existing_crypto.symbol)
-                        existing_crypto.name = getattr(crypto_data, 'symbol', existing_crypto.name)
-                        existing_crypto.market_cap = getattr(crypto_data, 'market_cap', existing_crypto.market_cap)
-                        existing_crypto.circulating_supply = getattr(crypto_data, 'circulating_supply', existing_crypto.circulating_supply)
-                        existing_crypto.total_supply = getattr(crypto_data, 'total_supply', existing_crypto.total_supply)
-                        existing_crypto.max_supply = getattr(crypto_data, 'max_supply', existing_crypto.max_supply)
-                        existing_crypto.current_price = getattr(crypto_data, 'price', existing_crypto.current_price)
-                        existing_crypto.volume_24h = getattr(crypto_data, 'volume_24h', existing_crypto.volume_24h)
-                        existing_crypto.percent_change_24h = getattr(crypto_data, 'change_24h', existing_crypto.percent_change_24h)
-                        existing_crypto.cmc_rank = getattr(crypto_data, 'rank', existing_crypto.cmc_rank)
-
+                    # 기존 데이터 업데이트 - crypto_data, quote_details, metadata를 모두 병합
+                    # 우선순위: quote_details > crypto_data > 기존값
+                    
+                    # Helper function to get value with priority: quote_details > crypto_data > existing
+                    def get_value(quote_key=None, crypto_attr=None, default=None):
+                        """Get value with priority: quote_details > crypto_data > default"""
+                        if quote_details and quote_key:
+                            val = quote_details.get(quote_key)
+                            if val is not None:
+                                return val
+                        if crypto_data and crypto_attr:
+                            val = getattr(crypto_data, crypto_attr, None)
+                            if val is not None:
+                                return val
+                        return default
+                    
+                    # Symbol 및 Name 처리
+                    new_symbol = get_value('symbol', 'symbol', existing_crypto.symbol)
+                    if new_symbol != existing_crypto.symbol:
+                        existing_crypto.symbol = new_symbol
+                    
+                    new_name = getattr(crypto_data, 'name', None) if crypto_data else None
+                    if not new_name and quote_details:
+                        new_name = quote_details.get('name')
+                    if new_name:
+                        existing_crypto.name = new_name
+                    
+                    # 가격 및 시장 데이터 처리 (quote_details 우선)
+                    existing_crypto.current_price = get_value('price', 'price', existing_crypto.current_price)
+                    existing_crypto.market_cap = get_value('market_cap', 'market_cap', existing_crypto.market_cap)
+                    existing_crypto.volume_24h = get_value('volume_24h', 'volume_24h', existing_crypto.volume_24h)
+                    existing_crypto.circulating_supply = get_value('circulating_supply', 'circulating_supply', existing_crypto.circulating_supply)
+                    existing_crypto.total_supply = get_value('total_supply', 'total_supply', existing_crypto.total_supply)
+                    existing_crypto.max_supply = get_value('max_supply', 'max_supply', existing_crypto.max_supply)
+                    existing_crypto.cmc_rank = get_value('rank', 'rank', existing_crypto.cmc_rank)
+                    
+                    # percent_change 필드들 (quote_details에만 있음, crypto_data는 change_24h만)
                     if quote_details:
                         existing_crypto.percent_change_1h = quote_details.get('percent_change_1h', existing_crypto.percent_change_1h)
-                        existing_crypto.percent_change_24h = quote_details.get('percent_change_24h', existing_crypto.percent_change_24h)
+                        existing_crypto.percent_change_24h = quote_details.get('percent_change_24h') or (getattr(crypto_data, 'change_24h', None) if crypto_data else None) or existing_crypto.percent_change_24h
                         existing_crypto.percent_change_7d = quote_details.get('percent_change_7d', existing_crypto.percent_change_7d)
                         existing_crypto.percent_change_30d = quote_details.get('percent_change_30d', existing_crypto.percent_change_30d)
-                        existing_crypto.market_cap = quote_details.get('market_cap', existing_crypto.market_cap)
-                        existing_crypto.current_price = quote_details.get('price', existing_crypto.current_price)
-                        existing_crypto.volume_24h = quote_details.get('volume_24h', existing_crypto.volume_24h)
-                        existing_crypto.circulating_supply = quote_details.get('circulating_supply', existing_crypto.circulating_supply)
-                        existing_crypto.total_supply = quote_details.get('total_supply', existing_crypto.total_supply)
-                        existing_crypto.max_supply = quote_details.get('max_supply', existing_crypto.max_supply)
-                        existing_crypto.cmc_rank = quote_details.get('rank', existing_crypto.cmc_rank)
+                    elif crypto_data:
+                        change_24h = getattr(crypto_data, 'change_24h', None)
+                        if change_24h is not None:
+                            existing_crypto.percent_change_24h = change_24h
 
+                    # Metadata 처리 (metadata에만 있음)
                     if metadata:
                         existing_crypto.category = metadata.get('category', existing_crypto.category)
                         existing_crypto.description = metadata.get('description', existing_crypto.description)
@@ -278,32 +300,51 @@ class CryptoDataCollector:
             return False
     
     async def _save_to_queue(self, asset_id: int, crypto_data, quote_details: Optional[Dict[str, Any]], metadata: Optional[Dict[str, Any]]) -> bool:
-        """큐를 통해 데이터 저장"""
+        """큐를 통해 데이터 저장 - crypto_data, quote_details, metadata 모두 병합"""
         try:
-            # 큐에 전송할 데이터 준비
+            # Helper function to get value with priority: quote_details > crypto_data
+            def get_value(quote_key=None, crypto_attr=None):
+                """Get value with priority: quote_details > crypto_data"""
+                if quote_details and quote_key:
+                    val = quote_details.get(quote_key)
+                    if val is not None:
+                        return val
+                if crypto_data and crypto_attr:
+                    val = getattr(crypto_data, crypto_attr, None)
+                    if val is not None:
+                        return val
+                return None
+            
+            # 큐에 전송할 데이터 준비 - 모든 소스 병합
+            price_value = get_value('price', 'price')  # quote_details 또는 crypto_data에서 가져온 가격
+            
             crypto_data_dict = {
                 'asset_id': asset_id,
-                'symbol': crypto_data.symbol,
-                'name': crypto_data.symbol,
-                'market_cap': crypto_data.market_cap,
-                'circulating_supply': crypto_data.circulating_supply,
-                'total_supply': crypto_data.total_supply,
-                'max_supply': crypto_data.max_supply,
-                'current_price': crypto_data.price,
-                'volume_24h': crypto_data.volume_24h,
-                'percent_change_24h': crypto_data.change_24h,
-                'cmc_rank': crypto_data.rank,
+                'symbol': get_value('symbol', 'symbol') or (crypto_data.symbol if crypto_data else None),
+                'name': getattr(crypto_data, 'name', None) if crypto_data else (quote_details.get('name') if quote_details else None),
+                'market_cap': get_value('market_cap', 'market_cap'),
+                'circulating_supply': get_value('circulating_supply', 'circulating_supply'),
+                'total_supply': get_value('total_supply', 'total_supply'),
+                'max_supply': get_value('max_supply', 'max_supply'),
+                'current_price': price_value,  # current_price 필드
+                'price': price_value,  # price 필드도 동일 값으로 설정 (데이터 프로세서에서 사용)
+                'volume_24h': get_value('volume_24h', 'volume_24h'),
+                'percent_change_24h': get_value('percent_change_24h', 'change_24h'),
+                'cmc_rank': get_value('rank', 'rank'),
                 'is_active': True,
                 'last_updated': datetime.now().isoformat(),
                 'created_at': datetime.now().isoformat()
             }
+            
+            # quote_details에서 추가 필드들 (percent_change_1h, 7d, 30d는 quote_details에만 있음)
             if quote_details:
                 crypto_data_dict.update({
                     'percent_change_1h': quote_details.get('percent_change_1h'),
                     'percent_change_7d': quote_details.get('percent_change_7d'),
                     'percent_change_30d': quote_details.get('percent_change_30d'),
-                    'price': quote_details.get('price'),
                 })
+            
+            # metadata 필드들 (metadata에만 있음)
             if metadata:
                 crypto_data_dict.update({
                     'category': metadata.get('category'),
@@ -312,6 +353,7 @@ class CryptoDataCollector:
                     'website_url': metadata.get('website_url'),
                     'slug': metadata.get('slug'),
                     'date_added': metadata.get('date_added'),
+                    'platform': metadata.get('platform'),  # platform 필드 추가
                     'tags': metadata.get('tags'),
                     'explorer': metadata.get('explorer'),
                     'source_code': metadata.get('source_code'),
