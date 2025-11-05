@@ -15,9 +15,10 @@ import {
 
 interface AssetsListProps {
   className?: string
+  showHeader?: boolean
 }
 
-const AssetsList: React.FC<AssetsListProps> = ({ className }) => {
+const AssetsList: React.FC<AssetsListProps> = ({ className, showHeader = true }) => {
   const searchParams = useSearchParams()
   const typeNameFromQuery = searchParams?.get('type_name')
   
@@ -96,24 +97,26 @@ const AssetsList: React.FC<AssetsListProps> = ({ className }) => {
 
   return (
     <div className={`space-y-6 ${className}`}>
-      {/* 헤더 */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold">
-            {typeNameFromQuery ? `${typeNameFromQuery} Assets` : 'All Assets'}
-          </h2>
-          <div className="flex items-center gap-2">
-            <p className="text-muted-foreground">
-              {filteredAssets.length} assets found
-            </p>
-            {isConnected && (
-              <Badge color="success">
-                Live Data
-              </Badge>
-            )}
+      {/* 헤더 - showHeader가 true일 때만 표시 */}
+      {showHeader && (
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold">
+              {typeNameFromQuery ? `${typeNameFromQuery} Assets` : 'All Assets'}
+            </h2>
+            <div className="flex items-center gap-2">
+              <p className="text-muted-foreground">
+                {filteredAssets.length} assets found
+              </p>
+              {isConnected && (
+                <Badge color="success">
+                  Live Data
+                </Badge>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Search & Filter section removed */}
 

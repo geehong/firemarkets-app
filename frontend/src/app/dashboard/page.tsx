@@ -1,11 +1,25 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api";
 import MultiAssetLineChart from "@/components/charts/line/MultiAssetLineChart";
 import Link from "next/link";
 import { CryptoPriceCard, CryptoMetricCard } from "@/components/widget";
+import dynamic from "next/dynamic";
+import ClientOnlyChart from "@/components/charts/minicharts/ClientOnlyChart";
+import CompareMultipleAssetsChart from "@/components/charts/line/CompareMultipleAssetsChart";
+import AssetsList from "@/components/lists/AssetsList";
+import { useSearchParams } from "next/navigation";
+import { useTreemapLive } from "@/hooks/useAssets";
+import { useRealtimePrices } from "@/hooks/useSocket";
+import Badge from "@/components/ui/badge/Badge";
+
+// 동적 import로 각 페이지 컴포넌트 로드
+const AssetsDashboard = dynamic(() => import("./assets/page"), { ssr: false });
+const BlogDashboard = dynamic(() => import("./blog/page"), { ssr: false });
+const OnchainDashboard = dynamic(() => import("./onchain/page"), { ssr: false });
+const PerformanceTreeMapToday = dynamic(() => import("@/components/charts/treemap/PerformanceTreeMapToday"), { ssr: false });
 
 // 메트릭 카드 컴포넌트
 interface MetricCardProps {
@@ -101,7 +115,116 @@ const CryptoRow: React.FC<CryptoRowProps> = ({
   );
 };
 
+type TabType = 'overview' | 'assets' | 'blog' | 'onchain';
+
 export default function DashboardPage() {
+  const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const searchParams = useSearchParams();
+  const typeNameFromQuery = searchParams?.get('type_name');
+
+  // AssetsList 헤더 정보를 위한 데이터 조회
+  const { data: treemapData } = useTreemapLive(
+    typeNameFromQuery 
+      ? { 
+          type_name: typeNameFromQuery,
+          sort_by: 'market_cap',
+          sort_order: 'desc'
+        } 
+      : {
+          sort_by: 'market_cap',
+          sort_order: 'desc'
+        }
+  );
+  
+  const firstAsset = (treemapData as any)?.data?.[0];
+  const { isConnected } = useRealtimePrices(firstAsset?.ticker || '');
+
+  // 필터링된 자산 수 계산
+  const filteredAssetsCount = React.useMemo(() => {
+    const anyData: any = treemapData as any;
+    let arr = Array.isArray(anyData?.data) ? (anyData.data as any[]) : [];
+    if (typeNameFromQuery) {
+      const wanted = String(typeNameFromQuery);
+      arr = arr.filter((asset: any) => (asset.type_name || asset.asset_type || asset.category) === wanted);
+    }
+    return arr.length;
+  }, [treemapData, typeNameFromQuery]);
+
+  const tabs = [
+    { id: 'overview' as TabType, label: '개요', icon: '📊' },
+    { id: 'assets' as TabType, label: '자산', icon: '📈' },
+    { id: 'blog' as TabType, label: '블로그', icon: '📝' },
+    { id: 'onchain' as TabType, label: '온체인', icon: '🔗' },
+  ];
+
+  // 개요 탭 내용 렌더링
+  return (
+    <main className="container mx-auto px-4 py-8">
+      {/* 헤더 */}
+      <div className="mb-8">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
+              FireMarkets 대시보드
+            </h1>
+            <p className="text-lg text-gray-600 dark:text-gray-400">
+              실시간 시장 데이터와 분석을 한눈에 확인하세요
+            </p>
+          </div>
+          {/* AssetsList 헤더 정보 */}
+          {activeTab === 'overview' && (
+            <div className="flex flex-col items-end gap-2">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                {typeNameFromQuery ? `${typeNameFromQuery} Assets` : 'All Assets'}
+              </h2>
+              <div className="flex items-center gap-2">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  {filteredAssetsCount} assets found
+                </p>
+                {isConnected && (
+                  <Badge color="success">
+                    Live Data
+                  </Badge>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 탭 메뉴 */}
+      <div className="mb-8 border-b border-gray-200 dark:border-gray-700">
+        <nav className="flex space-x-8" aria-label="Tabs">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`
+                flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors
+                ${
+                  activeTab === tab.id
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                }
+              `}
+            >
+              <span className="text-xl">{tab.icon}</span>
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {/* 탭별 콘텐츠 */}
+      {activeTab === 'overview' && <OverviewContent />}
+      {activeTab === 'assets' && <AssetsDashboard />}
+      {activeTab === 'blog' && <BlogDashboard />}
+      {activeTab === 'onchain' && <OnchainDashboard />}
+    </main>
+  );
+}
+
+function OverviewContent() {
   // 글로벌 크립토 메트릭 조회
   const { data: globalMetrics, isLoading: globalLoading, isError: globalError } = useQuery({
     queryKey: ['global-crypto-metrics'],
@@ -177,18 +300,13 @@ export default function DashboardPage() {
   const normalizedTopCryptos = normalizeArrayData(topCryptos);
   const normalizedRealtimeData = normalizeArrayData(realtimeData);
 
-  return (
-    <main className="container mx-auto px-4 py-8">
-      {/* 헤더 */}
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-          FireMarkets 대시보드
-        </h1>
-        <p className="text-lg text-gray-600 dark:text-gray-400">
-          실시간 시장 데이터와 분석을 한눈에 확인하세요
-        </p>
-      </div>
+  // 현재년도 1월 1일부터 오늘까지 날짜 계산
+  const currentYear = new Date().getFullYear();
+  const startDate = `${currentYear}-01-01`;
+  const endDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD 형식
 
+  return (
+    <>
       {/* API 에러 알림 */}
       {hasApiErrors && (
         <div className="mb-6 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
@@ -206,64 +324,97 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 주요 메트릭 그리드 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <MetricCard
-          title="전체 시가총액"
-          value={`$${(totalMarketCap / 1e12).toFixed(2)}T`}
-          icon="💰"
-          loading={globalLoading}
-        />
-        <MetricCard
-          title="24시간 거래량"
-          value={`$${(total24hVolume / 1e9).toFixed(2)}B`}
-          icon="📊"
-          loading={globalLoading}
-        />
-        <MetricCard
-          title="비트코인 도미넌스"
-          value={`${btcDominance.toFixed(2)}%`}
-          icon="₿"
-          loading={globalLoading}
-        />
-        <MetricCard
-          title="활성 암호화폐"
-          value={activeCryptos.toLocaleString()}
-          icon="🪙"
-          loading={globalLoading}
-        />
+      {/* 미니 차트 섹션 */}
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
+          실시간 자산 차트
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* 비트코인 차트 */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
+            <ClientOnlyChart
+              type="crypto"
+              containerId="dashboard-btc-chart"
+              assetIdentifier="BTCUSDT"
+            />
+          </div>
+
+          {/* 이더리움 차트 */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
+            <ClientOnlyChart
+              type="crypto"
+              containerId="dashboard-eth-chart"
+              assetIdentifier="ETHUSDT"
+            />
+          </div>
+
+          {/* SPY 차트 */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
+            <ClientOnlyChart
+              type="stocks"
+              containerId="dashboard-spy-chart"
+              assetIdentifier="SPY"
+            />
+          </div>
+
+          {/* QQQ 차트 */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
+            <ClientOnlyChart
+              type="stocks"
+              containerId="dashboard-qqq-chart"
+              assetIdentifier="QQQ"
+            />
+          </div>
+
+          {/* GCUSD 차트 */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
+            <ClientOnlyChart
+              type="commodities"
+              containerId="dashboard-gcusd-chart"
+              assetIdentifier="GCUSD"
+            />
+          </div>
+
+          {/* SIUSD 차트 */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
+            <ClientOnlyChart
+              type="commodities"
+              containerId="dashboard-siusd-chart"
+              assetIdentifier="SIUSD"
+            />
+          </div>
+
+          {/* NVDA 차트 */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
+            <ClientOnlyChart
+              type="stocks"
+              containerId="dashboard-nvda-chart"
+              assetIdentifier="NVDA"
+            />
+          </div>
+
+          {/* AAPL 차트 */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
+            <ClientOnlyChart
+              type="stocks"
+              containerId="dashboard-aapl-chart"
+              assetIdentifier="AAPL"
+            />
+          </div>
+        </div>
       </div>
 
-      {/* 비트코인 & 이더리움 가격 카드 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <CryptoPriceCard
-          symbol="BTC"
-          name="Bitcoin"
-          price={btcPrice}
-          change24h={btcChange24h}
-          icon="₿"
-          gradientFrom="from-orange-500"
-          gradientTo="to-yellow-500"
-          size="medium"
-        />
-
-        <CryptoMetricCard
-          symbol="ETH"
-          name="Ethereum Dominance"
-          metricValue={`${ethDominance.toFixed(2)}%`}
-          metricLabel="시장 점유율"
-          icon="Ξ"
-          gradientFrom="from-blue-500"
-          gradientTo="to-purple-500"
-          size="medium"
-        />
+      {/* 퍼포먼스 맵 */}
+      <div className="mb-8">
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-200 dark:border-gray-700">
+          <PerformanceTreeMapToday height={650} autoRefresh={true} refreshInterval={900000} />
+        </div>
       </div>
-
-      {/* 멀티 자산 차트 */}
+      {/* 자산 비교 차트 */}
       <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-200 dark:border-gray-700 mb-8">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-            주요 자산 가격 추이 (90일)
+            주요 자산 가격 추이 ({currentYear}년)
           </h2>
           <Link 
             href="/assets"
@@ -272,138 +423,21 @@ export default function DashboardPage() {
             모든 자산 보기 →
           </Link>
         </div>
-        <MultiAssetLineChart
-          assetIdentifiers={['BTCUSDT', 'ETHUSDT', 'AAPL', 'GOOGL']}
-          assetNames={['Bitcoin', 'Ethereum', 'Apple', 'Google']}
+        <CompareMultipleAssetsChart
+          assetIdentifiers={['BTCUSDT', 'SPY', 'NVDA', 'GCUSD']}
+          assetNames={['Bitcoin', 'S&P 500', 'NVIDIA', 'Gold']}
+          dataInterval="1d"
           height={400}
+          startDate={startDate}
+          endDate={endDate}
+          title=""
+          subtitle=""
         />
       </div>
 
-      {/* 하단 그리드: 상위 크립토 & 최근 활동 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* 상위 암호화폐 테이블 */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-              상위 암호화폐
-            </h2>
-            <Link 
-              href="/assets?type=Crypto"
-              className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium text-sm"
-            >
-              전체 보기 →
-            </Link>
-          </div>
-          
-          {cryptoLoading ? (
-            <div className="space-y-4">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="animate-pulse flex gap-4">
-                  <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/4"></div>
-                  <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
-                  <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/4"></div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="text-left text-sm text-gray-600 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
-                    <th className="py-2 px-4">#</th>
-                    <th className="py-2 px-4">자산</th>
-                    <th className="py-2 px-4">가격</th>
-                    <th className="py-2 px-4">24h</th>
-                    <th className="py-2 px-4">시가총액</th>
-                    <th className="py-2 px-4">거래량</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {normalizedTopCryptos.slice(0, 10).map((crypto: any, index: number) => (
-                    <CryptoRow
-                      key={crypto.symbol || index}
-                      rank={crypto.rank || index + 1}
-                      symbol={crypto.symbol || 'N/A'}
-                      name={crypto.name || 'N/A'}
-                      price={crypto.price || crypto.current_price || 0}
-                      change24h={crypto.price_change_percent_24h || crypto.percent_change_24h || 0}
-                      marketCap={crypto.market_cap || 0}
-                      volume24h={crypto.volume_24h || 0}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* 실시간 시장 활동 */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-              {realtimeError ? '상위 시장 활동' : '실시간 시장 활동'}
-            </h2>
-            {!realtimeError && (
-              <span className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-                <span className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-                </span>
-                Live
-              </span>
-            )}
-          </div>
-
-          {(realtimeLoading || cryptoLoading) ? (
-            <div className="space-y-4">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="animate-pulse">
-                  <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full mb-2"></div>
-                  <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {/* 실시간 데이터가 없으면 상위 크립토 데이터 사용 */}
-              {(realtimeError || normalizedRealtimeData.length === 0 ? 
-                normalizedTopCryptos.slice(0, 5) : 
-                normalizedRealtimeData.slice(0, 5)
-              ).map((item: any, index: number) => {
-                const price = item.price || item.current_price || item.close_price || 0;
-                const changePercent = item.price_change_percent_24h || item.percent_change_24h || item.change_percent;
-                const ticker = item.symbol || item.ticker || item.asset_identifier || 'N/A';
-                const name = item.name || 'Asset';
-                
-                return (
-                  <div 
-                    key={index}
-                    className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
-                  >
-                    <div className="flex-1">
-                      <div className="font-semibold text-gray-900 dark:text-white">
-                        {ticker}
-                      </div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">
-                        {name}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-bold text-gray-900 dark:text-white">
-                        ${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </div>
-                      {changePercent !== undefined && (
-                        <div className={`text-sm font-medium ${changePercent >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                          {changePercent >= 0 ? '+' : ''}{changePercent.toFixed(2)}%
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+      {/* 자산 리스트 */}
+      <div className="mb-8">
+        <AssetsList showHeader={false} />
       </div>
 
       {/* 빠른 링크 섹션 */}
@@ -438,7 +472,7 @@ export default function DashboardPage() {
           </Link>
         </div>
       </div>
-    </main>
+    </>
   );
 }
 

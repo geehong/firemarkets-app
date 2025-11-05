@@ -68,9 +68,9 @@ export default function AssetsListTable({ typeName }: AssetsListTableProps) {
   }, [data, typeName, query])
 
   const columns = useMemo<ColDef<any>[]>(() => [
-    { field: 'asset_id', headerName: 'ID', minWidth: 80 },
+    { field: 'asset_id', headerName: 'ID', width: 70, minWidth: 60 },
     {
-      field: 'logo_url', headerName: 'Symbol', minWidth: 90, cellRenderer: (params: any) => {
+      field: 'logo_url', headerName: 'Symbol', width: 80, minWidth: 70, cellRenderer: (params: any) => {
         const url = params.value
         const ticker = params.data.ticker
         const fallback = '🔹'
@@ -94,7 +94,8 @@ export default function AssetsListTable({ typeName }: AssetsListTableProps) {
     { 
       field: 'ticker', 
       headerName: 'Ticker', 
-      minWidth: 110,
+      width: 100, 
+      minWidth: 90,
       cellRenderer: (params: any) => {
         const ticker = params.value
         return (
@@ -110,7 +111,8 @@ export default function AssetsListTable({ typeName }: AssetsListTableProps) {
     { 
       field: 'name', 
       headerName: 'Name', 
-      minWidth: 220,
+      flex: 1,
+      minWidth: 200,
       cellRenderer: (params: any) => {
         const name = params.value
         const ticker = params.data.ticker
@@ -124,15 +126,27 @@ export default function AssetsListTable({ typeName }: AssetsListTableProps) {
         )
       }
     },
-    { field: 'current_price', headerName: 'Price', minWidth: 120, valueFormatter: (p: any) => p.value != null ? `$${Number(p.value).toFixed(2)}` : '', cellStyle: (p: any) => {
+    { 
+      field: 'current_price', 
+      headerName: 'Price', 
+      width: 120, 
+      minWidth: 110,
+      valueFormatter: (p: any) => p.value != null ? `$${Number(p.value).toFixed(2)}` : '', 
+      cellStyle: (p: any) => {
         const v = p.data?.daily_change_percent ?? 0
         return { color: v >= 0 ? '#007c32' : '#d91400', fontWeight: 700, fontSize: '.875rem' }
       }
     },
-    { field: 'daily_change_percent', headerName: 'Change(%)', minWidth: 120, valueFormatter: (p: any) => {
+    { 
+      field: 'daily_change_percent', 
+      headerName: 'Change(%)', 
+      width: 110, 
+      minWidth: 100,
+      valueFormatter: (p: any) => {
         const v = p.value ?? 0
         return `${v >= 0 ? '+' : ''}${Number(v).toFixed(2)}%`
-      }, cellStyle: (p: any) => {
+      }, 
+      cellStyle: (p: any) => {
         const v = p.value ?? 0
         const base = { fontWeight: 700, fontSize: '.875rem' } as const
         if (v > 0) return { ...base, color: '#007c32' }
@@ -140,8 +154,19 @@ export default function AssetsListTable({ typeName }: AssetsListTableProps) {
         return { ...base, color: '#a0a0a0' }
       }
     },
-    { field: 'market_cap', headerName: 'Market Cap(BIN)', minWidth: 160, valueFormatter: (p: any) => p.value != null ? `${(Number(p.value)/1e9).toFixed(1)} BIN` : '' },
-    { field: 'type_name', headerName: 'Type', minWidth: 100 },
+    { 
+      field: 'market_cap', 
+      headerName: 'Market Cap(BIN)', 
+      width: 130, 
+      minWidth: 120,
+      valueFormatter: (p: any) => p.value != null ? `${(Number(p.value)/1e9).toFixed(1)} BIN` : '' 
+    },
+    { 
+      field: 'type_name', 
+      headerName: 'Type', 
+      width: 90, 
+      minWidth: 80 
+    },
   ], [])
 
   const loading = isLoading

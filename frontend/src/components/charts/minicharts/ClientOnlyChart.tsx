@@ -60,6 +60,7 @@ interface ClientOnlyChartProps {
   useWebSocket?: boolean
   apiInterval?: string | null
   marketHours?: boolean
+  dataSource?: string
 }
 
 export default function ClientOnlyChart({
@@ -69,7 +70,8 @@ export default function ClientOnlyChart({
   chartType,
   useWebSocket,
   apiInterval,
-  marketHours
+  marketHours,
+  dataSource
 }: ClientOnlyChartProps) {
   const [isClient, setIsClient] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
@@ -103,7 +105,8 @@ export default function ClientOnlyChart({
     chartType,
     useWebSocket,
     apiInterval,
-    marketHours
+    marketHours,
+    dataSource
   }
 
   switch (type) {

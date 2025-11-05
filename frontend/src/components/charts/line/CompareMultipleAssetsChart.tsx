@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useState, useRef, useMemo } from 'react'
-import { useOhlcv } from '@/hooks'
+import { useAssetPriceWithRange } from '@/hooks/useAssets'
 
 interface SeriesData {
   name: string
@@ -22,6 +22,8 @@ interface CompareMultipleAssetsChartProps {
   showRangeSelector?: boolean
   showExporting?: boolean
   showNavigator?: boolean
+  startDate?: string
+  endDate?: string
   onDataLoad?: (data: SeriesData[]) => void
   onError?: (error: string) => void
   customOptions?: Record<string, unknown>
@@ -38,6 +40,8 @@ const CompareMultipleAssetsChart: React.FC<CompareMultipleAssetsChartProps> = ({
   showRangeSelector = true,
   showExporting = true,
   showNavigator = true,
+  startDate,
+  endDate,
   onDataLoad,
   onError,
   customOptions = {},
@@ -49,11 +53,13 @@ const CompareMultipleAssetsChart: React.FC<CompareMultipleAssetsChartProps> = ({
   const [isLoading, setIsLoading] = useState(true)
   const chartRef = useRef<any>(null)
 
-  // 각 자산에 대해 useOhlcv hook 사용
+  // 각 자산에 대해 useAssetPriceWithRange hook 사용
   const assetQueries = assetIdentifiers.map(identifier => 
-    useOhlcv(identifier, {
+    useAssetPriceWithRange(identifier, {
       dataInterval,
-      limit: 365
+      startDate,
+      endDate,
+      limit: 1000
     }, {
       enabled: !!identifier && isClient,
       staleTime: 5 * 60 * 1000,
@@ -129,17 +135,24 @@ const CompareMultipleAssetsChart: React.FC<CompareMultipleAssetsChartProps> = ({
     assetQueries.forEach((query, index) => {
       if (!query.data) return
 
-      const rawData = query.data.data || query.data || []
+      // API 응답 구조: { data: [{ date, value, change_percent }], asset_id, ticker, total_count }
+      const rawData = query.data.data || []
       if (!Array.isArray(rawData) || rawData.length === 0) return
 
-      // OHLCV 데이터를 [timestamp, close_price] 형식으로 변환
+      // 가격 데이터를 [timestamp, price] 형식으로 변환
       const chartData = rawData
         .map((item: any) => {
-          const timestamp = new Date(item.timestamp_utc).getTime()
-          const closePrice = parseFloat(String(item.close_price)) || 0
-          return [timestamp, closePrice]
+          // date 필드는 "YYYY-MM-DD" 형식, value는 가격
+          const dateStr = item.date || item.timestamp_utc || item.timestamp
+          if (!dateStr) return null
+          
+          const timestamp = new Date(dateStr).getTime()
+          const price = parseFloat(String(item.value || item.price || item.close_price || item.current_price)) || 0
+          
+          if (!timestamp || !isFinite(timestamp) || price <= 0) return null
+          return [timestamp, price]
         })
-        .filter((item: number[]) => item[0] > 0 && item[1] > 0)
+        .filter((item: number[] | null): item is number[] => item !== null)
         .sort((a: number[], b: number[]) => a[0] - b[0])
 
       if (chartData.length > 0) {

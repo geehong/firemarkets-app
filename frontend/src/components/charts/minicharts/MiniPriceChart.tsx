@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
 import { useDelayedQuotes } from "@/hooks/useRealtime"
 import { useRealtimePrices } from "@/hooks/useSocket"
+import { useAssetDetail } from "@/hooks/useAssets"
 // CSS는 globals.css에서 글로벌로 로드됨
 
 // 연결 상태 표시 컴포넌트
@@ -46,6 +47,7 @@ type MiniPriceChartProps = {
   apiInterval?: string | null
   marketHours?: boolean
   title?: string
+  dataSource?: string
 }
 
 type ApiResponse = {
@@ -76,6 +78,7 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
   apiInterval = null,
   marketHours = null,
   title,
+  dataSource,
 }) => {
   const chartRef = useRef<HTMLDivElement | null>(null)
   const [chart, setChart] = useState<any>(null)
@@ -113,6 +116,11 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
 
   // 웹소켓 실시간 데이터 수신
   const { latestPrice, priceHistory, isConnected: socketConnected } = useRealtimePrices(assetIdentifier)
+  
+  // 자산 정보 가져오기 (이름 표시용)
+  const { data: assetDetail } = useAssetDetail(assetIdentifier)
+  const assetName = assetDetail?.name || assetIdentifier
+  const assetTicker = assetIdentifier
   
   // 실제 연결 상태 (시장 개장 시간 고려)
   const actualConnectionStatus = useMemo(() => {
@@ -156,7 +164,7 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
   }, [])
 
   // API 데이터 로드 (지연 데이터 기반 시계열)
-  const { data: apiResponse, isLoading, error } = useDelayedQuotes([assetIdentifier])
+  const { data: apiResponse, isLoading, error } = useDelayedQuotes([assetIdentifier], { dataSource })
 
   // 시계열 데이터로 변환 (API 데이터 + 실시간 데이터)
   const chartData: [number, number][] = useMemo(() => {
@@ -234,8 +242,13 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
     const maxTime = Math.max(...times)
     const span = maxTime - minTime
     const leftPad = span * 0.05
-    const rightPad = 4 * 60 * 60 * 1000
-    return { min: minTime - leftPad, max: maxTime + rightPad }
+    const rightPad = 8 * 60 * 60 * 1000 // 8시간으로 증가 (y축 라벨이 가려지지 않도록)
+    return { 
+      min: minTime - leftPad, 
+      max: maxTime + rightPad,
+      softMin: minTime - leftPad,
+      softMax: maxTime + rightPad
+    }
   }, [chartData])
 
   // 차트 초기 생성 (API 데이터 기반)
@@ -305,19 +318,30 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
         y: 10,
         x: 0
       },
+      subtitle: {
+        text: `${assetName} (${assetTicker})`, // 중앙에 티커 표시
+        style: {
+          color: '#aaaaaa', // 어두운 배경에 맞춘 밝은 회색
+          fontSize: '16px',
+          fontWeight: 'normal'
+        },
+        align: 'center',
+        verticalAlign: 'middle',
+        y: 0, // 중앙 정렬
+        x: 0
+      },
       xAxis: {
         type: "datetime",
-        min: xAxisRange.min,
-        max: xAxisRange.max,
+        // softMin/softMax를 사용하여 데이터 범위를 지정하고, 패딩으로 여백 추가
+        softMin: xAxisRange.softMin,
+        softMax: xAxisRange.softMax,
+        minPadding: 0.05, // 좌측 패딩 5%
+        maxPadding: 0.3, // 우측 패딩 30% (y축 라벨 공간 확보)
         gridLineColor: "rgba(255,255,255,0.06)",
         gridLineWidth: 0.5,
         labels: { enabled: true, style: { color: "#cccccc" } },
         lineColor: "rgba(255,255,255,0.12)",
         tickColor: "rgba(255,255,255,0.15)",
-        minPadding: 0,
-        maxPadding: 0,
-        softMax: xAxisRange.max,
-        softMin: xAxisRange.min,
         events: {
           setExtremes: function(e: any) {
             // 휠로 인한 자동 범위 변경 방지
@@ -369,6 +393,8 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
           marker: { enabled: true, radius: 3, symbol: "circle" },
           dataLabels: {
             enabled: true,
+            allowOverlap: true, // 겹침 허용하여 레이아웃 계산 문제 방지
+            defer: false, // 즉시 렌더링 (지연 없음)
             formatter: function (this: any) {
               const val = Number(this.y)
               if (!isFinite(val)) return ""
@@ -392,6 +418,31 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
       if (Highcharts) {
         newChart = Highcharts.stockChart(chartRef.current as any, options)
         setChart(newChart)
+        
+        // 차트 생성 후 dataLabels 렌더링을 위한 레이아웃 재계산
+        requestAnimationFrame(() => {
+          try {
+            // 차트가 완전히 마운트되고 컨테이너가 존재하는지 확인
+            if (newChart && newChart.renderer && newChart.renderer.box && newChart.container && newChart.container.parentNode) {
+              if (typeof newChart.reflow === 'function') {
+                newChart.reflow()
+              }
+            }
+            // 마커 시리즈의 dataLabels 강제 업데이트
+            if (newChart && newChart.series && newChart.series[1]) {
+              const markerSeries = newChart.series[1]
+              if (markerSeries && markerSeries.points && markerSeries.points.length > 0) {
+                const point = markerSeries.points[0]
+                if (point && point.dataLabel) {
+                  point.dataLabel.attr({ opacity: 1 })
+                }
+              }
+            }
+          } catch (e) {
+            // reflow 에러는 무시 (차트가 아직 완전히 준비되지 않았을 수 있음)
+            console.warn('[MiniPriceChart] reflow failed:', e)
+          }
+        })
         
         // 차트 생성 후 추가 휠 이벤트 차단
         if (newChart && newChart.container) {
@@ -455,15 +506,21 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
         }
       }
 
-      // x축 우측 패딩 4시간 유지: 현재 시각을 기준으로 max를 앞으로 밀기
+      // x축 우측 패딩 8시간 유지: softMax를 업데이트하여 패딩이 적용되도록 함
       const xAxis = chart.xAxis[0]
       if (xAxis) {
-        const rightPadMs = 4 * 60 * 60 * 1000
+        const rightPadMs = 8 * 60 * 60 * 1000 // 8시간으로 증가
+        const newSoftMax = realtimePoint[0] + rightPadMs
         const extremes = xAxis.getExtremes()
-        const newMax = realtimePoint[0] + rightPadMs
-        const newMin = extremes && isFinite(extremes.min) ? extremes.min : undefined
-        if (!extremes || !isFinite(extremes.max) || newMax > extremes.max) {
-          xAxis.setExtremes(newMin, newMax, false, false)
+        
+        // softMax를 업데이트하여 패딩이 적용되도록 함 (min/max 직접 설정 시 패딩 무시됨)
+        if (chart.xAxis && chart.xAxis[0]) {
+          chart.xAxis[0].update({
+            softMax: newSoftMax,
+            maxPadding: 0.3 // 우측 패딩 30% 유지
+          }, false)
+          // redraw를 호출하여 패딩이 적용된 새로운 범위로 업데이트
+          chart.redraw(false)
         }
       }
 
@@ -487,6 +544,8 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
           color: lineColor,
           dataLabels: {
             enabled: true,
+            allowOverlap: true, // 겹침 허용하여 레이아웃 계산 문제 방지
+            defer: false, // 즉시 렌더링 (지연 없음)
             formatter: function (this: any) {
               const val = Number(this.y)
               if (!isFinite(val)) return ''
@@ -506,6 +565,29 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
 
       // 차트 리드로우 (애니메이션 없이)
       chart.redraw(false)
+      
+      // dataLabels 렌더링을 위한 레이아웃 재계산
+      // requestAnimationFrame을 사용하여 브라우저 렌더링 사이클에 맞춤
+      requestAnimationFrame(() => {
+        try {
+          // 차트가 완전히 마운트되고 컨테이너가 존재하는지 확인
+          if (chart && chart.renderer && chart.renderer.box && chart.container && chart.container.parentNode) {
+            if (typeof chart.reflow === 'function') {
+              chart.reflow()
+            }
+          }
+          // 추가로 dataLabels를 강제로 업데이트
+          if (markerSeries && markerSeries.points && markerSeries.points.length > 0) {
+            const point = markerSeries.points[0]
+            if (point && point.dataLabel) {
+              point.dataLabel.attr({ opacity: 1 })
+            }
+          }
+        } catch (e) {
+          // reflow 에러는 무시 (차트가 아직 완전히 준비되지 않았을 수 있음)
+          console.warn('[MiniPriceChart] reflow failed:', e)
+        }
+      })
       
       // console.log(`[MiniPriceChart - ${assetIdentifier}] 실시간 데이터 업데이트: $${realtimePoint[1]} (${isRising === true ? '상승' : isRising === false ? '하락' : '보합'})`)
     } catch (e) {

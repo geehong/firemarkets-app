@@ -77,11 +77,14 @@ export const useIntradayOhlcv = (
 // Delayed Quotes Hook
 export const useDelayedQuotes = (
   assetIdentifiers: string[],
+  options?: {
+    dataSource?: string
+  },
   queryOptions?: UseQueryOptions
 ) => {
   return useQuery({
-    queryKey: ['delayed-quotes', assetIdentifiers],
-    queryFn: () => apiClient.getDelayedQuotes(assetIdentifiers),
+    queryKey: ['delayed-quotes', assetIdentifiers, options],
+    queryFn: () => apiClient.getDelayedQuotes(assetIdentifiers, options?.dataSource),
     enabled: assetIdentifiers.length > 0,
     refetchInterval: 15 * 1000, // 15초마다 자동 갱신
     ...queryOptions,

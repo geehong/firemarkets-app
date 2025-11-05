@@ -171,9 +171,24 @@ export const useSocket = () => {
       connectionCount--
       // 마지막 연결이 해제될 때만 Socket 연결 종료
       if (connectionCount <= 0 && globalSocket) {
-        globalSocket.disconnect()
-        globalSocket = null
-        connectionCount = 0
+        try {
+          // 연결이 실제로 활성화되어 있는지 확인
+          // socket.active는 연결이 활성화되어 있거나 연결 중인 상태를 의미
+          // socket.connected는 연결이 완료된 상태를 의미
+          if (globalSocket.connected || (globalSocket as any).active) {
+            globalSocket.disconnect()
+          }
+        } catch (error) {
+          // 연결이 완전히 설정되지 않았거나 이미 닫힌 경우 에러 무시
+          // React Strict Mode에서 발생할 수 있는 정상적인 상황
+          // 개발 모드에서만 디버그 로그 출력 (프로덕션에서는 무시)
+          if (process.env.NODE_ENV === 'development') {
+            console.debug('[useSocket] Cleanup: Socket already closed or not fully connected')
+          }
+        } finally {
+          globalSocket = null
+          connectionCount = 0
+        }
       }
     }
   }, [])

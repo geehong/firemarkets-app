@@ -190,6 +190,26 @@ export const useOhlcvData = (
   })
 }
 
+// Asset Price Hook with date range
+export const useAssetPriceWithRange = (
+  assetIdentifier: string,
+  options?: {
+    dataInterval?: string
+    startDate?: string
+    endDate?: string
+    limit?: number
+  },
+  queryOptions?: UseQueryOptions
+) => {
+  return useQuery({
+    queryKey: ['asset-price', assetIdentifier, options],
+    queryFn: () => apiClient.getAssetPrice(assetIdentifier, options),
+    enabled: !!assetIdentifier,
+    staleTime: 1 * 60 * 1000, // 1분
+    ...queryOptions,
+  })
+}
+
 // Asset Price Hook
 export const useAssetPrice = (
   assetIdentifier: string

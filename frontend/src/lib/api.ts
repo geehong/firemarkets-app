@@ -123,8 +123,19 @@ export class ApiClient {
     return this.request(`/assets/${assetIdentifier}`)
   }
   
-  getAssetPrice(assetIdentifier: string) {
-    return this.request(`/assets/price/${assetIdentifier}`)
+  getAssetPrice(assetIdentifier: string, params?: {
+    dataInterval?: string
+    startDate?: string
+    endDate?: string
+    limit?: number
+  }) {
+    const search = new URLSearchParams()
+    if (params?.dataInterval) search.append('data_interval', params.dataInterval)
+    if (params?.startDate) search.append('start_date', params.startDate)
+    if (params?.endDate) search.append('end_date', params.endDate)
+    if (params?.limit) search.append('limit', String(params.limit))
+    const qs = search.toString()
+    return this.request(`/assets/price/${assetIdentifier}${qs ? `?${qs}` : ''}`)
   }
   
   getMarketCaps(params?: { assetTypeId?: number; limit?: number }) {
@@ -153,9 +164,14 @@ export class ApiClient {
     return this.request(`/realtime/pg/quotes-price${qs ? `?${qs}` : ''}`)
   }
   
-  getDelayedQuotes(assetIdentifiers: string[]) {
+  getDelayedQuotes(assetIdentifiers: string[], dataSource?: string) {
     const search = new URLSearchParams()
     assetIdentifiers.forEach(id => search.append('asset_identifier', id))
+    search.append('data_interval', '15m')
+    search.append('days', '1')
+    if (dataSource) {
+      search.append('data_source', dataSource)
+    }
     const qs = search.toString()
     return this.request(`/realtime/pg/quotes-delay-price${qs ? `?${qs}` : ''}`)
   }

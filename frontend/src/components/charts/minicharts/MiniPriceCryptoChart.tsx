@@ -8,6 +8,7 @@ interface MiniPriceCryptoChartProps {
   useWebSocket?: boolean;
   apiInterval?: string | null;
   marketHours?: boolean;
+  dataSource?: string;
 }
 
 const MiniPriceCryptoChart: React.FC<MiniPriceCryptoChartProps> = (props) => {
@@ -16,6 +17,7 @@ const MiniPriceCryptoChart: React.FC<MiniPriceCryptoChartProps> = (props) => {
             {...props}
             chartType="crypto"
             useWebSocket={true}
+            dataSource="binance"
         />
     );
 };
