@@ -11,28 +11,8 @@ import {
 } from './index';
 
 const WidgetExamples: React.FC = () => {
-  // 예제 데이터
-  const cryptoTickers = ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'DOGEUSDT'];
-  const stockTickers = ['BABA', 'TM', 'BRK-A', 'AMX'];
-  const commodityTickers = ['GCUSD', 'SIUSD'];
-
-  const groupedTickers = [
-    {
-      title: 'Crypto',
-      tickers: cryptoTickers,
-      variant: 'crypto' as const
-    },
-    {
-      title: 'Stocks',
-      tickers: stockTickers,
-      variant: 'stocks' as const
-    },
-    {
-      title: 'Commodities',
-      tickers: commodityTickers,
-      variant: 'commodities' as const
-    }
-  ];
+  // 예제 데이터 - 성능 최적화를 위해 샘플만 표시
+  const cryptoTickers = ['BTCUSDT', 'ETHUSDT', 'USDTUSDT', 'XRPUSDT', 'BNBUSDT', 'SOLUSDT', 'TRXUSDT', 'DOGEUSDT', 'ADAUSDT', 'LINKUSDT'];
 
   return (
     <div className="p-6 space-y-8">
@@ -44,8 +24,8 @@ const WidgetExamples: React.FC = () => {
         <div className="space-y-6">
           {/* 가격 카드 예제 */}
           <div>
-            <h3 className="text-lg font-medium text-gray-600 mb-3">Price Cards</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <h3 className="text-lg font-medium text-gray-600 mb-3">Price Cards (전체)</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               <CryptoPriceCard
                 symbol="BTC"
                 name="Bitcoin"
@@ -67,13 +47,83 @@ const WidgetExamples: React.FC = () => {
                 size="medium"
               />
               <CryptoPriceCard
+                symbol="USDT"
+                name="Tether"
+                price={1.00}
+                change24h={-0.04}
+                icon="💵"
+                gradientFrom="from-green-400"
+                gradientTo="to-green-600"
+                size="medium"
+              />
+              <CryptoPriceCard
+                symbol="XRP"
+                name="XRP"
+                price={2.21}
+                change24h={2.05}
+                icon="✕"
+                gradientFrom="from-gray-700"
+                gradientTo="to-gray-900"
+                size="medium"
+              />
+              <CryptoPriceCard
                 symbol="BNB"
-                name="BNB"
-                price={652.30}
-                change24h={1.45}
+                name="Binance Coin"
+                price={941.98}
+                change24h={2.39}
                 icon="🔶"
                 gradientFrom="from-yellow-400"
                 gradientTo="to-yellow-600"
+                size="medium"
+              />
+              <CryptoPriceCard
+                symbol="SOL"
+                name="Solana"
+                price={154.11}
+                change24h={0.39}
+                icon="◎"
+                gradientFrom="from-purple-500"
+                gradientTo="to-pink-500"
+                size="medium"
+              />
+              <CryptoPriceCard
+                symbol="TRX"
+                name="TRON"
+                price={0.29}
+                change24h={1.14}
+                icon="⬢"
+                gradientFrom="from-red-500"
+                gradientTo="to-red-700"
+                size="medium"
+              />
+              <CryptoPriceCard
+                symbol="DOGE"
+                name="Dogecoin"
+                price={0.16}
+                change24h={2.11}
+                icon="Ð"
+                gradientFrom="from-yellow-300"
+                gradientTo="to-yellow-500"
+                size="medium"
+              />
+              <CryptoPriceCard
+                symbol="ADA"
+                name="Cardano"
+                price={0.53}
+                change24h={2.54}
+                icon="₳"
+                gradientFrom="from-blue-400"
+                gradientTo="to-blue-600"
+                size="medium"
+              />
+              <CryptoPriceCard
+                symbol="LINK"
+                name="Chainlink"
+                price={15.45}
+                change24h={1.23}
+                icon="⬡"
+                gradientFrom="from-blue-600"
+                gradientTo="to-blue-800"
                 size="medium"
               />
             </div>
@@ -157,7 +207,7 @@ const WidgetExamples: React.FC = () => {
 
       {/* 개별 위젯 예제 */}
       <section>
-        <h2 className="text-2xl font-semibold text-gray-700 mb-4">Individual Widgets</h2>
+        <h2 className="text-2xl font-semibold text-gray-700 mb-4">Individual Widgets (샘플)</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <RealtimePriceWidget
             ticker="BTCUSDT"
@@ -169,20 +219,20 @@ const WidgetExamples: React.FC = () => {
           <RealtimePriceWidget
             ticker="ETHUSDT"
             variant="crypto"
-            size="small"
-            showVolume={false}
+            size="medium"
+            showVolume={true}
             showTimestamp={false}
           />
           <RealtimePriceWidget
-            ticker="BABA"
-            variant="stocks"
-            size="large"
+            ticker="BNBUSDT"
+            variant="crypto"
+            size="medium"
             showVolume={true}
-            showTimestamp={true}
+            showTimestamp={false}
           />
           <RealtimePriceWidget
-            ticker="GCUSD"
-            variant="commodities"
+            ticker="XRPUSDT"
+            variant="crypto"
             size="medium"
             showVolume={true}
             showTimestamp={false}
@@ -192,27 +242,16 @@ const WidgetExamples: React.FC = () => {
 
       {/* 그리드 위젯 예제 */}
       <section>
-        <h2 className="text-2xl font-semibold text-gray-700 mb-4">Grid Widgets</h2>
+        <h2 className="text-2xl font-semibold text-gray-700 mb-4">Grid Widgets (샘플)</h2>
         <div className="space-y-6">
           {/* 단일 그룹 그리드 */}
           <div>
             <h3 className="text-lg font-medium text-gray-600 mb-3">Single Group Grid</h3>
             <PriceWidgetGrid
-              tickers={cryptoTickers}
+              tickers={['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT']}
               variant="crypto"
               size="medium"
               columns={4}
-            />
-          </div>
-
-          {/* 그룹별 탭 그리드 */}
-          <div>
-            <h3 className="text-lg font-medium text-gray-600 mb-3">Grouped Tabs Grid</h3>
-            <PriceWidgetGrid
-              groups={groupedTickers}
-              size="medium"
-              columns={4}
-              showGroupTabs={true}
             />
           </div>
         </div>
@@ -220,9 +259,9 @@ const WidgetExamples: React.FC = () => {
 
       {/* 미니 위젯 예제 */}
       <section>
-        <h2 className="text-2xl font-semibold text-gray-700 mb-4">Mini Widgets</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {[...cryptoTickers, ...stockTickers, ...commodityTickers].map((ticker) => (
+        <h2 className="text-2xl font-semibold text-gray-700 mb-4">Mini Widgets (샘플)</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          {['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT'].map((ticker) => (
             <MiniPriceWidget
               key={ticker}
               ticker={ticker}
@@ -235,14 +274,11 @@ const WidgetExamples: React.FC = () => {
 
       {/* Realtime Quotes 위젯 예제 */}
       <section>
-        <h2 className="text-2xl font-semibold text-gray-700 mb-4">Realtime Quotes Widgets (15분 지연 가격)</h2>
+        <h2 className="text-2xl font-semibold text-gray-700 mb-4">Realtime Quotes Widgets (샘플)</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <RealtimeQuotesPriceWidget assetIdentifier="BTCUSDT" />
           <RealtimeQuotesPriceWidget assetIdentifier="ETHUSDT" />
-          <RealtimeQuotesPriceWidget assetIdentifier="AAPL" />
-          <RealtimeQuotesPriceWidget assetIdentifier="GOOG" />
-          <RealtimeQuotesPriceWidget assetIdentifier="MSFT" />
-          <RealtimeQuotesPriceWidget assetIdentifier="TSLA" />
+          <RealtimeQuotesPriceWidget assetIdentifier="BNBUSDT" />
         </div>
       </section>
 

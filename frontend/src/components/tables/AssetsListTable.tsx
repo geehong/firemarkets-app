@@ -73,9 +73,10 @@ export default function AssetsListTable({ typeName }: AssetsListTableProps) {
       field: 'logo_url', headerName: 'Symbol', width: 80, minWidth: 70, cellRenderer: (params: any) => {
         const url = params.value
         const ticker = params.data.ticker
+        const assetId = params.data.asset_id
         const fallback = '🔹'
         return (
-          <Link href={`/assets/${ticker}`} className="inline-block">
+          <Link href={`/assets/${assetId || ticker}`} className="inline-block">
             {url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img 
@@ -98,9 +99,10 @@ export default function AssetsListTable({ typeName }: AssetsListTableProps) {
       minWidth: 90,
       cellRenderer: (params: any) => {
         const ticker = params.value
+        const assetId = params.data.asset_id
         return (
           <Link 
-            href={`/assets/${ticker}`}
+            href={`/assets/${assetId || ticker}`}
             className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
           >
             {ticker}
@@ -116,9 +118,10 @@ export default function AssetsListTable({ typeName }: AssetsListTableProps) {
       cellRenderer: (params: any) => {
         const name = params.value
         const ticker = params.data.ticker
+        const assetId = params.data.asset_id
         return (
           <Link 
-            href={`/assets/${ticker}`}
+            href={`/assets/${assetId || ticker}`}
             className="text-blue-600 hover:text-blue-800 hover:underline"
           >
             {name}

@@ -1,15 +1,7 @@
 "use client";
 
 import React from "react";
-import { useSidebar } from "@/context/SidebarContext";
-import AppHeader from "@/layout/AppHeader";
-import AppSidebar from "@/layout/AppSidebar";
-import Backdrop from "@/layout/Backdrop";
 import ComponentCard from '@/components/common/ComponentCard'
-
-// 동적 렌더링 강제 설정
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
 import Badge from '@/components/ui/badge/Badge'
 import Button from '@/components/ui/button/Button'
 import { 
@@ -112,54 +104,14 @@ const popularMetrics = [
   },
 ]
 
-// SSR로 온체인 메트릭 데이터 가져오기
-async function getOnchainMetrics() {
-  try {
-    // 서버사이드에서는 백엔드 직접 호출
-    const BACKEND_BASE = process.env.BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'
-    const res = await fetch(`${BACKEND_BASE}/onchain/metrics`, {
-      cache: 'no-store'
-    })
-    
-    if (!res.ok) {
-      throw new Error('Failed to fetch onchain metrics')
-    }
-    
-    return await res.json()
-  } catch (error) {
-    console.error('Error fetching onchain metrics:', error)
-    return []
-  }
-}
-
 export default function OnchainPage() {
-  const { isExpanded, isHovered, isMobileOpen } = useSidebar();
-
-  // Dynamic class for main content margin based on sidebar state
-  const mainContentMargin = isMobileOpen
-    ? "ml-0"
-    : isExpanded || isHovered
-    ? "lg:ml-[290px]"
-    : "lg:ml-[90px]";
-
   return (
-    <div className="min-h-screen xl:flex">
-      {/* Sidebar and Backdrop */}
-      <AppSidebar />
-      <Backdrop />
-      {/* Main Content Area */}
-      <div
-        className={`flex-1 transition-all duration-300 ease-in-out ${mainContentMargin}`}
-      >
-        {/* Header */}
-        <AppHeader />
-        {/* Page Content */}
-        <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">
-          {/* 구조화된 데이터 */}
+    <>
+      {/* 구조화된 데이터 */}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({}),
+          __html: JSON.stringify(generateStructuredData()),
         }}
       />
       
@@ -271,8 +223,6 @@ export default function OnchainPage() {
           </ComponentCard>
         </div>
       </main>
-        </div>
-      </div>
-    </div>
+    </>
   )
 }

@@ -1,11 +1,12 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api";
 import MultiAssetLineChart from "@/components/charts/line/MultiAssetLineChart";
 import { CryptoPriceCard, CryptoMetricCard } from "@/components/widget";
 import Link from "next/link";
+import SparklineTable from "@/components/tables/SparklineTable";
 
 interface AssetRowProps {
   rank: number;
@@ -60,8 +61,11 @@ const AssetRow: React.FC<AssetRowProps> = ({
 };
 
 export default function AssetsDashboardPage() {
-  // 자산 타입별 데이터 조회
-  const { data: cryptoData, isLoading: cryptoLoading } = useQuery({
+  // 탭 상태 관리
+  const [selectedTab, setSelectedTab] = useState<string>("Crypto");
+
+  // 자산 타입별 데이터 조회 (기존 코드 유지)
+  const { data: cryptoDataOld, isLoading: cryptoLoading } = useQuery({
     queryKey: ['assets-list', 'Crypto'],
     queryFn: () => apiClient.getAssetsList({ type_name: 'Crypto', limit: 10, has_ohlcv_data: true }),
     staleTime: 2 * 60 * 1000,
@@ -69,7 +73,7 @@ export default function AssetsDashboardPage() {
     refetchOnWindowFocus: false,
   });
 
-  const { data: stockData, isLoading: stockLoading } = useQuery({
+  const { data: stockDataOld, isLoading: stockLoading } = useQuery({
     queryKey: ['assets-list', 'Stock'],
     queryFn: () => apiClient.getAssetsList({ type_name: 'Stock', limit: 10, has_ohlcv_data: true }),
     staleTime: 2 * 60 * 1000,
@@ -77,7 +81,7 @@ export default function AssetsDashboardPage() {
     refetchOnWindowFocus: false,
   });
 
-  const { data: etfData, isLoading: etfLoading } = useQuery({
+  const { data: etfDataOld, isLoading: etfLoading } = useQuery({
     queryKey: ['assets-list', 'ETF'],
     queryFn: () => apiClient.getAssetsList({ type_name: 'ETF', limit: 10, has_ohlcv_data: true }),
     staleTime: 2 * 60 * 1000,
@@ -102,9 +106,17 @@ export default function AssetsDashboardPage() {
     return [];
   };
 
-  const normalizedCrypto = normalizeArrayData(cryptoData);
-  const normalizedStock = normalizeArrayData(stockData);
-  const normalizedEtf = normalizeArrayData(etfData);
+  const normalizedCrypto = normalizeArrayData(cryptoDataOld);
+  const normalizedStock = normalizeArrayData(stockDataOld);
+  const normalizedEtf = normalizeArrayData(etfDataOld);
+
+  // 탭 목록
+  const tabs = [
+    { id: "Crypto", label: "암호화폐" },
+    { id: "Stocks", label: "주식" },
+    { id: "ETFs", label: "ETF" },
+    { id: "Commodities", label: "원자재" },
+  ];
 
   return (
     <main className="container mx-auto px-4 py-8">
@@ -116,6 +128,37 @@ export default function AssetsDashboardPage() {
         <p className="text-lg text-gray-600 dark:text-gray-400">
           모든 자산 유형의 실시간 데이터를 한눈에 확인하세요
         </p>
+      </div>
+
+      {/* 스파클라인 테이블 - 최상위 */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-200 dark:border-gray-700 mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+            실시간 자산 스파클라인
+          </h2>
+        </div>
+        
+        {/* 탭 메뉴 */}
+        <div className="flex gap-2 mb-4 border-b border-gray-200 dark:border-gray-700">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setSelectedTab(tab.id)}
+              className={`px-4 py-2 font-medium text-sm transition-colors ${
+                selectedTab === tab.id
+                  ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400"
+                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <SparklineTable 
+          typeName={selectedTab === "Stocks" ? "Stocks" : selectedTab === "ETFs" ? "ETFs" : selectedTab}
+          maxRows={10}
+        />
       </div>
 
       {/* 주요 자산 타입별 메트릭 카드 */}

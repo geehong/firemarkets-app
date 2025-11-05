@@ -1,6 +1,6 @@
 import { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { getAssetOverview } from '@/lib/data/assets'
+import { getAssetOverview, getAssetDetail } from '@/lib/data/assets'
 import AssetOverview from '@/components/overviews/AssetOverview'
 
 // 동적 렌더링 강제 설정
@@ -19,7 +19,13 @@ export async function generateMetadata({
     const { assetIdentifier } = await params
     
     // 중앙화된 데이터 페칭 함수 사용
-    const asset = await getAssetOverview(assetIdentifier)
+    // getAssetOverview가 실패하면 getAssetDetail을 fallback으로 사용
+    let asset = await getAssetOverview(assetIdentifier)
+    
+    if (!asset) {
+      // Overview가 없으면 Detail을 시도
+      asset = await getAssetDetail(assetIdentifier)
+    }
     
     // 서버 사이드 로깅: 메타데이터 생성 시 볼륨 관련 필드 점검
     // 참고: 실제 존재하지 않는 키는 undefined로 출력됩니다.
@@ -149,7 +155,13 @@ export default async function AssetPage({ params }: AssetPageProps) {
   
   try {
     // 중앙화된 데이터 페칭 함수 사용
-    const asset = await getAssetOverview(assetIdentifier)
+    // getAssetOverview가 실패하면 getAssetDetail을 fallback으로 사용
+    let asset = await getAssetOverview(assetIdentifier)
+    
+    if (!asset) {
+      // Overview가 없으면 Detail을 시도
+      asset = await getAssetDetail(assetIdentifier)
+    }
     
     // 서버 사이드 로깅: 페이지 렌더 시 볼륨 관련 필드 점검
     console.log('[AssetPage][render]', {

@@ -16,7 +16,7 @@ from ....schemas.asset import (
     OHLCVResponse, StockProfileResponse, StockFinancialsResponse, StockEstimatesResponse,
     IndexInfoResponse, ETFInfoResponse, ETFSectorExposureResponse, ETFHoldingsResponse,
     CryptoMetricsResponse, TechnicalIndicatorsResponse, PriceResponse,
-    TreemapLiveResponse, TreemapLiveItem, AssetOverviewResponse, UnifiedFinancialsResponse
+    TreemapLiveResponse, TreemapLiveItem, AssetOverviewResponse
 )
 from ....schemas.common import TickerSummaryResponse
 
@@ -1411,117 +1411,45 @@ def get_stock_profile(db: Session, asset_id: int):
 # Treemap Live View Endpoint
 # ============================================================================
 
-TREEMAP_VIEW_SQL = """
-CREATE OR REPLACE VIEW treemap_live_view AS
-SELECT
-    a.asset_id,
-    a.ticker,
-    a.name,
-    at.type_name AS asset_type,
-    war.market_cap_usd AS market_cap,
-    COALESCE(sp.logo_image_url, cd.logo_url) AS logo_url,
-    COALESCE(
-        CASE WHEN war.last_updated > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' THEN war.price_usd END,
-        CASE WHEN rq.timestamp_utc > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' THEN rq.price END,
-        war.price_usd,
-        rq.price,
-        ohlcv_daily.close_price,
-        ohlcv_intraday.close_price
-    ) AS current_price,
-    COALESCE(
-        CASE WHEN war.last_updated > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' THEN war.daily_change_percent END,
-        CASE WHEN rq.timestamp_utc > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' THEN rq.change_percent END,
-        war.daily_change_percent,
-        rq.change_percent,
-        ohlcv_daily.change_percent,
-        ohlcv_intraday.change_percent
-    ) AS price_change_percentage_24h,
-    CASE
-        WHEN war.last_updated IS NOT NULL AND war.last_updated > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' THEN 'WORLD_ASSETS'
-        WHEN rq.timestamp_utc IS NOT NULL AND rq.timestamp_utc > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' THEN 'REALTIME'
-        WHEN ohlcv_daily.timestamp_utc IS NOT NULL AND ohlcv_daily.timestamp_utc > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' THEN 'DAILY_DATA'
-        WHEN ohlcv_intraday.timestamp_utc IS NOT NULL AND ohlcv_intraday.timestamp_utc > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' THEN 'INTRADAY_DATA'
-        WHEN at.type_name = 'Crypto' THEN 'STATIC_24H'
-        ELSE 'STATIC_CLOSED'
-    END AS market_status,
-    rq.timestamp_utc AS realtime_updated_at,
-    ohlcv_daily.timestamp_utc AS daily_data_updated_at
-FROM assets a
-JOIN asset_types at ON a.asset_type_id = at.asset_type_id
-LEFT JOIN LATERAL (
-    SELECT r.timestamp_utc, r.price, r.change_percent
-    FROM realtime_quotes r
-    WHERE r.asset_id = a.asset_id
-    ORDER BY r.timestamp_utc DESC
-    LIMIT 1
-) rq ON true
-LEFT JOIN LATERAL (
-    SELECT w.market_cap_usd, w.price_usd, w.daily_change_percent, w.last_updated
-    FROM world_assets_ranking w
-    WHERE w.asset_id = a.asset_id
-    ORDER BY w.ranking_date DESC, w.last_updated DESC NULLS LAST
-    LIMIT 1
-) war ON true
-LEFT JOIN LATERAL (
-    SELECT o.timestamp_utc, o.close_price, o.change_percent
-    FROM ohlcv_day_data o
-    WHERE o.asset_id = a.asset_id
-    ORDER BY o.timestamp_utc DESC
-    LIMIT 1
-) ohlcv_daily ON true
-LEFT JOIN LATERAL (
-    SELECT o.timestamp_utc, o.close_price, o.change_percent
-    FROM ohlcv_intraday_data o
-    WHERE o.asset_id = a.asset_id
-    ORDER BY o.timestamp_utc DESC
-    LIMIT 1
-) ohlcv_intraday ON true
-LEFT JOIN stock_profiles sp ON sp.asset_id = a.asset_id
-LEFT JOIN crypto_data cd ON cd.asset_id = a.asset_id
-WHERE a.is_active = true AND (war.market_cap_usd IS NOT NULL OR ohlcv_daily.close_price IS NOT NULL OR ohlcv_intraday.close_price IS NOT NULL OR rq.price IS NOT NULL);
-"""
-
-
 @router.get("/treemap/live", response_model=TreemapLiveResponse)
 def get_treemap_live(
     db: Session = Depends(get_postgres_db),
     asset_type_id: Optional[int] = Query(None, description="Filter by asset_type_id"),
     type_name: Optional[str] = Query(None, description="Filter by asset type name (type_name)")
 ):
-    """트리맵 실시간 뷰 데이터 조회 (뷰 없으면 생성 후 조회)"""
+    """트리맵 실시간 뷰 데이터 조회 (VIEW는 데이터베이스에서 관리됨)"""
+    # --- Normalize filters: allow either asset_type_id or type_name ---
+    # Static mapping as a fallback; in future, fetch dynamically from asset_types
+    id_to_name_map = {
+        1: 'Indices',
+        2: 'Stocks',
+        3: 'Commodities',
+        4: 'Currencies',
+        5: 'ETFs',
+        6: 'Bonds',
+        7: 'Funds',
+        8: 'Crypto',
+    }
+    name_to_id_map = {v.lower(): k for k, v in id_to_name_map.items()}
+
+    # Trim and lowercase for name matching
+    type_name_norm = type_name.strip() if isinstance(type_name, str) else None
+    type_name_lower = type_name_norm.lower() if type_name_norm else None
+
+    # Derive missing counterpart if only one provided
+    if asset_type_id is None and type_name_lower:
+        asset_type_id = name_to_id_map.get(type_name_lower)
+    if type_name_norm is None and asset_type_id is not None:
+        mapped_name = id_to_name_map.get(asset_type_id)
+        type_name_norm = mapped_name
+        type_name_lower = mapped_name.lower() if mapped_name else None
+
     try:
-        # 먼저 조회 시도
-        # --- Normalize filters: allow either asset_type_id or type_name ---
-        # Static mapping as a fallback; in future, fetch dynamically from asset_types
-        id_to_name_map = {
-            1: 'Indices',
-            2: 'Stocks',
-            3: 'Commodities',
-            4: 'Currencies',
-            5: 'ETFs',
-            6: 'Bonds',
-            7: 'Funds',
-            8: 'Crypto',
-        }
-        name_to_id_map = {v.lower(): k for k, v in id_to_name_map.items()}
-
-        # Trim and lowercase for name matching
-        type_name_norm = type_name.strip() if isinstance(type_name, str) else None
-        type_name_lower = type_name_norm.lower() if type_name_norm else None
-
-        # Derive missing counterpart if only one provided
-        if asset_type_id is None and type_name_lower:
-            asset_type_id = name_to_id_map.get(type_name_lower)
-        if type_name_norm is None and asset_type_id is not None:
-            mapped_name = id_to_name_map.get(asset_type_id)
-            type_name_norm = mapped_name
-            type_name_lower = mapped_name.lower() if mapped_name else None
-
         base_sql = (
             """
             SELECT asset_id, ticker, name, asset_type, market_cap, logo_url,
                    price_change_percentage_24h, current_price,
-                   market_status, realtime_updated_at, daily_data_updated_at
+                   market_status, realtime_updated_at, daily_data_updated_at, volume
             FROM treemap_live_view
             """
         )
@@ -1539,51 +1467,11 @@ def get_treemap_live(
             base_sql += " WHERE " + " AND ".join(conditions)
         rows = db.execute(text(base_sql), params).fetchall()
     except Exception as e:
-        # 뷰가 없거나 스키마 이슈일 수 있으므로 생성 후 1회 재시도
-        logger.warning(f"treemap_live_view select failed, creating view. error={e}")
-        try:
-            # 이전 에러로 인해 트랜잭션이 실패 상태일 수 있으므로 롤백
-            try:
-                db.rollback()
-            except Exception:
-                pass
-            # 기존 뷰를 드롭 후 재생성하여 스키마 차이를 확실히 반영
-            try:
-                db.execute(text("DROP VIEW IF EXISTS treemap_live_view"))
-                db.commit()
-            except Exception:
-                db.rollback()
-                # 드롭 실패는 무시하고 재생성을 시도
-            db.execute(text(TREEMAP_VIEW_SQL))
-            db.commit()
-        except Exception:
-            db.rollback()
-            logger.exception("Failed to create treemap_live_view")
-            raise HTTPException(status_code=500, detail="Failed to create treemap view")
-        # 재조회
-        try:
-            base_sql = (
-                """
-                SELECT asset_id, ticker, name, asset_type, market_cap, logo_url,
-                       price_change_percentage_24h, current_price,
-                       market_status, realtime_updated_at, daily_data_updated_at
-                FROM treemap_live_view
-                """
-            )
-            conditions = []
-            params = {}
-            if asset_type_id is not None:
-                conditions.append("asset_id IN (SELECT asset_id FROM assets WHERE asset_type_id = :asset_type_id)")
-                params["asset_type_id"] = asset_type_id
-            if type_name_norm is not None:
-                conditions.append("LOWER(asset_type) = :type_name_lower")
-                params["type_name_lower"] = type_name_lower
-            if conditions:
-                base_sql += " WHERE " + " AND ".join(conditions)
-            rows = db.execute(text(base_sql), params).fetchall()
-        except Exception as e2:
-            logger.exception("treemap_live_view select failed after create")
-            raise HTTPException(status_code=500, detail=f"Failed to query treemap view: {str(e2)}")
+        logger.exception("treemap_live_view select failed")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to query treemap view: {str(e)}. Please ensure treemap_live_view is created in the database."
+        )
 
     items = [
         TreemapLiveItem(
@@ -1598,6 +1486,7 @@ def get_treemap_live(
             market_status=r.market_status,
             realtime_updated_at=r.realtime_updated_at,
             daily_data_updated_at=r.daily_data_updated_at,
+            volume=float(r.volume) if r.volume is not None else None,
         ) for r in rows
     ]
 
@@ -1846,101 +1735,15 @@ def get_asset_overview_bundle(
         
         asset, type_name = asset_with_type
         
-        # 1. 숫자 데이터 (유형별 소스 지정)
+        # 1. 숫자 데이터 (기존 overview 로직)
         numeric_overview = None
         try:
-            if type_name == 'Stocks':
-                # v_financials_unified + 최신 OHLCV
-                fin = db.execute(text(
-                    """
-                    SELECT * FROM v_financials_unified WHERE asset_id = :asset_id
-                    """
-                ), {"asset_id": asset_id}).mappings().first()
-
-                ohlcv_latest = db.execute(text(
-                    """
-                    SELECT timestamp_utc, close_price
-                    FROM ohlcv_day_data
-                    WHERE asset_id = :asset_id
-                    ORDER BY timestamp_utc DESC
-                    LIMIT 1
-                    """
-                ), {"asset_id": asset_id}).mappings().first()
-
-                numeric_overview = {
-                    "source": "v_financials_unified",
-                    "financials": dict(fin) if fin else None,
-                    "ohlcv_latest": dict(ohlcv_latest) if ohlcv_latest else None,
-                }
-                # 폴백: v_financials_unified가 없으면 treemap_live_view 기반 개요
-                if not fin:
-                    fallback = get_unified_overview_data(db, asset_id)
-                    if fallback:
-                        numeric_overview.update({
-                            "source": "treemap_live_view",
-                            "fallback_overview": fallback
-                        })
-            elif type_name == 'Crypto':
-                # crypto_overview (뷰) + crypto_data 폴백 + 최신 OHLCV
-                crypto_overview_row = db.execute(text(
-                    """
-                    SELECT * FROM crypto_overview WHERE asset_id = :asset_id
-                    """
-                ), {"asset_id": asset_id}).mappings().first()
-
-                # 기존 헬퍼도 유지(스키마 정규화된 값이 필요할 때)
-                crypto_overview = get_crypto_overview_data(db, asset_id)
-                if crypto_overview is not None and hasattr(crypto_overview, 'model_dump'):
-                    crypto_payload = crypto_overview.model_dump()
-                else:
-                    crypto_payload = crypto_overview
-
-                ohlcv_latest = db.execute(text(
-                    """
-                    SELECT timestamp_utc, close_price
-                    FROM ohlcv_day_data
-                    WHERE asset_id = :asset_id
-                    ORDER BY timestamp_utc DESC
-                    LIMIT 1
-                    """
-                ), {"asset_id": asset_id}).mappings().first()
-
-                # 폴백: crypto_overview가 없으면 crypto_data 사용
-                if not crypto_payload:
-                    try:
-                        cd = db.execute(text(
-                            """
-                            SELECT * FROM crypto_data WHERE asset_id = :asset_id LIMIT 1
-                            """
-                        ), {"asset_id": asset_id}).mappings().first()
-                        crypto_payload = dict(cd) if cd else None
-                    except Exception:
-                        crypto_payload = None
-
-                # 최종 구성
-                extra_fields = {}
-                if crypto_overview_row:
-                    # crypto_overview에서 추가로 노출할 유용 필드들
-                    for k in [
-                        'treemap_current_price',
-                        'treemap_change_24h',
-                        'market_status',
-                        'realtime_updated_at',
-                        'daily_data_updated_at',
-                    ]:
-                        if k in crypto_overview_row and crypto_overview_row[k] is not None:
-                            extra_fields[k] = crypto_overview_row[k]
-
-                numeric_overview = {
-                    "source": "crypto_overview" if crypto_overview_row else ("crypto_overview_helper" if crypto_overview else ("crypto_data" if crypto_payload else "ohlcv_only")),
-                    # 전체 개요 뷰 결과(부족했던 treemap/상태 관련 필드 포함)
-                    "overview": dict(crypto_overview_row) if crypto_overview_row else None,
-                    "crypto": crypto_payload,
-                    "ohlcv_latest": dict(ohlcv_latest) if ohlcv_latest else None,
-                    **extra_fields,
-                }
+            # posts 기반 개요 우선 시도
+            overview_from_posts = get_overview_from_posts(db, asset_id)
+            if overview_from_posts:
+                numeric_overview = overview_from_posts
             else:
-                # 기존 폴백: treemap_live_view 기반 개요
+                # treemap_live_view 기반 개요
                 numeric_overview = get_unified_overview_data(db, asset_id)
         except Exception as e:
             logger.warning(f"Failed to get numeric overview for {asset_identifier}: {str(e)}")
@@ -1950,33 +1753,13 @@ def get_asset_overview_bundle(
         post_overview = None
         try:
             from ....models import Post
-            # 1) 우선 published_at NOT NULL 을 최신순으로 선택 (status 무관 - 데이터 무결성 이슈 대응)
             post_obj = db.query(Post).filter(
                 Post.asset_id == asset_id,
-                Post.post_type == 'assets',
-                Post.published_at.isnot(None)
+                Post.post_type == 'assets'
             ).order_by(
-                Post.published_at.desc()
+                Post.status.desc(),  # published 우선
+                Post.updated_at.desc()
             ).first()
-
-            # 2) 폴백: 'published' 이지만 published_at NULL인 경우 중 최신 updated_at
-            if not post_obj:
-                post_obj = db.query(Post).filter(
-                    Post.asset_id == asset_id,
-                    Post.post_type == 'assets',
-                    Post.status == 'published'
-                ).order_by(
-                    Post.updated_at.desc()
-                ).first()
-
-            # 3) 최종 폴백: 어떤 상태든 updated_at 최신
-            if not post_obj:
-                post_obj = db.query(Post).filter(
-                    Post.asset_id == asset_id,
-                    Post.post_type == 'assets'
-                ).order_by(
-                    Post.updated_at.desc()
-                ).first()
             
             if post_obj:
                 post_overview = {
@@ -1997,13 +1780,6 @@ def get_asset_overview_bundle(
                     "updated_at": post_obj.updated_at,
                     "published_at": post_obj.published_at
                 }
-                # Stocks의 경우 stock_overview를 함께 포함
-                if type_name == 'Stocks':
-                    stock_ov = get_stock_overview_data(db, asset_id)
-                    if stock_ov is not None and hasattr(stock_ov, 'model_dump'):
-                        post_overview["stock_overview"] = stock_ov.model_dump()
-                    else:
-                        post_overview["stock_overview"] = stock_ov
         except Exception as e:
             logger.warning(f"Failed to get post overview for {asset_identifier}: {str(e)}")
             post_overview = None
@@ -2403,51 +2179,3 @@ def get_etf_additional_data(db: Session, asset_id: int):
 def get_basic_overview_data(db: Session, asset_id: int):
     """기본 자산 개요 데이터 조회 (기타 자산 타입용) - deprecated"""
     return get_unified_overview_data(db, asset_id)
-
-
-@router.get("/overview_financials_unified/{asset_identifier}", response_model=UnifiedFinancialsResponse)
-def get_overview_financials_unified(
-    asset_identifier: str = Path(..., description="Asset ID (integer) or Ticker (string)"),
-    db: Session = Depends(get_postgres_db)
-):
-    """통합 재무 정보 조회 (stock_financials + macrotrends_financials)"""
-    try:
-        asset_id = resolve_asset_identifier(db, asset_identifier)
-        
-        # v_financials_unified 뷰에서 데이터 조회
-        query = text("""
-            SELECT 
-                ticker,
-                asset_id,
-                stock_financials_data,
-                income_json,
-                balance_json,
-                cash_flow_json,
-                ratios_json
-            FROM v_financials_unified
-            WHERE asset_id = :asset_id
-        """)
-        
-        result = db.execute(query, {"asset_id": asset_id}).fetchone()
-        
-        if not result:
-            raise HTTPException(status_code=404, detail=f"Financial data not found for asset: {asset_identifier}")
-        
-        # 결과를 딕셔너리로 변환
-        response_data = {
-            "ticker": result.ticker,
-            "asset_id": result.asset_id,
-            "stock_financials_data": result.stock_financials_data,
-            "income_json": result.income_json,
-            "balance_json": result.balance_json,
-            "cash_flow_json": result.cash_flow_json,
-            "ratios_json": result.ratios_json
-        }
-        
-        return UnifiedFinancialsResponse(**response_data)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception(f"Error getting unified financials for {asset_identifier}")
-        raise HTTPException(status_code=500, detail=f"Failed to get unified financials: {str(e)}")

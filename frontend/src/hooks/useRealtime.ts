@@ -86,7 +86,8 @@ export const useDelayedQuotes = (
     queryKey: ['delayed-quotes', assetIdentifiers, options],
     queryFn: () => apiClient.getDelayedQuotes(assetIdentifiers, options?.dataSource),
     enabled: assetIdentifiers.length > 0,
-    refetchInterval: 15 * 1000, // 15초마다 자동 갱신
+    refetchInterval: 15 * 60 * 1000, // 15분마다 자동 갱신
+    staleTime: 15 * 60 * 1000, // 15분간 데이터를 신선하게 유지
     ...queryOptions,
   })
 }

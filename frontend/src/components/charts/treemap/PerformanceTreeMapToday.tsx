@@ -51,7 +51,15 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // TreeMap 데이터 훅 사용
-  const { data, isLoading, error, refetch } = useTreemapLiveData()
+  const treemapDataResult = useTreemapLiveData()
+  const { data, isLoading, error } = treemapDataResult
+  const refetch = treemapDataResult.refetch || (() => {
+    console.warn('[PerformanceTreeMap] refetch function not available')
+  })
+  
+  // refetch 참조를 안정적으로 유지하기 위한 ref
+  const refetchRef = React.useRef(refetch)
+  refetchRef.current = refetch
   
   // WebSocket 연결 상태 구독
   const { connected } = useSocket()
@@ -201,7 +209,11 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
     if (isAutoRefresh && refreshInterval > 0) {
       intervalRef.current = setInterval(() => {
         console.log('[PerformanceTreeMap] Auto-refreshing data...')
-        refetch()
+        if (typeof refetchRef.current === 'function') {
+          refetchRef.current()
+        } else {
+          console.warn('[PerformanceTreeMap] refetch is not a function')
+        }
       }, refreshInterval)
     } else {
       if (intervalRef.current) {
@@ -216,12 +228,16 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
         intervalRef.current = null
       }
     }
-  }, [isAutoRefresh, refreshInterval, refetch])
+  }, [isAutoRefresh, refreshInterval])
 
   // 수동 새로고침 핸들러
   const handleManualRefresh = () => {
     console.log('[PerformanceTreeMap] Manual refresh triggered')
-    refetch()
+    if (typeof refetchRef.current === 'function') {
+      refetchRef.current()
+    } else {
+      console.warn('[PerformanceTreeMap] refetch is not a function')
+    }
   }
 
   // 자동 새로고침 토글

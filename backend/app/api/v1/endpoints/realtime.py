@@ -123,7 +123,117 @@ async def get_realtime_quotes_price_postgres(
     """
     try:
         from ....models.asset import RealtimeQuote, Asset
-        from sqlalchemy import desc
+        from sqlalchemy import desc, and_
+        
+        # 이전일 마지막 데이터를 찾는 헬퍼 함수
+        def find_previous_day_last_price(current_timestamp_obj, asset_id, data_source_filter=None, max_days_back=7):
+            """
+            현재 timestamp보다 이전일의 마지막 유효 데이터를 찾습니다.
+            주말/휴일이 있어도 최대 max_days_back일 전까지 찾습니다.
+            """
+            # 현재 timestamp를 datetime 객체로 변환
+            if isinstance(current_timestamp_obj, datetime):
+                current_dt = current_timestamp_obj
+            elif isinstance(current_timestamp_obj, str):
+                current_dt = datetime.fromisoformat(current_timestamp_obj.replace('Z', '+00:00'))
+            else:
+                current_dt = current_timestamp_obj
+            
+            if current_dt.tzinfo is None:
+                current_dt = current_dt.replace(tzinfo=timezone.utc)
+            
+            current_date = current_dt.date()
+            
+            for days_back in range(1, max_days_back + 1):
+                check_date = current_date - timedelta(days=days_back)
+                
+                # 해당 날짜의 시작과 끝 시간 계산
+                day_start = datetime.combine(check_date, dt_time.min)
+                if day_start.tzinfo is None:
+                    day_start = day_start.replace(tzinfo=timezone.utc)
+                
+                next_day = check_date + timedelta(days=1)
+                day_end = datetime.combine(next_day, dt_time.min)
+                if day_end.tzinfo is None:
+                    day_end = day_end.replace(tzinfo=timezone.utc)
+                
+                # 해당 날짜의 데이터 조회 (현재 timestamp보다 이전인 데이터만)
+                day_query = postgres_db.query(RealtimeQuote)\
+                    .filter(
+                        and_(
+                            RealtimeQuote.asset_id == asset_id,
+                            RealtimeQuote.timestamp_utc >= day_start,
+                            RealtimeQuote.timestamp_utc < day_end,
+                            RealtimeQuote.timestamp_utc < current_dt  # 현재 timestamp보다 이전인 데이터만
+                        )
+                    )
+                
+                # data_source가 제공된 경우에만 필터링
+                if data_source_filter:
+                    day_query = day_query.filter(RealtimeQuote.data_source == data_source_filter)
+                
+                day_last = day_query\
+                    .order_by(desc(RealtimeQuote.timestamp_utc))\
+                    .first()
+                
+                if day_last and day_last.price:
+                    try:
+                        price = float(day_last.price)
+                        if price > 0:
+                            logger.debug(f"Found previous day last price: {price} for date {check_date} (days_back={days_back})")
+                            return price
+                    except (ValueError, TypeError):
+                        continue
+            
+            logger.warning(f"No previous day last price found for asset_id={asset_id}, current_date={current_date}")
+            return None
+        
+        # change_amount, change_percent 계산 헬퍼 함수
+        def calculate_change_values(quote, asset_id):
+            """이전일 마지막 데이터와 비교하여 change_amount와 change_percent 계산"""
+            quote_dict = {
+                "asset_id": quote.asset_id,
+                "timestamp_utc": quote.timestamp_utc.isoformat() if quote.timestamp_utc else None,
+                "price": float(quote.price) if quote.price else None,
+                "volume": float(quote.volume) if quote.volume else None,
+                "change_amount": float(quote.change_amount) if quote.change_amount else None,
+                "change_percent": float(quote.change_percent) if quote.change_percent else None,
+                "data_source": quote.data_source,
+                "database": "postgresql"
+            }
+            
+            # 모든 경우에 이전일 마지막 데이터와 비교하여 change_amount, change_percent 계산/업데이트
+            if quote.price:
+                current_price = float(quote.price)
+                current_timestamp = quote.timestamp_utc
+                
+                if current_timestamp:
+                    # 현재 timestamp를 datetime 객체로 변환
+                    if isinstance(current_timestamp, datetime):
+                        current_dt = current_timestamp
+                    elif isinstance(current_timestamp, str):
+                        current_dt = datetime.fromisoformat(current_timestamp.replace('Z', '+00:00'))
+                    else:
+                        current_dt = current_timestamp
+                    
+                    if current_dt.tzinfo is None:
+                        current_dt = current_dt.replace(tzinfo=timezone.utc)
+                    
+                    # 이전일 마지막 데이터 찾기 (주말/휴일 고려)
+                    previous_price = find_previous_day_last_price(
+                        current_dt, asset_id, quote.data_source
+                    )
+                    
+                    if previous_price and previous_price > 0:
+                        # change_amount 계산 (null이거나 값이 있어도 업데이트)
+                        calculated_change_amount = current_price - previous_price
+                        quote_dict["change_amount"] = round(calculated_change_amount, 8)
+                        
+                        # change_percent 계산 (null이거나 값이 있어도 업데이트)
+                        calculated_change_percent = ((current_price - previous_price) / previous_price) * 100
+                        quote_dict["change_percent"] = round(calculated_change_percent, 4)
+            
+            return quote_dict
         
         # 쉼표로 구분된 다중 자산 처리
         identifiers = [s.strip() for s in asset_identifier.split(',') if s.strip()]
@@ -154,16 +264,7 @@ async def get_realtime_quotes_price_postgres(
                 raise HTTPException(status_code=404, detail="No realtime quotes found")
             
             quote = quotes[0]
-            return {
-                "asset_id": quote.asset_id,
-                "timestamp_utc": quote.timestamp_utc.isoformat() if quote.timestamp_utc else None,
-                "price": float(quote.price) if quote.price else None,
-                "volume": float(quote.volume) if quote.volume else None,
-                "change_amount": float(quote.change_amount) if quote.change_amount else None,
-                "change_percent": float(quote.change_percent) if quote.change_percent else None,
-                "data_source": quote.data_source,
-                "database": "postgresql"
-            }
+            return calculate_change_values(quote, quote.asset_id)
         else:
             # 다중 자산 조회
             results = []
@@ -190,15 +291,10 @@ async def get_realtime_quotes_price_postgres(
                     
                     if quotes:
                         quote = quotes[0]
-                        results.append({
-                            "asset_id": quote.asset_id,
-                            "timestamp_utc": quote.timestamp_utc.isoformat() if quote.timestamp_utc else None,
-                            "price": float(quote.price) if quote.price else None,
-                            "volume": float(quote.volume) if quote.volume else None,
-                            "change_amount": float(quote.change_amount) if quote.change_amount else None,
-                            "change_percent": float(quote.change_percent) if quote.change_percent else None,
-                            "data_source": quote.data_source
-                        })
+                        quote_dict = calculate_change_values(quote, quote.asset_id)
+                        # 다중 조회 응답에서는 database 필드 제거
+                        quote_dict.pop("database", None)
+                        results.append(quote_dict)
                 except Exception as e:
                     logger.warning(f"Failed to get quote for {identifier}: {e}")
                     continue
@@ -391,6 +487,70 @@ async def get_realtime_quotes_delay_price_postgres(
         
         # RealtimeQuoteTimeDelay 데이터가 있는 경우 기존 로직 계속
         
+        # 이전일 마지막 데이터를 찾는 헬퍼 함수 (OHLCVData 사용)
+        def find_previous_day_last_price(current_timestamp_obj, asset_id, data_interval, target_data_source, max_days_back=7):
+            """
+            현재 timestamp보다 이전일의 마지막 유효 데이터를 OHLCVData에서 찾습니다.
+            /api/v1/assets/price/{asset_identifier} 엔드포인트와 동일한 로직 사용.
+            주말/휴일이 있어도 최대 max_days_back일 전까지 찾습니다.
+            """
+            from ....models.asset import OHLCVData
+            
+            # 현재 timestamp를 datetime 객체로 변환
+            if isinstance(current_timestamp_obj, datetime):
+                current_dt = current_timestamp_obj
+            elif isinstance(current_timestamp_obj, str):
+                current_dt = datetime.fromisoformat(current_timestamp_obj.replace('Z', '+00:00'))
+            else:
+                current_dt = current_timestamp_obj
+            
+            if current_dt.tzinfo is None:
+                current_dt = current_dt.replace(tzinfo=timezone.utc)
+            
+            current_date = current_dt.date()
+            
+            for days_back in range(1, max_days_back + 1):
+                check_date = current_date - timedelta(days=days_back)
+                
+                # OHLCVData에서 일봉 데이터 조회 (1d 간격)
+                # /api/v1/assets/price/{asset_identifier} 엔드포인트와 동일한 로직
+                ohlcv_query = postgres_db.query(
+                    OHLCVData.timestamp_utc,
+                    OHLCVData.close_price
+                ).filter(
+                    OHLCVData.asset_id == asset_id
+                    # data_interval 필터링 제거 - 모든 일봉 데이터 조회 (주말/월말 포함)
+                ).filter(
+                    OHLCVData.timestamp_utc <= check_date  # check_date 이전 또는 같은 날짜
+                ).filter(
+                    OHLCVData.timestamp_utc < current_dt  # 현재 timestamp보다 이전인 데이터만
+                ).order_by(
+                    desc(OHLCVData.timestamp_utc)
+                ).limit(1)
+                
+                ohlcv_data = ohlcv_query.first()
+                
+                if ohlcv_data and ohlcv_data.close_price:
+                    try:
+                        price = float(ohlcv_data.close_price)
+                        if price > 0:
+                            logger.info(
+                                f"[CHANGE_CALC] Found previous day last price from OHLCVData: {price} "
+                                f"for date {check_date} (days_back={days_back}), "
+                                f"timestamp={ohlcv_data.timestamp_utc}, asset_id={asset_id}"
+                            )
+                            return price
+                    except (ValueError, TypeError):
+                        continue
+                else:
+                    logger.info(
+                        f"[CHANGE_CALC] No OHLCVData found for date {check_date} (days_back={days_back}), "
+                        f"asset_id={asset_id}, current_dt={current_dt}"
+                    )
+            
+            logger.warning(f"No previous day last price found in OHLCVData for asset_id={asset_id}, current_date={current_date}")
+            return None
+        
         # change_amount, change_percent 계산 로직
         processed_quotes = []
         for quote in quotes:
@@ -400,77 +560,64 @@ async def get_realtime_quotes_delay_price_postgres(
                 "timestamp_utc": quote.timestamp_utc.isoformat() if quote.timestamp_utc else None,
                 "price": float(quote.price) if quote.price else None,
                 "volume": float(quote.volume) if quote.volume else None,
-                "change_amount": float(quote.change_amount) if quote.change_amount else None,
-                "change_percent": float(quote.change_percent) if quote.change_percent else None,
+                "change_amount": None,  # 항상 재계산
+                "change_percent": None,  # 항상 재계산
                 "data_source": quote.data_source,
                 "data_interval": quote.data_interval
             }
             
-            # change_amount 또는 change_percent가 null인 경우 이전일 마지막 데이터로 계산
-            if quote.price and (quote.change_amount is None or quote.change_percent is None):
+            # 모든 경우에 이전일 마지막 데이터와 비교하여 change_amount, change_percent 계산/업데이트
+            if quote.price:
                 current_price = float(quote.price)
                 current_timestamp = quote.timestamp_utc
                 
                 if current_timestamp:
-                    # 현재 타임스탬프의 날짜 계산 (UTC 기준)
+                    # 현재 timestamp를 datetime 객체로 변환
                     if isinstance(current_timestamp, datetime):
-                        current_date = current_timestamp.date()
+                        current_dt = current_timestamp
+                    elif isinstance(current_timestamp, str):
+                        current_dt = datetime.fromisoformat(current_timestamp.replace('Z', '+00:00'))
                     else:
-                        # 문자열인 경우 파싱
-                        if isinstance(current_timestamp, str):
-                            current_timestamp = datetime.fromisoformat(current_timestamp.replace('Z', '+00:00'))
-                            current_date = current_timestamp.date()
-                        else:
-                            current_date = current_timestamp
+                        current_dt = current_timestamp
                     
-                    previous_date = current_date - timedelta(days=1)
+                    if current_dt.tzinfo is None:
+                        current_dt = current_dt.replace(tzinfo=timezone.utc)
                     
-                    # 이전일 마지막 데이터 조회 (같은 asset_id, data_interval, data_source)
-                    # 전날 날짜 범위 내의 가장 마지막 데이터
-                    previous_day_start = datetime.combine(previous_date, dt_time.min)
-                    if previous_day_start.tzinfo is None:
-                        previous_day_start = previous_day_start.replace(tzinfo=timezone.utc)
+                    # 이전일 마지막 데이터 찾기 (주말/휴일 고려)
+                    # 현재 quote의 data_source를 사용 (target_data_source가 None일 수 있음)
+                    quote_data_source = target_data_source if target_data_source else quote.data_source
+                    logger.info(
+                        f"[CHANGE_CALC] Starting search for previous day price: "
+                        f"asset_id={asset_id}, current_timestamp={current_dt}, "
+                        f"data_interval={data_interval}, data_source={quote_data_source}"
+                    )
+                    previous_price = find_previous_day_last_price(
+                        current_dt, asset_id, data_interval, quote_data_source
+                    )
+                    logger.info(
+                        f"[CHANGE_CALC] Previous price result: {previous_price} "
+                        f"for asset_id={asset_id}, current_price={current_price}"
+                    )
                     
-                    # 전날의 끝 (다음날 00:00:00 미만)
-                    next_day = previous_date + timedelta(days=1)
-                    previous_day_end = datetime.combine(next_day, dt_time.min)
-                    if previous_day_end.tzinfo is None:
-                        previous_day_end = previous_day_end.replace(tzinfo=timezone.utc)
-                    
-                    # 이전일 데이터 조회 쿼리 구성
-                    previous_day_query = postgres_db.query(RealtimeQuoteTimeDelay)\
-                        .filter(
-                            and_(
-                                RealtimeQuoteTimeDelay.asset_id == asset_id,
-                                RealtimeQuoteTimeDelay.data_interval == data_interval,
-                                RealtimeQuoteTimeDelay.timestamp_utc >= previous_day_start,
-                                RealtimeQuoteTimeDelay.timestamp_utc < previous_day_end
-                            )
-                        )
-                    
-                    # data_source가 제공된 경우에만 필터링
-                    if target_data_source:
-                        previous_day_query = previous_day_query.filter(
-                            RealtimeQuoteTimeDelay.data_source == target_data_source
-                        )
-                    
-                    previous_day_last = previous_day_query\
-                        .order_by(desc(RealtimeQuoteTimeDelay.timestamp_utc))\
-                        .first()
-                    
-                    if previous_day_last and previous_day_last.price:
-                        previous_price = float(previous_day_last.price)
+                    if previous_price and previous_price > 0:
+                        # change_amount 계산 (항상 재계산)
+                        calculated_change_amount = current_price - previous_price
+                        quote_dict["change_amount"] = round(calculated_change_amount, 8)
                         
-                        if previous_price > 0:
-                            # change_amount 계산
-                            if quote.change_amount is None:
-                                calculated_change_amount = current_price - previous_price
-                                quote_dict["change_amount"] = round(calculated_change_amount, 8)
-                            
-                            # change_percent 계산
-                            if quote.change_percent is None:
-                                calculated_change_percent = ((current_price - previous_price) / previous_price) * 100
-                                quote_dict["change_percent"] = round(calculated_change_percent, 4)
+                        # change_percent 계산 (항상 재계산)
+                        calculated_change_percent = ((current_price - previous_price) / previous_price) * 100
+                        quote_dict["change_percent"] = round(calculated_change_percent, 4)
+                        logger.info(
+                            f"[CHANGE_CALC] Updated change_amount={quote_dict['change_amount']}, "
+                            f"change_percent={quote_dict['change_percent']}"
+                        )
+                    else:
+                        # 이전일 데이터를 찾지 못한 경우 로그
+                        logger.warning(
+                            f"[CHANGE_CALC] Could not find previous day price for asset_id={asset_id}, "
+                            f"current_timestamp={current_dt}, data_interval={data_interval}, "
+                            f"data_source={quote_data_source}, current_price={current_price}"
+                        )
             
             processed_quotes.append(quote_dict)
         

@@ -96,6 +96,41 @@ const nextConfig: NextConfig = {
   },
   // Cross-origin 요청 허용
   allowedDevOrigins: ['firemarkets.net', 'www.firemarkets.net', '.firemarkets.net'],
+  // 이미지 호스트 설정
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'static2.finnhub.io',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '**.finnhub.io',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '**.firemarkets.net',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '**.s3.amazonaws.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '**.cloudfront.net',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 's2.coinmarketcap.com',
+        pathname: '/**',
+      },
+    ],
+  },
   // 라이브러리 경로 처리
   async rewrites() {
     // 환경 변수에서 백엔드 URL 가져오기

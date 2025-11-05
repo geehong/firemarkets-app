@@ -168,7 +168,7 @@ export class ApiClient {
     const search = new URLSearchParams()
     assetIdentifiers.forEach(id => search.append('asset_identifier', id))
     search.append('data_interval', '15m')
-    search.append('days', '1')
+    search.append('days', '1') // 1일치 데이터 (24시간 * 4 = 96개 포인트)
     if (dataSource) {
       search.append('data_source', dataSource)
     }

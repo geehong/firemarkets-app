@@ -468,6 +468,7 @@ class TreemapLiveItem(BaseModel):
     market_status: str
     realtime_updated_at: Optional[datetime] = None
     daily_data_updated_at: Optional[datetime] = None
+    volume: Optional[float] = None
 
 class TreemapLiveResponse(BaseModel):
     data: List[TreemapLiveItem]

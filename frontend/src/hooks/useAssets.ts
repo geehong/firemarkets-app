@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useQuery, UseQueryOptions } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api'
 
@@ -279,28 +279,28 @@ export const useTreemapLiveData = (
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<any>(null)
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const result = await apiClient.getTreemapLiveData(params)
-        setData(result)
-      } catch (err) {
-        setError(err)
-      } finally {
-        setLoading(false)
-      }
+  const fetchData = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await apiClient.getTreemapLiveData(params)
+      setData(result)
+    } catch (err) {
+      setError(err)
+    } finally {
+      setLoading(false)
     }
+  }, [JSON.stringify(params)])
 
+  useEffect(() => {
     fetchData()
     
     // 15분마다 자동 새로고침
     const interval = setInterval(fetchData, 15 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [JSON.stringify(params)])
+  }, [fetchData])
 
-  return { data, loading, error }
+  return { data, loading, error, refetch: fetchData }
 }
 
 // Assets List with Filters Hook (for overviews migration)

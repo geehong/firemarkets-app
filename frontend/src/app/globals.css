@@ -2,6 +2,34 @@
 
 @variant dark (&:is(.dark *));
 
+/* ag-grid sparkline table styles */
+@media screen and (max-width: 720px) {
+  div.ag-theme-quartz,
+  div.ag-theme-quartz-dark {
+    --ag-font-size: 12px;
+    --ag-grid-size: 6px;
+  }
+}
+
+.ag-theme-quartz .ag-value-change-value-highlight,
+.ag-theme-quartz-dark .ag-value-change-value-highlight {
+  padding-left: 6px;
+  padding-right: 6px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  border-radius: 12px;
+  margin-left: 4px;
+}
+
+.ag-right-aligned-cell {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.ticker-name {
+  opacity: 0.8;
+}
+
 @theme {
   --font-*: initial;
   --font-outfit: Outfit, sans-serif;
