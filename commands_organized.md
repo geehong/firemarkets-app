@@ -85,6 +85,20 @@ fire_markets_websocket_orchestrator   sha256:7fa8176180184081f032a0d727a26594ece
 nginx-proxy-manager                   jc21/nginx-proxy-manager:latest                                           "/init"                   nginx-proxy-manager      47 hours ago     Up 25 hours             0.0.0.0:80-81->80-81/tcp, [::]:80-81->80-81/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp
 portainer                             portainer/portainer-ce:latest                                             "/portainer"              portainer                47 hours ago     Up 47 hours             0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp, 0.0.0.0:9000->9000/tcp, [::]:9000->9000/tcp, 0.0.0.0:9443->9443/tcp, [::]:9443->9443/tcp
 
+docker-compose --profile processing stop scheduler && docker-compose --profile processing rm -f scheduler && docker-compose --profile processing up -d --build scheduler
+
+docker-compose --profile processing stop data_processor && docker-compose --profile processing rm -f data_processor && docker-compose --profile processing up -d --build data_processor
+
+docker-compose --profile processing stop websocket_broadcaster && docker-compose --profile processing rm -f websocket_broadcaster && docker-compose --profile processing up -d --build websocket_broadcaster
+
+docker-compose --profile processing stop websocket_orchestrator && docker-compose --profile processing rm -f websocket_orchestrator && docker-compose --profile processing up -d --build websocket_orchestrator
+
+
+docker-compose --profile processing stop backend && docker-compose --profile processing rm -f backend && docker-compose --profile processing up -d --build backend
+
+docker-compose --profile processing stop frontend && docker-compose --profile processing rm -f frontend && docker-compose --profile processing up -d --build frontend
+
+docker-compose --profile processing stop backend && docker-compose --profile processing rm -f backend && docker-compose --profile processing up -d --build backend
 
 docker-compose logs data_processor --tail 50 -f
 docker-compose logs websocket_orchestrator --tail 50 -f
@@ -161,15 +175,23 @@ docker-compose --profile 8001 up -d websocket_orchestrator
 ```bash
 docker-compose --profile processing stop data_processor && docker-compose --profile processing rm -f data_processor && docker-compose --profile processing up -d --build data_processor
 
+docker-compose --profile processing stop scheduler && docker-compose --profile processing rm -f scheduler && docker-compose --profile processing up -d --build scheduler
+
+docker-compose --profile processing stop backend && docker-compose --profile processing rm -f backend && docker-compose --profile processing up -d --build backend
+
+docker-compose --profile processing stop backend && docker-compose --profile processing rm -f backend && docker-compose --profile processing up -d --build backend
+
+docker-compose --profile processing stop backend && docker-compose --profile processing rm -f backend && docker-compose --profile processing up -d --build backend
+
 docker-compose down data_processor && docker-compose build data_processor && docker-compose up -d data_processor
-docker-compose down scheduler && docker-compose build scheduler && docker-compose up -d scheduler
+docker-compose down scheduler && docker-compose build data_processormpose up -d scheduler
 docker-compose down backend && docker-compose build backend && docker-compose up -d backend
 
 docker-compose down websocket_orchestrator && docker-compose build websocket_orchestrator && docker-compose up -d websocket_orchestrator
 
 docker-compose --profile processing down && docker-compose --profile processing up -d --no-deps
 
-docker-compose --profile processing down data_processor && docker-compose --profile processing up -d --build data_processor
+docker-compose --profile processing down scheduler && docker-compose --profile processing up -d --build scheduler
 
 docker-compose --profile processing down data_processor && docker-compose --profile processing up -d --build data_processor
 

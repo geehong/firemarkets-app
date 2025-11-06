@@ -36,6 +36,7 @@ class StockCollector(BaseCollector):
         super().__init__(db, config_manager, api_manager, redis_queue_manager)
         self.scheduled_data_types = None  # 스케줄에서 지정된 데이터 타입
         self.client_priority = None  # 스케줄에서 지정된 클라이언트 우선순위
+        self.use_fmp_clients = False  # FMP 전용 클라이언트 사용 여부 (일요일 전용)
 
     async def _collect_data(self) -> Dict[str, Any]:
         """
@@ -122,7 +123,7 @@ class StockCollector(BaseCollector):
             task_types = []
             
             if collect_profile:
-                tasks.append(self.api_manager.get_company_profile(asset_id=asset_id))
+                tasks.append(self.api_manager.get_company_profile(asset_id=asset_id, use_fmp_clients=self.use_fmp_clients))
                 task_types.append("profile")
             
             if collect_financials:

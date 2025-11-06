@@ -196,81 +196,45 @@ const ChangePercentWidget = ({
     (a.ticker || a.asset_identifier) === ticker
   );
   
-  // Mini Widget (WebSocket)
-  const { latestPrice: realtimePrice, priceHistory } = useRealtimePrices(ticker);
-  
-  // 전일 클로즈 가격 계산 (MiniPriceChart.tsx 로직 참고)
-  const prevClosePrice = useMemo(() => {
-    if (useMiniWidget && priceHistory && priceHistory.length > 0) {
-      // priceHistory에서 전일 클로즈 가격 찾기
-      const now = new Date();
-      const todayStartUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0);
-      
-      // 시간순으로 정렬 (오래된 것부터)
-      const sortedHistory = [...priceHistory].sort((a, b) => 
-        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-      );
-      
-      // 오늘 시작 시간 이전의 마지막 가격 찾기
-      for (let i = sortedHistory.length - 1; i >= 0; i--) {
-        const priceTime = new Date(sortedHistory[i].timestamp).getTime();
-        if (priceTime < todayStartUtc) {
-          return sortedHistory[i].price;
-        }
-      }
-      
-      // 전일 데이터가 없으면 가장 오래된 가격 사용
-      if (sortedHistory.length > 0) {
-        return sortedHistory[0].price;
-      }
-    }
-    
-    return null;
-  }, [useMiniWidget, priceHistory]);
+  // Mini Widget (WebSocket) - changePercent를 직접 사용
+  const { latestPrice: realtimePrice, isConnected } = useRealtimePrices(ticker);
   
   // 현재 가격
   const currentPrice = useMiniWidget 
     ? (realtimePrice?.price || treemapAsset?.current_price || 0)
     : (treemapAsset?.current_price || 0);
   
-  // 변경률 계산
-  let changePercent = 0;
+  // 변경률: WebSocket에서 받은 changePercent 우선 사용
+  // WebSocket에 연결되어 있고 가격을 받았으면 changePercent가 계산될 때까지 기다림
+  let changePercent: number | null = null;
   
-  if (!useMiniWidget && treemapAsset) {
-    // treemap_live_view에서 price_change_percentage_24h 사용
-    changePercent = treemapAsset.price_change_percentage_24h || 0;
-  } else if (useMiniWidget) {
-    // WebSocket 사용 시: WebSocket 데이터가 있으면 계산, 없으면 treemap_live_view 사용
-    if (realtimePrice?.price && currentPrice > 0) {
-      // WebSocket 데이터가 있는 경우 전일 클로즈 가격과 비교
-      if (prevClosePrice !== null && prevClosePrice > 0) {
-        // MiniPriceChart.tsx와 동일한 로직
-        const diff = currentPrice - prevClosePrice;
-        changePercent = (diff / prevClosePrice) * 100;
-      } else if (priceHistory && priceHistory.length > 0) {
-        // priceHistory가 있으면 첫 번째와 마지막 비교
-        const sortedHistory = [...priceHistory].sort((a, b) => 
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-        );
-        const firstPrice = sortedHistory[0]?.price || 0;
-        if (firstPrice > 0) {
-          changePercent = ((currentPrice - firstPrice) / firstPrice) * 100;
-        }
-      } else if (treemapAsset?.price_change_percentage_24h !== null && treemapAsset?.price_change_percentage_24h !== undefined) {
-        // WebSocket 데이터가 없으면 treemap_live_view의 price_change_percentage_24h 사용
-        changePercent = treemapAsset.price_change_percentage_24h;
-      }
-    } else if (treemapAsset?.price_change_percentage_24h !== null && treemapAsset?.price_change_percentage_24h !== undefined) {
-      // WebSocket 가격이 없으면 treemap_live_view의 price_change_percentage_24h 사용
-      changePercent = treemapAsset.price_change_percentage_24h;
+  // WebSocket 연결 상태 확인 (useMiniWidget이든 아니든 WebSocket 연결되어 있으면 사용)
+  const isWebSocketActive = isConnected && realtimePrice?.price !== undefined && realtimePrice?.price !== null;
+  
+  if (useMiniWidget || isWebSocketActive) {
+    // WebSocket 사용 시
+    // changePercent가 명시적으로 제공되면 사용 (0도 유효한 값)
+    if (realtimePrice?.changePercent !== undefined && realtimePrice.changePercent !== null) {
+      // WebSocket에서 받은 changePercent 사용 (한국시간 기준 전일 종가 대비 계산된 값)
+      changePercent = realtimePrice.changePercent;
+    } else if (isWebSocketActive) {
+      // WebSocket에 연결되어 있고 가격을 받았지만 changePercent가 아직 계산 중인 경우
+      // treemap_live_view 값 절대 사용하지 않음 (계산될 때까지 대기)
+      changePercent = null;
+    } else {
+      // WebSocket 연결 안 됨 또는 가격 데이터 없음 → treemap_live_view 사용
+      changePercent = treemapAsset?.price_change_percentage_24h ?? null;
     }
+  } else {
+    // WebSocket 미사용 시 → treemap_live_view 사용
+    changePercent = treemapAsset?.price_change_percentage_24h ?? null;
+  }
+  
+  if (currentPrice === 0 || changePercent === null) {
+    return <span className="text-gray-400">-</span>;
   }
   
   const isPositive = changePercent >= 0;
-  
-  if (currentPrice === 0) {
-    return <span className="text-gray-400">-</span>;
-  }
   
   return (
     <Badge size="sm" color={isPositive ? "success" : "error"}>

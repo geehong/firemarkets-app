@@ -119,9 +119,23 @@ const RealtimePriceWidget: React.FC<RealtimePriceWidgetProps> = ({
         </span>
       </div>
 
-      {/* 가격 */}
-      <div className={`${currentSize.price} ${currentVariant.price} mb-2`}>
-        ${latestPrice?.price?.toFixed(2) || 'N/A'}
+      {/* 가격 및 일일 증감율 */}
+      <div className="mb-2">
+        <div className={`${currentSize.price} ${currentVariant.price}`}>
+          ${latestPrice?.price?.toFixed(2) || 'N/A'}
+        </div>
+        {latestPrice?.changePercent !== undefined && latestPrice.changePercent !== null && (
+          <div className={`${currentSize.volume} mt-1`}>
+            <span className={`
+              font-medium
+              ${latestPrice.changePercent >= 0 ? 'text-green-600' : 'text-red-600'}
+            `}>
+              {latestPrice.changePercent >= 0 ? '+' : ''}
+              {latestPrice.changePercent.toFixed(2)}%
+            </span>
+            <span className="text-gray-500 text-xs ml-1">(24h)</span>
+          </div>
+        )}
       </div>
 
       {/* 볼륨 */}
@@ -142,6 +156,9 @@ const RealtimePriceWidget: React.FC<RealtimePriceWidgetProps> = ({
 };
 
 export default RealtimePriceWidget;
+
+
+
 
 
 

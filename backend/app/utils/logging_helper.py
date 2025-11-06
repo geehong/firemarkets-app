@@ -568,18 +568,22 @@ class ApiLoggingHelper:
         """API 호출 시작 로그"""
         self.logger.info(f"API call started: {api_name} for {ticker}")
     
-    def log_api_call_success(self, api_name: str, ticker: str, data_points: int = 0):
+    def log_api_call_success(self, api_name: str, ticker: str, data_points: int = 0, endpoint: str = None):
         """API 호출 성공 로그 - PostgreSQL에만 저장"""
         try:
             from app.core.database import SessionLocal
             from app.models.asset import ApiCallLog
+            
+            # endpoint가 제공되지 않으면 기본값 사용 (하위 호환성)
+            if endpoint is None:
+                endpoint = f'OHLCV data collection for {ticker}'
             
             # PostgreSQL에만 저장 (SessionLocal이 이미 PostgreSQL을 사용)
             db = SessionLocal()
             try:
                 log_entry = ApiCallLog(
                     api_name=api_name,
-                    endpoint=f'OHLCV data collection for {ticker}',
+                    endpoint=endpoint,
                     asset_ticker=ticker,
                     status_code=200,
                     response_time_ms=0,  # 실제 응답 시간 측정 필요시 추가
@@ -589,7 +593,7 @@ class ApiLoggingHelper:
                 )
                 db.add(log_entry)
                 db.commit()
-                self.logger.info(f"[ApiCallLog] PostgreSQL 저장 완료: {api_name} for {ticker}")
+                self.logger.info(f"[ApiCallLog] PostgreSQL 저장 완료: {api_name} for {ticker} ({endpoint})")
             except Exception as e:
                 self.logger.error(f"[ApiCallLog] PostgreSQL 저장 실패: {e}")
                 db.rollback()
@@ -599,18 +603,22 @@ class ApiLoggingHelper:
         except Exception as e:
             self.logger.error(f"Failed to log API call success: {e}")
     
-    def log_api_call_failure(self, api_name: str, ticker: str, error: Exception):
+    def log_api_call_failure(self, api_name: str, ticker: str, error: Exception, endpoint: str = None):
         """API 호출 실패 로그 - PostgreSQL에만 저장"""
         try:
             from app.core.database import SessionLocal
             from app.models.asset import ApiCallLog
+            
+            # endpoint가 제공되지 않으면 기본값 사용 (하위 호환성)
+            if endpoint is None:
+                endpoint = f'OHLCV data collection for {ticker}'
             
             # PostgreSQL에만 저장 (SessionLocal이 이미 PostgreSQL을 사용)
             db = SessionLocal()
             try:
                 log_entry = ApiCallLog(
                     api_name=api_name,
-                    endpoint=f'OHLCV data collection for {ticker}',
+                    endpoint=endpoint,
                     asset_ticker=ticker,
                     status_code=500,  # 일반적인 에러 코드
                     response_time_ms=0,
@@ -620,7 +628,7 @@ class ApiLoggingHelper:
                 )
                 db.add(log_entry)
                 db.commit()
-                self.logger.error(f"[ApiCallLog] PostgreSQL 저장 완료: {api_name} for {ticker}, error: {error}")
+                self.logger.error(f"[ApiCallLog] PostgreSQL 저장 완료: {api_name} for {ticker} ({endpoint}), error: {error}")
             except Exception as e:
                 self.logger.error(f"[ApiCallLog] PostgreSQL 저장 실패: {e}")
                 db.rollback()

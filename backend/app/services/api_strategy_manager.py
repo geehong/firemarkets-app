@@ -116,7 +116,7 @@ class ApiStrategyManager:
             CoinGeckoClient(),     # 2순위
             BinanceClient(),       # 3순위
             CoinbaseClient(),      # 4순위
-            FMPClient(),           # 5순위
+            #FMPClient(),           # 5순위
             TwelveDataClient()     # 6순위
         ]
         
@@ -581,14 +581,21 @@ class ApiStrategyManager:
             self.logger.info(f"Using commodity OHLCV clients for {ticker} (asset_type: {asset_type})")
         else:
             # 주식, ETF, 지수, 통화 등 - 인터벌에 따라 클라이언트 선택
+            # ⚠️ 일반 주식은 절대 FMP를 사용하지 않음 (commodity_ohlcv_clients는 commodity 전용)
             if interval in ["4h", "1h", "30m", "15m", "5m", "1m"]:
                 # 인트라데이 데이터 (4h, 1h 등)
                 clients_to_use = self.ohlcv_intraday_clients
-                self.logger.info(f"Using intraday OHLCV clients for {ticker} (interval: {interval})")
+                self.logger.info(f"Using intraday OHLCV clients for {ticker} (asset_type: {asset_type}, interval: {interval})")
             else:
                 # 일봉 데이터 (1d, 1w, 1m 등)
                 clients_to_use = self.ohlcv_day_clients
-                self.logger.info(f"Using daily OHLCV clients for {ticker} (interval: {interval})")
+                self.logger.info(f"Using daily OHLCV clients for {ticker} (asset_type: {asset_type}, interval: {interval})")
+            
+            # 보안 체크: 일반 주식이 FMP로 수집되는 것을 방지
+            if asset_type and 'stock' in asset_type.lower():
+                clients_to_use = [c for c in clients_to_use if self._get_api_name(c) != 'fmp']
+                if any(self._get_api_name(c) == 'fmp' for c in self.commodity_ohlcv_clients):
+                    self.logger.warning(f"⚠️ Prevented FMP usage for stock {ticker} (asset_type: {asset_type}). FMP is only for commodities.")
         
         # 활성화된 클라이언트만 필터링
         active_clients = [client for client in clients_to_use if client is not None]
@@ -787,9 +794,13 @@ class ApiStrategyManager:
         """
         return await self.get_ohlcv(ticker, interval, limit, asset_type='stock')
     
-    async def get_company_profile(self, asset_id: int) -> Optional[Dict[str, Any]]:
+    async def get_company_profile(self, asset_id: int, use_fmp_clients: bool = False) -> Optional[Dict[str, Any]]:
         """
         기업 프로필 데이터를 여러 API에서 우선순위대로 시도하여 가져옵니다.
+        
+        Args:
+            asset_id: 자산 ID
+            use_fmp_clients: True이면 stock_profiles_fmp_clients를 사용 (일요일 전용)
         """
         # asset_id로 ticker 조회
         from app.models.asset import Asset
@@ -803,6 +814,10 @@ class ApiStrategyManager:
             ticker = asset.ticker
         finally:
             db.close()
+        
+        # 사용할 클라이언트 그룹 선택
+        clients_to_use = self.stock_profiles_fmp_clients if use_fmp_clients else self.stock_profiles_clients
+        self.logger.info(f"Using {'FMP clients' if use_fmp_clients else 'standard clients'} for company profile: {ticker}")
         
         # stock_profiles_clients 사용 (병렬 실행)
         import asyncio
@@ -841,22 +856,25 @@ class ApiStrategyManager:
                 return None
         
         # 모든 클라이언트를 병렬로 실행
-        results = await asyncio.gather(*[fetch_from_client(client) for client in self.stock_profiles_clients], return_exceptions=True)
+        results = await asyncio.gather(*[fetch_from_client(client) for client in clients_to_use], return_exceptions=True)
         
-        # 모든 성공한 결과를 수집 (우선순위: Polygon > Finnhub > TwelveData)
+        # 모든 성공한 결과를 수집 (우선순위: FMP 클라이언트 사용 시 FMP 우선, 아니면 Polygon > Finnhub > TwelveData)
         successful_results = []
         for i, result in enumerate(results):
             if result is not None and not isinstance(result, Exception):
-                client_name = self.stock_profiles_clients[i].__class__.__name__
+                client_name = clients_to_use[i].__class__.__name__
                 successful_results.append((client_name, result))
         
         if not successful_results:
             self.logger.error(f"All API clients failed to fetch company profile for {ticker}")
             return None
         
-        # 우선순위에 따라 병합 (Polygon > Finnhub > TwelveData)
+        # 우선순위에 따라 병합 (FMP 클라이언트 사용 시 FMP 우선, 아니면 Polygon > Finnhub > TwelveData)
         merged_data = {}
-        priority_order = ['PolygonClient', 'FinnhubClient', 'TwelveDataClient']
+        if use_fmp_clients:
+            priority_order = ['FMPClient']
+        else:
+            priority_order = ['PolygonClient', 'FinnhubClient', 'TwelveDataClient']
         
         for priority_client in priority_order:
             for client_name, result in successful_results:

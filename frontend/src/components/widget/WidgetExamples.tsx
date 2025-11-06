@@ -12,7 +12,7 @@ import {
 
 const WidgetExamples: React.FC = () => {
   // 예제 데이터 - 성능 최적화를 위해 샘플만 표시
-  const cryptoTickers = ['BTCUSDT', 'ETHUSDT', 'USDTUSDT', 'XRPUSDT', 'BNBUSDT', 'SOLUSDT', 'TRXUSDT', 'DOGEUSDT', 'ADAUSDT', 'LINKUSDT'];
+  const cryptoTickers = ['BTCUSDT', 'ETHUSDT', 'USDTUSDT', 'XRPUSDT', 'BNB', 'SOLUSDT', 'TRXUSDT', 'DOGEUSDT', 'ADAUSDT', 'LINKUSDT'];
 
   return (
     <div className="p-6 space-y-8">
@@ -224,7 +224,7 @@ const WidgetExamples: React.FC = () => {
             showTimestamp={false}
           />
           <RealtimePriceWidget
-            ticker="BNBUSDT"
+            ticker="BNB"
             variant="crypto"
             size="medium"
             showVolume={true}
@@ -248,7 +248,7 @@ const WidgetExamples: React.FC = () => {
           <div>
             <h3 className="text-lg font-medium text-gray-600 mb-3">Single Group Grid</h3>
             <PriceWidgetGrid
-              tickers={['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT']}
+              tickers={['BTCUSDT', 'ETHUSDT', 'BNB', 'XRPUSDT']}
               variant="crypto"
               size="medium"
               columns={4}
@@ -261,7 +261,7 @@ const WidgetExamples: React.FC = () => {
       <section>
         <h2 className="text-2xl font-semibold text-gray-700 mb-4">Mini Widgets (샘플)</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-          {['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT'].map((ticker) => (
+          {['BTCUSDT', 'ETHUSDT', 'BNB', 'XRPUSDT'].map((ticker) => (
             <MiniPriceWidget
               key={ticker}
               ticker={ticker}
@@ -278,7 +278,7 @@ const WidgetExamples: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <RealtimeQuotesPriceWidget assetIdentifier="BTCUSDT" />
           <RealtimeQuotesPriceWidget assetIdentifier="ETHUSDT" />
-          <RealtimeQuotesPriceWidget assetIdentifier="BNBUSDT" />
+          <RealtimeQuotesPriceWidget assetIdentifier="BNB" />
         </div>
       </section>
 

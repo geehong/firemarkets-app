@@ -247,6 +247,7 @@ class SchedulerService:
                                                 "crypto_ohlcv_clients": ["OHLCV"],
                                                 "commodity_ohlcv_clients": ["OHLCV"],
                                                 "stock_profiles_clients": ["StockProfile"],
+                                                "stock_profiles_fmp_clients": ["StockProfile"],  # ⭐ FMP 전용 프로필 수집 (일요일)
                                                 "crypto_clients": ["CryptoInfo"],
                                                 "onchain_clients": ["Onchain"],
                                                 "stock_financials_clients": [],
@@ -270,6 +271,33 @@ class SchedulerService:
                                                     api_manager=api_manager,
                                                     redis_queue_manager=self.redis_queue_manager,
                                                 )
+                                                
+                                                # StockCollector인 경우 스케줄 그룹에 따라 데이터 타입 제한 설정
+                                                if collector_class.__name__ == "StockCollector" and hasattr(collector_instance, 'set_schedule_config'):
+                                                    if group_name == "stock_profiles_clients":
+                                                        # 프로필만 수집
+                                                        collector_instance.set_schedule_config(scheduled_data_types=["profile"])
+                                                        self.logger.info(f"Setting scheduled_data_types=['profile'] for {group_name}")
+                                                    elif group_name == "stock_profiles_fmp_clients":
+                                                        # FMP 프로필만 수집
+                                                        collector_instance.set_schedule_config(scheduled_data_types=["profile"])
+                                                        collector_instance.use_fmp_clients = True
+                                                        self.logger.info(f"Setting scheduled_data_types=['profile'] and use_fmp_clients=True for {group_name}")
+                                                    elif group_name == "stock_financials_clients":
+                                                        # 재무만 수집
+                                                        collector_instance.set_schedule_config(scheduled_data_types=["financials"])
+                                                        self.logger.info(f"Setting scheduled_data_types=['financials'] for {group_name}")
+                                                    elif group_name == "stock_analyst_estimates_clients":
+                                                        # 추정치만 수집
+                                                        collector_instance.set_schedule_config(scheduled_data_types=["estimates"])
+                                                        self.logger.info(f"Setting scheduled_data_types=['estimates'] for {group_name}")
+                                                
+                                                # stock_profiles_fmp_clients 그룹인 경우 FMP 클라이언트 사용 설정 (위에서 이미 처리됨)
+                                                if group_name == "stock_profiles_fmp_clients" and hasattr(collector_instance, 'use_fmp_clients'):
+                                                    if not collector_instance.use_fmp_clients:  # 위에서 설정하지 않은 경우에만
+                                                        collector_instance.use_fmp_clients = True
+                                                        self.logger.info(f"Setting use_fmp_clients=True for {collector_instance.__class__.__name__}")
+                                                
                                                 tasks.append(collector_instance.collect_with_settings())
                                             if tasks:
                                                 loop.run_until_complete(asyncio.gather(*tasks))

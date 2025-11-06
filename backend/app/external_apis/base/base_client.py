@@ -76,19 +76,57 @@ class BaseAPIClient(ABC):
             end_time = datetime.now()
             response_time_ms = int((end_time - start_time).total_seconds() * 1000)
             
+            # endpoint 추론: api_name과 URL로부터 컨텍스트 파악
+            endpoint = self._infer_endpoint_from_api_name(api_name, url, ticker)
+            
             # ApiLoggingHelper 사용
             logging_helper = ApiLoggingHelper()
             
             if success:
                 # 성공 로그
-                logging_helper.log_api_call_success(api_name.lower(), ticker or "unknown")
+                logging_helper.log_api_call_success(api_name.lower(), ticker or "unknown", endpoint=endpoint)
             else:
                 # 실패 로그
                 error_exception = Exception(error_message) if error_message else Exception("Unknown error")
-                logging_helper.log_api_call_failure(api_name.lower(), ticker or "unknown", error_exception)
+                logging_helper.log_api_call_failure(api_name.lower(), ticker or "unknown", error_exception, endpoint=endpoint)
                 
         except Exception as e:
             logger.error(f"Error in API call logging: {e}")
+    
+    def _infer_endpoint_from_api_name(self, api_name: str, url: str, ticker: str = None) -> str:
+        """API 이름과 URL로부터 엔드포인트 컨텍스트를 추론합니다."""
+        api_lower = api_name.lower()
+        ticker_part = f" for {ticker}" if ticker else ""
+        
+        # 이름 기반 매핑
+        if 'profile' in api_lower:
+            return f"Company profile data{ticker_part}"
+        elif 'quote' in api_lower:
+            return f"Real-time quote data{ticker_part}"
+        elif 'ohlcv' in api_lower or 'historical' in api_lower or 'price' in api_lower:
+            return f"OHLCV data collection{ticker_part}"
+        elif 'financial' in api_lower or 'statement' in api_lower:
+            return f"Financial statements{ticker_part}"
+        elif 'estimate' in api_lower or 'analyst' in api_lower:
+            return f"Analyst estimates{ticker_part}"
+        elif 'etf' in api_lower:
+            return f"ETF information{ticker_part}"
+        elif 'crypto' in api_lower:
+            return f"Crypto information{ticker_part}"
+        elif 'onchain' in api_lower or 'metric' in api_lower:
+            return f"Onchain metrics{ticker_part}"
+        elif 'technical' in api_lower or 'indicator' in api_lower:
+            return f"Technical indicators{ticker_part}"
+        else:
+            # URL로부터 추론
+            if '/profile' in url:
+                return f"Company profile data{ticker_part}"
+            elif '/quote' in url:
+                return f"Real-time quote data{ticker_part}"
+            elif '/historical' in url or '/chart' in url:
+                return f"OHLCV data collection{ticker_part}"
+            else:
+                return f"API data collection{ticker_part}"
     
     @backoff.on_exception(
         backoff.expo,

@@ -9,6 +9,7 @@ interface RealtimePrice {
   volume?: number
   timestamp: string
   dataSource: string
+  changePercent?: number // 일일 증감율 (%)
 }
 
 interface BroadcastData {
@@ -201,6 +202,68 @@ export const useSocket = () => {
   }
 }
 
+/**
+ * 전일 종가 가져오기 함수 (한국시간 기준)
+ * 
+ * 한국시간 기준으로 전일 날짜의 종가를 반환합니다.
+ * 예: 오늘이 2025-11-06이면 2025-11-05의 종가를 반환
+ */
+const fetchPreviousDayClose = async (assetIdentifier: string): Promise<number | null> => {
+  try {
+    const BACKEND_BASE = process.env.NEXT_PUBLIC_BACKEND_API_BASE || process.env.NEXT_PUBLIC_API_URL || 'https://backend.firemarkets.net/api/v1'
+    
+    // 한국시간 기준 전일 날짜 계산
+    const now = new Date()
+    // 한국시간으로 변환하여 날짜 문자열 가져오기
+    const koreanDateStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' }) // YYYY-MM-DD 형식
+    const koreanDate = new Date(koreanDateStr + 'T00:00:00+09:00')
+    const yesterday = new Date(koreanDate)
+    yesterday.setDate(yesterday.getDate() - 1)
+    const yesterdayStr = yesterday.toISOString().split('T')[0] // YYYY-MM-DD 형식
+    
+    // 최근 10개 일봉 데이터 조회 (전일 데이터 포함)
+    const url = `${BACKEND_BASE}/assets/price/${assetIdentifier}?data_interval=1d&limit=10`
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      signal: AbortSignal.timeout(5000), // 5초 타임아웃
+    })
+    
+    if (!response.ok) {
+      console.warn(`[useSocket] Failed to fetch previous day close for ${assetIdentifier}: ${response.status}`)
+      return null
+    }
+    
+    const data = await response.json()
+    
+    if (!data?.data || !Array.isArray(data.data) || data.data.length === 0) {
+      return null
+    }
+    
+    // 전일 날짜의 데이터 찾기
+    const previousDayData = data.data.find((item: any) => item.date === yesterdayStr)
+    
+    if (previousDayData?.value && previousDayData.value > 0) {
+      return previousDayData.value
+    }
+    
+    // 전일 날짜를 찾지 못한 경우, 가장 최근 데이터(전일일 가능성) 사용
+    // 데이터는 timestamp 내림차순으로 정렬되어 있으므로, 첫 번째가 가장 최근
+    const latestData = data.data[0]
+    if (latestData?.value && latestData.value > 0) {
+      return latestData.value
+    }
+    
+    return null
+  } catch (error) {
+    console.warn(`[useSocket] Error fetching previous day close for ${assetIdentifier}:`, error)
+    return null
+  }
+}
+
 // 실시간 가격 데이터 수신 훅
 export const useRealtimePrices = (assetIdentifier: string) => {
   const { socket, isConnected } = useSocket()
@@ -213,6 +276,10 @@ export const useRealtimePrices = (assetIdentifier: string) => {
   
   // 컴포넌트별 연결 카운트를 위한 Ref
   const connectionCountRef = useRef(0)
+  
+  // 일일 증감율 캐시 (최대 5분간 유지)
+  const changePercentCacheRef = useRef<Map<string, { value: number | null; timestamp: number }>>(new Map())
+  const CACHE_DURATION = 5 * 60 * 1000 // 5분
   
   // 전역 구독 관리 초기화 (클라이언트에서만)
   useEffect(() => {
@@ -255,27 +322,58 @@ export const useRealtimePrices = (assetIdentifier: string) => {
     }
 
     // 실시간 가격 데이터 수신
-    const handleRealtimeQuote = (data: any) => {
+    const handleRealtimeQuote = async (data: any) => {
       // 티커 매칭 (대소문자 무시, 공백 제거)
       const receivedTicker = String(data.ticker || '').trim().toUpperCase()
       const targetTicker = String(assetIdentifier || '').trim().toUpperCase()
       
       if (receivedTicker === targetTicker) {
-        setLatestPrice({
-          price: data.price,
+        const currentPrice = data.price
+        
+        // 캐시에서 일일 증감율 확인 (전일 종가 기준)
+        const cacheKey = `${assetIdentifier}_previous_close`
+        const cached = changePercentCacheRef.current.get(cacheKey)
+        const now = Date.now()
+        let changePercent: number | null = null
+        
+        // 캐시가 있고 유효한 경우 사용
+        if (cached && (now - cached.timestamp) < CACHE_DURATION) {
+          // 캐시된 전일 종가로 계산
+          const previousClose = cached.value
+          if (previousClose && previousClose > 0 && currentPrice > 0) {
+            changePercent = ((currentPrice - previousClose) / previousClose) * 100
+            changePercent = Math.round(changePercent * 100) / 100
+          }
+        } else {
+          // 캐시가 없거나 만료된 경우: 전일 종가 가져와서 계산
+          const previousClose = await fetchPreviousDayClose(assetIdentifier)
+          
+          if (previousClose && previousClose > 0 && currentPrice > 0) {
+            // 일일 증감율 계산
+            changePercent = ((currentPrice - previousClose) / previousClose) * 100
+            changePercent = Math.round(changePercent * 100) / 100
+            
+            // 전일 종가를 캐시에 저장 (다음 계산 시 사용)
+            changePercentCacheRef.current.set(cacheKey, {
+              value: previousClose,
+              timestamp: now,
+            })
+          }
+        }
+        
+        const priceData: RealtimePrice = {
+          price: currentPrice,
           volume: data.volume,
           timestamp: data.timestamp_utc,
           dataSource: data.data_source,
-        })
+          changePercent: changePercent ?? undefined,
+        }
+        
+        setLatestPrice(priceData)
 
         // 가격 히스토리 업데이트 (최근 100개만 유지)
         setPriceHistory(prev => {
-          const newHistory = [...prev, {
-            price: data.price,
-            volume: data.volume,
-            timestamp: data.timestamp_utc,
-            dataSource: data.data_source,
-          }]
+          const newHistory = [...prev, priceData]
           return newHistory.slice(-100)
         })
       }
@@ -302,6 +400,42 @@ export const useRealtimePrices = (assetIdentifier: string) => {
       socket.off('realtime_quote', handleRealtimeQuote)
     }
   }, [socket, assetIdentifier, isConnected])
+  
+  // 초기 로드 시 전일 종가 미리 가져오기 (별도 useEffect)
+  useEffect(() => {
+    if (!assetIdentifier || typeof window === 'undefined') return
+    
+    const loadPreviousDayClose = async () => {
+      const cacheKey = `${assetIdentifier}_previous_close`
+      const cached = changePercentCacheRef.current.get(cacheKey)
+      const now = Date.now()
+      
+      // 캐시가 없거나 만료된 경우에만 전일 종가 가져오기
+      if (!cached || (now - cached.timestamp) >= CACHE_DURATION) {
+        const previousClose = await fetchPreviousDayClose(assetIdentifier)
+        
+        if (previousClose && previousClose > 0) {
+          // 전일 종가를 캐시에 저장
+          changePercentCacheRef.current.set(cacheKey, {
+            value: previousClose,
+            timestamp: now,
+          })
+          
+          // latestPrice가 있으면 changePercent 계산하여 업데이트
+          setLatestPrice(prev => {
+            if (!prev || !prev.price) return prev
+            const changePercent = ((prev.price - previousClose) / previousClose) * 100
+            return {
+              ...prev,
+              changePercent: Math.round(changePercent * 100) / 100,
+            }
+          })
+        }
+      }
+    }
+    
+    loadPreviousDayClose()
+  }, [assetIdentifier])
 
   return {
     latestPrice,
