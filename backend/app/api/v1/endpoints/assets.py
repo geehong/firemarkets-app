@@ -691,6 +691,16 @@ def get_ohlcv_data(
                     aggregated.append(c)
 
                 aggregated = sorted(aggregated, key=lambda x: x.timestamp_utc)
+                
+                # change_percent 계산 (이전 월의 종가 대비)
+                prev_month_close = None
+                for agg in aggregated:
+                    if agg.change_percent is None and prev_month_close is not None and agg.close_price is not None and prev_month_close > 0:
+                        agg.change_percent = ((agg.close_price - prev_month_close) / prev_month_close) * 100
+                        agg.change_percent = round(agg.change_percent, 4)
+                    if agg.close_price is not None:
+                        prev_month_close = agg.close_price
+                
                 if limit:
                     aggregated = aggregated[-limit:]
                 ohlcv_data = aggregated
@@ -737,6 +747,16 @@ def get_ohlcv_data(
                         aggregated.append(c)
 
                     aggregated = sorted(aggregated, key=lambda x: x.timestamp_utc)
+                    
+                    # change_percent 계산 (이전 월의 종가 대비)
+                    prev_month_close = None
+                    for agg in aggregated:
+                        if agg.change_percent is None and prev_month_close is not None and agg.close_price is not None and prev_month_close > 0:
+                            agg.change_percent = ((agg.close_price - prev_month_close) / prev_month_close) * 100
+                            agg.change_percent = round(agg.change_percent, 4)
+                        if agg.close_price is not None:
+                            prev_month_close = agg.close_price
+                    
                     if limit:
                         aggregated = aggregated[-limit:]
                     ohlcv_data = aggregated
@@ -792,6 +812,16 @@ def get_ohlcv_data(
                     aggregated.append(c)
 
                 aggregated = sorted(aggregated, key=lambda x: x.timestamp_utc)
+                
+                # change_percent 계산 (이전 주의 종가 대비)
+                prev_week_close = None
+                for agg in aggregated:
+                    if agg.change_percent is None and prev_week_close is not None and agg.close_price is not None and prev_week_close > 0:
+                        agg.change_percent = ((agg.close_price - prev_week_close) / prev_week_close) * 100
+                        agg.change_percent = round(agg.change_percent, 4)
+                    if agg.close_price is not None:
+                        prev_week_close = agg.close_price
+                
                 if limit:
                     aggregated = aggregated[-limit:]
                 ohlcv_data = aggregated
@@ -839,6 +869,16 @@ def get_ohlcv_data(
                         aggregated.append(c)
 
                     aggregated = sorted(aggregated, key=lambda x: x.timestamp_utc)
+                    
+                    # change_percent 계산 (이전 주의 종가 대비)
+                    prev_week_close = None
+                    for agg in aggregated:
+                        if agg.change_percent is None and prev_week_close is not None and agg.close_price is not None and prev_week_close > 0:
+                            agg.change_percent = ((agg.close_price - prev_week_close) / prev_week_close) * 100
+                            agg.change_percent = round(agg.change_percent, 4)
+                        if agg.close_price is not None:
+                            prev_week_close = agg.close_price
+                    
                     if limit:
                         aggregated = aggregated[-limit:]
                     ohlcv_data = aggregated
@@ -848,19 +888,43 @@ def get_ohlcv_data(
             ohlcv_data = db_get_ohlcv_data(db, asset_id, start_date, end_date, data_interval, limit)
         
         # SQLAlchemy 모델을 Pydantic 스키마로 변환
+        # change_percent가 null인 경우 자동 계산 (일봉, 주봉, 월봉 모두 지원)
+        # 데이터를 시간순(오름차순)으로 정렬하여 change_percent 계산
+        ohlcv_data_sorted = sorted(ohlcv_data, key=lambda x: x.timestamp_utc)
+        
         ohlcv_data_points = []
-        for ohlcv in ohlcv_data:
+        prev_close_price = None  # 이전 종가 저장
+        
+        for i, ohlcv in enumerate(ohlcv_data_sorted):
+            current_close = float(ohlcv.close_price) if ohlcv.close_price else None
+            
+            # change_percent 계산: DB 값이 있으면 사용, 없으면 이전 종가 대비 계산
+            change_percent = None
+            if ohlcv.change_percent is not None:
+                change_percent = float(ohlcv.change_percent)
+            elif prev_close_price is not None and current_close is not None and prev_close_price > 0:
+                # 이전 종가 대비 변화율 계산: ((현재종가 - 이전종가) / 이전종가) * 100
+                change_percent = ((current_close - prev_close_price) / prev_close_price) * 100
+                change_percent = round(change_percent, 4)  # 소수점 4자리까지
+            
             ohlcv_dict = {
                 'timestamp_utc': ohlcv.timestamp_utc,
                 'open_price': float(ohlcv.open_price) if ohlcv.open_price else None,
                 'high_price': float(ohlcv.high_price) if ohlcv.high_price else None,
                 'low_price': float(ohlcv.low_price) if ohlcv.low_price else None,
-                'close_price': float(ohlcv.close_price) if ohlcv.close_price else None,
+                'close_price': current_close,
                 'volume': float(ohlcv.volume) if ohlcv.volume else None,
-                'change_percent': float(ohlcv.change_percent) if ohlcv.change_percent else None,
+                'change_percent': change_percent,
                 'data_interval': infer_interval(ohlcv.timestamp_utc, ohlcv.data_interval or '1d'),
             }
             ohlcv_data_points.append(ohlcv_dict)
+            
+            # 다음 반복을 위해 현재 종가를 이전 종가로 저장
+            if current_close is not None:
+                prev_close_price = current_close
+        
+        # 원래 순서(내림차순)로 복원 - 최신 데이터가 먼저 오도록
+        ohlcv_data_points = sorted(ohlcv_data_points, key=lambda x: x['timestamp_utc'], reverse=True)
         
         # Asset 정보 가져오기
         asset = get_asset_by_ticker(db, asset_identifier) if not asset_identifier.isdigit() else db.query(Asset).filter(Asset.asset_id == int(asset_identifier)).first()
@@ -946,18 +1010,41 @@ def get_price_data(
         if not asset:
             raise HTTPException(status_code=404, detail=f"Asset not found: {asset_identifier}")
 
+        # change_percent가 null인 경우 자동 계산 (시간순으로 정렬하여 계산)
+        data_sorted = sorted(data, key=lambda x: x.timestamp_utc)
+        price_data_points = []
+        prev_close_price = None
+        
+        for item in data_sorted:
+            current_close = float(item.close_price) if item.close_price else None
+            
+            # change_percent 계산: DB 값이 있으면 사용, 없으면 이전 종가 대비 계산
+            change_percent = None
+            if item.change_percent is not None:
+                change_percent = float(item.change_percent)
+            elif prev_close_price is not None and current_close is not None and prev_close_price > 0:
+                # 이전 종가 대비 변화율 계산
+                change_percent = ((current_close - prev_close_price) / prev_close_price) * 100
+                change_percent = round(change_percent, 4)
+            
+            price_data_points.append({
+                "date": item.timestamp_utc.strftime("%Y-%m-%d"),
+                "value": current_close,
+                "change_percent": change_percent
+            })
+            
+            # 다음 반복을 위해 현재 종가를 이전 종가로 저장
+            if current_close is not None:
+                prev_close_price = current_close
+        
+        # 원래 순서(내림차순, 최신 데이터 먼저)로 복원
+        price_data_points = sorted(price_data_points, key=lambda x: x['date'], reverse=True)
+
         return {
             "asset_id": asset_id,
             "ticker": asset.ticker,
-            "data": [
-                {
-                    "date": item.timestamp_utc.strftime("%Y-%m-%d"),
-                    "value": float(item.close_price) if item.close_price else None,
-                    "change_percent": float(item.change_percent) if item.change_percent else None
-                }
-                for item in data
-            ],
-            "total_count": len(data)
+            "data": price_data_points,
+            "total_count": len(price_data_points)
         }
     except HTTPException:
         raise

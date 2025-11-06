@@ -40,15 +40,13 @@ export default function HistoryTable({
     const src = Array.isArray(data) ? data : (data?.data || data?.rows || [])
     if (!src || src.length === 0) return []
 
-    const processed = src.map((item: any, index: number, arr: any[]) => {
-      let changePercent: number | null = null
-      if (index > 0) {
-        const prevClose = parseFloat(arr[index - 1].close_price)
-        const currentClose = parseFloat(item.close_price)
-        if (!isNaN(prevClose) && prevClose !== 0 && !isNaN(currentClose)) {
-          changePercent = ((currentClose - prevClose) / prevClose) * 100
-        }
-      }
+    // 백엔드에서 제공하는 change_percent 우선 사용
+    const processed = src.map((item: any) => {
+      // 백엔드에서 계산된 change_percent 사용 (없으면 null)
+      const changePercent = item.change_percent !== null && item.change_percent !== undefined
+        ? Number(item.change_percent)
+        : null
+      
       return {
         Date: item.timestamp_utc,
         Price: Number(item.close_price) || 0,
