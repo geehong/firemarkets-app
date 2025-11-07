@@ -326,6 +326,23 @@ export class ApiClient {
     });
   }
 
+  // Asset Overviews - 새로운 뷰 기반 엔드포인트
+  getStockInfo(assetIdentifier: string) {
+    return this.request(`/asset-overviews/stock/${assetIdentifier}`);
+  }
+
+  getCryptoInfo(assetIdentifier: string) {
+    return this.request(`/asset-overviews/crypto/${assetIdentifier}`);
+  }
+
+  getETFInfo(assetIdentifier: string) {
+    return this.request(`/asset-overviews/etf/${assetIdentifier}`);
+  }
+
+  getAssetInfo(assetIdentifier: string) {
+    return this.request(`/asset-overviews/common/${assetIdentifier}`);
+  }
+
   // Assets List with filters
   getAssetsList(params?: { 
     type_name?: string; 

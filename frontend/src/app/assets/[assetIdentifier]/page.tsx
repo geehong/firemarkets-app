@@ -3,6 +3,21 @@ import { notFound } from 'next/navigation'
 import { getAssetOverview, getAssetDetail } from '@/lib/data/assets'
 import AssetOverview from '@/components/overviews/AssetOverview'
 
+// 다국어 필드를 문자열로 변환하는 헬퍼 함수
+const getStringValue = (value: any, lang: 'ko' | 'en' = 'ko'): string => {
+  if (!value) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'object') {
+    if (value[lang]) return String(value[lang])
+    if (value.ko) return String(value.ko)
+    if (value.en) return String(value.en)
+    // 객체의 첫 번째 값을 사용
+    const firstKey = Object.keys(value)[0]
+    if (firstKey) return String(value[firstKey])
+  }
+  return String(value)
+}
+
 // 동적 렌더링 강제 설정
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -47,34 +62,49 @@ export async function generateMetadata({
       }
     }
 
-    const title = `${asset.name} (${asset.ticker}) - Price, Charts | FireMarkets`
-    const description = `Live price, charts, and market data for ${asset.name}. Explore historical data and analysis on FireMarkets.`
-    const keywords = `${asset.name}, ${asset.ticker}, price, chart, market data, ${asset.type_name}`
+    // 서버 사이드에서 asset 데이터 정규화 (다국어 필드를 문자열로 변환)
+    const normalizedAsset = {
+      ...asset,
+      name: getStringValue(asset.name),
+      ticker: getStringValue(asset.ticker),
+      type_name: getStringValue(asset.type_name),
+      description: getStringValue(asset.description),
+      exchange: getStringValue(asset.exchange),
+      currency: getStringValue(asset.currency),
+    }
+
+    const assetName = normalizedAsset.name
+    const assetTicker = normalizedAsset.ticker
+    const assetTypeName = normalizedAsset.type_name
+    
+    const title = `${assetName} (${assetTicker}) - Price, Charts | FireMarkets`
+    const description = `Live price, charts, and market data for ${assetName}. Explore historical data and analysis on FireMarkets.`
+    const keywords = `${assetName}, ${assetTicker}, price, chart, market data, ${assetTypeName}`
 
     return {
       title,
       description,
       keywords,
       openGraph: {
-        title: `${asset.name} (${asset.ticker}) | FireMarkets`,
-        description: `Live price and market data for ${asset.name}.`,
+        title: `${assetName} (${assetTicker}) | FireMarkets`,
+        description: `Live price and market data for ${assetName}.`,
         images: asset.logo_image_url ? [asset.logo_image_url] : ['/default-logo.png'],
         type: 'website',
         url: `/assets/${assetIdentifier}`,
       },
       twitter: {
         card: 'summary_large_image',
-        title: `${asset.name} | FireMarkets`,
-        description: `Live price and market data for ${asset.name}.`,
+        title: `${assetName} | FireMarkets`,
+        description: `Live price and market data for ${assetName}.`,
         images: asset.logo_image_url ? [asset.logo_image_url] : ['/default-logo.png'],
       },
       alternates: {
         canonical: `/assets/${assetIdentifier}`,
       },
       other: {
-        'asset-type': asset.type_name,
-        'asset-exchange': asset.exchange,
-        'asset-currency': asset.currency,
+        'asset-type': assetTypeName,
+        'asset-exchange': getStringValue(asset.exchange),
+        'asset-currency': getStringValue(asset.currency),
       },
     }
   } catch (error) {
@@ -91,10 +121,10 @@ function generateStructuredData(asset: any, assetIdentifier: string) {
   return {
     '@context': 'https://schema.org',
     '@type': 'FinancialProduct',
-    name: asset.name,
-    tickerSymbol: asset.ticker,
-    description: asset.description,
-    category: asset.type_name,
+    name: getStringValue(asset.name),
+    tickerSymbol: getStringValue(asset.ticker),
+    description: getStringValue(asset.description),
+    category: getStringValue(asset.type_name),
     provider: {
       '@type': 'Organization',
       name: 'FireMarkets',
@@ -107,21 +137,21 @@ function generateStructuredData(asset: any, assetIdentifier: string) {
     ...(asset.company_name && {
       issuer: {
         '@type': 'Organization',
-        name: asset.company_name,
-        ...(asset.website && { url: asset.website }),
-        ...(asset.ceo && { founder: asset.ceo }),
+        name: getStringValue(asset.company_name),
+        ...(asset.website && { url: getStringValue(asset.website) }),
+        ...(asset.ceo && { founder: getStringValue(asset.ceo) }),
         ...(asset.employees_count && { numberOfEmployees: asset.employees_count }),
-        ...(asset.address && { address: asset.address }),
-        ...(asset.city && asset.state && { location: `${asset.city}, ${asset.state}` })
+        ...(asset.address && { address: getStringValue(asset.address) }),
+        ...(asset.city && asset.state && { location: `${getStringValue(asset.city)}, ${getStringValue(asset.state)}` })
       }
     }),
     ...(asset.sector && {
-      industry: asset.sector
+      industry: getStringValue(asset.sector)
     }),
     ...(asset.country && {
       areaServed: {
         '@type': 'Country',
-        name: asset.country
+        name: getStringValue(asset.country)
       }
     }),
     ...(asset.market_cap && {
@@ -178,7 +208,27 @@ export default async function AssetPage({ params }: AssetPageProps) {
       notFound()
     }
 
-    const structuredData = generateStructuredData(asset, assetIdentifier)
+    // 서버 사이드에서 asset 데이터 정규화 (다국어 필드를 문자열로 변환)
+    const normalizedAsset = {
+      ...asset,
+      name: getStringValue(asset.name),
+      ticker: getStringValue(asset.ticker),
+      type_name: getStringValue(asset.type_name),
+      description: getStringValue(asset.description),
+      exchange: getStringValue(asset.exchange),
+      currency: getStringValue(asset.currency),
+      ...(asset.company_name && { company_name: getStringValue(asset.company_name) }),
+      ...(asset.sector && { sector: getStringValue(asset.sector) }),
+      ...(asset.industry && { industry: getStringValue(asset.industry) }),
+      ...(asset.country && { country: getStringValue(asset.country) }),
+      ...(asset.ceo && { ceo: getStringValue(asset.ceo) }),
+      ...(asset.website && { website: getStringValue(asset.website) }),
+      ...(asset.address && { address: getStringValue(asset.address) }),
+      ...(asset.city && { city: getStringValue(asset.city) }),
+      ...(asset.state && { state: getStringValue(asset.state) }),
+    }
+
+    const structuredData = generateStructuredData(normalizedAsset, assetIdentifier)
     
     // 클라이언트 사이드 로깅을 위한 데이터 준비
     const clientVolumeLogData = {
@@ -211,7 +261,7 @@ export default async function AssetPage({ params }: AssetPageProps) {
         
         {/* 메인 콘텐츠 */}
         <main className="container mx-auto px-4 py-8">
-          <AssetOverview initialData={asset} />
+          <AssetOverview initialData={normalizedAsset} />
         </main>
       </>
     )

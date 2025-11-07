@@ -576,7 +576,7 @@ export default function SparklineTable({
                   {/* Name - 모바일: 티커만, 데스크톱: 로고+티커+이름 */}
                   <TableCell className="px-5 py-4 sm:px-6 text-start md:w-auto w-[40%]">
                     <Link
-                      href={`/assets/${asset.assetId || asset.ticker}`}
+                      href={`/assets/${asset.ticker || asset.assetId}`}
                       className="flex items-center gap-3 hover:opacity-80 transition-opacity"
                     >
                       {/* 로고 - 데스크톱에서만 표시 */}

@@ -7,7 +7,7 @@ from app.api import auth
 from app.api.v1.endpoints import (
     realtime, scheduler, collectors, assets, world_assets, crypto, 
     onchain, etf, dashboard, configurations, admin, logs, metrics, 
-    open_interest, tickers, navigation, posts
+    open_interest, tickers, navigation, posts, asset_overviews
 )
 from app.api.v1 import external_apis
 from app.core.database import engine
@@ -85,6 +85,7 @@ app.include_router(open_interest.router, prefix="/api/v1/open-interest", tags=["
 app.include_router(tickers.router, prefix="/api/v1/tickers", tags=["tickers"])
 app.include_router(navigation.router, prefix="/api/v1/navigation", tags=["navigation"])
 app.include_router(posts.router, prefix="/api/v1/posts", tags=["posts"])
+app.include_router(asset_overviews.router, prefix="/api/v1/asset-overviews", tags=["asset-overviews"])
 app.include_router(external_apis.router, prefix="/api/v1/external-apis", tags=["external-apis"])
 
 @app.get("/")

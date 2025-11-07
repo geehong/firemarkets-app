@@ -1,10 +1,11 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useCallback, ReactNode } from 'react'
+import React, { useState, useEffect, useRef, useCallback, ReactNode, useMemo } from 'react'
 import SimpleCKEditor from './SimpleCKEditor'
 import FinancialDataBlock from './editorblock/FinancialDataBlock'
 import { usePost, useCreatePost, useUpdatePost, Post, PostCreateData, PostUpdateData } from '@/hooks/usePosts'
-import { useAssetOverviewBundle } from '@/hooks/useAssetOverviewBundle'
+import { useAssetOverviews } from '@/hooks/useAssetOverviews'
+import { useAssetDetail } from '@/hooks/useAssets'
 
 
 // PostFormState는 usePosts의 Post 타입을 기반으로 함
@@ -78,16 +79,74 @@ export default function BaseEdit({
     }
   }, [activeLanguage, onActiveLanguageChange])
   
-  // 자산 정보 훅 사용
-  const { data: assetData, loading: assetLoading, error: assetError } = useAssetOverviewBundle(
+  // 자산 타입 확인 (assetIdentifier로부터)
+  const { data: assetDetail } = useAssetDetail(assetIdentifier || '')
+  const assetType = assetDetail?.type_name
+
+  // 새로운 asset-overviews API 사용
+  const { data: overviewsData, loading: assetLoading, error: assetError } = useAssetOverviews(
     assetIdentifier || '',
-    { initialData: undefined },
-    activeLanguage
+    { assetType: assetType as string }
   )
 
+  // 새로운 API 구조를 기존 구조로 변환 (호환성 유지)
+  const assetData = useMemo(() => {
+    if (!overviewsData) return null
+    // 자산 타입에 따라 적절한 데이터 선택
+    if (overviewsData.stock) {
+      return {
+        post_overview: overviewsData.stock.post_overview,
+        numeric_overview: {
+          ...overviewsData.stock.numeric_overview,
+          ...overviewsData.stock.numeric_overview?.stock_financials_data,
+          asset_id: overviewsData.stock.asset_id,
+          // common 데이터도 병합
+          prev_close: overviewsData.common?.prev_close,
+          week_52_high: overviewsData.common?.week_52_high,
+          week_52_low: overviewsData.common?.week_52_low,
+          volume: overviewsData.common?.volume,
+          market_cap: overviewsData.common?.market_cap || overviewsData.stock.numeric_overview?.stock_financials_data?.market_cap,
+        },
+        estimates_overview: overviewsData.stock.estimates_overview,
+      }
+    } else if (overviewsData.crypto) {
+      return {
+        post_overview: overviewsData.crypto.post_overview,
+        numeric_overview: {
+          ...overviewsData.crypto.numeric_overview,
+          asset_id: overviewsData.crypto.asset_id,
+          // common 데이터도 병합
+          prev_close: overviewsData.common?.prev_close,
+          week_52_high: overviewsData.common?.week_52_high,
+          week_52_low: overviewsData.common?.week_52_low,
+          volume: overviewsData.common?.volume,
+          market_cap: overviewsData.common?.market_cap || overviewsData.crypto.numeric_overview?.market_cap,
+        },
+      }
+    } else if (overviewsData.etf) {
+      return {
+        post_overview: overviewsData.etf.post_overview,
+        numeric_overview: {
+          ...overviewsData.etf.numeric_overview,
+          asset_id: overviewsData.etf.asset_id,
+          // common 데이터도 병합
+          prev_close: overviewsData.common?.prev_close,
+          week_52_high: overviewsData.common?.week_52_high,
+          week_52_low: overviewsData.common?.week_52_low,
+          volume: overviewsData.common?.volume,
+          market_cap: overviewsData.common?.market_cap,
+        },
+      }
+    }
+    return null
+  }, [overviewsData])
+
   console.log('🔍 BaseEdit - assetIdentifier received:', assetIdentifier)
-  console.log('🔍 BaseEdit - activeLanguage:', activeLanguage)
-  console.log('🔍 BaseEdit - assetData received:', assetData)
+  console.log('🔍 BaseEdit - assetType:', assetType)
+  console.log('🔍 BaseEdit - overviewsData received:', overviewsData)
+  console.log('🔍 BaseEdit - assetData (converted):', assetData)
+  
+  const lastAssetSyncRef = useRef<{ assetData: any; activeLanguage: 'ko' | 'en' } | null>(null)
   
   // assetData를 부모 컴포넌트에 전달
   useEffect(() => {
@@ -163,6 +222,12 @@ export default function BaseEdit({
   // assetData의 post_overview를 사용하여 formData 업데이트
   useEffect(() => {
     if (assetData?.post_overview) {
+      const lastSync = lastAssetSyncRef.current
+      if (lastSync && lastSync.assetData === assetData && lastSync.activeLanguage === activeLanguage) {
+        return
+      }
+      lastAssetSyncRef.current = { assetData, activeLanguage }
+      
       console.log('📦 BaseEdit - Updating formData with assetData.post_overview:', assetData.post_overview)
       console.log('📦 BaseEdit - Current activeLanguage:', activeLanguage)
       console.log('📦 BaseEdit - postOverview.title:', assetData.post_overview.title)
@@ -705,36 +770,36 @@ export default function BaseEdit({
                           <div>
                             <label className="text-sm font-medium text-gray-600">이름</label>
                             <p className="text-lg font-semibold text-gray-900">
-                              {assetData.numeric_overview.name}
+                              {assetData.numeric_overview.name || assetData.post_overview?.company_name || assetData.post_overview?.title?.ko || '-'}
                             </p>
                           </div>
                           <div>
                             <label className="text-sm font-medium text-gray-600">거래소</label>
-                            <p className="text-gray-900">{assetData.numeric_overview.exchange}</p>
+                            <p className="text-gray-900">{assetData.numeric_overview.exchange || assetData.post_overview?.exchange || '-'}</p>
                           </div>
                           <div>
                             <label className="text-sm font-medium text-gray-600">통화</label>
-                            <p className="text-gray-900">{assetData.numeric_overview.currency}</p>
+                            <p className="text-gray-900">{assetData.numeric_overview.currency || '-'}</p>
                           </div>
                         </div>
 
                         {/* 가격 정보 */}
-                        {assetData.numeric_overview.current_price && (
+                        {(assetData.numeric_overview.current_price || assetData.numeric_overview.prev_close) && (
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
                               <label className="text-sm font-medium text-gray-600">현재 가격</label>
                               <p className="text-xl font-bold text-gray-900">
-                                ${assetData.numeric_overview.current_price.toLocaleString()}
+                                ${(assetData.numeric_overview.current_price || assetData.numeric_overview.prev_close)?.toLocaleString()}
                               </p>
                             </div>
                             <div>
                               <label className="text-sm font-medium text-gray-600">24시간 변동률</label>
                               <p className={`text-lg font-semibold ${
-                                (assetData.numeric_overview.price_change_percentage_24h || 0) >= 0 
+                                (assetData.numeric_overview.percent_change_24h || assetData.numeric_overview.price_change_percentage_24h || 0) >= 0 
                                   ? 'text-green-600' 
                                   : 'text-red-600'
                               }`}>
-                                {assetData.numeric_overview.price_change_percentage_24h?.toFixed(2)}%
+                                {(assetData.numeric_overview.percent_change_24h || assetData.numeric_overview.price_change_percentage_24h)?.toFixed(2)}%
                               </p>
                             </div>
                             <div>
@@ -747,7 +812,7 @@ export default function BaseEdit({
                         )}
 
                         {/* 암호화폐 정보 */}
-                        {assetData.numeric_overview.asset_category === 'crypto' && (
+                        {(assetData.numeric_overview.asset_category === 'crypto' || assetData.numeric_overview.circulating_supply) && (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <label className="text-sm font-medium text-gray-600">순환 공급량</label>
@@ -775,33 +840,35 @@ export default function BaseEdit({
                         )}
 
                         {/* 주식 정보 */}
-                        {assetData.numeric_overview.asset_category === 'stocks' && (
+                        {(assetData.numeric_overview.asset_category === 'stocks' || assetData.post_overview?.company_name) && (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <label className="text-sm font-medium text-gray-600">회사명</label>
-                              <p className="text-gray-900">{assetData.numeric_overview.company_name}</p>
+                              <p className="text-gray-900">{assetData.post_overview?.company_name || assetData.numeric_overview.company_name || '-'}</p>
                             </div>
                             <div>
                               <label className="text-sm font-medium text-gray-600">섹터</label>
-                              <p className="text-gray-900">{assetData.numeric_overview.sector}</p>
+                              <p className="text-gray-900">{assetData.post_overview?.sector || assetData.numeric_overview.sector || '-'}</p>
                             </div>
                             <div>
                               <label className="text-sm font-medium text-gray-600">산업</label>
-                              <p className="text-gray-900">{assetData.numeric_overview.industry}</p>
+                              <p className="text-gray-900">{assetData.post_overview?.industry || assetData.numeric_overview.industry || '-'}</p>
                             </div>
                             <div>
                               <label className="text-sm font-medium text-gray-600">국가</label>
-                              <p className="text-gray-900">{assetData.numeric_overview.country}</p>
+                              <p className="text-gray-900">{assetData.post_overview?.country || assetData.numeric_overview.country || '-'}</p>
                             </div>
                           </div>
                         )}
 
                         {/* 설명 */}
-                        {assetData.numeric_overview.description && (
+                        {(assetData.post_overview?.description || assetData.numeric_overview?.description) && (
                           <div>
                             <label className="text-sm font-medium text-gray-600">설명</label>
                             <p className="text-gray-700 text-sm leading-relaxed">
-                              {assetData.numeric_overview.description}
+                              {typeof assetData.post_overview?.description === 'string' 
+                                ? assetData.post_overview.description 
+                                : assetData.post_overview?.description?.ko || assetData.numeric_overview?.description || '-'}
                             </p>
                           </div>
                         )}

@@ -167,13 +167,17 @@ export const usePosts = (params?: {
 export const usePost = (postId: number | undefined) => {
   return useQuery({
     queryKey: ['post', postId],
-    queryFn: async (): Promise<Post> => {
+    queryFn: async (): Promise<Post | null> => {
       if (!postId) throw new Error('Post ID is required')
 
       const url = `${API_BASE}/posts/${postId}`
       console.log('🔍 [usePost] Fetching post:', url)
 
       const response = await fetch(url)
+      if (response.status === 404) {
+        console.warn(`ℹ️ [usePost] Post not found (404) for ID: ${postId}. Returning null.`)
+        return null
+      }
       if (!response.ok) {
         throw new Error(`Failed to fetch post: ${response.status}`)
       }

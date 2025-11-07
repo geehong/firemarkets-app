@@ -145,29 +145,47 @@ const SidebarMenuItem = React.forwardRef<
 SidebarMenuItem.displayName = "SidebarMenuItem";
 
 const SidebarMenuButton = React.forwardRef<
-  HTMLButtonElement,
+  HTMLButtonElement | HTMLAnchorElement,
   React.ButtonHTMLAttributes<HTMLButtonElement> & {
     isActive?: boolean;
     variant?: "default" | "ghost";
+    href?: string;
   }
->(({ className, isActive, variant = "default", ...props }, ref) => {
+>(({ className, isActive, variant = "default", href, children, ...props }, ref) => {
   const { isExpanded, isMobileOpen, isHovered } = useSidebar();
   const isCollapsed = !isExpanded && !isHovered && !isMobileOpen;
 
+  const baseClassName = cn(
+    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+    "hover:bg-gray-100 dark:hover:bg-gray-800",
+    isActive && "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white",
+    !isActive && "text-gray-600 dark:text-gray-400",
+    isCollapsed && "justify-center",
+    variant === "ghost" && "hover:bg-transparent",
+    className
+  );
+
+  if (href) {
+    return (
+      <Link
+        ref={ref as any}
+        href={href}
+        className={baseClassName}
+        {...(props as React.AnchorHTMLAttributes<HTMLAnchorElement>)}
+      >
+        {children}
+      </Link>
+    );
+  }
+
   return (
     <button
-      ref={ref}
-      className={cn(
-        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-        "hover:bg-gray-100 dark:hover:bg-gray-800",
-        isActive && "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white",
-        !isActive && "text-gray-600 dark:text-gray-400",
-        isCollapsed && "justify-center",
-        variant === "ghost" && "hover:bg-transparent",
-        className
-      )}
+      ref={ref as any}
+      className={baseClassName}
       {...props}
-    />
+    >
+      {children}
+    </button>
   );
 });
 SidebarMenuButton.displayName = "SidebarMenuButton";
@@ -205,22 +223,38 @@ const SidebarMenuSubButton = React.forwardRef<
   React.ButtonHTMLAttributes<HTMLButtonElement> &
     React.AnchorHTMLAttributes<HTMLAnchorElement> & {
       isActive?: boolean;
-      asChild?: boolean;
+      href?: string;
     }
->(({ className, isActive, asChild, ...props }, ref) => {
-  const Comp = asChild ? Link : "button";
+>(({ className, isActive, href, children, ...props }, ref) => {
+  const baseClassName = cn(
+    "flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors",
+    "hover:bg-gray-100 dark:hover:bg-gray-800",
+    isActive && "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white",
+    !isActive && "text-gray-600 dark:text-gray-400",
+    className
+  );
+
+  if (href) {
+    return (
+      <Link
+        ref={ref as any}
+        href={href}
+        className={baseClassName}
+        {...(props as React.AnchorHTMLAttributes<HTMLAnchorElement>)}
+      >
+        {children}
+      </Link>
+    );
+  }
+  
   return (
-    <Comp
+    <button
       ref={ref as any}
-      className={cn(
-        "flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors",
-        "hover:bg-gray-100 dark:hover:bg-gray-800",
-        isActive && "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white",
-        !isActive && "text-gray-600 dark:text-gray-400",
-        className
-      )}
+      className={baseClassName}
       {...props}
-    />
+    >
+      {children}
+    </button>
   );
 });
 SidebarMenuSubButton.displayName = "SidebarMenuSubButton";
@@ -241,7 +275,7 @@ const AppSidebarShadcn: React.FC = () => {
   );
 
   // Convert dynamic menu items to NavItem type
-  const convertDynamicMenuToNavItems = (dynamicItems: any[]): NavItem[] => {
+  const convertDynamicMenuToNavItems = React.useCallback((dynamicItems: any[]): NavItem[] => {
     return dynamicItems
       .filter((item) => item.is_active)
       .sort((a: any, b: any) => a.order - b.order)
@@ -280,9 +314,12 @@ const AppSidebarShadcn: React.FC = () => {
               : undefined,
         };
       });
-  };
+  }, []);
 
-  const finalNavItems = convertDynamicMenuToNavItems(menuItems);
+  const finalNavItems = React.useMemo(
+    () => convertDynamicMenuToNavItems(menuItems),
+    [menuItems, convertDynamicMenuToNavItems]
+  );
 
   const isActive = React.useCallback(
     (path: string) => path === pathname,
@@ -291,28 +328,32 @@ const AppSidebarShadcn: React.FC = () => {
 
   // Auto-open submenu based on current path
   React.useEffect(() => {
+    if (!finalNavItems || finalNavItems.length === 0) return;
+
     let submenuMatched = false;
     let subSubmenuMatched = false;
+    let targetSubmenu: { type: "main"; index: number } | null = null;
+    let targetSubSubmenu: string | null = null;
 
     finalNavItems.forEach((nav, index) => {
       if (nav.subItems) {
         nav.subItems.forEach((subItem, subIndex) => {
           if (subItem.path && isActive(subItem.path)) {
-            setOpenSubmenu({
+            targetSubmenu = {
               type: "main",
               index,
-            });
+            };
             submenuMatched = true;
           }
 
           if (subItem.subItems) {
             subItem.subItems.forEach((subSubItem) => {
               if (subSubItem.path && isActive(subSubItem.path)) {
-                setOpenSubmenu({
+                targetSubmenu = {
                   type: "main",
                   index,
-                });
-                setOpenSubSubmenu(`${index}-${subIndex}`);
+                };
+                targetSubSubmenu = `${index}-${subIndex}`;
                 submenuMatched = true;
                 subSubmenuMatched = true;
               }
@@ -321,6 +362,28 @@ const AppSidebarShadcn: React.FC = () => {
         });
       }
     });
+
+    // 상태 업데이트를 한 번만 수행
+    if (targetSubmenu) {
+      setOpenSubmenu((prev) => {
+        if (
+          prev?.type === targetSubmenu?.type &&
+          prev?.index === targetSubmenu?.index
+        ) {
+          return prev; // 변경 없으면 이전 상태 유지
+        }
+        return targetSubmenu;
+      });
+    }
+
+    if (targetSubSubmenu) {
+      setOpenSubSubmenu((prev) => {
+        if (prev === targetSubSubmenu) {
+          return prev; // 변경 없으면 이전 상태 유지
+        }
+        return targetSubSubmenu;
+      });
+    }
   }, [pathname, isActive, finalNavItems]);
 
   const handleSubmenuToggle = (index: number, menuType: "main") => {
@@ -469,24 +532,22 @@ const AppSidebarShadcn: React.FC = () => {
                                         >
                                           {subSubItem.path ? (
                                             <SidebarMenuSubButton
-                                              asChild
+                                              href={subSubItem.path}
                                               isActive={isActive(
                                                 subSubItem.path
                                               )}
                                             >
-                                              <Link href={subSubItem.path}>
-                                                {subSubItem.name}
-                                                {subSubItem.new && (
-                                                  <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-                                                    new
-                                                  </span>
-                                                )}
-                                                {subSubItem.pro && (
-                                                  <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300">
-                                                    pro
-                                                  </span>
-                                                )}
-                                              </Link>
+                                              {subSubItem.name}
+                                              {subSubItem.new && (
+                                                <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                                                  new
+                                                </span>
+                                              )}
+                                              {subSubItem.pro && (
+                                                <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300">
+                                                  pro
+                                                </span>
+                                              )}
                                             </SidebarMenuSubButton>
                                           ) : (
                                             <SidebarMenuSubButton>
@@ -499,24 +560,22 @@ const AppSidebarShadcn: React.FC = () => {
                                   </>
                                 ) : subItem.path ? (
                                   <SidebarMenuSubButton
-                                    asChild
+                                    href={subItem.path}
                                     isActive={
                                       subItem.path ? isActive(subItem.path) : false
                                     }
                                   >
-                                    <Link href={subItem.path}>
-                                      {subItem.name}
-                                      {subItem.new && (
-                                        <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-                                          new
-                                        </span>
-                                      )}
-                                      {subItem.pro && (
-                                        <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300">
-                                          pro
-                                        </span>
-                                      )}
-                                    </Link>
+                                    {subItem.name}
+                                    {subItem.new && (
+                                      <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                                        new
+                                      </span>
+                                    )}
+                                    {subItem.pro && (
+                                      <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300">
+                                        pro
+                                      </span>
+                                    )}
                                   </SidebarMenuSubButton>
                                 ) : (
                                   <SidebarMenuSubButton>
@@ -530,13 +589,11 @@ const AppSidebarShadcn: React.FC = () => {
                       </>
                     ) : nav.path ? (
                       <SidebarMenuButton
-                        asChild
+                        href={nav.path}
                         isActive={nav.path ? isActive(nav.path) : false}
                       >
-                        <Link href={nav.path}>
-                          {nav.icon}
-                          {!isCollapsed && <span>{nav.name}</span>}
-                        </Link>
+                        {nav.icon}
+                        {!isCollapsed && <span>{nav.name}</span>}
                       </SidebarMenuButton>
                     ) : null}
                   </SidebarMenuItem>

@@ -10,7 +10,7 @@ import { LocalizedDataProvider } from '@/contexts/LocalizedDataContext'
 import { AutoLocalizationProvider } from '@/contexts/AutoLocalizationContext'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import AppHeader from '@/layout/AppHeader'
-import AppSidebar from '@/layout/AppSidebar'
+import AppSidebar from '@/layout/AppSidebarShadcn'
 import Backdrop from '@/layout/Backdrop'
 import { useSidebar } from '@/context/SidebarContext'
 

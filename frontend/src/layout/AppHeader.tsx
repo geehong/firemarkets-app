@@ -7,12 +7,107 @@ import LanguageSelector from "@/components/LanguageSelector";
 import { useSidebar } from "@/context/SidebarContext";
 import Image from "next/image";
 import Link from "next/link";
-import React, { useState ,useEffect,useRef} from "react";
+import { usePathname } from "next/navigation";
+import React, { useState ,useEffect,useRef, useMemo} from "react";
+import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import { useQuery } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api";
 
 const AppHeader: React.FC = () => {
   const [isApplicationMenuOpen, setApplicationMenuOpen] = useState(false);
+  const pathname = usePathname();
 
   const { isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
+
+  // Generate breadcrumb items from pathname
+  const breadcrumbItems = useMemo(() => {
+    if (!pathname) return [];
+
+    const paths = pathname.split("/").filter(Boolean);
+    const items: Array<{ label: string; href: string; assetId?: string }> = [
+      { label: "Home", href: "/" },
+    ];
+
+    let currentPath = "";
+    paths.forEach((path, index) => {
+      currentPath += `/${path}`;
+      
+      // assets 경로이고 숫자인 경우 assetId로 표시
+      let label = path;
+      let assetId: string | undefined = undefined;
+      
+      if (paths[index - 1] === "assets" && /^\d+$/.test(path)) {
+        // 숫자 ID인 경우, API 호출로 ticker를 가져올 예정
+        assetId = path;
+        label = path; // 일단 ID를 표시, 나중에 ticker로 대체
+      } else {
+        // Capitalize first letter and replace hyphens with spaces
+        label = path
+          .split("-")
+          .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(" ");
+      }
+      
+      items.push({
+        label,
+        href: currentPath,
+        assetId,
+      });
+    });
+
+    return items;
+  }, [pathname]);
+
+  // asset_id를 ticker로 변환하는 쿼리들
+  const assetIdItems = breadcrumbItems.filter(item => item.assetId);
+  const assetQueries = useQuery({
+    queryKey: ['breadcrumb-assets', assetIdItems.map(item => item.assetId)],
+    queryFn: async () => {
+      const results: Record<string, string> = {};
+      await Promise.all(
+        assetIdItems.map(async (item) => {
+          if (!item.assetId) return;
+          try {
+            const asset = await apiClient.getAssetDetail(item.assetId);
+            if (asset?.ticker) {
+              results[item.assetId] = asset.ticker;
+            }
+          } catch (error) {
+            // 에러 발생 시 ID를 그대로 사용
+            console.warn(`Failed to fetch asset ${item.assetId}:`, error);
+          }
+        })
+      );
+      return results;
+    },
+    enabled: assetIdItems.length > 0,
+    staleTime: 5 * 60 * 1000, // 5분간 캐시
+  });
+
+  // 최종 breadcrumb items 생성 (asset_id를 ticker로 변환)
+  const finalBreadcrumbItems = useMemo(() => {
+    const assetMap = assetQueries.data || {};
+    return breadcrumbItems.map(item => {
+      if (item.assetId && assetMap[item.assetId]) {
+        // ticker를 가져왔으면 href도 ticker로 업데이트
+        const ticker = assetMap[item.assetId];
+        const href = item.href.replace(`/${item.assetId}`, `/${ticker}`);
+        return {
+          ...item,
+          label: ticker,
+          href: href,
+        };
+      }
+      return item;
+    });
+  }, [breadcrumbItems, assetQueries.data]);
 
   const handleToggle = () => {
     if (window.innerWidth >= 1024) {
@@ -43,7 +138,8 @@ const AppHeader: React.FC = () => {
   }, []);
 
   return (
-    <header className="sticky top-0 flex w-full bg-white border-gray-200 z-99999 dark:border-gray-800 dark:bg-gray-900 lg:border-b">
+    <header className="sticky top-0 flex flex-col w-full bg-white border-gray-200 z-99999 dark:border-gray-800 dark:bg-gray-900 lg:border-b">
+      {/* Top Menu Section */}
       <div className="flex flex-col items-center justify-between grow lg:flex-row lg:px-6">
         <div className="flex items-center justify-between w-full gap-2 px-3 py-3 border-b border-gray-200 dark:border-gray-800 sm:gap-4 lg:justify-normal lg:border-b-0 lg:px-0 lg:py-4">
           <button
@@ -160,6 +256,7 @@ const AppHeader: React.FC = () => {
             <TopMenuDropdown />
           </div>
         </div>
+
         <div
           className={`${
             isApplicationMenuOpen ? "flex" : "hidden"
@@ -182,6 +279,30 @@ const AppHeader: React.FC = () => {
     
         </div>
       </div>
+
+      {/* Breadcrumb Navigation - Separate section below top menu */}
+      {finalBreadcrumbItems.length > 1 && (
+        <div className="hidden w-full px-6 py-2 border-t border-gray-200 dark:border-gray-800 lg:block">
+          <Breadcrumb>
+            <BreadcrumbList>
+              {finalBreadcrumbItems.map((item, index) => (
+                <React.Fragment key={item.href}>
+                  {index > 0 && <BreadcrumbSeparator />}
+                  <BreadcrumbItem>
+                    {index === finalBreadcrumbItems.length - 1 ? (
+                      <BreadcrumbPage>{item.label}</BreadcrumbPage>
+                    ) : (
+                      <BreadcrumbLink href={item.href}>
+                        {item.label}
+                      </BreadcrumbLink>
+                    )}
+                  </BreadcrumbItem>
+                </React.Fragment>
+              ))}
+            </BreadcrumbList>
+          </Breadcrumb>
+        </div>
+      )}
     </header>
   );
 };

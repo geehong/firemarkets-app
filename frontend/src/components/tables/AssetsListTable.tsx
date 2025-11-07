@@ -76,7 +76,7 @@ export default function AssetsListTable({ typeName }: AssetsListTableProps) {
         const assetId = params.data.asset_id
         const fallback = '🔹'
         return (
-          <Link href={`/assets/${assetId || ticker}`} className="inline-block">
+          <Link href={`/assets/${ticker || assetId}`} className="inline-block">
             {url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img 
@@ -102,7 +102,7 @@ export default function AssetsListTable({ typeName }: AssetsListTableProps) {
         const assetId = params.data.asset_id
         return (
           <Link 
-            href={`/assets/${assetId || ticker}`}
+            href={`/assets/${ticker || assetId}`}
             className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
           >
             {ticker}
@@ -121,7 +121,7 @@ export default function AssetsListTable({ typeName }: AssetsListTableProps) {
         const assetId = params.data.asset_id
         return (
           <Link 
-            href={`/assets/${assetId || ticker}`}
+            href={`/assets/${ticker || assetId}`}
             className="text-blue-600 hover:text-blue-800 hover:underline"
           >
             {name}
