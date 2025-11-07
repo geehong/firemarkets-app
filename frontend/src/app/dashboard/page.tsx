@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api";
 import MultiAssetLineChart from "@/components/charts/line/MultiAssetLineChart";
@@ -10,16 +10,28 @@ import dynamic from "next/dynamic";
 import ClientOnlyChart from "@/components/charts/minicharts/ClientOnlyChart";
 import CompareMultipleAssetsChart from "@/components/charts/line/CompareMultipleAssetsChart";
 import AssetsList from "@/components/lists/AssetsList";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, usePathname } from "next/navigation";
 import { useTreemapLive } from "@/hooks/useAssets";
 import { useRealtimePrices } from "@/hooks/useSocket";
 import Badge from "@/components/ui/badge/Badge";
 
 // 동적 import로 각 페이지 컴포넌트 로드
-const AssetsDashboard = dynamic(() => import("./assets/page"), { ssr: false });
-const BlogDashboard = dynamic(() => import("./blog/page"), { ssr: false });
-const OnchainDashboard = dynamic(() => import("./onchain/page"), { ssr: false });
-const PerformanceTreeMapToday = dynamic(() => import("@/components/charts/treemap/PerformanceTreeMapToday"), { ssr: false });
+const AssetsDashboard = dynamic(() => import("./assets/page"), { 
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center h-64">Loading...</div>
+});
+const BlogDashboard = dynamic(() => import("./blog/page"), { 
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center h-64">Loading...</div>
+});
+const OnchainDashboard = dynamic(() => import("./onchain/page"), { 
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center h-64">Loading...</div>
+});
+const PerformanceTreeMapToday = dynamic(() => import("@/components/charts/treemap/PerformanceTreeMapToday"), { 
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center h-64">Loading chart...</div>
+});
 
 // 메트릭 카드 컴포넌트
 interface MetricCardProps {
@@ -117,10 +129,16 @@ const CryptoRow: React.FC<CryptoRowProps> = ({
 
 type TabType = 'overview' | 'assets' | 'blog' | 'onchain';
 
-export default function DashboardPage() {
+function DashboardContent() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const typeNameFromQuery = searchParams?.get('type_name');
+
+  // 경로 변경 시 activeTab 초기화
+  useEffect(() => {
+    setActiveTab('overview');
+  }, [pathname]);
 
   // AssetsList 헤더 정보를 위한 데이터 조회
   const { data: treemapData } = useTreemapLive(
@@ -221,6 +239,20 @@ export default function DashboardPage() {
       {activeTab === 'blog' && <BlogDashboard />}
       {activeTab === 'onchain' && <OnchainDashboard />}
     </main>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={
+      <main className="container mx-auto px-4 py-8">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-gray-600 dark:text-gray-400">Loading dashboard...</div>
+        </div>
+      </main>
+    }>
+      <DashboardContent />
+    </Suspense>
   );
 }
 

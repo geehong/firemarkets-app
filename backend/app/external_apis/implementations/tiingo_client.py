@@ -117,6 +117,10 @@ class TiingoClient(TradFiAPIClient):
             return None  # None을 반환하여 다음 클라이언트로 넘어가도록 함
             
         try:
+            # Provider별 심볼 매핑 적용
+            from ...utils.asset_mapping_loader import get_symbol_for_provider
+            tiingo_symbol = get_symbol_for_provider(symbol, "tiingo")
+            
             # 휴일 감지 및 날짜 범위 최적화
             from ...utils.trading_calendar import is_trading_day, get_last_trading_day, format_trading_status_message
             
@@ -133,13 +137,13 @@ class TiingoClient(TradFiAPIClient):
             
             # Use httpx directly to get the raw response content
             async with httpx.AsyncClient() as client:
-                url = f"{self.base_url}/tiingo/daily/{symbol.lower()}/prices"
+                url = f"{self.base_url}/tiingo/daily/{tiingo_symbol.lower()}/prices"
                 params["token"] = self.api_key
                 resp = await client.get(url, params=params, timeout=self.api_timeout)
                 
                 # 404 에러 처리: 지원하지 않는 심볼
                 if resp.status_code == 404:
-                    logger.info(f"Tiingo: Symbol not supported (미지원 티커): {symbol}")
+                    logger.info(f"Tiingo: Symbol not supported (미지원 티커): {symbol} -> {tiingo_symbol}")
                     return None
                 
                 resp.raise_for_status()

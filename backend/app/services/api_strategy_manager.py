@@ -464,11 +464,19 @@ class ApiStrategyManager:
                 return None
             ticker = asset.ticker
             asset_type = asset.asset_type.type_name if asset.asset_type else None
+            # data_source 확인 (우선순위: asset.data_source > collection_settings.data_source)
+            # asset.data_source는 자산의 기본 데이터 소스 (DB 컬럼, 영구 설정)
+            # collection_settings.data_source는 수집 설정에서 오버라이드 (임시 설정)
+            preferred_data_source = None
+            if asset.data_source:
+                preferred_data_source = asset.data_source
+            elif asset.collection_settings and isinstance(asset.collection_settings, dict):
+                preferred_data_source = asset.collection_settings.get('data_source')
         finally:
             db.close()
         
         # 기존 get_ohlcv 메서드 호출
-        df = await self.get_ohlcv(ticker, interval, 100, asset_type, asset_id)
+        df = await self.get_ohlcv(ticker, interval, 100, asset_type, asset_id, preferred_data_source=preferred_data_source)
         if df is None or df.empty:
             return None
         
@@ -504,7 +512,7 @@ class ApiStrategyManager:
         
         return result
 
-    async def get_ohlcv(self, ticker: str, interval: str = "1d", limit: int = 100, asset_type: str = None, asset_id: int = None) -> Optional[pd.DataFrame]:
+    async def get_ohlcv(self, ticker: str, interval: str = "1d", limit: int = 100, asset_type: Optional[str] = None, asset_id: Optional[int] = None, preferred_data_source: Optional[str] = None) -> Optional[pd.DataFrame]:
         """
         [IMPROVED] OHLCV 데이터를 여러 API에서 순서대로 시도하여 가져옵니다.
         이제 DB 상태를 확인하여 최적의 파라미터를 자동으로 결정합니다.
@@ -570,32 +578,85 @@ class ApiStrategyManager:
         yahoo_period = self._calculate_yahoo_period(adjusted_limit)
         last_exception = None
         
-        # 자산 타입과 인터벌에 따라 적절한 클라이언트 선택
-        if asset_type and 'crypto' in asset_type.lower():
-            # 코인 일봉은 Binance, Coinbase만 사용 (요청사항 반영)
-            clients_to_use = [c for c in self.crypto_ohlcv_clients if self._get_api_name(c) in ('binance','coinbase')]
-            self.logger.info(f"Using crypto OHLCV clients for {ticker} (asset_type: {asset_type}) -> {len(clients_to_use)} providers (binance/coinbase only)")
-        elif asset_type and 'commodity' in asset_type.lower():
-            # 커머디티는 전용 클라이언트 사용 (FMPClient 포함)
-            clients_to_use = self.commodity_ohlcv_clients
-            self.logger.info(f"Using commodity OHLCV clients for {ticker} (asset_type: {asset_type})")
-        else:
-            # 주식, ETF, 지수, 통화 등 - 인터벌에 따라 클라이언트 선택
-            # ⚠️ 일반 주식은 절대 FMP를 사용하지 않음 (commodity_ohlcv_clients는 commodity 전용)
-            if interval in ["4h", "1h", "30m", "15m", "5m", "1m"]:
-                # 인트라데이 데이터 (4h, 1h 등)
-                clients_to_use = self.ohlcv_intraday_clients
-                self.logger.info(f"Using intraday OHLCV clients for {ticker} (asset_type: {asset_type}, interval: {interval})")
-            else:
-                # 일봉 데이터 (1d, 1w, 1m 등)
-                clients_to_use = self.ohlcv_day_clients
-                self.logger.info(f"Using daily OHLCV clients for {ticker} (asset_type: {asset_type}, interval: {interval})")
+        # preferred_data_source 초기화
+        preferred_data_source_lower = preferred_data_source.lower() if preferred_data_source else None
+        
+        # preferred_data_source가 있으면 해당 클라이언트를 우선 사용
+        if preferred_data_source:
+            # data_source에 따라 클라이언트 매핑
+            data_source_to_client = {
+                'fmp': 'fmp',
+                'tiingo': 'tiingo',
+                'twelvedata': 'twelvedata',
+                'polygon': 'polygon',
+                'finnhub': 'finnhub',
+                'binance': 'binance',
+                'coinbase': 'coinbase'
+            }
             
-            # 보안 체크: 일반 주식이 FMP로 수집되는 것을 방지
-            if asset_type and 'stock' in asset_type.lower():
-                clients_to_use = [c for c in clients_to_use if self._get_api_name(c) != 'fmp']
-                if any(self._get_api_name(c) == 'fmp' for c in self.commodity_ohlcv_clients):
-                    self.logger.warning(f"⚠️ Prevented FMP usage for stock {ticker} (asset_type: {asset_type}). FMP is only for commodities.")
+            preferred_api_name = data_source_to_client.get(preferred_data_source_lower)
+            if preferred_api_name:
+                # 모든 클라이언트 리스트에서 preferred 클라이언트 찾기
+                all_clients = []
+                if asset_type and 'crypto' in asset_type.lower():
+                    all_clients = self.crypto_ohlcv_clients
+                elif asset_type and 'commodit' in asset_type.lower():
+                    all_clients = self.commodity_ohlcv_clients
+                elif interval in ["4h", "1h", "30m", "15m", "5m", "1m"]:
+                    all_clients = self.ohlcv_intraday_clients
+                else:
+                    all_clients = self.ohlcv_day_clients
+                
+                # preferred 클라이언트 찾기
+                preferred_client = None
+                for client in all_clients:
+                    if client and self._get_api_name(client) == preferred_api_name:
+                        preferred_client = client
+                        break
+                
+                # preferred 클라이언트를 찾지 못한 경우, FMPClient는 별도로 생성 가능
+                if not preferred_client and preferred_api_name == 'fmp':
+                    from app.external_apis.implementations.fmp_client import FMPClient
+                    preferred_client = FMPClient()
+                    self.logger.info(f"Created FMPClient for preferred data source '{preferred_data_source}' for {ticker}")
+                
+                if preferred_client:
+                    # preferred 클라이언트를 첫 번째로, 나머지는 fallback으로
+                    clients_to_use = [preferred_client] + [c for c in all_clients if c != preferred_client and c is not None]
+                    self.logger.info(f"Using preferred data source '{preferred_data_source}' for {ticker}: {preferred_api_name} (first priority)")
+                else:
+                    self.logger.warning(f"Preferred data source '{preferred_data_source}' not available for {ticker}, using default clients")
+                    preferred_data_source = None  # Fallback to default logic
+        
+        # preferred_data_source가 없거나 클라이언트를 찾지 못한 경우 기본 로직 사용
+        if not preferred_data_source or 'clients_to_use' not in locals():
+            # 자산 타입과 인터벌에 따라 적절한 클라이언트 선택
+            if asset_type and 'crypto' in asset_type.lower():
+                # 코인 일봉은 Binance, Coinbase만 사용 (요청사항 반영)
+                clients_to_use = [c for c in self.crypto_ohlcv_clients if self._get_api_name(c) in ('binance','coinbase')]
+                self.logger.info(f"Using crypto OHLCV clients for {ticker} (asset_type: {asset_type}) -> {len(clients_to_use)} providers (binance/coinbase only)")
+            elif asset_type and 'commodit' in asset_type.lower():
+                # 커머디티는 전용 클라이언트 사용 (FMPClient 포함)
+                # 'commodit'로 체크하여 'Commodities'와 'Commodity' 모두 매칭
+                clients_to_use = self.commodity_ohlcv_clients
+                self.logger.info(f"Using commodity OHLCV clients for {ticker} (asset_type: {asset_type})")
+            else:
+                # 주식, ETF, 지수, 통화 등 - 인터벌에 따라 클라이언트 선택
+                # ⚠️ 일반 주식은 절대 FMP를 사용하지 않음 (commodity_ohlcv_clients는 commodity 전용)
+                if interval in ["4h", "1h", "30m", "15m", "5m", "1m"]:
+                    # 인트라데이 데이터 (4h, 1h 등)
+                    clients_to_use = self.ohlcv_intraday_clients
+                    self.logger.info(f"Using intraday OHLCV clients for {ticker} (asset_type: {asset_type}, interval: {interval})")
+                else:
+                    # 일봉 데이터 (1d, 1w, 1m 등)
+                    clients_to_use = self.ohlcv_day_clients
+                    self.logger.info(f"Using daily OHLCV clients for {ticker} (asset_type: {asset_type}, interval: {interval})")
+                
+                # 보안 체크: 일반 주식이 FMP로 수집되는 것을 방지 (preferred_data_source가 fmp인 경우 제외)
+                if asset_type and 'stock' in asset_type.lower() and (not preferred_data_source_lower or preferred_data_source_lower != 'fmp'):
+                    clients_to_use = [c for c in clients_to_use if self._get_api_name(c) != 'fmp']
+                    if any(self._get_api_name(c) == 'fmp' for c in self.commodity_ohlcv_clients):
+                        self.logger.warning(f"⚠️ Prevented FMP usage for stock {ticker} (asset_type: {asset_type}). FMP is only for commodities.")
         
         # 활성화된 클라이언트만 필터링
         active_clients = [client for client in clients_to_use if client is not None]
@@ -1059,9 +1120,11 @@ class ApiStrategyManager:
     async def get_crypto_info(self, asset_id: int) -> Optional[Dict[str, Any]]:
         """
         암호화폐 정보를 가져오는 메서드 (수집기용)
+        가격 데이터와 메타데이터를 모두 수집하여 반환합니다.
         """
         from app.models.asset import Asset
         from app.core.database import SessionLocal
+        from app.external_apis.base.schemas import CryptoData
         
         db = SessionLocal()
         try:
@@ -1075,22 +1138,110 @@ class ApiStrategyManager:
         for i, client in enumerate(self.crypto_clients):
             try:
                 self.logger.info(f"Attempting to fetch crypto info for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.crypto_clients)})")
+                
+                # 1. 기본 가격 데이터 가져오기
+                crypto_data = None
                 if hasattr(client, 'get_crypto_data'):
-                    data = await client.get_crypto_data(ticker)
+                    crypto_data = await client.get_crypto_data(ticker)
                 elif hasattr(client, 'get_crypto_info'):
-                    data = await client.get_crypto_info(ticker)
+                    crypto_data = await client.get_crypto_info(ticker)
                 elif hasattr(client, 'get_profile'):
-                    data = await client.get_profile(ticker)
+                    crypto_data = await client.get_profile(ticker)
                 else:
                     self.logger.warning(f"{client.__class__.__name__} has no crypto info method")
                     continue
-                if data is not None:
-                    self.logger.info(f"Successfully fetched crypto info for {ticker} from {client.__class__.__name__}")
-                    return data
-                else:
+                
+                if crypto_data is None:
                     self.logger.warning(f"{client.__class__.__name__} returned empty crypto info for {ticker}")
+                    continue
+                
+                # 2. 상세 정보 가져오기 (CoinMarketCap의 경우 name, percent_change 필드 포함)
+                quote_details = None
+                if hasattr(client, 'get_quote_details'):
+                    try:
+                        quote_details = await client.get_quote_details(ticker)
+                        if quote_details:
+                            self.logger.info(f"Successfully fetched quote details for {ticker} from {client.__class__.__name__}")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to fetch quote details for {ticker} from {client.__class__.__name__}: {e}")
+                
+                # 3. 메타데이터 가져오기 (CoinMarketCap의 경우)
+                metadata = None
+                if hasattr(client, 'get_metadata'):
+                    try:
+                        metadata = await client.get_metadata(ticker)
+                        if metadata:
+                            self.logger.info(f"Successfully fetched metadata for {ticker} from {client.__class__.__name__}")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to fetch metadata for {ticker} from {client.__class__.__name__}: {e}")
+                
+                # 4. 데이터 병합
+                # 타입 안전하게 변환: dict를 우선 체크 (dict-like 객체도 처리)
+                if isinstance(crypto_data, dict):
+                    result = crypto_data.copy()
+                elif isinstance(crypto_data, CryptoData):
+                    # Pydantic 모델을 dict로 변환
+                    try:
+                        result = crypto_data.model_dump(mode='json')
+                    except Exception as e:
+                        self.logger.warning(f"Failed to call model_dump on CryptoData for {ticker}: {e}, using dict conversion")
+                        result = dict(crypto_data) if hasattr(crypto_data, '__dict__') else {}
+                elif hasattr(crypto_data, 'model_dump') and callable(getattr(crypto_data, 'model_dump', None)):
+                    # 다른 Pydantic 모델인 경우
+                    try:
+                        result = crypto_data.model_dump(mode='json')
+                    except Exception as e:
+                        self.logger.warning(f"Failed to call model_dump on crypto_data for {ticker}: {e}, using dict conversion")
+                        result = dict(crypto_data) if hasattr(crypto_data, '__dict__') else {}
+                else:
+                    # 기타 경우: dict로 변환 시도
+                    try:
+                        result = dict(crypto_data) if hasattr(crypto_data, '__dict__') else {}
+                    except Exception as e:
+                        self.logger.warning(f"Failed to convert crypto_data to dict for {ticker}: {e}")
+                        result = {}
+                
+                # result가 dict인지 최종 확인
+                if not isinstance(result, dict):
+                    self.logger.error(f"result is not a dict for {ticker}: {type(result)}")
+                    result = {}
+                
+                # quote_details 병합 (name, percent_change 필드)
+                if quote_details:
+                    result.update({
+                        'name': quote_details.get('name'),
+                        'percent_change_1h': quote_details.get('percent_change_1h'),
+                        'percent_change_24h': quote_details.get('percent_change_24h') or result.get('change_24h') or result.get('percent_change_24h'),
+                        'percent_change_7d': quote_details.get('percent_change_7d'),
+                        'percent_change_30d': quote_details.get('percent_change_30d'),
+                    })
+                
+                # 메타데이터 병합
+                if metadata:
+                    # explorer, source_code, tags는 리스트일 수 있으므로 그대로 저장 (PostgreSQL JSON 타입)
+                    result.update({
+                        'category': metadata.get('category'),
+                        'description': metadata.get('description'),
+                        'logo_url': metadata.get('logo_url'),
+                        'website_url': metadata.get('website_url'),
+                        'slug': metadata.get('slug'),
+                        'date_added': metadata.get('date_added'),
+                        'platform': metadata.get('platform'),
+                        'explorer': metadata.get('explorer'),  # 리스트 그대로 저장
+                        'source_code': metadata.get('source_code'),  # 리스트 그대로 저장
+                        'tags': metadata.get('tags'),  # 리스트 그대로 저장
+                    })
+                
+                # percent_change 필드 처리 (호환성)
+                if 'change_24h' in result and 'percent_change_24h' not in result:
+                    result['percent_change_24h'] = result.get('change_24h')
+                
+                self.logger.info(f"Successfully fetched crypto info for {ticker} from {client.__class__.__name__}")
+                return result
+                
             except Exception as e:
                 self.logger.warning(f"{client.__class__.__name__} failed for crypto info {ticker}. Reason: {e}. Trying next client.")
+        
         self.logger.error(f"All API clients failed to fetch crypto info for {ticker}")
         return None
 

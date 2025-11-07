@@ -28,12 +28,19 @@ def get_symbol_for_provider(raw_ticker: str, provider: str) -> str:
     t = (raw_ticker or "").upper().strip()
     mapping = _load_asset_mapping()
 
-    # Optional overrides section we can add in JSON later without breaking
-    overrides: Dict[str, Dict[str, str]] = mapping.get("symbol_overrides", {})
-    provider_overrides: Dict[str, str] = overrides.get(provider.lower(), {})
-
+    # Check provider_mapping first (new format)
+    provider_mapping: Dict[str, Dict[str, str]] = mapping.get("provider_mapping", {})
+    provider_overrides: Dict[str, str] = provider_mapping.get(provider.lower(), {})
+    
     if t in provider_overrides:
         return provider_overrides[t]
+
+    # Optional overrides section we can add in JSON later without breaking (legacy format)
+    overrides: Dict[str, Dict[str, str]] = mapping.get("symbol_overrides", {})
+    legacy_provider_overrides: Dict[str, str] = overrides.get(provider.lower(), {})
+
+    if t in legacy_provider_overrides:
+        return legacy_provider_overrides[t]
 
     if provider.lower() == "binance":
         # If already provider-formatted

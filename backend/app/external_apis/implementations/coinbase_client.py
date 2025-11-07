@@ -21,7 +21,7 @@ class CoinbaseClient(CryptoAPIClient):
         super().__init__()
         self.base_url = "https://api.exchange.coinbase.com"
     
-    def _convert_symbol_for_coinbase(self, symbol: str) -> str:
+    def _convert_symbol_for_coinbase(self, symbol: str) -> Optional[str]:
         """Coinbase API용 심볼 변환 (BTCUSDT -> BTC-USD)"""
         # Coinbase에서 지원하는 심볼 매핑
         coinbase_symbols = {
@@ -64,6 +64,8 @@ class CoinbaseClient(CryptoAPIClient):
             'UNI': None,  # Coinbase에서 지원하지 않음
             'SHIB': None,  # Coinbase에서 지원하지 않음
             'TON': None,  # Coinbase에서 지원하지 않음
+            'USDC': None,  # USDC는 스테이블코인으로 거래 페어가 아님
+            'USDT': None,  # USDT는 스테이블코인으로 거래 페어가 아님
         }
         
         # 매핑 테이블에서 찾기
@@ -71,12 +73,16 @@ class CoinbaseClient(CryptoAPIClient):
             return coinbase_symbols[symbol]
         
         # 일반적인 변환 규칙 (fallback)
-        if symbol.endswith('USDT'):
+        if symbol.endswith('USDT') and len(symbol) > 4:
             return symbol[:-4] + '-USD'
-        elif symbol.endswith('USDC'):
+        elif symbol.endswith('USDC') and len(symbol) > 4:
+            # USDCUSDT 같은 경우는 앞부분만 추출
             return symbol[:-4] + '-USD'
-        elif symbol.endswith('BTC'):
+        elif symbol.endswith('BTC') and len(symbol) > 3:
             return symbol + '-USD'
+        elif symbol == 'USDC' or symbol == 'USDT':
+            # 스테이블코인 자체는 거래 페어가 아님
+            return None
         else:
             # 기본적으로 -USD 추가
             return f"{symbol}-USD"
@@ -113,6 +119,11 @@ class CoinbaseClient(CryptoAPIClient):
         try:
             # Coinbase API용 심볼 변환
             coinbase_symbol = self._convert_symbol_for_coinbase(symbol)
+            
+            # Coinbase에서 지원하지 않는 심볼인 경우 빈 리스트 반환
+            if coinbase_symbol is None:
+                logger.warning(f"Coinbase does not support symbol: {symbol}")
+                return []
             
             async with httpx.AsyncClient() as client:
                 # Coinbase는 granularity를 초 단위로 받음 (86400 = 1일)

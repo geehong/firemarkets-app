@@ -252,5 +252,14 @@
     "Denmark": "DK",
     "Spain": "ES",
     "Global": "GL"
+  },
+  "provider_mapping": {
+    "fmp": {
+      "PALLAD": "PALL"
+    },
+    "tiingo": {
+      "PALLAD": "XPDUSD",
+      "PLAT": "XPTUSD"
+    }
   }
 }

@@ -94,7 +94,8 @@ class CryptoDataCollector(BaseCollector):
         """
         try:
             # 3. 데이터 가져오라고 시키기 (ApiStrategyManager 사용)
-            crypto_data: CryptoData = await self.api_manager.get_crypto_info(asset_id=asset_id)
+            # get_crypto_info는 Dict[str, Any]를 반환합니다 (CryptoData 모델이 아님)
+            crypto_data = await self.api_manager.get_crypto_info(asset_id=asset_id)
 
             if not crypto_data:
                 self.logging_helper.log_debug(f"No new crypto data returned for asset_id {asset_id}.")
@@ -104,7 +105,29 @@ class CryptoDataCollector(BaseCollector):
             # 표준 큐 페이로드: {"items": [...]}로 통일
             # datetime 객체를 JSON 직렬화 가능한 형태로 변환
             # asset_id를 포함하여 전달
-            crypto_data_dict = crypto_data.model_dump(mode='json')
+            # crypto_data는 이미 dict이므로 그대로 사용
+            # 타입 안전하게 변환
+            if isinstance(crypto_data, dict):
+                crypto_data_dict = crypto_data.copy()
+            elif hasattr(crypto_data, 'model_dump') and callable(getattr(crypto_data, 'model_dump', None)):
+                # Pydantic 모델인 경우
+                try:
+                    crypto_data_dict = crypto_data.model_dump(mode='json')
+                except Exception as e:
+                    logger.warning(f"Failed to call model_dump on crypto_data for asset_id {asset_id}: {e}, converting to dict")
+                    crypto_data_dict = dict(crypto_data) if hasattr(crypto_data, '__dict__') else {}
+            else:
+                # 기타 경우: dict로 변환 시도
+                try:
+                    crypto_data_dict = dict(crypto_data) if hasattr(crypto_data, '__dict__') else {}
+                except Exception as e:
+                    logger.error(f"Failed to convert crypto_data to dict for asset_id {asset_id}: {e}")
+                    return {"success": False, "error": f"Failed to convert crypto_data: {e}", "enqueued_count": 0}
+            
+            if not isinstance(crypto_data_dict, dict):
+                logger.error(f"crypto_data_dict is not a dict for asset_id {asset_id}: {type(crypto_data_dict)}")
+                return {"success": False, "error": f"crypto_data_dict is not a dict: {type(crypto_data_dict)}", "enqueued_count": 0}
+            
             crypto_data_dict['asset_id'] = asset_id
             
             await self.redis_queue_manager.push_batch_task(

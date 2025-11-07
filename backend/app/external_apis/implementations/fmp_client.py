@@ -78,6 +78,10 @@ class FMPClient(TradFiAPIClient):
             raise ValueError("No FMP API key configured")
         
         try:
+            # Provider별 심볼 매핑 적용
+            from ...utils.asset_mapping_loader import get_symbol_for_provider
+            fmp_symbol = get_symbol_for_provider(symbol, "fmp")
+            
             # 휴일 감지 및 날짜 범위 최적화
             from ...utils.trading_calendar import is_trading_day, get_last_trading_day, format_trading_status_message
             
@@ -92,17 +96,17 @@ class FMPClient(TradFiAPIClient):
                 # interval에 따라 다른 엔드포인트 사용
                 if interval in ["4h", "1h", "30m", "15m", "5m", "1m"]:
                     # 인트라데이 데이터용 엔드포인트
-                    base = f"{self.base_url}/historical-chart/{interval}/{symbol}?apikey={self.api_key}"
+                    base = f"{self.base_url}/historical-chart/{interval}/{fmp_symbol}?apikey={self.api_key}"
                 else:
                     # 일봉 데이터용 엔드포인트 (기본값)
-                    base = f"{self.base_url}/historical-price-full/{symbol}?apikey={self.api_key}"
+                    base = f"{self.base_url}/historical-price-full/{fmp_symbol}?apikey={self.api_key}"
                 
                 if start_date and end_date:
                     url = f"{base}&from={start_date}&to={end_date}"
                 else:
                     url = f"{base}&limit={limit or 1000}"
                 
-                logger.info(f"[{symbol}] FMP API 호출 시도: {url}")
+                logger.info(f"[{symbol} -> {fmp_symbol}] FMP API 호출 시도: {url}")
                 
                 response = await client.get(url, timeout=self.api_timeout)
                 response.raise_for_status()
