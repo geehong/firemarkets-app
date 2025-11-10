@@ -210,23 +210,57 @@ async def listen_to_redis_and_broadcast():
                             if not symbol or price is None:
                                 continue
 
-                            # 먼저 전체 심볼로 검색, 없으면 USDT 접미사 제거하여 검색
+                            # 티커 형식 변환 (Coinbase: ETH-USD -> ETHUSDT, Binance: 그대로)
+                            original_symbol = symbol
+                            
+                            # provider가 없으면 stream_name에서 추론
+                            if provider == 'unknown' or not provider:
+                                if 'coinbase' in stream_name.lower():
+                                    provider = 'coinbase'
+                                elif 'binance' in stream_name.lower():
+                                    provider = 'binance'
+                                elif 'finnhub' in stream_name.lower():
+                                    provider = 'finnhub'
+                            
+                            # 티커 변환 로직
+                            if symbol.endswith('-USD'):
+                                # ETH-USD -> ETHUSDT 변환 (Coinbase 형식)
+                                base = symbol[:-4]  # '-USD' 제거
+                                symbol = f"{base}USDT"
+                                logger.info(f"🔄 티커 변환: {original_symbol} -> {symbol} (provider: {provider}, stream: {stream_name})")
+                            elif not symbol.endswith('USDT') and provider == 'binance':
+                                # Binance는 USDT 접미사가 없으면 추가
+                                if not any(symbol.endswith(suffix) for suffix in ['USDT', 'BUSD', 'BTC', 'ETH']):
+                                    symbol = f"{symbol}USDT"
+                                    logger.info(f"🔄 Binance 티커 변환: {original_symbol} -> {symbol}")
+
+                            # 먼저 전체 심볼로 검색
                             asset_id = ticker_to_asset_id_cache.get(symbol)
+                            
+                            # 없으면 원본 심볼로도 시도
+                            if not asset_id and original_symbol != symbol:
+                                asset_id = ticker_to_asset_id_cache.get(original_symbol)
+                                if asset_id:
+                                    logger.debug(f"🔍 변환된 심볼 '{symbol}' not found, using original: '{original_symbol}'")
+                            
+                            # 여전히 없으면 USDT 접미사 제거하여 검색
                             if not asset_id and symbol.endswith('USDT'):
                                 symbol_for_db = symbol.replace('USDT', '')
                                 asset_id = ticker_to_asset_id_cache.get(symbol_for_db)
                                 logger.debug(f"🔍 Full symbol '{symbol}' not found, trying without USDT: '{symbol_for_db}'")
                             
                             if not asset_id:
-                                logger.warning(f"⚠️ Asset ID not found for symbol: {symbol}")
+                                logger.warning(f"⚠️ Asset ID not found for symbol: {symbol} (original: {original_symbol}, provider: {provider})")
                                 logger.warning(f"📋 Available symbols in cache: {list(ticker_to_asset_id_cache.keys())[:10]}...")
                                 continue
                             else:
-                                logger.debug(f"✅ Found asset_id {asset_id} for symbol: {symbol}")
+                                logger.debug(f"✅ Found asset_id {asset_id} for symbol: {symbol} (original: {original_symbol})")
 
+                            # 브로드캐스트할 때는 데이터베이스에 저장된 티커 형식 사용 (USDT 형식)
+                            # 하지만 원본 티커 정보도 유지
                             quote_data = {
                                 "asset_id": asset_id,
-                                "ticker": symbol,
+                                "ticker": symbol,  # 변환된 티커 (ETHUSDT 형식)
                                 "timestamp_utc": datetime.now(timezone.utc).isoformat(),
                                 "price": price,
                                 "volume": volume,

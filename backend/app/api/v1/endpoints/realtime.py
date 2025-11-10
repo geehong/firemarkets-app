@@ -325,6 +325,7 @@ async def get_realtime_quotes_delay_price_postgres(
     data_interval: str = Query("15m", description="Data interval (15m, 30m, 1h, 2h, 3h)"),
     days: str = Query("1", description="Number of days to fetch (1) or 'last' for latest value only"),
     data_source: Optional[str] = Query(None, description="Data source filter (optional, only for crypto assets)"),
+    limit: int = Query(360, ge=1, le=10000, description="Maximum number of data points to fetch (default: 360, 24*15)"),
     postgres_db: Session = Depends(get_postgres_db)
 ):
     """
@@ -402,13 +403,13 @@ async def get_realtime_quotes_delay_price_postgres(
                         "3h": 8      # 24 / 3
                     }
                     points_needed = points_per_day.get(data_interval, 96) * days_int
-                    # 충분한 데이터 확보를 위해 limit=360 사용 (약 3.75일치)
-                    query = query.limit(360)
+                    # limit 파라미터 사용
+                    query = query.limit(limit)
                 else:
-                    query = query.limit(360)
+                    query = query.limit(limit)
             except ValueError:
-                # 숫자가 아니면 기본값으로 limit=360 사용
-                query = query.limit(360)
+                # 숫자가 아니면 limit 파라미터 사용
+                query = query.limit(limit)
         
         quotes = query.all()
         
@@ -445,13 +446,13 @@ async def get_realtime_quotes_delay_price_postgres(
                             "4h": 6
                         }
                         points_needed = ohlcv_points_per_day.get(ohlcv_interval, 24) * days_int
-                        # 충분한 데이터 확보를 위해 limit=360 사용
-                        ohlcv_query = ohlcv_query.limit(360)
+                        # limit 파라미터 사용
+                        ohlcv_query = ohlcv_query.limit(limit)
                     else:
-                        ohlcv_query = ohlcv_query.limit(360)
+                        ohlcv_query = ohlcv_query.limit(limit)
                 except ValueError:
-                    # 숫자가 아니면 기본값으로 limit=360 사용
-                    ohlcv_query = ohlcv_query.limit(360)
+                    # 숫자가 아니면 limit 파라미터 사용
+                    ohlcv_query = ohlcv_query.limit(limit)
             
             ohlcv_data = ohlcv_query.all()
             

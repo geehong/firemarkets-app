@@ -82,7 +82,7 @@ const TickerCard: React.FC<{
   ticker: string;
   ChartComponent: ChartComponent;
 }> = ({ ticker, ChartComponent }) => {
-  const { latestPrice, isConnected, isUsingDummyData } = useRealtimePrices(ticker);
+  const { latestPrice, isConnected } = useRealtimePrices(ticker);
 
   return (
     <div className="w-full sm:w-1/2 lg:w-1/3 xl:w-1/4 p-2">
@@ -95,8 +95,6 @@ const TickerCard: React.FC<{
       <div className="text-xs text-center mt-1">
         {isConnected ? (
           <span className="text-green-600">● Connected</span>
-        ) : isUsingDummyData ? (
-          <span className="text-yellow-600">● Demo Data</span>
         ) : (
           <span className="text-red-600">● Disconnected</span>
         )}
@@ -107,7 +105,7 @@ const TickerCard: React.FC<{
 
 // 메인 페이지 컴포넌트
 const TestPage: React.FC = () => {
-  const { broadcastData, isConnected, isUsingDummyData } = useBroadcastData();
+  const { broadcastData, isConnected } = useBroadcastData();
   const [selectedGroup, setSelectedGroup] = useState(0);
   const [selectedWidgetGroup, setSelectedWidgetGroup] = useState(0);
 
@@ -119,20 +117,13 @@ const TestPage: React.FC = () => {
         <h1 className="text-3xl font-bold text-gray-800 mb-2">Real-time Market Data & Widgets</h1>
         <div className="flex items-center gap-4">
           <div className={`px-3 py-1 rounded-full text-sm ${
-            isConnected ? 'bg-green-100 text-green-800' : 
-            isUsingDummyData ? 'bg-yellow-100 text-yellow-800' : 
-            'bg-red-100 text-red-800'
+            isConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
           }`}>
-            WebSocket: {isConnected ? 'Connected' : isUsingDummyData ? 'Demo Mode' : 'Disconnected'}
+            WebSocket: {isConnected ? 'Connected' : 'Disconnected'}
           </div>
           <div className="text-sm text-gray-600">
             Broadcast Data: {broadcastData.length} items
           </div>
-          {isUsingDummyData && (
-            <div className="text-xs text-yellow-600 bg-yellow-50 px-2 py-1 rounded">
-              Using demo data - WebSocket server not available
-            </div>
-          )}
         </div>
       </div>
 

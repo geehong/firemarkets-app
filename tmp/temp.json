@@ -22,8 +22,8 @@
       "day_of_week": "mon,tue,wed,thu,fri,sat,sun"
     },
     {
-      "hour": 10,
-      "minute": 52,
+      "hour": 6,
+      "minute": 0,
       "collectors": [
         "ohlcv_day_clients",
         "ohlcv_intraday_clients",
@@ -32,14 +32,6 @@
         "commodity_ohlcv_clients"
       ],
       "day_of_week": "mon,tue,wed,thu,fri,sat,sun"
-    },
-    {
-      "hour": 12,
-      "minute": 0,
-      "collectors": [
-        "ohlcv_intraday_clients"
-      ],
-      "day_of_week": "mon"
     },
     {
       "hour": 10,

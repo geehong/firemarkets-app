@@ -1,3 +1,4 @@
+// @ts-nocheck
 "use client"
 
 import React, { useEffect, useMemo, useRef, useState } from "react"
@@ -82,9 +83,13 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
 }) => {
   const chartRef = useRef<HTMLDivElement | null>(null)
   const [chart, setChart] = useState<any>(null)
+  const [Highcharts, setHighcharts] = useState<any>(null)
   const [isMobile, setIsMobile] = useState<boolean>(false)
   const [isClient, setIsClient] = useState<boolean>(false)
   const [highchartsLoaded, setHighchartsLoaded] = useState(false)
+  const hasLoggedApiResponse = useRef<boolean>(false)
+  const hasLoggedChartData = useRef<boolean>(false)
+  const hasLoggedUpdatedPoint = useRef<boolean>(false)
 
   // 클라이언트 사이드 렌더링 확인
   useEffect(() => {
@@ -130,30 +135,22 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
     return socketConnected // 그 외에는 WebSocket 연결 상태 그대로
   }, [socketConnected, chartType, marketHours])
 
-  // Highcharts 동적 로드
+  // Highcharts 동적 로드 (highcharts/highstock만 로드, exporting/accessibility는 사용하지 않음)
   useEffect(() => {
     const loadHighcharts = async () => {
       if (typeof window !== "undefined") {
         try {
-          // @ts-ignore - runtime dynamic import; types may not be present
-          const Highcharts = (await import("highcharts")).default
-          // @ts-ignore - runtime dynamic import; types may not be present
-          const HighchartsStock = (await import("highcharts/modules/stock")).default
-          
-          // Highcharts Stock 모듈 초기화
-          if (typeof HighchartsStock === 'function') {
-            (HighchartsStock as any)(Highcharts)
-          }
-          
-          // 전역에 Highcharts 설정
-          ;(window as any).Highcharts = Highcharts
+          const { default: HighchartsCore } = await import("highcharts/highstock")
+
+          setHighcharts(HighchartsCore)
+          ;(window as any).Highcharts = HighchartsCore
           setHighchartsLoaded(true)
         } catch (error) {
-          // console.error("Failed to load Highcharts:", error)
+          console.error("Failed to load Highcharts:", error)
         }
       }
     }
-    
+
     loadHighcharts()
   }, [])
 
@@ -166,7 +163,15 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
   // API 데이터 로드 (지연 데이터 기반 시계열)
   const { data: apiResponse, isLoading, error } = useDelayedQuotes([assetIdentifier], { dataSource })
 
-  // 시계열 데이터로 변환 (API 데이터 + 실시간 데이터)
+  // API 데이터 콘솔 출력 (1번만)
+  useEffect(() => {
+    if (apiResponse && !hasLoggedApiResponse.current) {
+      console.log('[MiniPriceChart] API Response (useDelayedQuotes):', apiResponse)
+      hasLoggedApiResponse.current = true
+    }
+  }, [apiResponse])
+
+  // 시계열 데이터로 변환 (API 데이터만 사용, 실시간 데이터는 별도 useEffect에서 처리)
   const chartData: [number, number][] = useMemo(() => {
     let baseData: [number, number][] = []
     
@@ -196,27 +201,19 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
         .sort((a: [number, number], b: [number, number]) => a[0] - b[0])
     }
     
-    // 실시간 데이터 추가 (최신 가격)
-    if (latestPrice) {
-      const realtimePoint: [number, number] = [
-        new Date(latestPrice.timestamp).getTime(),
-        parseFloat(latestPrice.price.toString())
-      ]
-      
-      // 중복 제거 (같은 시간대 데이터가 있으면 실시간 데이터로 교체)
-      const existingIndex = baseData.findIndex((point) => 
-        Math.abs(point[0] - realtimePoint[0]) < 60000 // 1분 이내
-      )
-      
-      if (existingIndex >= 0) {
-        baseData[existingIndex] = realtimePoint
-      } else {
-        baseData.push(realtimePoint)
-      }
+    // API 데이터 콘솔 출력 (1번만)
+    if (baseData.length > 0 && !hasLoggedChartData.current) {
+      console.log('[MiniPriceChart] Chart Data (API only):', {
+        totalPoints: baseData.length,
+        firstPoint: baseData[0],
+        lastPoint: baseData[baseData.length - 1],
+        data: baseData.slice(-10), // 마지막 10개 포인트만 출력
+      })
+      hasLoggedChartData.current = true
     }
     
     return baseData.sort((a, b) => a[0] - b[0])
-  }, [apiResponse, latestPrice])
+  }, [apiResponse, assetIdentifier])
 
   // 전일 클로즈 가격(24:00) 계산
   const prevClosePrice = useMemo(() => {
@@ -251,9 +248,16 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
     }
   }, [chartData])
 
+  // chartData의 변경을 감지하기 위한 안정적인 값들
+  const chartDataLength = chartData.length
+  const lastDataTimestamp = chartData.length > 0 ? chartData[chartData.length - 1][0] : null
+  const xAxisSoftMin = xAxisRange.softMin
+  const xAxisSoftMax = xAxisRange.softMax
+
   // 차트 초기 생성 (API 데이터 기반)
   useEffect(() => {
     if (!chartRef.current) return
+    if (!Highcharts) return
     if (!highchartsLoaded) return
     if (isLoading || chartData.length === 0) return
     if (chart) return // 이미 차트가 있으면 스킵
@@ -333,8 +337,8 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
       xAxis: {
         type: "datetime",
         // softMin/softMax를 사용하여 데이터 범위를 지정하고, 패딩으로 여백 추가
-        softMin: xAxisRange.softMin,
-        softMax: xAxisRange.softMax,
+        softMin: xAxisSoftMin,
+        softMax: xAxisSoftMax,
         minPadding: 0.05, // 좌측 패딩 5%
         maxPadding: 0.3, // 우측 패딩 30% (y축 라벨 공간 확보)
         gridLineColor: "rgba(255,255,255,0.06)",
@@ -414,58 +418,55 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
 
     let newChart: any
     try {
-      const Highcharts = (window as any).Highcharts
-      if (Highcharts) {
-        newChart = Highcharts.stockChart(chartRef.current as any, options)
-        setChart(newChart)
-        
-        // 차트 생성 후 dataLabels 렌더링을 위한 레이아웃 재계산
-        requestAnimationFrame(() => {
-          try {
-            // 차트가 완전히 마운트되고 컨테이너가 존재하는지 확인
-            if (newChart && newChart.renderer && newChart.renderer.box && newChart.container && newChart.container.parentNode) {
-              if (typeof newChart.reflow === 'function') {
-                newChart.reflow()
-              }
+      newChart = Highcharts.stockChart(chartRef.current as any, options)
+      setChart(newChart)
+
+      // 차트 생성 후 dataLabels 렌더링을 위한 레이아웃 재계산
+      requestAnimationFrame(() => {
+        try {
+          // 차트가 완전히 마운트되고 컨테이너가 존재하는지 확인
+          if (newChart && newChart.renderer && newChart.renderer.box && newChart.container && newChart.container.parentNode) {
+            if (typeof newChart.reflow === 'function') {
+              newChart.reflow()
             }
-            // 마커 시리즈의 dataLabels 강제 업데이트
-            if (newChart && newChart.series && newChart.series[1]) {
-              const markerSeries = newChart.series[1]
-              if (markerSeries && markerSeries.points && markerSeries.points.length > 0) {
-                const point = markerSeries.points[0]
-                if (point && point.dataLabel) {
-                  point.dataLabel.attr({ opacity: 1 })
-                }
-              }
-            }
-          } catch (e) {
-            // reflow 에러는 무시 (차트가 아직 완전히 준비되지 않았을 수 있음)
-            console.warn('[MiniPriceChart] reflow failed:', e)
           }
-        })
-        
-        // 차트 생성 후 추가 휠 이벤트 차단
-        if (newChart && newChart.container) {
-          const container = newChart.container;
-          const preventWheel = (e: any) => {
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-            return false;
-          };
-          
-          // 모든 휠 관련 이벤트 차단
-          ['wheel', 'mousewheel', 'DOMMouseScroll'].forEach(eventType => {
-            container.addEventListener(eventType, preventWheel, { passive: false, capture: true });
-          });
+          // 마커 시리즈의 dataLabels 강제 업데이트
+          if (newChart && newChart.series && newChart.series[1]) {
+            const markerSeries = newChart.series[1]
+            if (markerSeries && markerSeries.points && markerSeries.points.length > 0) {
+              const point = markerSeries.points[0]
+              if (point && point.dataLabel) {
+                point.dataLabel.attr({ opacity: 1 })
+              }
+            }
+          }
+        } catch (e) {
+          // reflow 에러는 무시 (차트가 아직 완전히 준비되지 않았을 수 있음)
+          console.warn('[MiniPriceChart] reflow failed:', e)
         }
-        
-        // console.log(`[MiniPriceChart - ${assetIdentifier}] 차트 초기 생성 완료`)
+      })
+
+      // 차트 생성 후 추가 휠 이벤트 차단
+      if (newChart && newChart.container) {
+        const container = newChart.container
+        const preventWheel = (e: any) => {
+          e.preventDefault()
+          e.stopPropagation()
+          e.stopImmediatePropagation()
+          return false
+        }
+
+        // 모든 휠 관련 이벤트 차단
+        ;['wheel', 'mousewheel', 'DOMMouseScroll'].forEach(eventType => {
+          container.addEventListener(eventType, preventWheel, { passive: false, capture: true })
+        })
       }
+
+      // console.log(`[MiniPriceChart - ${assetIdentifier}] 차트 초기 생성 완료`)
     } catch (e) {
-      // console.error(`[MiniPriceChart - ${assetIdentifier}] chart init error:`, e)
+      console.error(`[MiniPriceChart - ${assetIdentifier}] chart init error:`, e)
     }
-  }, [assetIdentifier, isLoading, highchartsLoaded, chart])
+  }, [assetIdentifier, isLoading, highchartsLoaded, chart, chartDataLength, lastDataTimestamp, prevClosePrice, assetName, assetTicker, title, xAxisSoftMin, xAxisSoftMax, Highcharts])
 
   // 실시간 데이터 업데이트 (마지막 포인트만 움직이는 효과)
   useEffect(() => {
@@ -589,9 +590,13 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
         }
       })
       
-      // console.log(`[MiniPriceChart - ${assetIdentifier}] 실시간 데이터 업데이트: $${realtimePoint[1]} (${isRising === true ? '상승' : isRising === false ? '하락' : '보합'})`)
+      // 로그 출력 (1번만)
+      if (!hasLoggedUpdatedPoint.current) {
+        console.log(`[MiniPriceChart - ${assetIdentifier}] 실시간 데이터 업데이트: $${realtimePoint[1]} (${isRising === true ? '상승' : isRising === false ? '하락' : '보합'})`)
+        hasLoggedUpdatedPoint.current = true
+      }
     } catch (e) {
-      // console.error(`[MiniPriceChart - ${assetIdentifier}] 실시간 업데이트 오류:`, e)
+      console.error(`[MiniPriceChart - ${assetIdentifier}] 실시간 업데이트 오류:`, e)
     }
   }, [chart, latestPrice, assetIdentifier, prevClosePrice])
 

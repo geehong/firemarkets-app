@@ -14,6 +14,7 @@ import { useSearchParams, usePathname } from "next/navigation";
 import { useTreemapLive } from "@/hooks/useAssets";
 import { useRealtimePrices } from "@/hooks/useSocket";
 import Badge from "@/components/ui/badge/Badge";
+import LiveChart from "@/components/charts/live/livechart";
 
 // 동적 import로 각 페이지 컴포넌트 로드
 const AssetsDashboard = dynamic(() => import("./assets/page"), { 
@@ -364,72 +365,80 @@ function OverviewContent() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* 비트코인 차트 */}
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
-            <ClientOnlyChart
-              type="crypto"
-              containerId="dashboard-btc-chart"
-              assetIdentifier="BTCUSDT"
+            <LiveChart
+              containerId="dashboard-btc-live"
+              height={300}
+              updateInterval={100}
             />
           </div>
 
           {/* 이더리움 차트 */}
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
-            <ClientOnlyChart
-              type="crypto"
-              containerId="dashboard-eth-chart"
+            <LiveChart
+              containerId="dashboard-eth-live"
+              height={300}
+              updateInterval={100}
               assetIdentifier="ETHUSDT"
+              dataSource="binance"
             />
           </div>
 
           {/* SPY 차트 */}
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
-            <ClientOnlyChart
-              type="stocks"
-              containerId="dashboard-spy-chart"
+            <LiveChart
+              containerId="dashboard-spy-live"
+              height={300}
+              updateInterval={100}
               assetIdentifier="SPY"
             />
           </div>
 
           {/* QQQ 차트 */}
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
-            <ClientOnlyChart
-              type="stocks"
-              containerId="dashboard-qqq-chart"
+            <LiveChart
+              containerId="dashboard-qqq-live"
+              height={300}
+              updateInterval={100}
               assetIdentifier="QQQ"
             />
           </div>
 
           {/* GCUSD 차트 */}
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
-            <ClientOnlyChart
-              type="commodities"
-              containerId="dashboard-gcusd-chart"
+            <LiveChart
+              containerId="dashboard-gcusd-live"
+              height={300}
+              updateInterval={100}
               assetIdentifier="GCUSD"
             />
           </div>
 
           {/* SIUSD 차트 */}
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
-            <ClientOnlyChart
-              type="commodities"
-              containerId="dashboard-siusd-chart"
+            <LiveChart
+              containerId="dashboard-siusd-live"
+              height={300}
+              updateInterval={100}
               assetIdentifier="SIUSD"
             />
           </div>
 
           {/* NVDA 차트 */}
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
-            <ClientOnlyChart
-              type="stocks"
-              containerId="dashboard-nvda-chart"
+            <LiveChart
+              containerId="dashboard-nvda-live"
+              height={300}
+              updateInterval={100}
               assetIdentifier="NVDA"
             />
           </div>
 
           {/* AAPL 차트 */}
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
-            <ClientOnlyChart
-              type="stocks"
-              containerId="dashboard-aapl-chart"
+            <LiveChart
+              containerId="dashboard-aapl-live"
+              height={300}
+              updateInterval={100}
               assetIdentifier="AAPL"
             />
           </div>

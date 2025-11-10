@@ -7,6 +7,7 @@ import MiniPriceCryptoChart from '@/components/charts/minicharts/MiniPriceCrypto
 import MiniPriceStocksEtfChart from '@/components/charts/minicharts/MiniPriceStocksEtfChart'
 import MiniPriceCommoditiesChart from '@/components/charts/minicharts/MiniPriceCommoditiesChart'
 import CompareMultipleAssetsChart from '@/components/charts/line/CompareMultipleAssetsChart'
+import LiveChart from '@/components/charts/live/livechart'
 
 // Dynamic import로 ApexCharts 로드
 const ReactApexChart = dynamic(() => import('react-apexcharts'), { ssr: false })
@@ -161,6 +162,16 @@ export default function ChartsPage() {
           >
             Compare Charts
           </button>
+          <button
+            onClick={() => setActiveChart('live')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              activeChart === 'live'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            Live Chart
+          </button>
         </div>
       </div>
 
@@ -207,6 +218,18 @@ export default function ChartsPage() {
               />
             </div>
           </div>
+        ) : activeChart === 'live' ? (
+          <div key="live-chart" className="h-[600px]">
+            <h3 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Live Dynamic Chart</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Real-time candlestick chart with dynamic data updates
+            </p>
+            <LiveChart 
+              containerId="live-chart-container"
+              height={500}
+              updateInterval={100}
+            />
+          </div>
         ) : (
           <div key={activeChart} className="h-96">
             {activeChart === 'line' && <DummyLineChart key="line-chart" />}
@@ -214,7 +237,7 @@ export default function ChartsPage() {
             {activeChart === 'mini' && (
               <div key="mini-charts" className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="h-32">
-                  <MiniPriceChart key="mini-1" />
+                  <LiveChart key="mini-live-1" containerId="mini-live-1" height={128} updateInterval={100} />
                 </div>
                 <div className="h-32">
                   <MiniPriceCryptoChart key="mini-2" />
@@ -260,7 +283,7 @@ export default function ChartsPage() {
           </p>
           <div className="space-y-2">
             <div className="h-16">
-              <MiniPriceChart />
+              <LiveChart containerId="mini-live-compact-1" height={64} updateInterval={100} />
             </div>
             <div className="h-16">
               <MiniPriceCryptoChart />
