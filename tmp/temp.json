@@ -2,14 +2,28 @@
   "timezone": "Asia/Seoul",
   "schedules": [
     {
-      "hour": [20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6],
+      "hour": [
+        20,
+        21,
+        22,
+        23,
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
       "minute": 0,
-      "collectors": ["world_assets_clients"],
+      "collectors": [
+        "world_assets_clients"
+      ],
       "day_of_week": "mon,tue,wed,thu,fri,sat,sun"
     },
     {
-      "hour": 6,
-      "minute": 0,
+      "hour": 10,
+      "minute": 52,
       "collectors": [
         "ohlcv_day_clients",
         "ohlcv_intraday_clients",
@@ -17,7 +31,15 @@
         "onchain_clients",
         "commodity_ohlcv_clients"
       ],
-      "day_of_week": "tue,wed,thu,fri,sat"
+      "day_of_week": "mon,tue,wed,thu,fri,sat,sun"
+    },
+    {
+      "hour": 12,
+      "minute": 0,
+      "collectors": [
+        "ohlcv_intraday_clients"
+      ],
+      "day_of_week": "mon"
     },
     {
       "hour": 10,
@@ -31,37 +53,57 @@
     {
       "hour": 16,
       "minute": 15,
-      "collectors": ["stock_financials_macrotrends_clients"],
+      "collectors": [
+        "stock_financials_macrotrends_clients"
+      ],
       "day_of_week": "fri"
     },
     {
-      "hour": 10,
-      "minute": 35,
-      "collectors": ["crypto_clients"],
+      "hour": 7,
+      "minute": 0,
+      "collectors": [
+        "crypto_clients"
+      ],
       "day_of_week": "mon,tue,wed,thu,fri,sat,sun"
     },
     {
       "hour": 6,
       "minute": 0,
-      "collectors": ["etf_clients"],
+      "collectors": [
+        "etf_clients"
+      ],
       "day_of_week": "mon"
     },
     {
       "hour": 8,
       "minute": 0,
-      "collectors": ["stock_profiles_clients"],
+      "collectors": [
+        "stock_profiles_clients"
+      ],
       "day_of_week": "mon,tue,wed,thu,fri,sat"
     },
     {
       "hour": 8,
       "minute": 0,
-      "collectors": ["stock_profiles_fmp_clients"],
+      "collectors": [
+        "stock_profiles_fmp_clients"
+      ],
       "day_of_week": "sun"
     },
     {
       "hour": 12,
       "minute": 0,
-      "collectors": ["stock_financials_macrotrends_clients"],
+      "collectors": [
+        "stock_financials_macrotrends_clients"
+      ],
+      "day_of_week": "mon,tue,wed,thu,fri,sat,sun"
+    },
+    {
+      "hour": 10,
+      "minute": 48,
+      "collectors": [
+        "ohlcv_intraday_clients"
+      ],
       "day_of_week": "mon,tue,wed,thu,fri,sat,sun"
     }
   ],

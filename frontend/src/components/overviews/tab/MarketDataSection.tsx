@@ -95,3 +95,4 @@ const MarketDataSection: React.FC<MarketDataSectionProps> = ({ asset, commonData
 
 export default MarketDataSection
 
+

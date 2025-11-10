@@ -810,7 +810,7 @@ class DataProcessor:
                     break
                 
                 # 태스크 정보 로깅
-                task_type = task_wrapper.get("task_type", "unknown")
+                task_type = task_wrapper.get("type", "unknown")
                 logger.info(f"배치 큐에서 태스크 수신: {task_type}")
                     
                 # Retry loop per task
@@ -1532,8 +1532,9 @@ class DataProcessor:
             return False
         
         # interval에 따라 저장할 테이블 결정 (요청 주기 기반, 이후 실제 주기 검증로직에서 재조정)
-        # 1d, 1w, 1m는 ohlcv_day_data, 나머지는 ohlcv_intraday_data
-        is_daily_request = interval in ["1d", "daily", "1w", "1m"] or interval is None
+        # 1d, 1w, 1mo(월봉)는 ohlcv_day_data, 나머지는 ohlcv_intraday_data
+        # 주의: "1m"은 1분 간격이므로 월봉이 아님. 월봉은 "1mo" 또는 "1month"
+        is_daily_request = interval in ["1d", "daily", "1w", "1mo", "1month"] or interval is None
         table_name = "ohlcv_day_data" if is_daily_request else "ohlcv_intraday_data"
         
         logger.info(f"OHLCV 데이터 저장 시작: asset_id={asset_id}, interval={interval}, table={table_name}, records={len(items)}")
@@ -1638,8 +1639,9 @@ class DataProcessor:
 
                     ohlcv_data_list.append(item_dict)
 
-                    # 인트라데이 요청인데 실제가 1d/1w/1m면 카운트
-                    if intraday_request and item_dict['data_interval'] in ["1d", "daily", "1w", "1m"]:
+                    # 인트라데이 요청인데 실제가 1d/1w/1mo(월봉)면 카운트
+                    # 주의: "1m"은 1분 간격이므로 월봉이 아님. 월봉은 "1mo" 또는 "1month"
+                    if intraday_request and item_dict['data_interval'] in ["1d", "daily", "1w", "1mo", "1month"]:
                         wrong_interval_count += 1
 
                 # 인트라데이 요청에 대한 가드: 전체의 과반이 일봉/주봉이면 리라우팅

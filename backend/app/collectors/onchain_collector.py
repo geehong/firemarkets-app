@@ -284,7 +284,20 @@ class OnchainCollector(BaseCollector):
             if metric_name in metric_mappings:
                 for api_field, db_field in metric_mappings[metric_name].items():
                     if api_field in item and item[api_field] is not None:
-                        converted[db_field] = float(item[api_field])
+                        value = item[api_field]
+                        # DataFrame이나 Series인 경우 처리
+                        if hasattr(value, 'iloc'):  # pandas DataFrame/Series
+                            # 첫 번째 값만 사용
+                            if len(value) > 0:
+                                value = value.iloc[0] if hasattr(value, 'iloc') else value.values[0]
+                            else:
+                                continue
+                        # 숫자로 변환 시도
+                        try:
+                            converted[db_field] = float(value)
+                        except (ValueError, TypeError) as e:
+                            self.logging_helper.log_warning(f"[OnchainCollector] 메트릭 '{metric_name}' 필드 '{api_field}' 변환 실패: {type(value)} - {e}")
+                            continue
             
             # HODL Age 분포 처리 (개별 필드들을 JSON으로 변환)
             hodl_age_distribution = {}

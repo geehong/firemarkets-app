@@ -257,6 +257,8 @@ docker-compose logs data_processor --tail 50 -f | grep -Ei "OHLCV 데이터 저�
 # 저장 성공/실패 로그
 docker-compose logs data_processor --tail 50 -f | grep -Ei "저장 (시작|완료|성공|실패|오류|error|success)"
 docker-compose logs data_processor --tail 50 -f | grep -Ei "(실패|오류|error|success)"
+docker-compose logs scheduler --tail 50 -f | grep -Ei "(실패|오류|error|success)"
+
 
 # 자산 매칭 및 DB 저장 로그
 docker-compose logs data_processor --tail 100 -f | grep -E "(자산 매칭 성공|DB 저장 성공|✅.*성공)"

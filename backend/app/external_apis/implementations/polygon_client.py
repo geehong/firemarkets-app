@@ -128,9 +128,27 @@ class PolygonClient(TradFiAPIClient):
                 "adjusted": "true"  # 분할 조정된 가격 사용
             }
             
-            # Polygon API는 interval을 숫자로 받음 (1d -> 1, 4h -> 4 등)
-            interval_num = interval.replace('d', '').replace('h', '')
-            data = await self._request(f"/v2/aggs/ticker/{symbol.upper()}/range/{interval_num}/day/{start_date}/{end_date}", params)
+            # Polygon API는 interval을 분 단위 숫자로 받음
+            # 1m -> 1, 5m -> 5, 15m -> 15, 30m -> 30, 1h -> 60, 4h -> 240, 1d -> 1 (day 단위)
+            interval_map = {
+                "1m": "1",
+                "5m": "5",
+                "15m": "15",
+                "30m": "30",
+                "1h": "60",
+                "4h": "240",
+                "1d": "1"
+            }
+            interval_num = interval_map.get(interval, interval.replace('d', '').replace('h', '').replace('m', ''))
+            
+            # 일봉 데이터는 /day/ 엔드포인트 사용, 인트라데이 데이터는 /minute/ 엔드포인트 사용
+            if interval in ["1d"]:
+                endpoint = f"/v2/aggs/ticker/{symbol.upper()}/range/{interval_num}/day/{start_date}/{end_date}"
+            else:
+                # 인트라데이 데이터는 /minute/ 엔드포인트 사용
+                endpoint = f"/v2/aggs/ticker/{symbol.upper()}/range/{interval_num}/minute/{start_date}/{end_date}"
+            
+            data = await self._request(endpoint, params)
             
             # Polygon API는 "OK" 또는 "DELAYED" 상태를 반환할 수 있음
             if data.get("status") not in ["OK", "DELAYED"] or not data.get("results"):

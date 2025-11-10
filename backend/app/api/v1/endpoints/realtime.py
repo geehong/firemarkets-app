@@ -388,17 +388,27 @@ async def get_realtime_quotes_delay_price_postgres(
             query = query.limit(1)
         else:
             # days가 숫자인 경우 처리
+            # 날짜 필터 대신 마지막 N개 레코드를 가져옴 (주말/휴장일 대응)
             try:
                 days_int = int(days)
                 if days_int > 0:
-                    # 최근 N일 데이터 조회를 위한 날짜 계산
-                    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_int)
-                    query = query.filter(RealtimeQuoteTimeDelay.timestamp_utc >= cutoff_date)
-                query = query.limit(100)
+                    # 간격에 따른 1일치 포인트 수 계산
+                    # 15m: 96개 (24시간 * 4), 30m: 48개, 1h: 24개, 2h: 12개, 3h: 8개
+                    points_per_day = {
+                        "15m": 96,   # 24 * 4
+                        "30m": 48,   # 24 * 2
+                        "1h": 24,    # 24 * 1
+                        "2h": 12,    # 24 / 2
+                        "3h": 8      # 24 / 3
+                    }
+                    points_needed = points_per_day.get(data_interval, 96) * days_int
+                    # 충분한 데이터 확보를 위해 limit=360 사용 (약 3.75일치)
+                    query = query.limit(360)
+                else:
+                    query = query.limit(360)
             except ValueError:
-                # 숫자가 아니면 기본값 1일
-                cutoff_date = datetime.now(timezone.utc) - timedelta(days=1)
-                query = query.filter(RealtimeQuoteTimeDelay.timestamp_utc >= cutoff_date).limit(100)
+                # 숫자가 아니면 기본값으로 limit=360 사용
+                query = query.limit(360)
         
         quotes = query.all()
         
@@ -424,15 +434,24 @@ async def get_realtime_quotes_delay_price_postgres(
             if is_last_only:
                 ohlcv_query = ohlcv_query.limit(1)
             else:
+                # 날짜 필터 대신 마지막 N개 레코드를 가져옴 (주말/휴장일 대응)
                 try:
                     days_int = int(days)
                     if days_int > 0:
-                        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_int)
-                        ohlcv_query = ohlcv_query.filter(OHLCVData.timestamp_utc >= cutoff_date)
-                    ohlcv_query = ohlcv_query.limit(100)
+                        # OHLCV 간격에 따른 1일치 포인트 수 계산
+                        # 1h: 24개, 4h: 6개
+                        ohlcv_points_per_day = {
+                            "1h": 24,
+                            "4h": 6
+                        }
+                        points_needed = ohlcv_points_per_day.get(ohlcv_interval, 24) * days_int
+                        # 충분한 데이터 확보를 위해 limit=360 사용
+                        ohlcv_query = ohlcv_query.limit(360)
+                    else:
+                        ohlcv_query = ohlcv_query.limit(360)
                 except ValueError:
-                    cutoff_date = datetime.now(timezone.utc) - timedelta(days=1)
-                    ohlcv_query = ohlcv_query.filter(OHLCVData.timestamp_utc >= cutoff_date).limit(100)
+                    # 숫자가 아니면 기본값으로 limit=360 사용
+                    ohlcv_query = ohlcv_query.limit(360)
             
             ohlcv_data = ohlcv_query.all()
             

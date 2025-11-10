@@ -152,6 +152,24 @@ class ApiStrategyManager:
             "FFEU",     # 비표준/미확인 심볼
         ])
 
+        # 간격별 클라이언트 우선순위 매핑
+        # 각 간격에 대해 사용할 클라이언트의 클래스 이름 리스트 (우선순위 순서)
+        # TradFi (주식/ETF/지수)용
+        self.interval_client_priority = {
+            "1m": ["TwelveDataClient"],      # 1분: TwelveData만 사용 (limit 4320, 3일치)
+            "5m": ["PolygonClient"],         # 5분: Polygon만 사용 (limit 8640, 30일치)
+            "15m": ["TwelveDataClient", "PolygonClient", "TiingoClient"],  # 기존 순서 유지
+            "30m": ["TwelveDataClient", "PolygonClient", "TiingoClient"],  # 기존 순서 유지
+            "1h": ["TwelveDataClient", "PolygonClient", "TiingoClient"],   # 기존 순서 유지
+            "4h": ["TwelveDataClient", "PolygonClient", "TiingoClient"],   # 기존 순서 유지
+        }
+        
+        # 코인용 간격별 클라이언트 우선순위 매핑
+        self.crypto_interval_client_priority = {
+            "1m": ["BinanceClient", "CoinbaseClient"],  # 1분: Binance 우선, Coinbase 폴백
+            "5m": ["BinanceClient", "CoinbaseClient"],  # 5분: Binance 우선, Coinbase 폴백
+        }
+
         # Apply optional scheduler-based client filter
         try:
             self._apply_scheduler_client_filter(
@@ -503,7 +521,8 @@ class ApiStrategyManager:
                     low_price=float(get_val(row, ['low_price', 'low'])),
                     close_price=float(get_val(row, ['close_price', 'close'])),
                     volume=float(get_val(row, ['volume'])),
-                    change_percent=float(get_val(row, ['change_percent', 'change'])) if get_val(row, ['change_percent', 'change']) is not None else None
+                    change_percent=float(get_val(row, ['change_percent', 'change'])) if get_val(row, ['change_percent', 'change']) is not None else None,
+                    data_interval=interval  # interval 설정
                 )
                 result.append(data_point)
             except Exception as e:
@@ -559,7 +578,13 @@ class ApiStrategyManager:
         else:
             # 기존 로직 유지 (하위 호환성)
             # 간격별 limit 조정 (TwelveData 5000개 제한 고려)
-            if interval == '1h':
+            if interval == '1m':
+                # 1분: 3일치 = 3 * 24 * 60 = 4320
+                adjusted_limit = 4320
+            elif interval == '5m':
+                # 5분: 30일치 = 30 * 24 * 12 = 8640
+                adjusted_limit = 8640
+            elif interval == '1h':
                 # 1h: 24배 (24시간 * historical_days)
                 adjusted_limit = historical_days * 24
             elif interval == '4h':
@@ -572,8 +597,11 @@ class ApiStrategyManager:
             start_date, end_date = self._calculate_date_range(adjusted_limit)
         
         # 인트라데이 인터벌의 경우 특별 처리
-        if interval in ["4h", "1h"]:
-            self.logger.info(f"{interval} interval requested for {ticker}. Using adjusted limit: {adjusted_limit} (base: {historical_days})")
+        if interval in ["4h", "1h", "5m", "1m"]:
+            if interval in ["1m", "5m"]:
+                self.logger.info(f"{interval} interval requested for {ticker}. Using fixed limit: {adjusted_limit}")
+            else:
+                self.logger.info(f"{interval} interval requested for {ticker}. Using adjusted limit: {adjusted_limit} (base: {historical_days})")
         
         yahoo_period = self._calculate_yahoo_period(adjusted_limit)
         last_exception = None
@@ -665,6 +693,42 @@ class ApiStrategyManager:
         
         clients_to_use = active_clients
         
+        # 간격별 클라이언트 우선순위 적용
+        # 1m/5m 간격은 특정 클라이언트만 사용해야 하므로 preferred_data_source보다 우선
+        is_crypto = asset_type and 'crypto' in asset_type.lower()
+        is_commodity = asset_type and 'commodit' in asset_type.lower()
+        
+        # 코인인 경우 코인용 우선순위 적용
+        if is_crypto and interval in self.crypto_interval_client_priority:
+            priority_clients = self.crypto_interval_client_priority[interval]
+            filtered_clients = []
+            for priority_name in priority_clients:
+                for client in clients_to_use:
+                    if client and client.__class__.__name__ == priority_name:
+                        filtered_clients.append(client)
+                        break
+            
+            if filtered_clients:
+                clients_to_use = filtered_clients
+                self.logger.info(f"Applied crypto interval-specific client priority for {interval}: {[c.__class__.__name__ for c in clients_to_use]}")
+            else:
+                self.logger.warning(f"Crypto interval priority for {interval} specified but no matching clients found. Using default clients.")
+        # TradFi (주식/ETF/지수)인 경우 TradFi용 우선순위 적용
+        elif not is_crypto and not is_commodity and interval in self.interval_client_priority:
+            priority_clients = self.interval_client_priority[interval]
+            filtered_clients = []
+            for priority_name in priority_clients:
+                for client in clients_to_use:
+                    if client and client.__class__.__name__ == priority_name:
+                        filtered_clients.append(client)
+                        break
+            
+            if filtered_clients:
+                clients_to_use = filtered_clients
+                self.logger.info(f"Applied interval-specific client priority for {interval} (TradFi): {[c.__class__.__name__ for c in clients_to_use]}")
+            else:
+                self.logger.warning(f"Interval priority for {interval} specified but no matching clients found. Using default clients.")
+        
         for i, client in enumerate(clients_to_use):
             try:
                 # API 호출 시작 로깅
@@ -703,6 +767,12 @@ class ApiStrategyManager:
                     elif hasattr(client, '__class__') and 'AlphaVantageClient' in str(client.__class__):
                         # Alpha Vantage는 interval 파라미터 지원
                         data = await client.get_ohlcv_data(ticker, interval=interval, limit=adjusted_limit)
+                    elif hasattr(client, '__class__') and 'TwelveDataClient' in str(client.__class__):
+                        # TwelveData는 interval, start_date, end_date, limit 파라미터 지원
+                        data = await client.get_ohlcv_data(ticker, interval=interval, start_date=start_date, end_date=end_date, limit=adjusted_limit)
+                    elif hasattr(client, '__class__') and 'PolygonClient' in str(client.__class__):
+                        # Polygon은 interval, start_date, end_date, limit 파라미터 지원
+                        data = await client.get_ohlcv_data(ticker, interval=interval, start_date=start_date, end_date=end_date, limit=adjusted_limit)
                     else:
                         # 다른 클라이언트들은 기존 방식 유지
                         data = await client.get_ohlcv_data(ticker)
@@ -1336,6 +1406,11 @@ class ApiStrategyManager:
             enable_backfill = backfill_conf.config_value.lower() == 'true' if backfill_conf else True
             historical_days = int(historical_days_conf.config_value) if historical_days_conf else 165
             max_historical_days = int(max_days_conf.config_value) if max_days_conf else 10950 # Default to ~30 years
+            
+            # 1m, 5m 간격은 최대 백필 기간을 2년(730일)로 제한
+            if interval in ['1m', '5m']:
+                max_historical_days = min(max_historical_days, 730)  # 최대 2년
+                self.logger.debug(f"Interval {interval}: Limiting max historical days to 730 (2 years) for backfill")
 
             # Get both the newest and oldest timestamps
             # interval에 따라 올바른 테이블에서 데이터 조회
@@ -1381,18 +1456,39 @@ class ApiStrategyManager:
             
             today = datetime.now().date()
             
+            # 간격별 limit 계산 (1m, 5m은 고정값 사용)
+            def _get_interval_limit(interval: str, days: int) -> int:
+                if interval == '1m':
+                    return 4320  # 3일치
+                elif interval == '5m':
+                    return 8640  # 30일치
+                elif interval == '1h':
+                    return days * 24
+                elif interval == '4h':
+                    return days * 6
+                else:
+                    return days + 5
+            
             # Case 1: No data at all. Perform initial backfill.
             if not newest_ts:
                 if enable_backfill:
-                    self.logger.info(f"Asset {asset_id}: No data found. Performing initial backfill for {historical_days} days.")
+                    # 1m, 5m 간격은 최대 백필 기간을 2년(730일)로 제한
+                    backfill_days = historical_days
+                    if interval in ['1m', '5m']:
+                        backfill_days = min(backfill_days, 730)
+                        self.logger.debug(f"Interval {interval}: Limiting initial backfill to {backfill_days} days (2 years)")
+                    
+                    self.logger.info(f"Asset {asset_id}: No data found. Performing initial backfill for {backfill_days} days.")
                     end_date = today
-                    start_date = today - timedelta(days=historical_days)
-                    return {"start_date": start_date.strftime('%Y-%m-%d'), "end_date": end_date.strftime('%Y-%m-%d'), "limit": historical_days + 5, "is_backfill": True}
+                    start_date = today - timedelta(days=backfill_days)
+                    limit = _get_interval_limit(interval, backfill_days)
+                    return {"start_date": start_date.strftime('%Y-%m-%d'), "end_date": end_date.strftime('%Y-%m-%d'), "limit": limit, "is_backfill": True}
                 else:
                     self.logger.info(f"Asset {asset_id}: No data and backfill is disabled. Fetching recent data only.")
                     end_date = today
                     start_date = today - timedelta(days=5)
-                    return {"start_date": start_date.strftime('%Y-%m-%d'), "end_date": end_date.strftime('%Y-%m-%d'), "limit": 10, "is_backfill": False}
+                    limit = _get_interval_limit(interval, 5)
+                    return {"start_date": start_date.strftime('%Y-%m-%d'), "end_date": end_date.strftime('%Y-%m-%d'), "limit": limit, "is_backfill": False}
 
             # Case 2: Data exists. Check for gaps and historical depth.
             # newest_ts가 datetime 또는 date일 수 있음
@@ -1402,13 +1498,26 @@ class ApiStrategyManager:
                 latest_date = newest_ts
             days_diff = (today - latest_date).days
 
-            # Subcase 2.1: Prioritize filling recent gaps.
-            if days_diff > 1:
-                self.logger.info(f"Asset {asset_id}: Gap of {days_diff} days detected. Filling recent data.")
-                start_date = latest_date + timedelta(days=1)
-                return {"start_date": start_date.strftime('%Y-%m-%d'), "end_date": today.strftime('%Y-%m-%d'), "limit": days_diff + 5, "is_backfill": True}
+            # Subcase 2.1: Prioritize filling recent gaps and collecting latest data.
+            # 최신 데이터가 1일 이상 차이나면 갭을 채우고, 1일 이내여도 최신 데이터를 수집
+            if days_diff >= 1:
+                # 갭이 있거나 최신 데이터가 어제인 경우 최신 데이터 수집
+                self.logger.info(f"Asset {asset_id}: {'Gap of ' + str(days_diff) + ' days detected. Filling recent data.' if days_diff > 1 else 'Collecting latest data (1 day old or less).'}")
+                start_date = latest_date + timedelta(days=1) if days_diff > 1 else latest_date
+                # 최신 데이터 수집을 위해 최소 1일치 데이터 요청
+                days_to_fetch = max(days_diff, 1)
+                limit = _get_interval_limit(interval, days_to_fetch)
+                return {"start_date": start_date.strftime('%Y-%m-%d'), "end_date": today.strftime('%Y-%m-%d'), "limit": limit, "is_backfill": days_diff > 1}
 
-            # Subcase 2.2: Data is up-to-date. Check if historical deepening is needed.
+            # Subcase 2.2: Data is up-to-date (days_diff == 0). Still collect latest data to ensure freshness.
+            if days_diff == 0:
+                # 오늘 데이터가 이미 있어도 최신 데이터를 계속 수집 (실시간 업데이트)
+                self.logger.info(f"Asset {asset_id}: Data is up-to-date. Collecting latest data to ensure freshness.")
+                # 최근 1일치 데이터 수집 (최신 데이터 확보)
+                limit = _get_interval_limit(interval, 1)
+                return {"start_date": latest_date.strftime('%Y-%m-%d'), "end_date": today.strftime('%Y-%m-%d'), "limit": limit, "is_backfill": False}
+            
+            # Subcase 2.3: Data is up-to-date. Check if historical deepening is needed.
             if enable_backfill:
                 oldest_date = oldest_ts.date() if hasattr(oldest_ts, 'date') else oldest_ts
                 current_depth = (today - oldest_date).days
@@ -1424,27 +1533,36 @@ class ApiStrategyManager:
                         min_required_date = datetime(1999, 11, 1).date()
                         self.logger.warning(f"Invalid MIN_HISTORICAL_DATE format: {min_required_date_str}. Using default: 1999-11-01")
                     
+                    # 1m, 5m 간격은 최대 백필 기간을 2년(730일)로 제한
+                    if interval in ['1m', '5m']:
+                        min_required_date = max(min_required_date, today - timedelta(days=730))
+                        self.logger.debug(f"Interval {interval}: Limiting min_required_date to 2 years ago ({min_required_date})")
+                    
                     max_required_date = today - timedelta(days=historical_days)
                     
                     # 최신 데이터가 충분히 있는지 확인 (현재날짜 - historical_days 이후)
                     if newest_ts.date() < max_required_date:
                         # 최신 데이터 백필 필요
+                        gap_days = (max_required_date - newest_ts.date()).days
                         self.logger.info(f"Asset {asset_id} ({asset_type}): Backfilling recent data from {newest_ts.date() + timedelta(days=1)} to {max_required_date}")
+                        limit = _get_interval_limit(interval, gap_days)
                         return {
                             "start_date": (newest_ts.date() + timedelta(days=1)).strftime('%Y-%m-%d'),
                             "end_date": max_required_date.strftime('%Y-%m-%d'),
-                            "limit": max(1, (max_required_date - newest_ts.date()).days + 5),
+                            "limit": limit,
                             "is_backfill": True
                         }
                     
                     # 과거 데이터가 충분히 있는지 확인 (MIN_HISTORICAL_DATE부터)
                     if oldest_date > min_required_date:
                         # 과거 데이터 백필 필요
+                        gap_days = (oldest_date - min_required_date).days
                         self.logger.info(f"Asset {asset_id} ({asset_type}): Backfilling historical data from {min_required_date} to {oldest_date - timedelta(days=1)}")
+                        limit = _get_interval_limit(interval, gap_days)
                         return {
                             "start_date": min_required_date.strftime('%Y-%m-%d'),
                             "end_date": (oldest_date - timedelta(days=1)).strftime('%Y-%m-%d'),
-                            "limit": max(1, (oldest_date - min_required_date).days + 5),
+                            "limit": limit,
                             "is_backfill": True
                         }
                     
@@ -1452,10 +1570,11 @@ class ApiStrategyManager:
                     gap_info = self._check_data_gaps(db, asset_id, interval, min_required_date, max_required_date)
                     if gap_info:
                         self.logger.info(f"Asset {asset_id} ({asset_type}): Found data gap from {gap_info['start_date']} to {gap_info['end_date']}")
+                        limit = _get_interval_limit(interval, gap_info['days'])
                         return {
                             "start_date": gap_info['start_date'],
                             "end_date": gap_info['end_date'],
-                            "limit": max(1, gap_info['days'] + 5),
+                            "limit": limit,
                             "is_backfill": True
                         }
                     
@@ -1466,6 +1585,12 @@ class ApiStrategyManager:
                     # 암호화폐의 경우 주식과 동일한 체계적인 백필 로직 적용
                     # 암호화폐는 2010년부터 데이터가 있으므로 2010-01-01을 최소 히스토리 날짜로 설정
                     min_required_date = datetime(2010, 1, 1).date()
+                    
+                    # 1m, 5m 간격은 최대 백필 기간을 2년(730일)로 제한
+                    if interval in ['1m', '5m']:
+                        min_required_date = max(min_required_date, today - timedelta(days=730))
+                        self.logger.debug(f"Interval {interval} (crypto): Limiting min_required_date to 2 years ago ({min_required_date})")
+                    
                     max_required_date = today - timedelta(days=historical_days)
                     
                     # 최신 데이터가 충분히 있는지 확인 (현재날짜 - historical_days 이후)

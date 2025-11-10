@@ -228,6 +228,27 @@ class ConfigManager:
         return self._get_config("ENABLE_MULTIPLE_INTERVALS", True, _str_to_bool)
         
     def get_ohlcv_intervals(self) -> List[str]:
+        # First try to get from scheduler_settings JSON config
+        db = SessionLocal()
+        try:
+            scheduler_config = db.query(AppConfiguration).filter(
+                AppConfiguration.config_key == 'scheduler_settings',
+                AppConfiguration.is_active == True
+            ).first()
+            
+            if scheduler_config and scheduler_config.config_value:
+                try:
+                    settings = json.loads(scheduler_config.config_value)
+                    if 'OHLCV_DATA_INTERVALS' in settings and 'value' in settings['OHLCV_DATA_INTERVALS']:
+                        intervals = settings['OHLCV_DATA_INTERVALS']['value']
+                        if isinstance(intervals, list):
+                            return [str(item) for item in intervals]
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    pass
+        finally:
+            db.close()
+        
+        # Fallback to direct config key
         intervals_str = self._get_config("OHLCV_DATA_INTERVALS", '["1d","4h"]', str)
         try:
             intervals = json.loads(intervals_str)

@@ -107,8 +107,17 @@ class TwelveDataClient(TradFiAPIClient):
             # 휴일 감지 및 날짜 범위 최적화
             from ...utils.trading_calendar import is_trading_day, get_last_trading_day, format_trading_status_message
             
-            # Normalize interval: 1d -> 1day, 1w -> 1week
-            interval_map = {"1d": "1day", "1w": "1week"}
+            # Normalize interval: TwelveData API 형식으로 변환
+            interval_map = {
+                "1d": "1day", 
+                "1w": "1week",
+                "1m": "1min",    # 1분
+                "5m": "5min",    # 5분
+                "15m": "15min",  # 15분
+                "30m": "30min",  # 30분
+                "1h": "1hour",   # 1시간
+                "4h": "4hour"    # 4시간
+            }
             norm_interval = interval_map.get(interval, interval)
             
             # TwelveData API용 심볼 정규화
