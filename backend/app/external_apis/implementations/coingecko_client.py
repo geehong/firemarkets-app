@@ -270,7 +270,14 @@ class CoinGeckoClient(CryptoAPIClient):
         if symbol in symbol_mapping:
             return symbol_mapping[symbol]
         elif symbol.endswith('USDT'):
-            return symbol[:-4].lower()  # USDT 제거 후 소문자
+            # USDT만 있는 경우 처리 (USDT -> tether)
+            if symbol == 'USDT':
+                return 'tether'
+            normalized = symbol[:-4].lower()  # USDT 제거 후 소문자
+            # 빈 문자열이 되지 않도록 체크
+            if not normalized:
+                return 'tether'  # 기본값으로 tether 반환
+            return normalized
         else:
             return symbol.lower()
 

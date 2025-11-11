@@ -245,6 +245,9 @@ docker-compose logs data_processor --tail 50 -f
 
 
 timeout 300 docker-compose logs -f scheduler | grep -E "(crypto_clients|etf_clients|error|exception|failed|PostgreSQL|jsonb|operator does not exist)"
+        "crypto_ohlcv_clients",
+docker-compose logs -f scheduler | grep -E "(ohlcv_day_clients|ohlcv_intraday_clients|error|crypto_ohlcv_clients|commodity_ohlcv_clients|exception|failed|PostgreSQL|jsonb|operator does not exist)"
+
 
 cd /home/geehong/firemarkets-app && docker-compose logs websocket_orchestrator | grep -E "(finnhub|alpaca).*(error|failed|disconnect|timeout)" | head -10
 ```
@@ -269,6 +272,7 @@ docker-compose logs data_processor --tail=200 -f | grep --line-buffered -E --col
 docker-compose logs scheduler --tail=200 -f | grep --line-buffered -E --color=always '✅ Scheduled cron job|stock_financials_macrotrends_clients|Starting|Completed|success|cron'
 
 docker-compose logs data_processor --since=15m | grep -E --color=always '✅|DB 저장 성공|macrotrends_financials 저장 완료'
+cd /home/geehong/firemarkets-app && docker-compose logs data_processor --since 30m 2>&1 | grep -E "(ohlcv_day_data|daily=True|1d.*저장)" | tail -20
 
 ```
 

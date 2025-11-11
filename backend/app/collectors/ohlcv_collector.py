@@ -144,8 +144,8 @@ class OHLCVCollector(BaseCollector):
                 ]
 
                 # interval에 따라 적절한 태스크 타입 선택
-                # 1m은 분 단위이므로 intraday_data로 분류 (1mo는 월 단위이므로 day_data)
-                task_type = "ohlcv_day_data" if interval in ["1d", "daily", "1w", "1mo"] else "ohlcv_intraday_data"
+                # 1m은 분 단위이므로 intraday_data로 분류 (1mo, 1month는 월 단위이므로 day_data)
+                task_type = "ohlcv_day_data" if interval in ["1d", "daily", "1w", "1mo", "1month"] else "ohlcv_intraday_data"
                 
                 await self.redis_queue_manager.push_batch_task(
                     task_type,

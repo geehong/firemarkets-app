@@ -156,8 +156,8 @@ class ApiStrategyManager:
         # 각 간격에 대해 사용할 클라이언트의 클래스 이름 리스트 (우선순위 순서)
         # TradFi (주식/ETF/지수)용
         self.interval_client_priority = {
-            "1m": ["TwelveDataClient"],      # 1분: TwelveData만 사용 (limit 4320, 3일치)
-            "5m": ["PolygonClient"],         # 5분: Polygon만 사용 (limit 8640, 30일치)
+            "1m": ["TwelveDataClient", "PolygonClient", "TiingoClient"],  # 1분: TwelveData 우선, 폴백 추가
+            "5m": ["PolygonClient", "TwelveDataClient", "TiingoClient"],  # 5분: Polygon 우선, 폴백 추가
             "15m": ["TwelveDataClient", "PolygonClient", "TiingoClient"],  # 기존 순서 유지
             "30m": ["TwelveDataClient", "PolygonClient", "TiingoClient"],  # 기존 순서 유지
             "1h": ["TwelveDataClient", "PolygonClient", "TiingoClient"],   # 기존 순서 유지
@@ -605,6 +605,7 @@ class ApiStrategyManager:
         
         yahoo_period = self._calculate_yahoo_period(adjusted_limit)
         last_exception = None
+        failure_reasons = []  # Track all failure reasons for better error reporting
         
         # preferred_data_source 초기화
         preferred_data_source_lower = preferred_data_source.lower() if preferred_data_source else None
@@ -676,7 +677,7 @@ class ApiStrategyManager:
                     clients_to_use = self.ohlcv_intraday_clients
                     self.logger.info(f"Using intraday OHLCV clients for {ticker} (asset_type: {asset_type}, interval: {interval})")
                 else:
-                    # 일봉 데이터 (1d, 1w, 1m 등)
+                    # 일봉 데이터 (1d, 1w, 1mo 등) - "1m"은 1분이므로 인트라데이로 처리됨
                     clients_to_use = self.ohlcv_day_clients
                     self.logger.info(f"Using daily OHLCV clients for {ticker} (asset_type: {asset_type}, interval: {interval})")
                 
@@ -780,11 +781,17 @@ class ApiStrategyManager:
                     # List[OhlcvDataPoint]를 DataFrame으로 변환
                     # List[OhlcvDataPoint] 또는 None을 DataFrame으로 변환
                     if data is None:
-                        self.logger.warning(f"{client.__class__.__name__} returned None for {ticker}")
+                        reason = f"{client.__class__.__name__} returned None"
+                        self.logger.warning(f"{reason} for {ticker}")
+                        failure_reasons.append(reason)
+                        last_exception = Exception(reason)
                         continue
                     elif isinstance(data, list):
                         if not data:  # 빈 리스트
-                            self.logger.warning(f"{client.__class__.__name__} returned empty list for {ticker}")
+                            reason = f"{client.__class__.__name__} returned empty list"
+                            self.logger.warning(f"{reason} for {ticker}")
+                            failure_reasons.append(reason)
+                            last_exception = Exception(reason)
                             continue
                         # Pydantic 모델 리스트를 DataFrame으로 변환
                         df_data = []
@@ -810,6 +817,12 @@ class ApiStrategyManager:
                             self.logger.debug(f"First row data: {data.iloc[0].to_dict()}")
                         
                         data = self._validate_ohlcv_dataframe(data, api_name, ticker)
+                        if data is None:
+                            reason = f"{client.__class__.__name__} data validation failed (missing timestamp, too many nulls, or empty after cleaning)"
+                            self.logger.warning(f"{reason} for {ticker}")
+                            failure_reasons.append(reason)
+                            last_exception = Exception(reason)
+                            continue
                 elif hasattr(client, 'get_historical_prices'):
                     # TwelveData, Polygon 클라이언트
                     if hasattr(client, '__class__') and 'PolygonClient' in str(client.__class__):
@@ -822,14 +835,35 @@ class ApiStrategyManager:
                         data = pd.DataFrame(data)
                         self.logger.info(f"{client.__class__.__name__} raw frame shape={data.shape}, columns={list(data.columns)}")
                         data = self._validate_ohlcv_dataframe(data, api_name, ticker)
+                        if data is None:
+                            reason = f"{client.__class__.__name__} data validation failed (missing timestamp, too many nulls, or empty after cleaning)"
+                            self.logger.warning(f"{reason} for {ticker}")
+                            failure_reasons.append(reason)
+                            last_exception = Exception(reason)
+                            continue
+                    else:
+                        reason = f"{client.__class__.__name__}.get_historical_prices returned None or empty data"
+                        self.logger.warning(f"{reason} for {ticker}")
+                        failure_reasons.append(reason)
+                        last_exception = Exception(reason)
+                        continue
                 elif hasattr(client, 'get_historical_data'):
                     # Yahoo Finance 클라이언트 - period 사용
                     data = await client.get_historical_data(ticker, period=yahoo_period, interval=interval)
                     if data is not None and not data.empty:
                         # List[Dict]를 DataFrame으로 변환
                         data = pd.DataFrame(data)
+                    else:
+                        reason = f"{client.__class__.__name__}.get_historical_data returned None or empty data"
+                        self.logger.warning(f"{reason} for {ticker}")
+                        failure_reasons.append(reason)
+                        last_exception = Exception(reason)
+                        continue
                 else:
-                    self.logger.warning(f"{client.__class__.__name__} has no known OHLCV data fetching method")
+                    reason = f"{client.__class__.__name__} has no known OHLCV data fetching method"
+                    self.logger.warning(f"{reason}")
+                    failure_reasons.append(reason)
+                    last_exception = Exception(reason)
                     continue
                 
                 if data is not None and not data.empty:
@@ -856,6 +890,8 @@ class ApiStrategyManager:
                             msg = f"{client.__class__.__name__} returned data with {zero_ratio:.1%} zero/null prices for {ticker}"
                             self.logging_helper.log_api_call_failure(api_name, ticker, Exception(msg))
                             self.logger.warning(f"{msg}. Skipping this data.")
+                            failure_reasons.append(msg)
+                            last_exception = Exception(msg)
                             continue
                         
                         # 개별 행에서 모든 가격이 0인 경우 제거
@@ -873,6 +909,8 @@ class ApiStrategyManager:
                             msg = f"{client.__class__.__name__} returned data with no valid prices for {ticker}"
                             self.logging_helper.log_api_call_failure(api_name, ticker, Exception(msg))
                             self.logger.warning(f"{msg}. Skipping this data.")
+                            failure_reasons.append(msg)
+                            last_exception = Exception(msg)
                             continue
                         
                         self.logger.info(f"{client.__class__.__name__} data validation passed for {ticker}: {valid_rows}/{len(data)} valid rows")
@@ -884,26 +922,54 @@ class ApiStrategyManager:
                     return data
                 else:
                     # API 호출은 성공했지만 데이터가 없는 경우 로깅
+                    reason = f"{client.__class__.__name__} returned empty data"
                     self.logging_helper.log_api_call_failure(api_name, ticker, Exception("No data returned"))
-                    self.logger.warning(f"{client.__class__.__name__} returned empty data for {ticker}")
+                    self.logger.warning(f"{reason} for {ticker}")
+                    failure_reasons.append(reason)
+                    last_exception = Exception(reason)
                     
             except Exception as e:
                 # API 호출 실패 로깅
                 self.logging_helper.log_api_call_failure(api_name, ticker, e)
                 
+                error_str = str(e)
+                
                 # 404 에러는 정상적인 실패로 간주하고 다음 API로 넘어감
-                if "404" in str(e) or "Not Found" in str(e):
-                    self.logger.warning(f"{client.__class__.__name__} returned 404 for {ticker}. Trying next client.")
+                if "404" in error_str or "Not Found" in error_str:
+                    reason = f"{client.__class__.__name__} returned 404"
+                    self.logger.warning(f"{reason} for {ticker}. Trying next client.")
+                    failure_reasons.append(reason)
+                    last_exception = e
+                    continue
+                # 429 (Rate Limit) 에러는 다음 클라이언트로 넘어감
+                elif "429" in error_str or "Too Many Requests" in error_str or "rate limit" in error_str.lower():
+                    reason = f"{client.__class__.__name__} returned 429 (rate limit exceeded)"
+                    self.logger.warning(f"{reason} for {ticker}. Trying next client.")
+                    failure_reasons.append(reason)
+                    last_exception = e
                     continue
                 # 컬럼 관련 오류는 다음 클라이언트로 시도
-                elif "timestamp" in str(e).lower() or "datetime" in str(e).lower() or "columns" in str(e).lower():
-                    self.logger.warning(f"{client.__class__.__name__} has column/timestamp issue for {ticker}: {e}. Trying next client.")
+                elif "timestamp" in error_str.lower() or "datetime" in error_str.lower() or "columns" in error_str.lower():
+                    reason = f"{client.__class__.__name__} has column/timestamp issue: {e}"
+                    self.logger.warning(f"{reason} for {ticker}. Trying next client.")
+                    failure_reasons.append(reason)
                     last_exception = e
+                    continue
                 else:
-                    self.logger.warning(f"{client.__class__.__name__} failed for {ticker}. Reason: {e}. Trying next client.")
+                    reason = f"{client.__class__.__name__} failed: {e}"
+                    self.logger.warning(f"{reason} for {ticker}. Trying next client.")
+                    failure_reasons.append(reason)
                     last_exception = e
+                    continue
         
-        self.logger.error(f"All API clients failed to fetch OHLCV for {ticker}. Last error: {last_exception}")
+        # Build comprehensive error message
+        if failure_reasons:
+            error_summary = "; ".join(failure_reasons[:5])  # Show first 5 reasons
+            if len(failure_reasons) > 5:
+                error_summary += f" (and {len(failure_reasons) - 5} more failures)"
+            self.logger.error(f"All API clients failed to fetch OHLCV for {ticker}. Failures: {error_summary}. Last error: {last_exception}")
+        else:
+            self.logger.error(f"All API clients failed to fetch OHLCV for {ticker}. No specific error information available. Last error: {last_exception}")
         return None
     
     async def get_commodity_ohlcv(self, ticker: str, interval: str = "1d", limit: int = 100, asset_id: int = None) -> Optional[pd.DataFrame]:
@@ -1205,6 +1271,9 @@ class ApiStrategyManager:
         finally:
             db.close()
         
+        last_exception = None
+        failure_reasons = []  # Track all failure reasons for better error reporting
+        
         for i, client in enumerate(self.crypto_clients):
             try:
                 self.logger.info(f"Attempting to fetch crypto info for {ticker} using {client.__class__.__name__} (attempt {i+1}/{len(self.crypto_clients)})")
@@ -1218,11 +1287,17 @@ class ApiStrategyManager:
                 elif hasattr(client, 'get_profile'):
                     crypto_data = await client.get_profile(ticker)
                 else:
-                    self.logger.warning(f"{client.__class__.__name__} has no crypto info method")
+                    reason = f"{client.__class__.__name__} has no crypto info method"
+                    self.logger.warning(reason)
+                    failure_reasons.append(reason)
+                    last_exception = Exception(reason)
                     continue
                 
                 if crypto_data is None:
-                    self.logger.warning(f"{client.__class__.__name__} returned empty crypto info for {ticker}")
+                    reason = f"{client.__class__.__name__} returned empty crypto info"
+                    self.logger.warning(f"{reason} for {ticker}")
+                    failure_reasons.append(reason)
+                    last_exception = Exception(reason)
                     continue
                 
                 # 2. 상세 정보 가져오기 (CoinMarketCap의 경우 name, percent_change 필드 포함)
@@ -1310,9 +1385,19 @@ class ApiStrategyManager:
                 return result
                 
             except Exception as e:
-                self.logger.warning(f"{client.__class__.__name__} failed for crypto info {ticker}. Reason: {e}. Trying next client.")
+                reason = f"{client.__class__.__name__} failed: {e}"
+                self.logger.warning(f"{reason} for crypto info {ticker}. Trying next client.")
+                failure_reasons.append(reason)
+                last_exception = e
         
-        self.logger.error(f"All API clients failed to fetch crypto info for {ticker}")
+        # Build comprehensive error message
+        if failure_reasons:
+            error_summary = "; ".join(failure_reasons[:5])  # Show first 5 reasons
+            if len(failure_reasons) > 5:
+                error_summary += f" (and {len(failure_reasons) - 5} more failures)"
+            self.logger.error(f"All API clients failed to fetch crypto info for {ticker}. Failures: {error_summary}. Last error: {last_exception}")
+        else:
+            self.logger.error(f"All API clients failed to fetch crypto info for {ticker}. No specific error information available. Last error: {last_exception}")
         return None
 
     async def get_onchain_metric(self, metric_name: str, asset_id: int = None, days: int = None) -> Optional[Dict[str, Any]]:
@@ -1414,7 +1499,8 @@ class ApiStrategyManager:
 
             # Get both the newest and oldest timestamps
             # interval에 따라 올바른 테이블에서 데이터 조회
-            is_daily_interval = interval in ["1d", "daily", "1w", "1m"] or interval is None
+            # "1m"은 1분(1 minute)이므로 제외, 1개월은 "1mo" 또는 "1M" 사용
+            is_daily_interval = interval in ["1d", "daily", "1w", "1mo", "1M", "1month"] or interval is None
             
             # 휴일 감지 및 날짜 범위 최적화
             from ..utils.trading_calendar import is_trading_day, get_last_trading_day, format_trading_status_message
@@ -1655,7 +1741,8 @@ class ApiStrategyManager:
             from sqlalchemy import text
             
             # interval에 따라 올바른 테이블 사용
-            is_daily_interval = interval in ["1d", "daily", "1w", "1m"] or interval is None
+            # "1m"은 1분(1 minute)이므로 제외, 1개월은 "1mo" 또는 "1M" 사용
+            is_daily_interval = interval in ["1d", "daily", "1w", "1mo", "1M", "1month"] or interval is None
             table_name = "ohlcv_day_data" if is_daily_interval else "ohlcv_intraday_data"
             
             # 간단한 방식: 최근 데이터와 최초 데이터만 확인

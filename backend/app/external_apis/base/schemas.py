@@ -209,7 +209,7 @@ EtfHoldingsData = EtfHoldingData
 class CryptoData(BaseModel):
     """암호화폐 데이터의 표준 구조"""
     symbol: str
-    price: float
+    price: Optional[float] = None  # Some cryptocurrencies may not have a price (e.g., inactive/delisted)
     market_cap: Optional[float] = None
     volume_24h: Optional[float] = None
     change_24h: Optional[float] = None

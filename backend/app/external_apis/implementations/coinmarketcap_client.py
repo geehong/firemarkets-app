@@ -124,6 +124,9 @@ class CoinMarketCapClient(CryptoAPIClient):
         if symbol in symbol_mapping:
             return symbol_mapping[symbol]
         elif symbol.endswith('USDT'):
+            # USDT만 있는 경우 처리
+            if symbol == 'USDT':
+                return 'USDT'  # USDT는 그대로 반환
             # 일반적인 USDT 페어의 경우 USDT 제거
             return symbol[:-4]
         else:

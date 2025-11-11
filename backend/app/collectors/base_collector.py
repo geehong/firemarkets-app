@@ -102,17 +102,33 @@ class BaseCollector(ABC):
 
     async def process_with_semaphore(self, coro: Any) -> Any:
         """Applies concurrency control using the semaphore if it's enabled."""
-        if self.enable_semaphore:
-            # 지연 초기화: 이벤트 루프가 실행 중일 때만 semaphore 생성
-            if self.semaphore is None:
-                try:
-                    self.semaphore = asyncio.Semaphore(self.semaphore_limit)
-                except RuntimeError:
-                    # 이벤트 루프가 없으면 semaphore 없이 실행
-                    logger.warning(f"[{self.collector_name}] No event loop available for semaphore, running without concurrency control")
-                    return await coro
-            
-            async with self.semaphore:
-                return await coro
-        else:
+        if not self.enable_semaphore:
             return await coro
+        
+        # 코루틴이 아닌 경우 그대로 반환
+        if not asyncio.iscoroutine(coro):
+            return coro
+        
+        # 현재 이벤트 루프 확인
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # 이벤트 루프가 없으면 semaphore 없이 실행
+            logger.warning(f"[{self.collector_name}] No event loop available for semaphore, running without concurrency control")
+            return await coro
+        
+        # 현재 루프에서 semaphore 생성 및 사용
+        # 매번 새로 생성하여 다른 루프와의 충돌 방지
+        try:
+            semaphore = asyncio.Semaphore(self.semaphore_limit)
+            async with semaphore:
+                # 코루틴을 현재 루프에서 실행
+                return await coro
+        except RuntimeError as e:
+            # semaphore 생성 실패 시 경고하고 semaphore 없이 실행
+            logger.warning(f"[{self.collector_name}] Failed to create semaphore: {e}, running without concurrency control")
+            return await coro
+        except Exception as e:
+            # 예상치 못한 오류 발생 시 로깅하고 재발생
+            logger.error(f"[{self.collector_name}] Unexpected error in process_with_semaphore: {e}")
+            raise
