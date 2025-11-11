@@ -3,23 +3,86 @@
 // @ts-nocheck
 
 import React, { useEffect, useRef, useState, useMemo } from 'react'
-import { useDelayedQuotes } from '@/hooks/useRealtime'
+import { useDelayedQuotes, useDelayedQuoteLast } from '@/hooks/useRealtime'
 import { useRealtimePrices } from '@/hooks/useSocket'
+import { useTheme } from '@/context/ThemeContext'
 
 interface LiveChartProps {
   containerId?: string
   height?: number | string
   initialData?: Array<[number, number]>
   updateInterval?: number
+  assetIdentifier?: string
+  dataSource?: string
+  useWebSocket?: boolean
+  marketHours?: boolean
+  apiRefetchIntervalMs?: number
+  apiDays?: number | string
 }
 
 type PricePoint = [number, number] // [timestamp, close]
+
+// 색상 보간 함수 (hex 색상을 ratio에 따라 보간)
+const interpolateColor = (color1: string, color2: string, ratio: number): string => {
+  const hex1 = color1.replace('#', '')
+  const hex2 = color2.replace('#', '')
+  
+  const r1 = parseInt(hex1.substring(0, 2), 16)
+  const g1 = parseInt(hex1.substring(2, 4), 16)
+  const b1 = parseInt(hex1.substring(4, 6), 16)
+  
+  const r2 = parseInt(hex2.substring(0, 2), 16)
+  const g2 = parseInt(hex2.substring(2, 4), 16)
+  const b2 = parseInt(hex2.substring(4, 6), 16)
+  
+  const r = Math.round(r1 + (r2 - r1) * ratio)
+  const g = Math.round(g1 + (g2 - g1) * ratio)
+  const b = Math.round(b1 + (b2 - b1) * ratio)
+  
+  return `#${[r, g, b].map(x => x.toString(16).padStart(2, '0')).join('')}`
+}
+
+// 변화율에 따른 색상 계산 함수 (PerformanceTreeMapToday.tsx와 동일한 로직)
+const getChangeColor = (changePercent: number): string => {
+  const NEG_THRESHOLD = -3
+  const POS_THRESHOLD = 3
+  const CLAMPED = Math.max(NEG_THRESHOLD, Math.min(POS_THRESHOLD, changePercent))
+
+  if (CLAMPED <= NEG_THRESHOLD) {
+    return '#f73539'
+  }
+
+  if (CLAMPED >= POS_THRESHOLD) {
+    return '#2ecc59'
+  }
+
+  if (CLAMPED < 0) {
+    // -3% ~ 0%: 빨강 -> 회색 (강한 빨강이 -3%에서 유지되도록)
+    const ratio = (CLAMPED - NEG_THRESHOLD) / (0 - NEG_THRESHOLD) // 0 (at -3%) ~ 1 (at 0%)
+    return interpolateColor('#f73539', '#414555', ratio)
+  }
+
+  if (CLAMPED > 0) {
+    // 0% ~ +3%: 회색 -> 초록
+    const ratio = CLAMPED / POS_THRESHOLD // 0 (at 0%) ~ 1 (at +3%)
+    return interpolateColor('#414555', '#2ecc59', ratio)
+  }
+
+  // 정확히 0%인 경우 회색
+  return '#414555'
+}
 
 const LiveChart: React.FC<LiveChartProps> = ({
   containerId = 'live-chart-container',
   height = 400,
   initialData,
   updateInterval = 100,
+  assetIdentifier: assetIdentifierProp = 'BTCUSDT',
+  dataSource: dataSourceProp = undefined, // undefined by default - backend will choose appropriate source
+  useWebSocket: useWebSocketProp = true,
+  marketHours: marketHoursProp,
+  apiRefetchIntervalMs = 15 * 60 * 1000,
+  apiDays = 1,
 }: LiveChartProps) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<any>(null)
@@ -32,21 +95,39 @@ const LiveChart: React.FC<LiveChartProps> = ({
   const hasLoggedChartData = useRef<boolean>(false)
   const hasLoggedUpdatedPoint = useRef<boolean>(false)
 
-  // 테스트용: BTCUSDT 하드코딩
-  const assetIdentifier = 'BTCUSDT'
-  const dataSource = 'binance' // 암호화폐이므로 binance 사용
+  const assetIdentifier = assetIdentifierProp
+  const dataSource = dataSourceProp
+  const shouldUseWebSocket =
+    useWebSocketProp === true && (marketHoursProp === undefined || marketHoursProp === true)
 
   // Default initial data - convert to [timestamp, close] forma
 
   // API 데이터 로드 (지연 데이터) - 24*4 = 96개 포인트 (마지막 1일치, 15분 간격)
   const { data: apiResponse, isLoading: apiLoading } = useDelayedQuotes(
     [assetIdentifier],
-    { dataSource, limit: 96 },
-    { enabled: true, staleTime: 60 * 1000 }
+    { dataSource, limit: 96, days: apiDays },
+    { enabled: true, staleTime: 60 * 1000, refetchInterval: apiRefetchIntervalMs }
+  )
+
+  // 폐장시간 등 소켓 비활성 시 최신 지연 호가(변화율, 변화액 포함) 조회
+  const { data: lastQuoteResponse } = useDelayedQuoteLast(
+    assetIdentifier,
+    {
+      dataInterval: '15m',
+      dataSource: dataSource,
+    },
+    {
+      enabled: !shouldUseWebSocket && !!assetIdentifier,
+      staleTime: 0,
+      refetchInterval: apiRefetchIntervalMs,
+    }
   )
 
   // 실시간 가격 데이터
   const { latestPrice, isConnected: socketConnected } = useRealtimePrices(assetIdentifier)
+  
+  // 테마 가져오기
+  const { theme } = useTheme()
 
   // API 데이터 콘솔 출력 (1번만)
   useEffect(() => {
@@ -138,32 +219,32 @@ const LiveChart: React.FC<LiveChartProps> = ({
     const loadHighcharts = async () => {
       try {
         // @ts-ignore
-        const [
-          { default: HighchartsCore },
-          { default: PriceIndicator },
-          { default: Exporting },
-          { default: Accessibility },
-        ] = await Promise.all([
-          // @ts-ignore
-          import('highcharts/highstock'),
-          // @ts-ignore
-          import('highcharts/modules/price-indicator'),
-          // @ts-ignore
-          import('highcharts/modules/exporting'),
-          // @ts-ignore
-          import('highcharts/modules/accessibility'),
-        ])
+        const HighchartsCoreModule = await import('highcharts/highstock')
+        const HighchartsCore = HighchartsCoreModule.default
 
-        // Initialize modules
-        if (typeof PriceIndicator === 'function') {
-          PriceIndicator(HighchartsCore)
-        }
-        if (typeof Exporting === 'function') {
-          Exporting(HighchartsCore)
-        }
-        if (typeof Accessibility === 'function') {
-          Accessibility(HighchartsCore)
-        }
+        // Load modules as functions that return promises
+        const modules = [
+          // @ts-ignore
+          () => import('highcharts/modules/price-indicator'),
+          // @ts-ignore
+          () => import('highcharts/modules/exporting'),
+          // @ts-ignore
+          () => import('highcharts/modules/accessibility'),
+        ]
+
+        // Initialize modules with error handling
+        await Promise.all(
+          modules.map(async loader => {
+            try {
+              const mod = await loader()
+              if (mod && typeof mod.default === 'function') {
+                ;(mod.default as any)(HighchartsCore)
+              }
+            } catch (moduleError) {
+              console.warn('Failed to load Highcharts module:', moduleError)
+            }
+          })
+        )
 
         setHighcharts(HighchartsCore)
         setIsClient(true)
@@ -201,44 +282,113 @@ const LiveChart: React.FC<LiveChartProps> = ({
     ]
   }
 
+  // Title HTML 생성 함수
+  const generateTitleHTML = useMemo(() => {
+    const isDark = theme === 'dark'
+    const textColor = isDark ? '#FFFFFF' : '#000000'
+    
+    // 기준 가격: 우선순위 - lastQuoteResponse.quote.price (폐장), 실시간, 마지막 차트 포인트
+    const price = (lastQuoteResponse?.quote?.price as number | undefined)
+      ?? latestPrice?.price
+      ?? (chartData.length > 0 ? chartData[chartData.length - 1][1] : 0)
+    const formattedPrice = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(price)
+    
+    // 변화율/변화액 계산
+    // - 코인 외(웹소켓 비활성)에는 lastQuoteResponse.quote.change_amount/change_percent를 우선 사용
+    // - 그 외에는 실시간 changePercent가 있으면 사용
+    // - 없으면 prevClosePrice로 직접 계산
+    let computedChangePercent: number = 0
+    let computedChangeAmount: number = 0
+    if (!shouldUseWebSocket && lastQuoteResponse?.quote) {
+      const qp = Number(lastQuoteResponse.quote.change_percent)
+      const qa = Number(lastQuoteResponse.quote.change_amount)
+      if (isFinite(qp)) {
+        computedChangePercent = qp
+      }
+      if (isFinite(qa)) {
+        computedChangeAmount = qa
+      } else if (typeof prevClosePrice === 'number' && isFinite(prevClosePrice) && prevClosePrice !== 0) {
+        computedChangeAmount = price - prevClosePrice
+      } else if (isFinite(computedChangePercent)) {
+        computedChangeAmount = price * (computedChangePercent / 100)
+      }
+    } else if (typeof latestPrice?.changePercent === 'number') {
+      computedChangePercent = latestPrice.changePercent
+      // 변화액은 가능하면 prevClosePrice 기반으로 계산
+      if (typeof prevClosePrice === 'number' && isFinite(prevClosePrice) && prevClosePrice !== 0) {
+        computedChangeAmount = price - prevClosePrice
+      } else {
+        computedChangeAmount = (price * (computedChangePercent / 100))
+      }
+    } else if (typeof prevClosePrice === 'number' && isFinite(prevClosePrice) && prevClosePrice !== 0) {
+      computedChangeAmount = price - prevClosePrice
+      computedChangePercent = (computedChangeAmount / prevClosePrice) * 100
+    } else {
+      // 데이터가 부족한 경우 0으로 처리
+      computedChangePercent = 0
+      computedChangeAmount = 0
+    }
+
+    const isPositive = computedChangePercent >= 0
+    const changeSign = computedChangePercent > 0 ? '+' : (computedChangePercent < 0 ? '-' : '')
+    const formattedChangePercent = `${changeSign}${Math.abs(computedChangePercent).toFixed(2)}%`
+    
+    // 가격에 변화율에 따른 단계별 색상 적용
+    const priceColor = getChangeColor(computedChangePercent)
+    
+    // 변화율과 변화량은 단순 색상 (상승=초록색, 하강=붉은색)
+    const changeColor = isPositive ? '#2ecc59' : '#f73539'
+    
+    // 변화액 포맷
+    const formattedChangeAmount = `${changeSign}${Math.abs(computedChangeAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    
+    return `
+      <div style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;">
+        <span style="font-size: 16px; color: ${textColor}; font-weight: 500;">
+          ${assetIdentifier}
+        </span>
+        <span style="font-size: 16px; color: ${priceColor}; font-weight: 500;">
+          ${formattedPrice}
+        </span>
+        <span style="font-size: 14px; color: ${changeColor}; font-weight: 500;">
+          ${formattedChangePercent}
+        </span>
+        <span style="font-size: 14x; color: ${changeColor}; font-weight: 500;">
+          ${formattedChangeAmount}
+        </span>
+      </div>
+    `
+  }, [latestPrice, chartData, theme, assetIdentifier])
+
   // Initialize chart
   useEffect(() => {
     if (!isClient || !Highcharts || !containerRef.current) return
 
     const options: any = {
       title: {
-        text: 'Dynamic data in Highcharts Stock',
+        useHTML: true,
+        text: generateTitleHTML,
+        style: {
+          fontWeight: 'normal',
+        },
       },
       xAxis: {
-        overscroll: 500000,
-        range: 4 * 200000,
         gridLineWidth: 1,
+        type: 'datetime',
       },
       rangeSelector: {
-        buttons: [
-          {
-            type: 'minute',
-            count: 15,
-            text: '15m',
-          },
-          {
-            type: 'hour',
-            count: 1,
-            text: '1h',
-          },
-          {
-            type: 'all',
-            count: 1,
-            text: 'All',
-          },
-        ],
-        selected: 2,
-        inputEnabled: false,
+        enabled: false,
       },
       navigator: {
-        series: {
-          color: '#000000',
-        },
+        enabled: false,
+      },
+      exporting: {
+        enabled: false,
       },
       series: [
         {
@@ -284,6 +434,10 @@ const LiveChart: React.FC<LiveChartProps> = ({
     const chart = Highcharts.stockChart(containerRef.current, options)
     chartRef.current = chart
 
+    if (chart?.xAxis && chart.xAxis[0]) {
+      chart.xAxis[0].setExtremes(undefined, undefined)
+    }
+
     // Cleanup function
     return () => {
       if (intervalRef.current !== null) {
@@ -297,9 +451,26 @@ const LiveChart: React.FC<LiveChartProps> = ({
     }
   }, [isClient, Highcharts, chartData])
 
+  // Title 업데이트 (latestPrice 변경 시) - 차트 그래프에 영향 없이 title만 업데이트
+  useEffect(() => {
+    if (!chartRef.current || !Highcharts) return
+    
+    const chart = chartRef.current
+    // setTitle의 두 번째 파라미터를 false로 설정하여 차트를 다시 그리지 않음
+    // title만 업데이트되고 차트의 시리즈나 그래프는 영향받지 않음
+    chart.setTitle({
+      useHTML: true,
+      text: generateTitleHTML,
+      style: {
+        fontWeight: 'normal',
+      },
+    }, false)
+  }, [generateTitleHTML, Highcharts])
+
   // 웹소켓 실시간 데이터로 마지막 포인트만 업데이트
   useEffect(() => {
     if (!chartRef.current || !latestPrice) return
+    if (!shouldUseWebSocket) return
 
     const chart = chartRef.current
     const series = chart.series[0]
@@ -324,7 +495,7 @@ const LiveChart: React.FC<LiveChartProps> = ({
       console.log('[LiveChart] Updated last point with realtime data:', realtimePoint)
       hasLoggedUpdatedPoint.current = true
     }
-  }, [latestPrice])
+  }, [latestPrice, shouldUseWebSocket])
 
   if (!isClient) {
     return (

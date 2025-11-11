@@ -54,6 +54,13 @@ class SchedulerService:
         # clients/locks under the hood, so it must be created within the target event loop.
         self.config_manager = ConfigManager()
         self.redis_queue_manager = RedisQueueManager(config_manager=self.config_manager)
+        
+        # 스케줄러 시작 시 OHLCV intervals 설정 확인
+        try:
+            intervals = self.config_manager.get_ohlcv_intervals()
+            self.logger.info(f"[SchedulerService] OHLCV intervals 설정 로드: {intervals} (1d 포함 여부: {'1d' in intervals})")
+        except Exception as e:
+            self.logger.warning(f"[SchedulerService] OHLCV intervals 설정 로드 실패: {e}")
 
     def _setup_logger(self):
         """Sets up the logger for this service."""

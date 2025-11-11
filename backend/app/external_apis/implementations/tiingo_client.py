@@ -37,10 +37,55 @@ class TiingoClient(TradFiAPIClient):
         self.current_key_index = 0
         self.api_key = self.api_keys[0] if self.api_keys else ""
         
+        # Rate limiting: 시간당 50개 제한
+        # 1시간 = 3600초, 50개 요청 = 72초마다 1개 요청
+        self.rate_limit_per_hour = 50
+        self.min_interval_seconds = 3600 / self.rate_limit_per_hour  # 72초
+        self.last_request_time = {}  # API 키별 마지막 요청 시간 추적
+        self._rate_limit_lock = None  # 첫 사용 시 생성
+        
         if not self.api_key:
             logger.warning("No TIINGO API keys are configured.")
         else:
-            logger.info(f"Tiingo client initialized with {len(self.api_keys)} API keys")
+            logger.info(f"Tiingo client initialized with {len(self.api_keys)} API keys, rate limit: {self.rate_limit_per_hour}/hour")
+
+    async def _wait_for_rate_limit(self, api_key: str):
+        """Rate limiting: 시간당 50개 제한을 위해 최소 간격 대기"""
+        # 첫 사용 시 lock 생성
+        if self._rate_limit_lock is None:
+            try:
+                self._rate_limit_lock = asyncio.Lock()
+            except RuntimeError:
+                # 이벤트 루프가 없으면 lock 없이 진행
+                logger.warning("Tiingo: No event loop available for rate limiting lock")
+                self._rate_limit_lock = None
+        
+        if self._rate_limit_lock:
+            async with self._rate_limit_lock:
+                current_time = datetime.now()
+                if api_key in self.last_request_time:
+                    last_time = self.last_request_time[api_key]
+                    elapsed = (current_time - last_time).total_seconds()
+                    
+                    if elapsed < self.min_interval_seconds:
+                        wait_time = self.min_interval_seconds - elapsed
+                        logger.debug(f"Tiingo rate limit: waiting {wait_time:.2f}s before next request (key index: {self.current_key_index})")
+                        await asyncio.sleep(wait_time)
+                
+                self.last_request_time[api_key] = datetime.now()
+        else:
+            # Lock이 없으면 단순 시간 체크만 수행
+            current_time = datetime.now()
+            if api_key in self.last_request_time:
+                last_time = self.last_request_time[api_key]
+                elapsed = (current_time - last_time).total_seconds()
+                
+                if elapsed < self.min_interval_seconds:
+                    wait_time = self.min_interval_seconds - elapsed
+                    logger.debug(f"Tiingo rate limit: waiting {wait_time:.2f}s before next request (key index: {self.current_key_index})")
+                    await asyncio.sleep(wait_time)
+            
+            self.last_request_time[api_key] = datetime.now()
 
     async def _request(self, path: str, params: Dict[str, Any] = None) -> Any:
         """Internal helper to perform GET requests with api key injected."""
@@ -55,6 +100,10 @@ class TiingoClient(TradFiAPIClient):
         # API 키 fallback 로직
         for attempt in range(len(self.api_keys)):
             current_key = self.api_keys[self.current_key_index]
+            
+            # Rate limiting 적용
+            await self._wait_for_rate_limit(current_key)
+            
             params["token"] = current_key
             url = f"{self.base_url}{normalized_path}"
             
@@ -134,6 +183,9 @@ class TiingoClient(TradFiAPIClient):
                     logger.info(f"Tiingo: {format_trading_status_message(end_date_obj)} - 데이터 요청 스킵")
                     return None
                 params["endDate"] = end_date
+            
+            # Rate limiting 적용
+            await self._wait_for_rate_limit(self.api_key)
             
             # Use httpx directly to get the raw response content
             async with httpx.AsyncClient() as client:

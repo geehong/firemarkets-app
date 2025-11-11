@@ -1,20 +1,17 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { apiClient } from "@/lib/api";
-import MultiAssetLineChart from "@/components/charts/line/MultiAssetLineChart";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { CryptoPriceCard, CryptoMetricCard } from "@/components/widget";
 import dynamic from "next/dynamic";
-import ClientOnlyChart from "@/components/charts/minicharts/ClientOnlyChart";
 import CompareMultipleAssetsChart from "@/components/charts/line/CompareMultipleAssetsChart";
 import AssetsList from "@/components/lists/AssetsList";
 import { useSearchParams, usePathname } from "next/navigation";
 import { useTreemapLive } from "@/hooks/useAssets";
 import { useRealtimePrices } from "@/hooks/useSocket";
 import Badge from "@/components/ui/badge/Badge";
-import LiveChart from "@/components/charts/live/livechart";
+import LivePriceCryptoChart from "@/components/charts/live/LivePriceCryptoChart";
+import LivePriceStocksEtfChart from "@/components/charts/live/LivePriceStocksEtfChart";
+import LivePriceCommoditiesChart from "@/components/charts/live/LivePriceCommoditiesChart";
 
 // 동적 import로 각 페이지 컴포넌트 로드
 const AssetsDashboard = dynamic(() => import("./assets/page"), { 
@@ -29,104 +26,10 @@ const OnchainDashboard = dynamic(() => import("./onchain/page"), {
   ssr: false,
   loading: () => <div className="flex items-center justify-center h-64">Loading...</div>
 });
-const PerformanceTreeMapToday = dynamic(() => import("@/components/charts/treemap/PerformanceTreeMapToday"), { 
+const PerformanceTreeMapToday = dynamic(() => import("@/components/charts/treemap/PerformanceTreeMapToday"), {
   ssr: false,
   loading: () => <div className="flex items-center justify-center h-64">Loading chart...</div>
 });
-
-// 메트릭 카드 컴포넌트
-interface MetricCardProps {
-  title: string;
-  value: string | number;
-  change?: number;
-  icon?: string;
-  loading?: boolean;
-}
-
-const MetricCard: React.FC<MetricCardProps> = ({ 
-  title, 
-  value, 
-  change, 
-  icon, 
-  loading 
-}: MetricCardProps) => {
-  const changeColor = change && change > 0 ? "text-green-500" : "text-red-500";
-  const changeSign = change && change > 0 ? "+" : "";
-
-  return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-shadow">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400">{title}</h3>
-        {icon && <span className="text-2xl">{icon}</span>}
-      </div>
-      {loading ? (
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
-          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
-        </div>
-      ) : (
-        <>
-          <div className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
-            {value}
-          </div>
-          {change !== undefined && (
-            <div className={`text-sm font-medium ${changeColor}`}>
-              {changeSign}{change.toFixed(2)}%
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-};
-
-// 테이블 행 컴포넌트
-interface CryptoRowProps {
-  rank: number;
-  symbol: string;
-  name: string;
-  price: number;
-  change24h: number;
-  marketCap: number;
-  volume24h: number;
-}
-
-const CryptoRow: React.FC<CryptoRowProps> = ({ 
-  rank, 
-  symbol, 
-  name, 
-  price, 
-  change24h, 
-  marketCap, 
-  volume24h 
-}: CryptoRowProps) => {
-  const changeColor = change24h >= 0 ? "text-green-500" : "text-red-500";
-  const changeSign = change24h >= 0 ? "+" : "";
-
-  return (
-    <tr className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-      <td className="py-3 px-4 text-gray-600 dark:text-gray-400">{rank}</td>
-      <td className="py-3 px-4">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-gray-900 dark:text-white">{symbol}</span>
-          <span className="text-sm text-gray-500 dark:text-gray-400">{name}</span>
-        </div>
-      </td>
-      <td className="py-3 px-4 font-medium text-gray-900 dark:text-white">
-        ${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-      </td>
-      <td className={`py-3 px-4 font-medium ${changeColor}`}>
-        {changeSign}{change24h.toFixed(2)}%
-      </td>
-      <td className="py-3 px-4 text-gray-900 dark:text-white">
-        ${(marketCap / 1e9).toFixed(2)}B
-      </td>
-      <td className="py-3 px-4 text-gray-900 dark:text-white">
-        ${(volume24h / 1e6).toFixed(2)}M
-      </td>
-    </tr>
-  );
-};
 
 type TabType = 'overview' | 'assets' | 'blog' | 'onchain';
 
@@ -244,95 +147,10 @@ function DashboardContent() {
 }
 
 export default function DashboardPage() {
-  return (
-    <Suspense fallback={
-      <main className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-gray-600 dark:text-gray-400">Loading dashboard...</div>
-        </div>
-      </main>
-    }>
-      <DashboardContent />
-    </Suspense>
-  );
+  return <DashboardContent />;
 }
 
 function OverviewContent() {
-  // 글로벌 크립토 메트릭 조회
-  const { data: globalMetrics, isLoading: globalLoading, isError: globalError } = useQuery({
-    queryKey: ['global-crypto-metrics'],
-    queryFn: () => apiClient.getGlobalCryptoMetrics(),
-    staleTime: 5 * 60 * 1000, // 5분
-    retry: 0,
-    refetchOnWindowFocus: false,
-    onError: (error: any) => {
-      console.warn('Global metrics fetch failed:', error.message);
-    },
-  });
-
-  // 상위 크립토 조회
-  const { data: topCryptos, isLoading: cryptoLoading, isError: cryptoError } = useQuery({
-    queryKey: ['top-cryptos', 10],
-    queryFn: () => apiClient.getTopCryptos(10),
-    staleTime: 2 * 60 * 1000, // 2분
-    retry: 0,
-    refetchOnWindowFocus: false,
-    onError: (error: any) => {
-      console.warn('Top cryptos fetch failed:', error.message);
-    },
-  });
-
-  // 실시간 테이블 데이터 조회 - 에러 시 대체 데이터 사용
-  const { data: realtimeData, isLoading: realtimeLoading, isError: realtimeError } = useQuery({
-    queryKey: ['realtime-table', { limit: 5 }],
-    queryFn: () => apiClient.getRealtimeTable({ limit: 5 }),
-    staleTime: 1 * 60 * 1000, // 1분
-    retry: 0, // 재시도 안함
-    refetchOnWindowFocus: false,
-    // 에러 발생 시 콘솔에만 로그
-    onError: (error: any) => {
-      console.warn('Realtime table data fetch failed, using fallback data:', error.message);
-    },
-  });
-
-  // 비트코인 데이터 조회
-  const { data: btcData, isError: btcError } = useQuery({
-    queryKey: ['crypto-data', 'BTCUSDT'],
-    queryFn: () => apiClient.getCryptoDataByAsset('BTCUSDT'),
-    staleTime: 2 * 60 * 1000,
-    retry: 0,
-    refetchOnWindowFocus: false,
-    onError: (error: any) => {
-      console.warn('BTC data fetch failed:', error.message);
-    },
-  });
-
-  // 글로벌 메트릭 추출
-  const totalMarketCap = globalMetrics?.total_market_cap || 0;
-  const total24hVolume = globalMetrics?.total_24h_volume || 0;
-  const btcDominance = globalMetrics?.btc_dominance || 0;
-  const ethDominance = globalMetrics?.eth_dominance || 0;
-  const activeCryptos = globalMetrics?.active_cryptocurrencies || 0;
-
-  // 비트코인 가격 및 변화율
-  const btcPrice = btcData?.current_price || btcData?.price || 0;
-  const btcChange24h = btcData?.percent_change_24h || btcData?.price_change_percent_24h || 0;
-
-  // 전체 에러 상태 확인
-  const hasApiErrors = globalError || cryptoError || realtimeError || btcError;
-
-  // 데이터 정규화 헬퍼
-  const normalizeArrayData = (data: any) => {
-    if (!data) return [];
-    if (Array.isArray(data)) return data;
-    if (data.data && Array.isArray(data.data)) return data.data;
-    return [];
-  };
-
-  // 정규화된 데이터
-  const normalizedTopCryptos = normalizeArrayData(topCryptos);
-  const normalizedRealtimeData = normalizeArrayData(realtimeData);
-
   // 현재년도 1월 1일부터 오늘까지 날짜 계산
   const currentYear = new Date().getFullYear();
   const startDate = `${currentYear}-01-01`;
@@ -340,23 +158,6 @@ function OverviewContent() {
 
   return (
     <>
-      {/* API 에러 알림 */}
-      {hasApiErrors && (
-        <div className="mb-6 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <span className="text-2xl">⚠️</span>
-            <div className="flex-1">
-              <h3 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-1">
-                일부 데이터를 불러올 수 없습니다
-              </h3>
-              <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                백엔드 서버에 일시적인 문제가 발생했습니다. 사용 가능한 데이터만 표시됩니다.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* 미니 차트 섹션 */}
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
@@ -365,27 +166,27 @@ function OverviewContent() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* 비트코인 차트 */}
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
-            <LiveChart
+            <LivePriceCryptoChart
               containerId="dashboard-btc-live"
               height={300}
               updateInterval={100}
+              assetIdentifier="BTCUSDT"
             />
           </div>
 
           {/* 이더리움 차트 */}
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
-            <LiveChart
+            <LivePriceCryptoChart
               containerId="dashboard-eth-live"
               height={300}
               updateInterval={100}
               assetIdentifier="ETHUSDT"
-              dataSource="binance"
             />
           </div>
 
           {/* SPY 차트 */}
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
-            <LiveChart
+            <LivePriceStocksEtfChart
               containerId="dashboard-spy-live"
               height={300}
               updateInterval={100}
@@ -395,7 +196,7 @@ function OverviewContent() {
 
           {/* QQQ 차트 */}
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
-            <LiveChart
+            <LivePriceStocksEtfChart
               containerId="dashboard-qqq-live"
               height={300}
               updateInterval={100}
@@ -405,7 +206,7 @@ function OverviewContent() {
 
           {/* GCUSD 차트 */}
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
-            <LiveChart
+            <LivePriceCommoditiesChart
               containerId="dashboard-gcusd-live"
               height={300}
               updateInterval={100}
@@ -415,7 +216,7 @@ function OverviewContent() {
 
           {/* SIUSD 차트 */}
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
-            <LiveChart
+            <LivePriceCommoditiesChart
               containerId="dashboard-siusd-live"
               height={300}
               updateInterval={100}
@@ -425,7 +226,7 @@ function OverviewContent() {
 
           {/* NVDA 차트 */}
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
-            <LiveChart
+            <LivePriceStocksEtfChart
               containerId="dashboard-nvda-live"
               height={300}
               updateInterval={100}
@@ -435,7 +236,7 @@ function OverviewContent() {
 
           {/* AAPL 차트 */}
           <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
-            <LiveChart
+            <LivePriceStocksEtfChart
               containerId="dashboard-aapl-live"
               height={300}
               updateInterval={100}

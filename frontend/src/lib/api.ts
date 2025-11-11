@@ -164,11 +164,11 @@ export class ApiClient {
     return this.request(`/realtime/pg/quotes-price${qs ? `?${qs}` : ''}`)
   }
   
-  getDelayedQuotes(assetIdentifiers: string[], dataSource?: string, limit: number = 360) {
+  getDelayedQuotes(assetIdentifiers: string[], dataSource?: string, limit: number = 360, days: number | string = 1) {
     const search = new URLSearchParams()
     assetIdentifiers.forEach(id => search.append('asset_identifier', id))
     search.append('data_interval', '15m')
-    search.append('days', '1') // 1일치 데이터
+    search.append('days', String(days)) // 기본 1일, 필요 시 조정
     search.append('limit', limit.toString()) // 24*15 = 360개 포인트
     if (dataSource) {
       search.append('data_source', dataSource)

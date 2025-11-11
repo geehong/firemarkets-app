@@ -34,8 +34,8 @@
       "day_of_week": "mon,tue,wed,thu,fri,sat,sun"
     },
     {
-      "hour": 10,
-      "minute": 1,
+      "hour": 13,
+      "minute": 9,
       "collectors": [
         "stock_financials_clients",
         "stock_analyst_estimates_clients"
@@ -43,8 +43,8 @@
       "day_of_week": "sun"
     },
     {
-      "hour": 16,
-      "minute": 15,
+      "hour": 6,
+      "minute": 0,
       "collectors": [
         "stock_financials_macrotrends_clients"
       ],
@@ -91,10 +91,10 @@
       "day_of_week": "mon,tue,wed,thu,fri,sat,sun"
     },
     {
-      "hour": 10,
-      "minute": 48,
+      "hour": 15,
+      "minute": 1,
       "collectors": [
-        "ohlcv_intraday_clients"
+        "ohlcv_day_clients"
       ],
       "day_of_week": "mon,tue,wed,thu,fri,sat,sun"
     }

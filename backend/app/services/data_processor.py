@@ -786,6 +786,7 @@ class DataProcessor:
     async def _process_batch_queue(self) -> int:
         """배치 큐 데이터 처리"""
         if not self.redis_client:
+            logger.debug("배치 큐 처리 스킵: Redis 클라이언트 없음")
             return 0
             
         processed_count = 0
@@ -807,6 +808,8 @@ class DataProcessor:
                             task_wrapper = None
 
                 if not task_wrapper:
+                    if _ == 0:
+                        logger.debug("배치 큐가 비어있음 (timeout)")
                     break
                 
                 # 태스크 정보 로깅
@@ -1694,7 +1697,8 @@ class DataProcessor:
                                 logger.debug(f"[OHLCV] PostgreSQL 모델에 없는 컬럼 제외: {missing}")
 
                             stmt = pg_insert(model).values(**filtered_row)
-                            # 업데이트 컬럼: 충돌 키를 제외한 나머지(모델에 존재하는 컬럼만) + updated_at
+                            # 업데이트 컬럼: 충돌 키를 제외한 나머지(모델에 존재하는 컬럼만)
+                            # updated_at은 OHLCVData/OHLCVIntradayData 테이블에 없으므로 제외
                             update_set = {}
                             for k in filtered_row.keys():
                                 if k in conflict_cols:
@@ -1704,7 +1708,10 @@ class DataProcessor:
                                 except AttributeError:
                                     # 모델에 실제로 없거나 excluded 접근 불가
                                     logger.debug(f"[OHLCV] PostgreSQL excluded에 없는 컬럼 스킵: {k}")
-                            update_set['updated_at'] = func.now()
+                            
+                            # updated_at 컬럼이 모델에 있는 경우에만 추가
+                            if 'updated_at' in allowed_columns:
+                                update_set['updated_at'] = func.now()
 
                             stmt = stmt.on_conflict_do_update(index_elements=conflict_cols, set_=update_set)
                             pg_db.execute(stmt)

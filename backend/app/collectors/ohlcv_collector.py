@@ -48,6 +48,7 @@ class OHLCVCollector(BaseCollector):
             return {"processed_assets": 0, "total_added_records": 0}
 
         intervals = self.config_manager.get_ohlcv_intervals()
+        self.logging_helper.log_info(f"[OHLCVCollector] 로드된 intervals 설정: {intervals} (1d 포함 여부: {'1d' in intervals})")
         
         # 2. 수집 대상 자산 조회 (누구를 할지 묻기)
         asset_ids = self._get_target_asset_ids()

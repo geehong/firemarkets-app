@@ -262,7 +262,12 @@ docker-compose logs data_processor --tail 50 -f | grep -Ei "저장 (시작|완�
 docker-compose logs data_processor --tail 50 -f | grep -Ei "(실패|오류|error|success)"
 docker-compose logs scheduler --tail 50 -f | grep -Ei "(실패|오류|error|success)"
 docker-compose logs backend --tail 50 -f | grep -Ei "(실패|오류|error|success)"
-
+cd /home/geehong/firemarkets-app && docker-compose logs scheduler 2>&1 | grep -E "Enqueued.*ohlcv|batch_data_queue.*ohlcv" | tail -20
+cd /home/geehong/firemarkets-app && docker-compose logs data_processor --since 30m 2>&1 | grep -E "ohlcv_day_data|daily=True|1d.*저장" | tail -20
+cd /home/geehong/firemarkets-app && docker-compose logs data_processor --since 30m 2>&1 | grep -E "ohlcv_day_data.*저장 완료|ohlcv_day_data.*upserted" | wc -l
+cd /home/geehong/firemarkets-app && docker-compose logs data_processor --since 1h 2>&1 | grep -E "ohlcv_day_data.*저장 완료|ohlcv_day_data.*upserted|daily=True" | tail -30
+cd /home/geehong/firemarkets-app && docker-compose logs data_processor --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | grep -i "ohlcv" | tail -20
+cd /home/geehong/firemarkets-app && docker-compose logs data_processor --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | tail -20
 
 # 자산 매칭 및 DB 저장 로그
 docker-compose logs data_processor --tail 100 -f | grep -E "(자산 매칭 성공|DB 저장 성공|✅.*성공)"
