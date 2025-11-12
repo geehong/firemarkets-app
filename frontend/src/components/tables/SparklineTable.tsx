@@ -337,6 +337,7 @@ export default function SparklineTable({
     queries: filteredAssetIdentifiers.map((item) => {
       const assetTypeLower = item.assetType?.toLowerCase() || '';
       const isCrypto = assetTypeLower === 'crypto';
+      const isStocksOrEtf = assetTypeLower === 'stocks' || assetTypeLower === 'etfs';
       // USDT, USDC 같은 stablecoin은 coinbase 사용, 나머지는 binance 사용
       const isStablecoin = ['USDT', 'USDC', 'BUSD', 'DAI', 'TUSD'].includes(item.identifier.toUpperCase());
       
@@ -345,9 +346,13 @@ export default function SparklineTable({
       const dataSource = isCrypto ? (isStablecoin ? 'coinbase' : 'binance') : undefined;
       
       return {
-        queryKey: ['delayed-quotes-sparkline', item.identifier, dataSource],
+        queryKey: ['delayed-quotes-sparkline', item.identifier, dataSource, isStocksOrEtf],
         queryFn: async () => {
           const BACKEND_BASE = process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1';
+          
+          // 주식/ETF인 경우 sparkline-price 사용, 그 외에는 기존 quotes-delay-price 사용
+          const endpoint = isStocksOrEtf ? '/realtime/sparkline-price' : '/realtime/pg/quotes-delay-price';
+          
           const search = new URLSearchParams();
           search.append('asset_identifier', item.identifier);
           search.append('data_interval', '15m');
@@ -355,7 +360,7 @@ export default function SparklineTable({
           if (dataSource) {
             search.append('data_source', dataSource);
           }
-          const url = `${BACKEND_BASE}/realtime/pg/quotes-delay-price?${search.toString()}`;
+          const url = `${BACKEND_BASE}${endpoint}?${search.toString()}`;
           
           try {
             const response = await fetch(url);

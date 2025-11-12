@@ -115,3 +115,28 @@ export const useDelayedQuoteLast = (
     ...queryOptions,
   })
 }
+
+// Sparkline Price Hook (주식/ETF용 - 유효성 검증 포함)
+export const useSparklinePrice = (
+  assetIdentifier: string,
+  options?: {
+    dataInterval?: string
+    days?: number
+    dataSource?: string
+  },
+  queryOptions?: UseQueryOptions
+) => {
+  return useQuery({
+    queryKey: ['sparkline-price', assetIdentifier, options],
+    queryFn: () => apiClient.getSparklinePrice(
+      assetIdentifier,
+      options?.dataInterval || '15m',
+      options?.days || 1,
+      options?.dataSource
+    ),
+    enabled: !!assetIdentifier,
+    refetchInterval: 15 * 60 * 1000, // 15분마다 자동 갱신
+    staleTime: 15 * 60 * 1000, // 15분간 데이터를 신선하게 유지
+    ...queryOptions,
+  })
+}

@@ -4,7 +4,7 @@ Realtime Data Management API endpoints
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import Optional, List
+from typing import Optional, List, Tuple
 import logging
 from pydantic import BaseModel
 from datetime import datetime, timedelta, timezone, time as dt_time
@@ -675,7 +675,7 @@ async def get_realtime_quotes_delay_price_postgres(
 async def get_ohlcv_intraday(
     asset_identifier: str = Query(..., description="Asset ID (integer) or Ticker (string)"),
     ohlcv: bool = Query(True, description="true=OHLCV 데이터, false=close price만"),
-    data_interval: str = Query("4h", description="Data interval (1h, 4h, 6h, 12h, 24h)"),
+    data_interval: str = Query("4h", description="Data interval (1m, 5m, 15m, 30m, 1h, 4h, 6h, 12h, 24h)"),
     days: int = Query(1, ge=1, le=1, description="Number of days to fetch (limited to 1 day)"),
     limit: int = Query(1000, ge=1, le=10000, description="Maximum number of data points"),
     db: Session = Depends(get_postgres_db)
@@ -684,13 +684,13 @@ async def get_ohlcv_intraday(
     OHLCV 인트라데이 데이터 조회
     asset_identifier: Asset ID (integer) 또는 Ticker (string)
     ohlcv: true=OHLCV 데이터, false=close price만
-    data_interval: 데이터 간격 (4h, 6h, 12h, 24h)
+    data_interval: 데이터 간격 (1m, 5m, 15m, 30m, 1h, 4h, 6h, 12h, 24h)
     """
     try:
         from ....services.endpoint.ohlcv_service import OHLCVService
         
         # 지원되는 간격 확인
-        supported_intervals = ["1h", "4h", "6h", "12h", "24h"]
+        supported_intervals = ["1m", "5m", "15m", "30m", "1h", "4h", "6h", "12h", "24h"]
         if data_interval not in supported_intervals:
             raise HTTPException(
                 status_code=400, 
@@ -708,8 +708,8 @@ async def get_ohlcv_intraday(
                 raise HTTPException(status_code=404, detail=f"Asset not found with ticker: {asset_identifier}")
             asset_id = asset.asset_id
         
-        # OHLCV 데이터 조회
-        ohlcv_data = await OHLCVService.get_ohlcv_data(
+        # OHLCV 데이터 조회 (폴백 지원: 15m/30m은 1m/5m 데이터 집계)
+        ohlcv_data = await OHLCVService.get_ohlcv_data_with_fallback(
             db=db,
             asset_id=asset_id,
             data_interval=data_interval,
@@ -734,3 +734,300 @@ async def get_ohlcv_intraday(
     except Exception as e:
         logger.error(f"Failed to get OHLCV data: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get OHLCV data: {str(e)}")
+
+
+@router.get("/intraday-price")
+async def get_intraday_price(
+    asset_identifier: str = Query(..., description="Asset ID (integer) or Ticker (string)"),
+    data_interval: str = Query("4h", description="Data interval (1m, 5m, 15m, 30m, 1h, 4h, 6h, 12h, 24h)"),
+    days: int = Query(1, ge=1, le=1, description="Number of days to fetch (limited to 1 day)"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum number of data points"),
+    db: Session = Depends(get_postgres_db)
+):
+    """
+    인트라데이 가격 데이터 조회 (close, volume만 반환)
+    asset_identifier: Asset ID (integer) 또는 Ticker (string)
+    data_interval: 데이터 간격 (1m, 5m, 15m, 30m, 1h, 4h, 6h, 12h, 24h)
+    """
+    try:
+        from ....services.endpoint.ohlcv_service import OHLCVService
+        
+        # 지원되는 간격 확인
+        supported_intervals = ["1m", "5m", "15m", "30m", "1h", "4h", "6h", "12h", "24h"]
+        if data_interval not in supported_intervals:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Unsupported interval: {data_interval}. Supported: {supported_intervals}"
+            )
+        
+        # asset_identifier가 숫자인지 확인 (Asset ID)
+        if asset_identifier.isdigit():
+            asset_id = int(asset_identifier)
+        else:
+            # Ticker로 조회
+            from ....models import Asset
+            asset = db.query(Asset).filter(Asset.ticker == asset_identifier.upper()).first()
+            if not asset:
+                raise HTTPException(status_code=404, detail=f"Asset not found with ticker: {asset_identifier}")
+            asset_id = asset.asset_id
+        
+        # OHLCV 데이터 조회 (폴백 지원: 15m/30m은 1m/5m 데이터 집계)
+        ohlcv_data = await OHLCVService.get_ohlcv_data_with_fallback(
+            db=db,
+            asset_id=asset_id,
+            data_interval=data_interval,
+            include_ohlcv=True,  # 전체 데이터를 가져온 후 필터링
+            limit=limit
+        )
+        
+        if not ohlcv_data:
+            raise HTTPException(status_code=404, detail="No price data found")
+        
+        # close와 volume만 추출
+        price_data = []
+        for item in ohlcv_data:
+            price_item = {
+                "close": item.get("close"),
+                "volume": item.get("volume")
+            }
+            # timestamp도 포함할지 확인 - 사용자가 명시하지 않았지만 일반적으로 필요할 수 있음
+            # 하지만 요구사항에 "close"와 "volume"만이라고 했으므로 제외
+            price_data.append(price_item)
+        
+        return {
+            "asset_identifier": asset_identifier,
+            "asset_id": asset_id,
+            "data_interval": data_interval,
+            "data": price_data,
+            "count": len(price_data)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get intraday price data: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get intraday price data: {str(e)}")
+
+
+@router.get("/sparkline-price")
+async def get_sparkline_price(
+    asset_identifier: str = Query(..., description="Asset ID (integer) or Ticker (string)"),
+    data_interval: str = Query("15m", description="Data interval (15m, 30m, 1h)"),
+    days: int = Query(1, ge=1, le=1, description="Number of days to fetch (limited to 1 day)"),
+    data_source: Optional[str] = Query(None, description="Data source filter (optional, only for crypto assets)"),
+    db: Session = Depends(get_postgres_db)
+):
+    """
+    스파크라인용 가격 데이터 조회 (유효성 검증 포함)
+    quotes-delay-price와 intraday-price 중 유효한 데이터를 자동 선택
+    - 오늘 날짜 기준으로 최신 데이터 확인
+    - 요청한 포인트 수 충족 여부 확인
+    - 날짜가 현저하게 차이나는 경우 배제
+    """
+    try:
+        from ....models import Asset
+        from datetime import date as date_type
+        
+        # asset_id 조회
+        if asset_identifier.isdigit():
+            asset_id = int(asset_identifier)
+        else:
+            asset = db.query(Asset).filter(Asset.ticker == asset_identifier.upper()).first()
+            if not asset:
+                raise HTTPException(status_code=404, detail=f"Asset not found with ticker: {asset_identifier}")
+            asset_id = asset.asset_id
+        
+        # 간격에 따른 예상 포인트 수 계산
+        points_per_day = {
+            "15m": 96,   # 24 * 4
+            "30m": 48,   # 24 * 2
+            "1h": 24,    # 24 * 1
+        }
+        expected_points = points_per_day.get(data_interval, 96) * days
+        
+        # 오늘 날짜
+        today = datetime.now(timezone.utc).date()
+        
+        # 데이터 유효성 검증 함수
+        def validate_data_freshness(quotes: list, source_name: str) -> Tuple[bool, int, Optional[datetime]]:
+            """
+            데이터 유효성 검증
+            Returns: (is_valid, point_count, latest_timestamp)
+            """
+            if not quotes or len(quotes) == 0:
+                logger.warning(f"[sparkline-price] {source_name}: No data")
+                return False, 0, None
+            
+            point_count = len(quotes)
+            
+            # 최신 데이터의 날짜 확인
+            latest_quote = quotes[0] if quotes else None
+            if not latest_quote:
+                return False, point_count, None
+            
+            # timestamp 추출
+            latest_timestamp_str = latest_quote.get("timestamp_utc") or latest_quote.get("timestamp")
+            if not latest_timestamp_str:
+                logger.warning(f"[sparkline-price] {source_name}: No timestamp in latest quote")
+                return False, point_count, None
+            
+            try:
+                if isinstance(latest_timestamp_str, str):
+                    latest_timestamp = datetime.fromisoformat(latest_timestamp_str.replace('Z', '+00:00'))
+                else:
+                    latest_timestamp = latest_timestamp_str
+                
+                if latest_timestamp.tzinfo is None:
+                    latest_timestamp = latest_timestamp.replace(tzinfo=timezone.utc)
+                
+                latest_date = latest_timestamp.date()
+                
+                # 날짜 차이 계산 (일 단위)
+                days_diff = (today - latest_date).days
+                
+                # 유효성 검증:
+                # 1. 포인트 수가 예상의 50% 이상인지 확인
+                # 2. 최신 데이터가 오늘 또는 어제인지 확인 (2일 이상 차이나면 무효)
+                has_enough_points = point_count >= (expected_points * 0.5)
+                is_recent = days_diff <= 1
+                
+                is_valid = has_enough_points and is_recent
+                
+                logger.info(
+                    f"[sparkline-price] {source_name}: "
+                    f"points={point_count}/{expected_points}, "
+                    f"latest_date={latest_date}, "
+                    f"days_diff={days_diff}, "
+                    f"valid={is_valid}"
+                )
+                
+                return is_valid, point_count, latest_timestamp
+                
+            except Exception as e:
+                logger.error(f"[sparkline-price] {source_name}: Error validating timestamp: {e}")
+                return False, point_count, None
+        
+        # 1. quotes-delay-price 시도
+        quotes_delay_data = None
+        quotes_delay_valid = False
+        quotes_delay_points = 0
+        
+        try:
+            # 내부적으로 quotes-delay-price 로직 호출
+            from ....models.asset import RealtimeQuoteTimeDelay
+            from sqlalchemy import desc
+            
+            query = db.query(RealtimeQuoteTimeDelay)\
+                .filter(RealtimeQuoteTimeDelay.asset_id == asset_id)\
+                .filter(RealtimeQuoteTimeDelay.data_interval == data_interval)\
+                .order_by(desc(RealtimeQuoteTimeDelay.timestamp_utc))\
+                .limit(expected_points)
+            
+            if data_source:
+                query = query.filter(RealtimeQuoteTimeDelay.data_source == data_source.lower())
+            
+            quotes = query.all()
+            
+            if quotes:
+                # quote 형식으로 변환
+                processed_quotes = []
+                for quote in quotes:
+                    processed_quotes.append({
+                        "timestamp_utc": quote.timestamp_utc.isoformat() if quote.timestamp_utc else None,
+                        "price": float(quote.price) if quote.price else None,
+                        "volume": float(quote.volume) if quote.volume else None,
+                    })
+                
+                quotes_delay_valid, quotes_delay_points, _ = validate_data_freshness(
+                    processed_quotes, "quotes-delay-price"
+                )
+                
+                if quotes_delay_valid:
+                    quotes_delay_data = processed_quotes
+                    
+        except Exception as e:
+            logger.warning(f"[sparkline-price] quotes-delay-price failed: {e}")
+        
+        # 2. intraday-price 시도 (15m는 15m로, 30m는 30m로 매핑)
+        intraday_data = None
+        intraday_valid = False
+        intraday_points = 0
+        
+        try:
+            # intraday-price는 15m, 30m, 1h를 지원
+            if data_interval in ["15m", "30m", "1h"]:
+                from ....services.endpoint.ohlcv_service import OHLCVService
+                
+                ohlcv_data = await OHLCVService.get_ohlcv_data_with_fallback(
+                    db=db,
+                    asset_id=asset_id,
+                    data_interval=data_interval,
+                    include_ohlcv=True,
+                    limit=expected_points
+                )
+                
+                if ohlcv_data:
+                    # intraday-price 형식으로 변환
+                    processed_data = []
+                    for item in ohlcv_data:
+                        processed_data.append({
+                            "timestamp_utc": item.get("timestamp"),
+                            "price": item.get("close"),
+                            "volume": item.get("volume")
+                        })
+                    
+                    intraday_valid, intraday_points, _ = validate_data_freshness(
+                        processed_data, "intraday-price"
+                    )
+                    
+                    if intraday_valid:
+                        intraday_data = processed_data
+                        
+        except Exception as e:
+            logger.warning(f"[sparkline-price] intraday-price failed: {e}")
+        
+        # 3. 유효한 데이터 선택 (우선순위: quotes-delay-price > intraday-price)
+        selected_data = None
+        selected_source = None
+        
+        if quotes_delay_valid and quotes_delay_data:
+            selected_data = quotes_delay_data
+            selected_source = "quotes-delay-price"
+            logger.info(f"[sparkline-price] Selected quotes-delay-price: {quotes_delay_points} points")
+        elif intraday_valid and intraday_data:
+            selected_data = intraday_data
+            selected_source = "intraday-price"
+            logger.info(f"[sparkline-price] Selected intraday-price: {intraday_points} points")
+        else:
+            # 둘 다 유효하지 않은 경우, 더 많은 포인트를 가진 것을 선택
+            if quotes_delay_points > intraday_points:
+                selected_data = quotes_delay_data if quotes_delay_data else None
+                selected_source = "quotes-delay-price" if quotes_delay_data else None
+            elif intraday_points > 0:
+                selected_data = intraday_data if intraday_data else None
+                selected_source = "intraday-price" if intraday_data else None
+        
+        if not selected_data:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No valid sparkline data found for {asset_identifier}. "
+                       f"quotes-delay-price: {quotes_delay_points} points, "
+                       f"intraday-price: {intraday_points} points"
+            )
+        
+        # 응답 형식 (SparklineTable과 호환)
+        return {
+            "asset_identifier": asset_identifier,
+            "asset_id": asset_id,
+            "quotes": selected_data,
+            "data_source": selected_source,
+            "data_interval": data_interval,
+            "count": len(selected_data),
+            "expected_points": expected_points
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get sparkline price data: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get sparkline price data: {str(e)}")

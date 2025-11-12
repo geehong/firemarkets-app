@@ -2,7 +2,7 @@
 "use client"
 
 import React, { useEffect, useMemo, useRef, useState } from "react"
-import { useDelayedQuotes } from "@/hooks/useRealtime"
+import { useDelayedQuotes, useSparklinePrice } from "@/hooks/useRealtime"
 import { useRealtimePrices } from "@/hooks/useSocket"
 import { useAssetDetail } from "@/hooks/useAssets"
 // CSS는 globals.css에서 글로벌로 로드됨
@@ -160,8 +160,25 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
     return () => window.removeEventListener("resize", onResize)
   }, [])
 
-  // API 데이터 로드 (지연 데이터 기반 시계열)
-  const { data: apiResponse, isLoading, error } = useDelayedQuotes([assetIdentifier], { dataSource })
+  // 주식/ETF인지 확인 (chartType이 'stocks'이거나 asset_type_id가 2(Stocks) 또는 5(ETFs))
+  const isStocksOrEtf = chartType === 'stocks' || 
+    assetDetail?.asset_type_id === 2 || // Stocks
+    assetDetail?.asset_type_id === 5 || // ETFs
+    assetDetail?.type_name?.toLowerCase() === 'stocks' ||
+    assetDetail?.type_name?.toLowerCase() === 'etfs'
+
+  // API 데이터 로드 (주식/ETF는 sparkline-price 사용, 그 외는 기존 useDelayedQuotes 사용)
+  const delayedQuotesQuery = useDelayedQuotes([assetIdentifier], { dataSource }, { enabled: !isStocksOrEtf })
+  const sparklineQuery = useSparklinePrice(
+    assetIdentifier,
+    { dataInterval: '15m', days: 1, dataSource },
+    { enabled: isStocksOrEtf }
+  )
+  
+  // 주식/ETF인 경우 sparkline-price 결과 사용, 그 외에는 기존 delayed quotes 사용
+  const apiResponse = isStocksOrEtf ? sparklineQuery.data : delayedQuotesQuery.data
+  const isLoading = isStocksOrEtf ? sparklineQuery.isLoading : delayedQuotesQuery.isLoading
+  const error = isStocksOrEtf ? sparklineQuery.error : delayedQuotesQuery.error
 
   // API 데이터 콘솔 출력 (1번만)
   useEffect(() => {

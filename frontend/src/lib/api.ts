@@ -188,6 +188,19 @@ export class ApiClient {
     }
     return this.request(`/realtime/pg/quotes-delay-price?${search.toString()}`)
   }
+
+  // Sparkline Price (주식/ETF용 - 유효성 검증 포함)
+  getSparklinePrice(assetIdentifier: string, dataInterval: string = '15m', days: number = 1, dataSource?: string) {
+    const search = new URLSearchParams()
+    search.append('asset_identifier', assetIdentifier)
+    search.append('data_interval', dataInterval)
+    search.append('days', String(days))
+    if (dataSource) {
+      search.append('data_source', dataSource)
+    }
+    const qs = search.toString()
+    return this.request(`/realtime/sparkline-price${qs ? `?${qs}` : ''}`)
+  }
   
   getRealtimePricesPg(params: { asset_identifier: string; data_interval?: string; days?: number | string; }) {
     const search = new URLSearchParams()

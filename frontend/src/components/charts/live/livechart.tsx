@@ -3,9 +3,10 @@
 // @ts-nocheck
 
 import React, { useEffect, useRef, useState, useMemo } from 'react'
-import { useDelayedQuotes, useDelayedQuoteLast } from '@/hooks/useRealtime'
+import { useDelayedQuotes, useDelayedQuoteLast, useSparklinePrice } from '@/hooks/useRealtime'
 import { useRealtimePrices } from '@/hooks/useSocket'
 import { useTheme } from '@/context/ThemeContext'
+import { useAssetDetail } from '@/hooks/useAssets'
 
 interface LiveChartProps {
   containerId?: string
@@ -100,14 +101,34 @@ const LiveChart: React.FC<LiveChartProps> = ({
   const shouldUseWebSocket =
     useWebSocketProp === true && (marketHoursProp === undefined || marketHoursProp === true)
 
+  // 자산 정보 가져오기 (주식/ETF 확인용)
+  const { data: assetDetail } = useAssetDetail(assetIdentifier)
+  
+  // 주식/ETF인지 확인
+  const isStocksOrEtf = 
+    assetDetail?.asset_type_id === 2 || // Stocks
+    assetDetail?.asset_type_id === 5 || // ETFs
+    assetDetail?.type_name?.toLowerCase() === 'stocks' ||
+    assetDetail?.type_name?.toLowerCase() === 'etfs'
+
   // Default initial data - convert to [timestamp, close] forma
 
-  // API 데이터 로드 (지연 데이터) - 24*4 = 96개 포인트 (마지막 1일치, 15분 간격)
-  const { data: apiResponse, isLoading: apiLoading } = useDelayedQuotes(
+  // API 데이터 로드 (주식/ETF는 sparkline-price 사용, 그 외는 기존 useDelayedQuotes 사용)
+  const delayedQuotesQuery = useDelayedQuotes(
     [assetIdentifier],
     { dataSource, limit: 96, days: apiDays },
-    { enabled: true, staleTime: 60 * 1000, refetchInterval: apiRefetchIntervalMs }
+    { enabled: !isStocksOrEtf, staleTime: 60 * 1000, refetchInterval: apiRefetchIntervalMs }
   )
+  
+  const sparklineQuery = useSparklinePrice(
+    assetIdentifier,
+    { dataInterval: '15m', days: typeof apiDays === 'number' ? apiDays : parseInt(String(apiDays)) || 1, dataSource },
+    { enabled: isStocksOrEtf, staleTime: 60 * 1000, refetchInterval: apiRefetchIntervalMs }
+  )
+  
+  // 주식/ETF인 경우 sparkline-price 결과 사용, 그 외에는 기존 delayed quotes 사용
+  const apiResponse = isStocksOrEtf ? sparklineQuery.data : delayedQuotesQuery.data
+  const apiLoading = isStocksOrEtf ? sparklineQuery.isLoading : delayedQuotesQuery.isLoading
 
   // 폐장시간 등 소켓 비활성 시 최신 지연 호가(변화율, 변화액 포함) 조회
   const { data: lastQuoteResponse } = useDelayedQuoteLast(

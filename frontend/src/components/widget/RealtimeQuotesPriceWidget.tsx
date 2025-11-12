@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { useDelayedQuoteLast } from '@/hooks/useRealtime'
+import { useDelayedQuoteLast, useSparklinePrice } from '@/hooks/useRealtime'
 import { useAssetDetail } from '@/hooks/useAssets'
 import ComponentCard from '@/components/common/ComponentCard'
 
@@ -21,21 +21,56 @@ const RealtimeQuotesPriceWidget: React.FC<RealtimeQuotesPriceWidgetProps> = ({
   const isCrypto = assetDetail?.asset_type_id === 8
   const dataSource = isCrypto ? 'binance' : undefined
   
-  // 15분마다 리프레시하도록 설정 (900,000ms)
-  // refetchInterval으로 자동 리프레시하며, 이전 데이터는 자동으로 리셋됨
-  const { data: quoteData, isLoading, error } = useDelayedQuoteLast(
+  // 주식/ETF인지 확인
+  const isStocksOrEtf = 
+    assetDetail?.asset_type_id === 2 || // Stocks
+    assetDetail?.asset_type_id === 5 || // ETFs
+    assetDetail?.type_name?.toLowerCase() === 'stocks' ||
+    assetDetail?.type_name?.toLowerCase() === 'etfs'
+  
+  // 주식/ETF는 sparkline-price 사용, 그 외는 기존 useDelayedQuoteLast 사용
+  const delayedQuoteQuery = useDelayedQuoteLast(
     assetIdentifier,
     {
       dataInterval: '15m',
       dataSource: dataSource
     },
     {
-      refetchInterval: 15 * 60 * 1000, // 15분 = 900,000ms마다 자동 리프레시
-      staleTime: 0, // 데이터를 즉시 stale로 표시하여 항상 최신 데이터 사용
-      gcTime: 0, // 캐시 정리 시간 0으로 설정하여 이전 데이터 즉시 리셋
-      enabled: !!assetIdentifier, // assetIdentifier가 있을 때만 실행
+      refetchInterval: 15 * 60 * 1000,
+      staleTime: 0,
+      gcTime: 0,
+      enabled: !!assetIdentifier && !isStocksOrEtf,
     }
   )
+  
+  const sparklineQuery = useSparklinePrice(
+    assetIdentifier,
+    { dataInterval: '15m', days: 1, dataSource },
+    {
+      refetchInterval: 15 * 60 * 1000,
+      staleTime: 0,
+      gcTime: 0,
+      enabled: !!assetIdentifier && isStocksOrEtf,
+    }
+  )
+  
+  // 주식/ETF인 경우 sparkline-price에서 최신 quote 추출, 그 외는 기존 delayed quote 사용
+  let quoteData: any = null
+  if (isStocksOrEtf && sparklineQuery.data) {
+    // sparkline-price 응답에서 첫 번째 quote를 사용 (최신 데이터)
+    const quotes = sparklineQuery.data?.quotes || []
+    if (quotes.length > 0) {
+      quoteData = {
+        quote: quotes[0],
+        timestamp: quotes[0]?.timestamp_utc
+      }
+    }
+  } else if (!isStocksOrEtf) {
+    quoteData = delayedQuoteQuery.data
+  }
+  
+  const isLoading = isStocksOrEtf ? sparklineQuery.isLoading : delayedQuoteQuery.isLoading
+  const error = isStocksOrEtf ? sparklineQuery.error : delayedQuoteQuery.error
 
   if (isLoading) {
     return (
@@ -70,10 +105,11 @@ const RealtimeQuotesPriceWidget: React.FC<RealtimeQuotesPriceWidgetProps> = ({
     )
   }
 
-  // API에서 받은 값 사용 (자체 계산 제거)
+  // API에서 받은 값 사용
   const price = quote.price || 0
-  const changeAmount = quote.change_amount || 0
-  const changePercent = quote.change_percent || 0
+  // sparkline-price는 change_amount/change_percent를 제공하지 않을 수 있으므로 기본값 사용
+  const changeAmount = quote.change_amount ?? 0
+  const changePercent = quote.change_percent ?? 0
   const volume = quote.volume || 0
   const timestamp = quote.timestamp_utc || quoteData?.timestamp || new Date().toISOString()
 
