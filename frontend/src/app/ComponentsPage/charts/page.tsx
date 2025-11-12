@@ -8,6 +8,7 @@ import MiniPriceStocksEtfChart from '@/components/charts/minicharts/MiniPriceSto
 import MiniPriceCommoditiesChart from '@/components/charts/minicharts/MiniPriceCommoditiesChart'
 import CompareMultipleAssetsChart from '@/components/charts/line/CompareMultipleAssetsChart'
 import LiveChart from '@/components/charts/live/livechart'
+import OHLCVCustomGUIChart from '@/components/charts/ohlcvcharts/OHLCVCustomGUIChart'
 
 // Dynamic import로 ApexCharts 로드
 const ReactApexChart = dynamic(() => import('react-apexcharts'), { ssr: false })
@@ -172,6 +173,16 @@ export default function ChartsPage() {
           >
             Live Chart
           </button>
+          <button
+            onClick={() => setActiveChart('custom-gui')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              activeChart === 'custom-gui'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            Custom GUI Chart
+          </button>
         </div>
       </div>
 
@@ -228,6 +239,20 @@ export default function ChartsPage() {
               containerId="live-chart-container"
               height={500}
               updateInterval={100}
+            />
+          </div>
+        ) : activeChart === 'custom-gui' ? (
+          <div key="custom-gui-chart">
+            <h3 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">OHLCV Custom GUI Chart</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Highcharts Stock Tools with custom GUI - Indicators, Annotations, and Drawing Tools
+            </p>
+            <OHLCVCustomGUIChart 
+              assetIdentifier="AAPL"
+              dataInterval="1d"
+              seriesId="aapl-ohlc"
+              seriesName="AAPL Stock Price"
+              height={650}
             />
           </div>
         ) : (

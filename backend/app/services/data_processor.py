@@ -217,7 +217,7 @@ class DataProcessor:
         logger.debug(f"🔍 페일오버 로직 시작 - 현재 시간: {current_time}")
         logger.debug(f"📊 소스 헬스 상태: {self.source_last_seen}")
         
-        # 우선순위 순으로 소스 상태 확인
+        # 우선순위 순으로 소스 상태 확인 (우선순위가 높은 것부터, 즉 priority 값이 작은 것부터)
         for source_name, priority in sorted(self.crypto_source_priority.items(), key=lambda x: x[1]):
             last_seen = self.source_last_seen.get(source_name, 0)
             time_since_last_seen = current_time - last_seen
@@ -571,25 +571,27 @@ class DataProcessor:
             finally:
                 pg_db.close()
             
-            # 현재 활성화된 암호화폐 소스 결정
-            active_crypto_source = self._get_active_crypto_source()
-            logger.info(f"🎯 현재 활성 암호화폐 소스: {active_crypto_source}")
-
-            # 메시지 처리 (스트리밍 방식으로 변경)
+            # 먼저 모든 스트림의 헬스를 업데이트 (활성 소스 결정 전에)
             for stream_name_bytes, messages in all_stream_data:
                 stream_name_str = stream_name_bytes.decode('utf-8') if isinstance(stream_name_bytes, bytes) else stream_name_bytes
-                stream_name_str = stream_name.decode('utf-8') if isinstance(stream_name, bytes) else stream_name
-                group_name = self.realtime_streams[stream_name_str]
                 source_name = stream_name_str.split(':')[0]  # 'binance:realtime' -> 'binance'
-                
-                logger.info(f"📥 스트림 {stream_name_str}에서 {len(messages)}개 메시지 처리 시작")
                 
                 # 실제 메시지가 있을 때만 마지막 수신 시간 업데이트
                 if messages:
                     self._update_source_health(source_name)
                     logger.info(f"📊 {source_name} 소스 헬스 업데이트: {self.source_last_seen.get(source_name)}")
-                else:
-                    logger.info(f"📭 {source_name} 소스에 메시지 없음, 헬스 업데이트 안함")
+            
+            # 모든 헬스 업데이트 후 활성 소스 결정
+            active_crypto_source = self._get_active_crypto_source()
+            logger.info(f"🎯 현재 활성 암호화폐 소스: {active_crypto_source} (소스 헬스: {self.source_last_seen})")
+
+            # 메시지 처리 (스트리밍 방식으로 변경)
+            for stream_name_bytes, messages in all_stream_data:
+                stream_name_str = stream_name_bytes.decode('utf-8') if isinstance(stream_name_bytes, bytes) else stream_name_bytes
+                group_name = self.realtime_streams[stream_name_str]
+                source_name = stream_name_str.split(':')[0]  # 'binance:realtime' -> 'binance'
+                
+                logger.info(f"📥 스트림 {stream_name_str}에서 {len(messages)}개 메시지 처리 시작")
                 
                 # 암호화폐 스트림인 경우, 활성 소스의 데이터만 처리
                 if source_name in self.crypto_source_priority:

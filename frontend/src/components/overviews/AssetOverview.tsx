@@ -11,6 +11,7 @@ import Alert from '@/components/ui/alert/Alert'
 import { ArrowUpIcon, DollarLineIcon, PieChartIcon, UserIcon } from '@/icons'
 // OHLCVChart를 직접 import (SSR 문제 해결)
 import OHLCVChart from '@/components/charts/ohlcvcharts/OHLCVChart'
+import OHLCVCustomGUIChart from '@/components/charts/ohlcvcharts/OHLCVCustomGUIChart'
 import { getStringValue, formatDate, formatIPODate, formatTime } from '@/components/overviews/utils/formatters'
 import StocksInfoCard from '@/components/overviews/tab/StocksInfoCard'
 import CryptoInfoCard from '@/components/overviews/tab/CryptoInfoCard'
@@ -28,6 +29,7 @@ interface AssetOverviewProps {
 const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData }) => {
   const { assetIdentifier } = useParams() as { assetIdentifier: string }
   const [isMobile, setIsMobile] = useState(false)
+  const [activeChartTab, setActiveChartTab] = useState<'price' | 'interactive'>('price')
   
   // 기본 자산 정보 fetching (타입 확인용)
   const { data: assetDetail, loading: assetDetailLoading, error: assetDetailError } = useAssetDetail(assetIdentifier as string)
@@ -571,6 +573,39 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
 
       {/* 가격 차트 */}
       <ComponentCard title="Price Charts">
+        {/* 탭 메뉴 */}
+        <div className="mb-4 border-b border-gray-200 dark:border-gray-700">
+          <nav className="flex space-x-8" aria-label="Chart Tabs">
+            <button
+              onClick={() => setActiveChartTab('price')}
+              className={`
+                py-4 px-1 border-b-2 font-medium text-sm transition-colors
+                ${
+                  activeChartTab === 'price'
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                }
+              `}
+            >
+              Price Chart
+            </button>
+            <button
+              onClick={() => setActiveChartTab('interactive')}
+              className={`
+                py-4 px-1 border-b-2 font-medium text-sm transition-colors
+                ${
+                  activeChartTab === 'interactive'
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                }
+              `}
+            >
+              Interactive Chart
+            </button>
+          </nav>
+        </div>
+
+        {/* 탭별 차트 콘텐츠 */}
         <React.Suspense fallback={
           <div className="flex items-center justify-center h-96">
             <div className="text-center">
@@ -579,16 +614,26 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
             </div>
           </div>
         }>
-          <OHLCVChart
-            assetIdentifier={assetIdentifier as string}
-            dataInterval="1d"
-            height={600}
-            showVolume={true}
-            showRangeSelector={true}
-            showExporting={true}
-            title={`${assetName} Price Chart`}
-            subtitle={`${assetExchange} • ${assetCurrency}`}
-          />
+          {activeChartTab === 'price' ? (
+            <OHLCVChart
+              assetIdentifier={assetIdentifier as string}
+              dataInterval="1d"
+              height={600}
+              showVolume={true}
+              showRangeSelector={true}
+              showExporting={true}
+              title={`${assetName} Price Chart`}
+              subtitle={`${assetExchange} • ${assetCurrency}`}
+            />
+          ) : (
+            <OHLCVCustomGUIChart
+              assetIdentifier={assetIdentifier as string}
+              dataInterval="1d"
+              seriesId={`${assetIdentifier}-ohlc`}
+              seriesName={`${assetName} Price`}
+              height={650}
+            />
+          )}
         </React.Suspense>
       </ComponentCard>
 

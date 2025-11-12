@@ -34,6 +34,8 @@ class BinanceWSConsumer(BaseWSConsumer):
         # 재연결을 위한 원래 티커 목록 저장
         self.original_tickers = set()
         self.subscribed_tickers = []  # 구독 순서 보장을 위해 List 사용
+        self._is_subscribed = False  # 구독 상태 추적
+        self._pending_subscription_id = None  # 대기 중인 구독 요청 ID
     
     @property
     def client_name(self) -> str:
@@ -90,6 +92,8 @@ class BinanceWSConsumer(BaseWSConsumer):
             pass
         self._ws = None
         self.is_connected = False
+        self._is_subscribed = False  # 연결 해제 시 구독 상태도 초기화
+        self._pending_subscription_id = None  # 대기 중인 구독 ID도 초기화
         logger.info(f"🔌 {self.client_name} disconnected")
     
     def _normalize_symbol(self, ticker: str) -> str:
@@ -156,15 +160,18 @@ class BinanceWSConsumer(BaseWSConsumer):
                 self.subscribed_tickers.extend(valid_tickers)
             
             # 구독 요청 전송
+            subscription_id = self._get_next_id()
             subscribe_msg = {
                 "method": "SUBSCRIBE",
                 "params": streams,
-                "id": self._get_next_id()
+                "id": subscription_id
             }
             
-            logger.info(f"📋 {self.client_name} sending subscription message: {len(streams)} streams")
+            self._pending_subscription_id = subscription_id  # 대기 중인 구독 ID 저장
+            logger.info(f"📋 {self.client_name} sending subscription message: {len(streams)} streams (id: {subscription_id})")
             await self._ws.send(json.dumps(subscribe_msg))
-            logger.info(f"📋 {self.client_name} subscribed to {len(streams)} streams for {len(tickers)} tickers")
+            logger.info(f"📋 {self.client_name} subscription request sent for {len(streams)} streams ({len(tickers)} tickers)")
+            # 구독 상태는 Binance 응답을 받은 후 _handle_message에서 설정됨
             return True
             
         except Exception as e:
@@ -232,17 +239,23 @@ class BinanceWSConsumer(BaseWSConsumer):
                             continue
                         logger.info(f"✅ [BINANCE] 연결 성공")
                     
-                    # 구독 시도 (티커가 있는 경우에만)
+                    # 구독 시도 (티커가 있고 아직 구독되지 않은 경우에만)
                     if not self.subscribed_tickers:
                         logger.warning(f"⚠️ {self.client_name} has no tickers to subscribe, waiting...")
                         await asyncio.sleep(10)  # 티커 할당 대기
                         continue
                     
-                    if not await self.subscribe(list(self.subscribed_tickers)):
-                        logger.error(f"❌ {self.client_name} subscription failed")
-                        reconnect_attempts += 1
-                        await asyncio.sleep(reconnect_delay)
-                        continue
+                    # 이미 구독된 경우 재구독 건너뛰기 (오케스트레이터에서 이미 구독했을 수 있음)
+                    if not self._is_subscribed:
+                        logger.info(f"📋 {self.client_name} attempting subscription to {len(self.subscribed_tickers)} tickers")
+                        if not await self.subscribe(list(self.subscribed_tickers), skip_normalization=True):
+                            logger.error(f"❌ {self.client_name} subscription failed")
+                            reconnect_attempts += 1
+                            await asyncio.sleep(reconnect_delay)
+                            continue
+                        logger.info(f"⏳ {self.client_name} subscription request sent, waiting for confirmation in message loop...")
+                    else:
+                        logger.info(f"✅ {self.client_name} already subscribed, skipping subscription")
                     
                     # 연결 및 구독 성공
                     reconnect_attempts = 0
@@ -274,11 +287,15 @@ class BinanceWSConsumer(BaseWSConsumer):
                 except websockets.exceptions.ConnectionClosed:
                     logger.warning(f"⚠️ {self.client_name} connection closed")
                     self.is_connected = False
+                    self._is_subscribed = False  # 연결 종료 시 구독 상태 초기화
+                    self._pending_subscription_id = None  # 대기 중인 구독 ID 초기화
                     reconnect_attempts += 1
                     await asyncio.sleep(reconnect_delay)
                 except Exception as e:
                     logger.error(f"❌ {self.client_name} run error: {e}")
                     self.is_connected = False
+                    self._is_subscribed = False  # 에러 발생 시 구독 상태 초기화
+                    self._pending_subscription_id = None  # 대기 중인 구독 ID 초기화
                     reconnect_attempts += 1
                     await asyncio.sleep(reconnect_delay)
             
@@ -295,17 +312,40 @@ class BinanceWSConsumer(BaseWSConsumer):
         """메시지 처리 - Coinbase와 동일한 구조"""
         try:
             # 구독 응답 처리
-            if "result" in data and "id" in data:
-                if data["result"] is None:
-                    logger.debug(f"📨 [BINANCE] subscription response: {data}")
+            if "id" in data:
+                response_id = data.get("id")
+                # 대기 중인 구독 응답인지 확인
+                if response_id == self._pending_subscription_id:
+                    self._pending_subscription_id = None  # 대기 중인 구독 ID 초기화
+                    
+                    # 에러 응답 확인
+                    if "error" in data:
+                        error_msg = data.get("error", {})
+                        logger.error(f"❌ [BINANCE] subscription error (id: {response_id}): {error_msg}")
+                        self._is_subscribed = False  # 에러 발생 시 구독 상태 초기화
+                        return
+                    
+                    # 성공 응답 확인
+                    if "result" in data:
+                        if data["result"] is None:
+                            logger.info(f"✅ [BINANCE] subscription successful (id: {response_id})")
+                            self._is_subscribed = True  # 구독 성공 확인
+                        else:
+                            logger.info(f"📨 [BINANCE] subscription result (id: {response_id}): {data}")
+                        return
                 else:
-                    logger.info(f"📨 [BINANCE] subscription result: {data}")
-                return
+                    # 다른 ID의 응답 (예: 이전 요청의 응답)
+                    logger.debug(f"📨 [BINANCE] received response for different id: {response_id} (pending: {self._pending_subscription_id})")
             
             # 모든 메시지 처리 (저장 주기 체크 제거)
             if "stream" in data and "data" in data:
                 stream_name = data["stream"]
                 stream_data = data["data"]
+                
+                # 구독이 확인되지 않았는데 스트림 데이터를 받으면 구독 성공으로 간주
+                if not self._is_subscribed and self._pending_subscription_id is None:
+                    logger.info(f"✅ [BINANCE] received stream data, subscription confirmed: {stream_name}")
+                    self._is_subscribed = True
                 
                 logger.debug(f"📨 [BINANCE→HANDLE] 스트림 수신: {stream_name}")
                 
