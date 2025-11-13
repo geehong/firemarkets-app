@@ -7,6 +7,7 @@ import { useRealtimePrices } from '@/hooks/useSocket'
 import ComponentCard from '@/components/common/ComponentCard'
 import Badge from '@/components/ui/badge/Badge'
 import AssetsListTable from '@/components/tables/AssetsListTable'
+import { filterExcludedAssets } from '@/constants/excludedAssets'
 import { 
   ArrowRightIcon,
   DollarLineIcon,
@@ -46,6 +47,9 @@ const AssetsList: React.FC<AssetsListProps> = ({ className, showHeader = true })
   const filteredAssets = useMemo(() => {
     const anyData: any = treemapData as any
     let arr = Array.isArray(anyData?.data) ? (anyData.data as any[]) : []
+    
+    // 제외 목록 필터링
+    arr = filterExcludedAssets(arr)
     
     // 타입 필터링
     if (typeNameFromQuery) {

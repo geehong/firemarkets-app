@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useQuery, UseQueryOptions } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api'
+import { filterExcludedAssets } from '@/constants/excludedAssets'
 
 // Types
 export interface AssetType {

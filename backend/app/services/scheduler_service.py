@@ -299,6 +299,17 @@ class SchedulerService:
                                                         collector_instance.set_schedule_config(scheduled_data_types=["estimates"])
                                                         self.logger.info(f"Setting scheduled_data_types=['estimates'] for {group_name}")
                                                 
+                                                # OHLCVCollector인 경우 스케줄 그룹에 따라 interval 필터링 설정
+                                                if collector_class.__name__ == "OHLCVCollector" and hasattr(collector_instance, 'set_schedule_config'):
+                                                    if group_name == "ohlcv_day_clients":
+                                                        # 일봉 데이터만 수집 (1d, 1w, 1mo 등)
+                                                        collector_instance.set_schedule_config(scheduled_intervals=["1d", "1w", "1mo", "1month"])
+                                                        self.logger.info(f"Setting scheduled_intervals=['1d', '1w', '1mo', '1month'] for {group_name}")
+                                                    elif group_name == "ohlcv_intraday_clients":
+                                                        # 인트라데이 데이터만 수집 (1m, 5m, 15m, 30m, 1h, 4h 등)
+                                                        collector_instance.set_schedule_config(scheduled_intervals=["1m", "5m", "15m", "30m", "1h", "4h"])
+                                                        self.logger.info(f"Setting scheduled_intervals=['1m', '5m', '15m', '30m', '1h', '4h'] for {group_name}")
+                                                
                                                 # stock_profiles_fmp_clients 그룹인 경우 FMP 클라이언트 사용 설정 (위에서 이미 처리됨)
                                                 if group_name == "stock_profiles_fmp_clients" and hasattr(collector_instance, 'use_fmp_clients'):
                                                     if not collector_instance.use_fmp_clients:  # 위에서 설정하지 않은 경우에만

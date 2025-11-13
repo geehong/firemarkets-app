@@ -229,6 +229,24 @@ export default async function AssetPage({ params }: AssetPageProps) {
     }
 
     const structuredData = generateStructuredData(normalizedAsset, assetIdentifier)
+    const ensureString = (value: any) => {
+      const str = getStringValue(value)
+      return str && str !== '-' ? str : ''
+    }
+
+    const heroTitle = `${ensureString(normalizedAsset.name)} (${ensureString(normalizedAsset.ticker)})`
+    const heroDescription =
+      ensureString(normalizedAsset.description) ||
+      `Live market data, charts, and fundamentals for ${ensureString(normalizedAsset.name)}.`
+    const heroMetaItems = [
+      { label: 'Type', value: ensureString(normalizedAsset.type_name) },
+      { label: 'Exchange', value: ensureString(normalizedAsset.exchange) },
+      { label: 'Currency', value: ensureString(normalizedAsset.currency) },
+      normalizedAsset.market_status && {
+        label: 'Market Status',
+        value: ensureString(normalizedAsset.market_status),
+      },
+    ].filter(Boolean) as { label: string; value: string }[]
     
     // 클라이언트 사이드 로깅을 위한 데이터 준비
     const clientVolumeLogData = {
@@ -261,6 +279,31 @@ export default async function AssetPage({ params }: AssetPageProps) {
         
         {/* 메인 콘텐츠 */}
         <main className="container mx-auto px-4 py-8">
+          <article className="mb-8">
+            <header className="space-y-4">
+              <h1 className="text-3xl font-semibold text-gray-900 dark:text-white">
+                {heroTitle}
+              </h1>
+              {heroDescription && (
+                <p className="text-base text-gray-600 dark:text-gray-300 leading-relaxed">
+                  {heroDescription}
+                </p>
+              )}
+              {heroMetaItems.length > 0 && (
+                <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 text-sm text-gray-500 dark:text-gray-400">
+                  {heroMetaItems.map((item) => (
+                    <div key={item.label}>
+                      <dt className="font-medium text-gray-700 dark:text-gray-200">
+                        {item.label}
+                      </dt>
+                      <dd>{item.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+            </header>
+          </article>
+
           <AssetOverview initialData={normalizedAsset} />
         </main>
       </>

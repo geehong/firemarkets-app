@@ -17,6 +17,7 @@ import { apiClient } from "@/lib/api";
 import { useTreemapLive } from "@/hooks/useAssets";
 import { useRealtimePrices } from "@/hooks/useSocket";
 import { useDelayedQuotes } from "@/hooks/useRealtime";
+import { filterExcludedAssets } from "@/constants/excludedAssets";
 
 interface SparklineTableProps {
   assetIdentifiers?: string[];
@@ -308,12 +309,15 @@ export default function SparklineTable({
 
     const assets = (treemapData as any)?.data || [];
     
+    // 제외 목록 필터링
+    let filteredByExclusion = filterExcludedAssets(assets)
+    
     // assetIdentifiers가 제공된 경우 해당 자산만 필터링, 아니면 전체 자산 사용
     let filteredAssets = assetIdentifiers && assetIdentifiers.length > 0
-      ? assets.filter((asset: any) => 
+      ? filteredByExclusion.filter((asset: any) => 
           assetIdentifiers.includes(asset.ticker || asset.asset_identifier)
         )
-      : assets;
+      : filteredByExclusion;
     
     // 시가 총액으로 정렬 (내림차순)
     filteredAssets = filteredAssets.sort((a: any, b: any) => {
@@ -434,12 +438,15 @@ export default function SparklineTable({
 
     const assets = (treemapData as any)?.data || [];
     
+    // 제외 목록 필터링
+    let filteredByExclusion = filterExcludedAssets(assets)
+    
     // assetIdentifiers가 제공된 경우 해당 자산만 필터링, 아니면 전체 자산 사용
     let filteredAssets = assetIdentifiers && assetIdentifiers.length > 0
-      ? assets.filter((asset: any) => 
+      ? filteredByExclusion.filter((asset: any) => 
           assetIdentifiers.includes(asset.ticker || asset.asset_identifier)
         )
-      : assets;
+      : filteredByExclusion;
     
     // 시가 총액으로 정렬 (내림차순) - AssetsList.tsx와 동일한 로직
     filteredAssets = filteredAssets.sort((a: any, b: any) => {

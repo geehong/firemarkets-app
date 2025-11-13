@@ -4,7 +4,7 @@ Realtime Data Management API endpoints
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Any
 import logging
 from pydantic import BaseModel
 from datetime import datetime, timedelta, timezone, time as dt_time
@@ -812,7 +812,7 @@ async def get_intraday_price(
 @router.get("/sparkline-price")
 async def get_sparkline_price(
     asset_identifier: str = Query(..., description="Asset ID (integer) or Ticker (string)"),
-    data_interval: str = Query("15m", description="Data interval (15m, 30m, 1h)"),
+    data_interval: str = Query("15m", description="Data interval (1m, 5m, 10m, 15m, 30m, 1h)"),
     days: int = Query(1, ge=1, le=1, description="Number of days to fetch (limited to 1 day)"),
     data_source: Optional[str] = Query(None, description="Data source filter (optional, only for crypto assets)"),
     db: Session = Depends(get_postgres_db)
@@ -837,19 +837,47 @@ async def get_sparkline_price(
                 raise HTTPException(status_code=404, detail=f"Asset not found with ticker: {asset_identifier}")
             asset_id = asset.asset_id
         
-        # 간격에 따른 예상 포인트 수 계산
-        points_per_day = {
-            "15m": 96,   # 24 * 4
-            "30m": 48,   # 24 * 2
-            "1h": 24,    # 24 * 1
+        # 지원하는 인터벌 설정 (분 단위)
+        interval_minutes_map = {
+            "1m": 1,
+            "5m": 5,
+            "10m": 10,
+            "15m": 15,
+            "30m": 30,
+            "1h": 60,
         }
-        expected_points = points_per_day.get(data_interval, 96) * days
+
+        if data_interval not in interval_minutes_map:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported interval: {data_interval}. Supported: {list(interval_minutes_map.keys())}"
+            )
+
+        target_minutes = interval_minutes_map[data_interval]
+
+        # 5m, 10m, 30m 은 1m 데이터를 기반으로 다운샘플링
+        if data_interval in {"5m", "10m", "30m"}:
+            base_interval = "1m"
+        else:
+            base_interval = data_interval
+
+        base_minutes = interval_minutes_map[base_interval]
+        downsample_factor = max(1, target_minutes // base_minutes)
+
+        # 간격에 따른 예상 포인트 수 계산
+        points_per_day = {key: int(1440 / minutes) for key, minutes in interval_minutes_map.items()}
+        expected_points = points_per_day[data_interval] * days
+        fetch_points = expected_points * downsample_factor
         
         # 오늘 날짜
         today = datetime.now(timezone.utc).date()
         
         # 데이터 유효성 검증 함수
-        def validate_data_freshness(quotes: list, source_name: str) -> Tuple[bool, int, Optional[datetime]]:
+        def validate_data_freshness(
+            quotes: list,
+            source_name: str,
+            expected_override: Optional[int] = None
+        ) -> Tuple[bool, int, Optional[datetime]]:
             """
             데이터 유효성 검증
             Returns: (is_valid, point_count, latest_timestamp)
@@ -888,7 +916,8 @@ async def get_sparkline_price(
                 # 유효성 검증:
                 # 1. 포인트 수가 예상의 50% 이상인지 확인
                 # 2. 최신 데이터가 오늘 또는 어제인지 확인 (2일 이상 차이나면 무효)
-                has_enough_points = point_count >= (expected_points * 0.5)
+                expected_threshold = expected_override if expected_override is not None else expected_points
+                has_enough_points = point_count >= max(1, expected_threshold * 0.5)
                 is_recent = days_diff <= 1
                 
                 is_valid = has_enough_points and is_recent
@@ -912,77 +941,147 @@ async def get_sparkline_price(
         quotes_delay_valid = False
         quotes_delay_points = 0
         
-        try:
-            # 내부적으로 quotes-delay-price 로직 호출
-            from ....models.asset import RealtimeQuoteTimeDelay
-            from sqlalchemy import desc
-            
-            query = db.query(RealtimeQuoteTimeDelay)\
-                .filter(RealtimeQuoteTimeDelay.asset_id == asset_id)\
-                .filter(RealtimeQuoteTimeDelay.data_interval == data_interval)\
-                .order_by(desc(RealtimeQuoteTimeDelay.timestamp_utc))\
-                .limit(expected_points)
-            
-            if data_source:
-                query = query.filter(RealtimeQuoteTimeDelay.data_source == data_source.lower())
-            
-            quotes = query.all()
-            
-            if quotes:
-                # quote 형식으로 변환
-                processed_quotes = []
-                for quote in quotes:
-                    processed_quotes.append({
-                        "timestamp_utc": quote.timestamp_utc.isoformat() if quote.timestamp_utc else None,
-                        "price": float(quote.price) if quote.price else None,
-                        "volume": float(quote.volume) if quote.volume else None,
-                    })
+        # quotes-delay-price는 기존 저장 인터벌만 지원 (현재 15m 이상)
+        if data_interval not in {"1m", "5m", "10m"}:
+            try:
+                # 내부적으로 quotes-delay-price 로직 호출
+                from ....models.asset import RealtimeQuoteTimeDelay
+                from sqlalchemy import desc
                 
-                quotes_delay_valid, quotes_delay_points, _ = validate_data_freshness(
-                    processed_quotes, "quotes-delay-price"
-                )
+                query = db.query(RealtimeQuoteTimeDelay)\
+                    .filter(RealtimeQuoteTimeDelay.asset_id == asset_id)\
+                    .filter(RealtimeQuoteTimeDelay.data_interval == data_interval)\
+                    .order_by(desc(RealtimeQuoteTimeDelay.timestamp_utc))\
+                    .limit(expected_points)
                 
-                if quotes_delay_valid:
-                    quotes_delay_data = processed_quotes
+                if data_source:
+                    query = query.filter(RealtimeQuoteTimeDelay.data_source == data_source.lower())
+                
+                quotes = query.all()
+                
+                if quotes:
+                    # quote 형식으로 변환
+                    processed_quotes = []
+                    for quote in quotes:
+                        processed_quotes.append({
+                            "timestamp_utc": quote.timestamp_utc.isoformat() if quote.timestamp_utc else None,
+                            "price": float(quote.price) if quote.price else None,
+                            "volume": float(quote.volume) if quote.volume else None,
+                        })
                     
-        except Exception as e:
-            logger.warning(f"[sparkline-price] quotes-delay-price failed: {e}")
+                    override = min(expected_points, len(processed_quotes))
+                    quotes_delay_valid, quotes_delay_points, _ = validate_data_freshness(
+                        processed_quotes, "quotes-delay-price", override
+                    )
+                    
+                    if quotes_delay_valid:
+                        quotes_delay_data = processed_quotes
+                        
+            except Exception as e:
+                logger.warning(f"[sparkline-price] quotes-delay-price failed: {e}")
         
-        # 2. intraday-price 시도 (15m는 15m로, 30m는 30m로 매핑)
+        # 2. intraday-price 시도 (필요 시 1m 데이터를 기반으로 다운샘플링)
         intraday_data = None
         intraday_valid = False
         intraday_points = 0
         
         try:
-            # intraday-price는 15m, 30m, 1h를 지원
-            if data_interval in ["15m", "30m", "1h"]:
-                from ....services.endpoint.ohlcv_service import OHLCVService
-                
+            from ....services.endpoint.ohlcv_service import OHLCVService
+
+            # 후보 인터벌 목록 (필요 시 1m 다운샘플링)
+            candidate_intervals: List[str]
+            if data_interval == "1m":
+                candidate_intervals = ["1m"]
+            elif data_interval in {"5m", "10m"}:
+                candidate_intervals = ["1m"]
+            elif data_interval == "15m":
+                candidate_intervals = ["15m", "1m"]
+            elif data_interval == "30m":
+                candidate_intervals = ["1m"]
+            elif data_interval == "1h":
+                candidate_intervals = ["1h", "15m", "1m"]
+            else:
+                candidate_intervals = [base_interval]
+
+            for candidate_interval in candidate_intervals:
+                candidate_minutes = interval_minutes_map.get(candidate_interval)
+                if not candidate_minutes:
+                    continue
+                if candidate_minutes > target_minutes:
+                    continue
+
+                candidate_factor = max(1, target_minutes // candidate_minutes)
+                candidate_limit = expected_points * candidate_factor
+
                 ohlcv_data = await OHLCVService.get_ohlcv_data_with_fallback(
                     db=db,
                     asset_id=asset_id,
-                    data_interval=data_interval,
+                    data_interval=candidate_interval,
                     include_ohlcv=True,
-                    limit=expected_points
+                    limit=candidate_limit
                 )
-                
-                if ohlcv_data:
-                    # intraday-price 형식으로 변환
-                    processed_data = []
-                    for item in ohlcv_data:
-                        processed_data.append({
-                            "timestamp_utc": item.get("timestamp"),
-                            "price": item.get("close"),
-                            "volume": item.get("volume")
-                        })
-                    
-                    intraday_valid, intraday_points, _ = validate_data_freshness(
-                        processed_data, "intraday-price"
-                    )
-                    
-                    if intraday_valid:
+
+                if not ohlcv_data:
+                    continue
+
+                processed_data = []
+                for item in ohlcv_data:
+                    processed_data.append({
+                        "timestamp_utc": item.get("timestamp"),
+                        "price": item.get("close"),
+                        "volume": item.get("volume")
+                    })
+
+                if not processed_data:
+                    continue
+
+                def _parse_timestamp(value: Any) -> Optional[datetime]:
+                    if not value:
+                        return None
+                    if isinstance(value, datetime):
+                        return value
+                    try:
+                        return datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+                    except Exception:
+                        return None
+
+                processed_data = [
+                    data for data in processed_data
+                    if _parse_timestamp(data.get("timestamp_utc"))
+                ]
+                processed_data.sort(
+                    key=lambda x: _parse_timestamp(x.get("timestamp_utc")),
+                    reverse=True
+                )
+
+                if candidate_factor > 1:
+                    processed_data = processed_data[::candidate_factor]
+
+                if len(processed_data) > expected_points:
+                    processed_data = processed_data[:expected_points]
+
+                if not processed_data:
+                    continue
+
+                effective_expected = min(expected_points, len(processed_data))
+                current_valid, current_points, _ = validate_data_freshness(
+                    processed_data,
+                    f"intraday-price({candidate_interval})",
+                    effective_expected
+                )
+
+                if current_valid:
+                    intraday_data = processed_data
+                    intraday_valid = True
+                    intraday_points = current_points
+                    break
+                else:
+                    # 유효하지 않지만 기존보다 많은 포인트라면 후보로 유지
+                    if (intraday_data is None) or (current_points > intraday_points):
                         intraday_data = processed_data
-                        
+                        intraday_points = current_points
+                        intraday_valid = False
+
         except Exception as e:
             logger.warning(f"[sparkline-price] intraday-price failed: {e}")
         

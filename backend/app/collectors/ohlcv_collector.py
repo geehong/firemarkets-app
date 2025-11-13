@@ -37,6 +37,20 @@ class OHLCVCollector(BaseCollector):
     ):
         # BaseCollector가 모든 의존성을 설정합니다.
         super().__init__(db, config_manager, api_manager, redis_queue_manager)
+        # 스케줄 그룹별 interval 필터링을 위한 설정
+        self.scheduled_intervals = None  # None이면 모든 interval 수집
+
+    def set_schedule_config(self, scheduled_intervals: List[str] = None):
+        """
+        스케줄 그룹별로 수집할 interval을 설정합니다.
+        - scheduled_intervals가 None이면 모든 interval 수집
+        - scheduled_intervals가 지정되면 해당 interval만 수집
+        """
+        self.scheduled_intervals = scheduled_intervals
+        if scheduled_intervals:
+            self.logging_helper.log_info(f"[OHLCVCollector] 스케줄 그룹별 interval 필터링: {scheduled_intervals}")
+        else:
+            self.logging_helper.log_info(f"[OHLCVCollector] 모든 interval 수집 (필터링 없음)")
 
     async def _collect_data(self) -> Dict[str, Any]:
         """
@@ -48,7 +62,17 @@ class OHLCVCollector(BaseCollector):
             return {"processed_assets": 0, "total_added_records": 0}
 
         intervals = self.config_manager.get_ohlcv_intervals()
-        self.logging_helper.log_info(f"[OHLCVCollector] 로드된 intervals 설정: {intervals} (1d 포함 여부: {'1d' in intervals})")
+        
+        # 스케줄 그룹별 interval 필터링 적용
+        if self.scheduled_intervals:
+            intervals = [iv for iv in intervals if iv in self.scheduled_intervals]
+            self.logging_helper.log_info(f"[OHLCVCollector] 스케줄 그룹별 필터링된 intervals: {intervals} (원본: {self.config_manager.get_ohlcv_intervals()})")
+        else:
+            self.logging_helper.log_info(f"[OHLCVCollector] 로드된 intervals 설정: {intervals} (1d 포함 여부: {'1d' in intervals})")
+        
+        if not intervals:
+            self.logging_helper.log_warning("No intervals to collect after filtering.")
+            return {"processed_assets": 0, "total_added_records": 0}
         
         # 2. 수집 대상 자산 조회 (누구를 할지 묻기)
         asset_ids = self._get_target_asset_ids()

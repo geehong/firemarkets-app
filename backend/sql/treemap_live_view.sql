@@ -114,15 +114,18 @@ LEFT JOIN LATERAL (
                       OR ABS(war.price_usd - ohlcv_intraday.close_price) / NULLIF(war.price_usd, 0) <= 0.2)
                  THEN war.price_usd
             -- 3순위: world_assets가 1시간 이내이지만 가격 차이가 20% 이상이면, 더 최신 데이터 우선
-            -- intraday가 realtime보다 최신이면
+            -- intraday가 realtime보다 최신이거나, world_assets와 가격 차이가 20% 이상이면
             WHEN ohlcv_intraday.timestamp_utc IS NOT NULL 
                  AND ohlcv_intraday.close_price IS NOT NULL
                  AND ohlcv_intraday.timestamp_utc >= COALESCE(rq.timestamp_utc, '1970-01-01'::timestamp)
                  AND ohlcv_intraday.timestamp_utc >= COALESCE(ohlcv_daily.timestamp_utc, '1970-01-01'::timestamp)
-                 -- world_assets가 있으면 가격 차이 확인
+                 -- world_assets가 있으면: 오래되었거나, 가격 차이가 20% 이상이면 intraday 사용
                  AND (war.price_usd IS NULL 
                       OR war.last_updated <= (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour'
-                      OR ABS(war.price_usd - ohlcv_intraday.close_price) / NULLIF(war.price_usd, 0) > 0.2)
+                      OR ABS(war.price_usd - ohlcv_intraday.close_price) / NULLIF(war.price_usd, 0) > 0.2
+                      -- 또는 world_assets가 최신이지만 intraday가 더 합리적인 가격이면 (가격 차이 20% 이상)
+                      OR (war.last_updated > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour'
+                          AND ABS(war.price_usd - ohlcv_intraday.close_price) / NULLIF(war.price_usd, 0) > 0.2))
                  THEN ohlcv_intraday.close_price
             -- 4순위: daily가 가장 최신이면
             WHEN ohlcv_daily.timestamp_utc IS NOT NULL 
@@ -156,7 +159,12 @@ LEFT JOIN LATERAL (
                  AND rq.price IS NOT NULL
                  AND rq.timestamp_utc >= COALESCE(war.last_updated, '1970-01-01'::timestamp)
                  THEN rq.price
-            -- 8순위: war.price_usd (fallback)
+            -- 8순위: intraday가 있으면 (world_assets와 가격 차이가 크면)
+            WHEN ohlcv_intraday.close_price IS NOT NULL 
+                 AND war.price_usd IS NOT NULL
+                 AND ABS(war.price_usd - ohlcv_intraday.close_price) / NULLIF(war.price_usd, 0) > 0.2
+                 THEN ohlcv_intraday.close_price
+            -- 9순위: war.price_usd (fallback)
             WHEN war.price_usd IS NOT NULL THEN war.price_usd
             -- 9순위: 나머지 순서대로
             ELSE COALESCE(rq.price, ohlcv_daily.close_price, ohlcv_intraday.close_price)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { io, Socket } from 'socket.io-client'
 
 // 타입 정의
@@ -279,6 +279,104 @@ export const useRealtimePrices = (assetIdentifier: string) => {
     }
   }, [])
 
+  const assetIdentifierRef = useRef(assetIdentifier)
+
+  useEffect(() => {
+    assetIdentifierRef.current = assetIdentifier
+  }, [assetIdentifier])
+
+  const handleRealtimeQuote = useCallback((data: any) => {
+    const targetAsset = assetIdentifierRef.current
+    if (!targetAsset) return
+
+    const receivedTicker = String(data.ticker || '').trim().toUpperCase()
+    const targetTicker = String(targetAsset || '').trim().toUpperCase()
+
+    if (receivedTicker !== targetTicker) {
+      return
+    }
+
+    const currentPrice = data.price
+    const cacheKey = `${targetAsset}_previous_close`
+    const cached = changePercentCacheRef.current.get(cacheKey)
+    const now = Date.now()
+    let changePercent: number | null = null
+
+    if (cached && (now - cached.timestamp) < CACHE_DURATION && cached.previousClose) {
+      const previousClose = cached.previousClose
+      if (previousClose > 0 && currentPrice > 0) {
+        changePercent = ((currentPrice - previousClose) / previousClose) * 100
+        changePercent = Math.round(changePercent * 100) / 100
+      }
+    }
+
+    const priceData: RealtimePrice = {
+      price: currentPrice,
+      volume: data.volume,
+      timestamp: data.timestamp_utc,
+      dataSource: data.data_source,
+      changePercent: changePercent ?? undefined,
+    }
+
+    setLatestPrice(prev => {
+      if (
+        prev &&
+        prev.price === priceData.price &&
+        prev.volume === priceData.volume &&
+        prev.timestamp === priceData.timestamp &&
+        prev.dataSource === priceData.dataSource &&
+        prev.changePercent === priceData.changePercent
+      ) {
+        return prev
+      }
+      return priceData
+    })
+
+    setPriceHistory(prev => {
+      const last = prev[prev.length - 1]
+      if (
+        last &&
+        last.timestamp === priceData.timestamp &&
+        last.price === priceData.price &&
+        last.volume === priceData.volume &&
+        last.dataSource === priceData.dataSource
+      ) {
+        return prev
+      }
+
+      const newHistory = [...prev, priceData]
+      return newHistory.slice(-100)
+    })
+
+    if ((!cached || (now - cached.timestamp) >= CACHE_DURATION || !cached.previousClose) && !loadingRef.current.has(targetAsset)) {
+      loadingRef.current.add(targetAsset)
+
+      fetchLatestChangePercent(targetAsset).then(result => {
+        if (result.previousClose) {
+          changePercentCacheRef.current.set(cacheKey, {
+            previousClose: result.previousClose,
+            timestamp: Date.now(),
+          } as any)
+
+          const newChangePercent = ((currentPrice - result.previousClose) / result.previousClose) * 100
+          setLatestPrice(prev => {
+            if (!prev || prev.price !== currentPrice) return prev
+            const rounded = Math.round(newChangePercent * 100) / 100
+            if (prev.changePercent === rounded) return prev
+            return {
+              ...prev,
+              changePercent: rounded,
+            }
+          })
+        }
+      }).catch(error => {
+        console.warn(`[useSocket] Failed to fetch previous close in background:`, error)
+      }).finally(() => {
+        loadingRef.current.delete(targetAsset)
+      })
+    }
+  }, [])
+
   // 연결 상태 체크 및 더미 데이터 모드 감지
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -310,78 +408,6 @@ export const useRealtimePrices = (assetIdentifier: string) => {
       // 구독 확인 처리
     }
 
-    // 실시간 가격 데이터 수신
-    const handleRealtimeQuote = (data: any) => {
-      // 티커 매칭 (대소문자 무시, 공백 제거)
-      const receivedTicker = String(data.ticker || '').trim().toUpperCase()
-      const targetTicker = String(assetIdentifier || '').trim().toUpperCase()
-      
-      if (receivedTicker === targetTicker) {
-        const currentPrice = data.price
-        
-        // 캐시에서 전일 종가 확인 (동기적으로 즉시 확인)
-        const cacheKey = `${assetIdentifier}_previous_close`
-        const cached = changePercentCacheRef.current.get(cacheKey)
-        const now = Date.now()
-        let changePercent: number | null = null
-        
-        // 캐시가 있고 유효한 경우 즉시 계산
-        if (cached && (now - cached.timestamp) < CACHE_DURATION && cached.previousClose) {
-          const previousClose = cached.previousClose
-          if (previousClose > 0 && currentPrice > 0) {
-            changePercent = ((currentPrice - previousClose) / previousClose) * 100
-            changePercent = Math.round(changePercent * 100) / 100
-          }
-        }
-        
-        // 실시간 가격은 즉시 업데이트 (블로킹 없이)
-        const priceData: RealtimePrice = {
-          price: currentPrice,
-          volume: data.volume,
-          timestamp: data.timestamp_utc,
-          dataSource: data.data_source,
-          changePercent: changePercent ?? undefined,
-        }
-        
-        setLatestPrice(priceData)
-
-        // 가격 히스토리 업데이트 (최근 100개만 유지)
-        setPriceHistory(prev => {
-          const newHistory = [...prev, priceData]
-          return newHistory.slice(-100)
-        })
-        
-        // 캐시가 없거나 만료된 경우 백그라운드에서 전일 종가 가져오기 (비동기, 블로킹 없음)
-        if ((!cached || (now - cached.timestamp) >= CACHE_DURATION || !cached.previousClose) && !loadingRef.current.has(assetIdentifier)) {
-          loadingRef.current.add(assetIdentifier)
-          
-          fetchLatestChangePercent(assetIdentifier).then(result => {
-            if (result.previousClose) {
-              // 캐시에 저장
-              changePercentCacheRef.current.set(cacheKey, {
-                previousClose: result.previousClose,
-                timestamp: Date.now(),
-              } as any)
-              
-              // 전일 종가를 가져온 후 현재 가격과 다시 계산하여 업데이트
-              const newChangePercent = ((currentPrice - result.previousClose) / result.previousClose) * 100
-              setLatestPrice(prev => {
-                if (!prev || prev.price !== currentPrice) return prev // 가격이 변경되었으면 업데이트하지 않음
-                return {
-                  ...prev,
-                  changePercent: Math.round(newChangePercent * 100) / 100,
-                }
-              })
-            }
-          }).catch(error => {
-            console.warn(`[useSocket] Failed to fetch previous close in background:`, error)
-          }).finally(() => {
-            loadingRef.current.delete(assetIdentifier)
-          })
-        }
-      }
-    }
-
     // 이벤트 리스너 등록 (연결 상태와 무관하게 항상 등록)
     socket.on('subscription_confirmed', handleSubscriptionConfirmed)
     socket.on('realtime_quote', handleRealtimeQuote)
@@ -402,7 +428,7 @@ export const useRealtimePrices = (assetIdentifier: string) => {
       socket.off('subscription_confirmed', handleSubscriptionConfirmed)
       socket.off('realtime_quote', handleRealtimeQuote)
     }
-  }, [socket, assetIdentifier, isConnected])
+  }, [socket, assetIdentifier, isConnected, handleRealtimeQuote])
   
   // 초기 로드 시 전일 종가 미리 가져오기 (별도 useEffect)
   useEffect(() => {

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import AgGridBaseTable from './AgGridBaseTable'
 import { ColDef } from 'ag-grid-community'
 import { useTreemapLive } from '@/hooks/useAssets'
+import { filterExcludedAssets } from '@/constants/excludedAssets'
 
 type AssetRow = {
   ticker: string
@@ -39,7 +40,11 @@ export default function AssetsListTable({ typeName }: AssetsListTableProps) {
   const rows = useMemo(() => {
     const sourceItems = ((data as any)?.data) ?? []
     const items = Array.isArray(sourceItems) ? sourceItems : []
-    const mapped = items.map((it: any) => ({
+    
+    // 제외 목록 필터링
+    const filteredItems = filterExcludedAssets(items)
+    
+    const mapped = filteredItems.map((it: any) => ({
       asset_id: it.asset_id,
       ticker: it.ticker,
       name: it.name,

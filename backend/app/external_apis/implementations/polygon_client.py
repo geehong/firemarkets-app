@@ -116,11 +116,13 @@ class PolygonClient(TradFiAPIClient):
             if not end_date:
                 end_date = datetime.now().strftime('%Y-%m-%d')
             
-            # 종료일이 휴일인지 확인
-            end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
-            if not is_trading_day(end_date_obj):
-                logger.info(f"Polygon: {format_trading_status_message(end_date_obj)} - 데이터 요청 스킵")
-                return []
+            # 종료일이 휴일인지 확인 (1m/5m 같은 실시간 간격은 휴일 체크 건너뛰기)
+            # 1m, 5m은 실시간 데이터이므로 휴일에도 수집 가능
+            if interval not in ["1m", "5m"]:
+                end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+                if not is_trading_day(end_date_obj):
+                    logger.info(f"Polygon: {format_trading_status_message(end_date_obj)} - 데이터 요청 스킵")
+                    return []
             
             params = {
                 "from": start_date,
@@ -150,9 +152,20 @@ class PolygonClient(TradFiAPIClient):
             
             data = await self._request(endpoint, params)
             
+            # 404 에러로 None이 반환된 경우
+            if data is None:
+                logger.warning(f"Polygon: No data returned for {symbol} (interval: {interval}) - Symbol may not be supported or endpoint returned 404")
+                return []
+            
             # Polygon API는 "OK" 또는 "DELAYED" 상태를 반환할 수 있음
-            if data.get("status") not in ["OK", "DELAYED"] or not data.get("results"):
-                logger.warning(f"No data returned for {symbol}, status: {data.get('status')}")
+            status = data.get("status") if isinstance(data, dict) else None
+            results = data.get("results") if isinstance(data, dict) else None
+            
+            if status not in ["OK", "DELAYED"] or not results:
+                logger.warning(f"Polygon: No data returned for {symbol} (interval: {interval}), status: {status}, results_count: {len(results) if results else 0}")
+                # API 응답의 상세 정보 로깅
+                if isinstance(data, dict):
+                    logger.debug(f"Polygon API response for {symbol}: {data}")
                 return []
             
             result = []

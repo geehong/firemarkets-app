@@ -33,10 +33,12 @@ class ApiStrategyManager:
         # 1. 일봉 OHLCV 클라이언트 (주식, ETF, 지수, 커머디티, 통화)
         self.ohlcv_day_clients = [
             TiingoClient(),       # 1순위 복구
-            #FMPClient(),          # 2순위 (WebSocket 백업용)
+           #FMPClient(),          # 2순위 (WebSocket 백업용)
             #FinnhubClient(),
             PolygonClient(),      # 3순위
             TwelveDataClient(),   # 4순위
+            FMPClient(),          # 5순위
+            AlphaVantageClient(), # 6순위
         ]
         
         # 2. 인트라데이 OHLCV 클라이언트 (4h, 1h 등)
@@ -682,10 +684,14 @@ class ApiStrategyManager:
                     self.logger.info(f"Using daily OHLCV clients for {ticker} (asset_type: {asset_type}, interval: {interval})")
                 
                 # 보안 체크: 일반 주식이 FMP로 수집되는 것을 방지 (preferred_data_source가 fmp인 경우 제외)
+                # preferred_data_source가 'fmp'인 경우는 명시적으로 FMP를 사용하도록 설정된 것이므로 허용
                 if asset_type and 'stock' in asset_type.lower() and (not preferred_data_source_lower or preferred_data_source_lower != 'fmp'):
                     clients_to_use = [c for c in clients_to_use if self._get_api_name(c) != 'fmp']
                     if any(self._get_api_name(c) == 'fmp' for c in self.commodity_ohlcv_clients):
                         self.logger.warning(f"⚠️ Prevented FMP usage for stock {ticker} (asset_type: {asset_type}). FMP is only for commodities.")
+                elif asset_type and 'stock' in asset_type.lower() and preferred_data_source_lower == 'fmp':
+                    # preferred_data_source가 'fmp'인 경우 FMP를 사용하도록 허용
+                    self.logger.info(f"✅ Allowing FMP usage for stock {ticker} (asset_type: {asset_type}) due to preferred_data_source='fmp'")
         
         # 활성화된 클라이언트만 필터링
         active_clients = [client for client in clients_to_use if client is not None]

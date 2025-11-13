@@ -53,14 +53,23 @@ class TwelveDataClient(TradFiAPIClient):
         query = {"apikey": self.api_key, **params}
         url = f"{self.base_url}{path}"
         await self._rate_limit()
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(url, params=query, timeout=self.api_timeout)
-            resp.raise_for_status()
-            data = resp.json()
-            # Twelve Data error format handling
-            if isinstance(data, dict) and data.get("code") and data.get("message"):
-                raise httpx.HTTPStatusError(message=data.get("message"), request=resp.request, response=resp)
-            return data
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(url, params=query, timeout=self.api_timeout)
+                resp.raise_for_status()
+                data = resp.json()
+                # Twelve Data error format handling
+                if isinstance(data, dict) and data.get("code") and data.get("message"):
+                    error_msg = data.get("message", "Unknown error")
+                    error_code = data.get("code", "Unknown")
+                    logger.warning(f"TwelveData API error (code: {error_code}): {error_msg} for params: {params}")
+                    raise httpx.HTTPStatusError(message=error_msg, request=resp.request, response=resp)
+                return data
+        except httpx.HTTPStatusError as e:
+            # 404나 다른 HTTP 에러를 더 명확하게 로깅
+            if e.response and e.response.status_code == 404:
+                logger.warning(f"TwelveData: 404 Not Found for {path} with params: {params}")
+            raise
 
     async def test_connection(self) -> bool:
         """Test connectivity to Twelve Data"""
@@ -123,8 +132,9 @@ class TwelveDataClient(TradFiAPIClient):
             # TwelveData API용 심볼 정규화
             normalized_symbol = self._normalize_symbol_for_twelvedata(symbol)
 
-            # 종료일이 휴일인지 확인
-            if end_date:
+            # 종료일이 휴일인지 확인 (1m/5m 같은 실시간 간격은 휴일 체크 건너뛰기)
+            # 1m, 5m은 실시간 데이터이므로 휴일에도 수집 가능
+            if end_date and interval not in ["1m", "5m"]:
                 end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
                 if not is_trading_day(end_date_obj):
                     logger.info(f"TwelveData: {format_trading_status_message(end_date_obj)} - 데이터 요청 스킵")
@@ -150,9 +160,13 @@ class TwelveDataClient(TradFiAPIClient):
             elif isinstance(data, list):
                 values = data
             else:
+                logger.warning(f"TwelveData: Unexpected response format for {symbol} (interval: {interval}): {type(data)}")
+                if isinstance(data, dict):
+                    logger.debug(f"TwelveData API response for {symbol}: {data}")
                 return []
             
             if not values:
+                logger.warning(f"TwelveData: No data returned for {symbol} (interval: {interval}) - Empty values array")
                 return []
             
             result = []
@@ -182,8 +196,14 @@ class TwelveDataClient(TradFiAPIClient):
             
             return result
             
+        except httpx.HTTPStatusError as e:
+            # HTTP 에러를 더 상세하게 로깅
+            status_code = e.response.status_code if e.response else None
+            error_msg = str(e)
+            logger.error(f"TwelveData OHLCV fetch failed for {symbol} (interval: {interval}): HTTP {status_code} - {error_msg}")
+            return []
         except Exception as e:
-            logger.error(f"TwelveData OHLCV fetch failed for {symbol}: {e}")
+            logger.error(f"TwelveData OHLCV fetch failed for {symbol} (interval: {interval}): {e}")
             return []
 
     async def get_company_profile(self, symbol: str) -> Optional[CompanyProfileData]:
