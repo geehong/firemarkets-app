@@ -17,9 +17,13 @@ SELECT
     -- Current price: realtime -> world_assets_ranking -> latest daily close -> intraday
     current_price_val AS current_price,
 
-    -- Price change percentage: 계산된 값 (current_price와 이전일 close_price 비교)
-    -- 우선순위: ohlcv_day_data (1순위) -> ohlcv_intraday_data (2순위)
+    -- Price change percentage: world_assets_ranking의 daily_change_percent 우선 사용
+    -- world_assets_ranking이 1시간 이내 업데이트되고 daily_change_percent가 있으면 사용
+    -- 없으면 current_price와 이전일 close_price 비교
     CASE
+        WHEN war.last_updated > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' 
+             AND war.daily_change_percent IS NOT NULL THEN
+            war.daily_change_percent
         WHEN COALESCE(prev_daily.close_price, prev_intraday.close_price) IS NOT NULL 
              AND COALESCE(prev_daily.close_price, prev_intraday.close_price) > 0 
              AND current_price_val > 0 THEN
@@ -85,20 +89,82 @@ LEFT JOIN LATERAL (
 LEFT JOIN stock_profiles sp ON sp.asset_id = a.asset_id
 LEFT JOIN crypto_data cd ON cd.asset_id = a.asset_id
 
--- Current price 계산 (realtime_updated_at 기준)
+-- Current price 계산 (최신 timestamp 데이터 우선)
+-- 우선순위: 가장 최신 timestamp를 가진 데이터 선택
 LEFT JOIN LATERAL (
     SELECT 
-        COALESCE(
-            CASE WHEN war.last_updated > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' THEN war.price_usd END,
-            CASE WHEN rq.timestamp_utc > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' THEN rq.price END,
-            war.price_usd,
-            rq.price,
-            ohlcv_daily.close_price,
-            ohlcv_intraday.close_price
-        ) AS current_price_val
+        CASE
+            -- 1순위: realtime_quotes가 1시간 이내이고 가장 최신이면
+            WHEN rq.timestamp_utc > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour'
+                 AND rq.timestamp_utc >= COALESCE(war.last_updated, '1970-01-01'::timestamp)
+                 AND rq.timestamp_utc >= COALESCE(ohlcv_intraday.timestamp_utc, '1970-01-01'::timestamp)
+                 AND rq.timestamp_utc >= COALESCE(ohlcv_daily.timestamp_utc, '1970-01-01'::timestamp)
+                 AND rq.price IS NOT NULL THEN rq.price
+            -- 2순위: world_assets_ranking이 1시간 이내이고 가장 최신이면
+            -- 단, 다른 소스와 가격 차이가 20% 이상이면 더 최신 데이터 우선
+            WHEN war.last_updated > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour'
+                 AND war.last_updated >= COALESCE(rq.timestamp_utc, '1970-01-01'::timestamp)
+                 AND war.last_updated >= COALESCE(ohlcv_intraday.timestamp_utc, '1970-01-01'::timestamp)
+                 AND war.last_updated >= COALESCE(ohlcv_daily.timestamp_utc, '1970-01-01'::timestamp)
+                 AND war.price_usd IS NOT NULL
+                 -- 가격 차이가 20% 이하일 때만 사용
+                 AND (rq.price IS NULL 
+                      OR ABS(war.price_usd - rq.price) / NULLIF(war.price_usd, 0) <= 0.2)
+                 AND (ohlcv_intraday.close_price IS NULL 
+                      OR ABS(war.price_usd - ohlcv_intraday.close_price) / NULLIF(war.price_usd, 0) <= 0.2)
+                 THEN war.price_usd
+            -- 3순위: world_assets가 1시간 이내이지만 가격 차이가 20% 이상이면, 더 최신 데이터 우선
+            -- intraday가 realtime보다 최신이면
+            WHEN ohlcv_intraday.timestamp_utc IS NOT NULL 
+                 AND ohlcv_intraday.close_price IS NOT NULL
+                 AND ohlcv_intraday.timestamp_utc >= COALESCE(rq.timestamp_utc, '1970-01-01'::timestamp)
+                 AND ohlcv_intraday.timestamp_utc >= COALESCE(ohlcv_daily.timestamp_utc, '1970-01-01'::timestamp)
+                 -- world_assets가 있으면 가격 차이 확인
+                 AND (war.price_usd IS NULL 
+                      OR war.last_updated <= (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour'
+                      OR ABS(war.price_usd - ohlcv_intraday.close_price) / NULLIF(war.price_usd, 0) > 0.2)
+                 THEN ohlcv_intraday.close_price
+            -- 4순위: daily가 가장 최신이면
+            WHEN ohlcv_daily.timestamp_utc IS NOT NULL 
+                 AND ohlcv_daily.close_price IS NOT NULL
+                 AND ohlcv_daily.timestamp_utc >= COALESCE(rq.timestamp_utc, '1970-01-01'::timestamp)
+                 AND ohlcv_daily.timestamp_utc >= COALESCE(war.last_updated, '1970-01-01'::timestamp)
+                 -- world_assets가 있으면 가격 차이 확인
+                 AND (war.price_usd IS NULL 
+                      OR war.last_updated <= (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour'
+                      OR ABS(war.price_usd - ohlcv_daily.close_price) / NULLIF(war.price_usd, 0) > 0.2)
+                 THEN ohlcv_daily.close_price
+            -- 6순위: 1시간 이내 realtime_quotes (fallback)
+            WHEN rq.timestamp_utc > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' 
+                 AND rq.price IS NOT NULL 
+                 -- world_assets가 있으면 가격 차이 확인
+                 AND (war.price_usd IS NULL 
+                      OR war.last_updated <= (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour'
+                      OR ABS(war.price_usd - rq.price) / NULLIF(war.price_usd, 0) > 0.2)
+                 THEN rq.price
+            -- 6순위: 1시간 이내 world_assets_ranking (fallback)
+            -- 단, 다른 소스와 가격 차이가 20% 이하일 때만 사용
+            WHEN war.last_updated > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour' 
+                 AND war.price_usd IS NOT NULL
+                 AND (rq.price IS NULL 
+                      OR ABS(war.price_usd - rq.price) / NULLIF(war.price_usd, 0) <= 0.2)
+                 AND (ohlcv_intraday.close_price IS NULL 
+                      OR ABS(war.price_usd - ohlcv_intraday.close_price) / NULLIF(war.price_usd, 0) <= 0.2)
+                 THEN war.price_usd
+            -- 7순위: rq가 war보다 최신이면
+            WHEN rq.timestamp_utc IS NOT NULL 
+                 AND rq.price IS NOT NULL
+                 AND rq.timestamp_utc >= COALESCE(war.last_updated, '1970-01-01'::timestamp)
+                 THEN rq.price
+            -- 8순위: war.price_usd (fallback)
+            WHEN war.price_usd IS NOT NULL THEN war.price_usd
+            -- 9순위: 나머지 순서대로
+            ELSE COALESCE(rq.price, ohlcv_daily.close_price, ohlcv_intraday.close_price)
+        END AS current_price_val
 ) current_price_calc ON true
 
 -- 이전일 데이터 조회 (current_price 계산용)
+-- 최근 7일 이내 데이터만 사용 (오래된 데이터와의 비교 방지)
 -- 우선순위: ohlcv_day_data (1순위) -> ohlcv_intraday_data (2순위)
 LEFT JOIN LATERAL (
     SELECT o.close_price
@@ -110,6 +176,8 @@ LEFT JOIN LATERAL (
         CASE WHEN ohlcv_intraday.timestamp_utc IS NOT NULL THEN ohlcv_intraday.timestamp_utc END,
         NOW() AT TIME ZONE 'UTC'
     )
+    -- 최근 7일 이내 데이터만 사용
+    AND o.timestamp_utc > (NOW() AT TIME ZONE 'UTC') - INTERVAL '7 days'
     ORDER BY o.timestamp_utc DESC
     LIMIT 1
 ) prev_daily ON true
@@ -123,6 +191,8 @@ LEFT JOIN LATERAL (
         CASE WHEN ohlcv_intraday.timestamp_utc IS NOT NULL THEN ohlcv_intraday.timestamp_utc END,
         NOW() AT TIME ZONE 'UTC'
     )
+    -- 최근 7일 이내 데이터만 사용
+    AND o.timestamp_utc > (NOW() AT TIME ZONE 'UTC') - INTERVAL '7 days'
     AND NOT EXISTS (
         SELECT 1 FROM ohlcv_day_data o2 
         WHERE o2.asset_id = a.asset_id 
@@ -132,6 +202,8 @@ LEFT JOIN LATERAL (
             CASE WHEN ohlcv_intraday.timestamp_utc IS NOT NULL THEN ohlcv_intraday.timestamp_utc END,
             NOW() AT TIME ZONE 'UTC'
         )
+        -- 최근 7일 이내 데이터만 사용
+        AND o2.timestamp_utc > (NOW() AT TIME ZONE 'UTC') - INTERVAL '7 days'
         LIMIT 1
     )
     ORDER BY o.timestamp_utc DESC

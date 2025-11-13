@@ -126,12 +126,15 @@ export const useSparklinePrice = (
   },
   queryOptions?: UseQueryOptions
 ) => {
+  // sparkline-price API는 days가 최대 1로 제한되어 있으므로 1로 제한
+  const days = options?.days ? Math.min(options.days, 1) : 1
+  
   return useQuery({
     queryKey: ['sparkline-price', assetIdentifier, options],
     queryFn: () => apiClient.getSparklinePrice(
       assetIdentifier,
       options?.dataInterval || '15m',
-      options?.days || 1,
+      days,
       options?.dataSource
     ),
     enabled: !!assetIdentifier,

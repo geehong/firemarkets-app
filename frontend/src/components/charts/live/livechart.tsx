@@ -120,9 +120,10 @@ const LiveChart: React.FC<LiveChartProps> = ({
     { enabled: !isStocksOrEtf, staleTime: 60 * 1000, refetchInterval: apiRefetchIntervalMs }
   )
   
+  // sparkline-price API는 days가 최대 1로 제한되어 있으므로 1로 제한
   const sparklineQuery = useSparklinePrice(
     assetIdentifier,
-    { dataInterval: '15m', days: typeof apiDays === 'number' ? apiDays : parseInt(String(apiDays)) || 1, dataSource },
+    { dataInterval: '15m', days: 1, dataSource },
     { enabled: isStocksOrEtf, staleTime: 60 * 1000, refetchInterval: apiRefetchIntervalMs }
   )
   
