@@ -42,3 +42,4 @@ export function filterExcludedAssets<T extends { ticker?: string; asset_id?: num
   return assets.filter(asset => !isAssetExcluded(asset))
 }
 
+

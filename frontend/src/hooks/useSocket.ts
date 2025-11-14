@@ -280,21 +280,107 @@ export const useRealtimePrices = (assetIdentifier: string) => {
   }, [])
 
   const assetIdentifierRef = useRef(assetIdentifier)
+  
+  // 이전 가격 데이터를 추적하기 위한 ref (무한 루프 방지)
+  const previousPriceDataRef = useRef<RealtimePrice | null>(null)
+  
+  // 마지막 처리 시간 추적 (스로틀링)
+  const lastUpdateTimeRef = useRef<number>(0)
+  const UPDATE_THROTTLE = 500 // 500ms마다 한 번만 업데이트 (초당 2회)
+  
+  // 업데이트 플래그 (동시 업데이트 방지)
+  const isUpdatingRef = useRef<boolean>(false)
 
   useEffect(() => {
     assetIdentifierRef.current = assetIdentifier
+    // assetIdentifier가 변경되면 모든 ref 초기화
+    previousPriceDataRef.current = null
+    latestPriceRef.current = null
+    lastUpdateTimeRef.current = 0
+    isUpdatingRef.current = false
   }, [assetIdentifier])
+  
+  // Use ref to store the latest handler to avoid dependency issues
+  const handleRealtimeQuoteRef = useRef<(data: any) => void>()
 
-  const handleRealtimeQuote = useCallback((data: any) => {
+  // React 상태와 동기화된 ref
+  const latestPriceRef = useRef<RealtimePrice | null>(null)
+
+  // 공통 처리 함수: priceData를 받아서 setLatestPrice 호출 (useCallback으로 안정화)
+  const processPriceUpdate = useCallback((priceData: RealtimePrice): boolean => {
+    const now = Date.now()
+    
+    // 이미 업데이트 중이면 스킵 (동시 업데이트 방지)
+    if (isUpdatingRef.current) {
+      return false
+    }
+    
+    // 스로틀링: 마지막 업데이트로부터 UPDATE_THROTTLE 이내면 스킵
+    if (now - lastUpdateTimeRef.current < UPDATE_THROTTLE) {
+      return false
+    }
+
+    const prevData = previousPriceDataRef.current
+    
+    // 같은 timestamp 체크
+    if (prevData && prevData.timestamp === priceData.timestamp) {
+      return false
+    }
+
+    // 데이터 변경 체크
+    const hasChanged = !prevData || 
+      prevData.price !== priceData.price ||
+      prevData.timestamp !== priceData.timestamp
+
+    if (!hasChanged) {
+      return false
+    }
+
+    // 업데이트 플래그 설정
+    isUpdatingRef.current = true
+    lastUpdateTimeRef.current = now
+
+    // setLatestPrice 호출 (함수형 업데이트로 이전 상태와 비교)
+    setLatestPrice((prev: RealtimePrice | null) => {
+      // 이전 상태와 동일하면 업데이트 건너뛰기 (무한 루프 방지)
+      if (
+        prev &&
+        prev.price === priceData.price &&
+        prev.timestamp === priceData.timestamp
+      ) {
+        isUpdatingRef.current = false
+        return prev // 동일한 참조 반환 -> React가 리렌더 건너뜀
+      }
+      
+      // ref 업데이트 (실제 업데이트될 때만)
+      previousPriceDataRef.current = priceData
+      latestPriceRef.current = priceData
+      
+      // 플래그 리셋
+      isUpdatingRef.current = false
+      
+      return priceData
+    })
+
+    return true
+  }, []) // 빈 의존성 배열 -> 함수가 안정적으로 유지됨
+
+  // 실시간 가격 데이터 처리 핸들러 (useCallback으로 안정화)
+  const handleRealtimeQuoteInternal = useCallback((data: any) => {
+    // 티커 체크를 가장 먼저 수행 (성능 최적화)
     const targetAsset = assetIdentifierRef.current
-    if (!targetAsset) return
+    if (!targetAsset) {
+      return
+    }
 
     const receivedTicker = String(data.ticker || '').trim().toUpperCase()
     const targetTicker = String(targetAsset || '').trim().toUpperCase()
 
+    // 티커가 일치하지 않으면 즉시 리턴 (다른 컴포넌트용 메시지)
     if (receivedTicker !== targetTicker) {
       return
     }
+    
 
     const currentPrice = data.price
     const cacheKey = `${targetAsset}_previous_close`
@@ -318,35 +404,8 @@ export const useRealtimePrices = (assetIdentifier: string) => {
       changePercent: changePercent ?? undefined,
     }
 
-    setLatestPrice(prev => {
-      if (
-        prev &&
-        prev.price === priceData.price &&
-        prev.volume === priceData.volume &&
-        prev.timestamp === priceData.timestamp &&
-        prev.dataSource === priceData.dataSource &&
-        prev.changePercent === priceData.changePercent
-      ) {
-        return prev
-      }
-      return priceData
-    })
-
-    setPriceHistory(prev => {
-      const last = prev[prev.length - 1]
-      if (
-        last &&
-        last.timestamp === priceData.timestamp &&
-        last.price === priceData.price &&
-        last.volume === priceData.volume &&
-        last.dataSource === priceData.dataSource
-      ) {
-        return prev
-      }
-
-      const newHistory = [...prev, priceData]
-      return newHistory.slice(-100)
-    })
+    // processPriceUpdate 함수로 처리 (스로틀링 적용됨)
+    processPriceUpdate(priceData)
 
     if ((!cached || (now - cached.timestamp) >= CACHE_DURATION || !cached.previousClose) && !loadingRef.current.has(targetAsset)) {
       loadingRef.current.add(targetAsset)
@@ -359,15 +418,42 @@ export const useRealtimePrices = (assetIdentifier: string) => {
           } as any)
 
           const newChangePercent = ((currentPrice - result.previousClose) / result.previousClose) * 100
-          setLatestPrice(prev => {
-            if (!prev || prev.price !== currentPrice) return prev
-            const rounded = Math.round(newChangePercent * 100) / 100
-            if (prev.changePercent === rounded) return prev
-            return {
-              ...prev,
+          const rounded = Math.round(newChangePercent * 100) / 100
+          
+          // changePercent가 실제로 변경된 경우에만 업데이트
+          const currentData = latestPriceRef.current
+          
+          if (currentData && currentData.price === currentPrice && currentData.changePercent !== rounded) {
+            // 이미 업데이트 중이면 스킵
+            if (isUpdatingRef.current) {
+              return
+            }
+            
+            const updatedData = {
+              ...currentData,
               changePercent: rounded,
             }
-          })
+            
+            isUpdatingRef.current = true
+            
+            // processPriceUpdate 대신 직접 업데이트 (changePercent만 업데이트)
+            setLatestPrice((prev: RealtimePrice | null) => {
+              if (!prev || prev.price !== currentPrice) {
+                isUpdatingRef.current = false
+                return prev
+              }
+              if (prev.changePercent === rounded) {
+                isUpdatingRef.current = false
+                return prev
+              }
+              
+              previousPriceDataRef.current = updatedData
+              latestPriceRef.current = updatedData
+              isUpdatingRef.current = false
+              
+              return updatedData
+            })
+          }
         }
       }).catch(error => {
         console.warn(`[useSocket] Failed to fetch previous close in background:`, error)
@@ -375,6 +461,16 @@ export const useRealtimePrices = (assetIdentifier: string) => {
         loadingRef.current.delete(targetAsset)
       })
     }
+  }, [processPriceUpdate]) // processPriceUpdate를 의존성으로 추가
+
+  // handleRealtimeQuoteRef에 할당 (useEffect로 한 번만 실행)
+  useEffect(() => {
+    handleRealtimeQuoteRef.current = handleRealtimeQuoteInternal
+  }, [handleRealtimeQuoteInternal])
+
+  // Stable wrapper function
+  const handleRealtimeQuote = useCallback((data: any) => {
+    handleRealtimeQuoteRef.current?.(data)
   }, [])
 
   // 연결 상태 체크 및 더미 데이터 모드 감지
@@ -390,6 +486,7 @@ export const useRealtimePrices = (assetIdentifier: string) => {
   }, [socket, isConnected])
 
   useEffect(() => {
+    
     // 클라이언트 사이드에서만 실행
     if (typeof window === 'undefined') {
       return
@@ -428,16 +525,20 @@ export const useRealtimePrices = (assetIdentifier: string) => {
       socket.off('subscription_confirmed', handleSubscriptionConfirmed)
       socket.off('realtime_quote', handleRealtimeQuote)
     }
-  }, [socket, assetIdentifier, isConnected, handleRealtimeQuote])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket, assetIdentifier, isConnected])
   
   // 초기 로드 시 전일 종가 미리 가져오기 (별도 useEffect)
   useEffect(() => {
-    if (!assetIdentifier || typeof window === 'undefined') return
+    if (!assetIdentifier || typeof window === 'undefined') {
+      return
+    }
     
     const loadPreviousClose = async () => {
       const cacheKey = `${assetIdentifier}_previous_close`
       const cached = changePercentCacheRef.current.get(cacheKey)
       const now = Date.now()
+      
       
       // 캐시가 없거나 만료된 경우에만 API 호출
       if (!cached || (now - cached.timestamp) >= CACHE_DURATION) {
@@ -452,15 +553,42 @@ export const useRealtimePrices = (assetIdentifier: string) => {
         }
         
         // latestPrice가 있으면 changePercent 계산하여 업데이트
-        setLatestPrice(prev => {
-          if (!prev || !prev.price || !previousClose || previousClose <= 0) return prev
+        const currentData = latestPriceRef.current
+        if (currentData && currentData.price && previousClose && previousClose > 0) {
+          const changePercent = ((currentData.price - previousClose) / previousClose) * 100
+          const rounded = Math.round(changePercent * 100) / 100
           
-          const changePercent = ((prev.price - previousClose) / previousClose) * 100
-          return {
-            ...prev,
-            changePercent: Math.round(changePercent * 100) / 100,
+          if (currentData.changePercent !== rounded) {
+            // 이미 업데이트 중이면 스킵
+            if (isUpdatingRef.current) {
+              return
+            }
+            
+            const updatedData = {
+              ...currentData,
+              changePercent: rounded,
+            }
+            
+            isUpdatingRef.current = true
+            
+            setLatestPrice((prev: RealtimePrice | null) => {
+              if (!prev || prev.price !== currentData.price) {
+                isUpdatingRef.current = false
+                return prev
+              }
+              if (prev.changePercent === rounded) {
+                isUpdatingRef.current = false
+                return prev
+              }
+              
+              previousPriceDataRef.current = updatedData
+              latestPriceRef.current = updatedData
+              isUpdatingRef.current = false
+              
+              return updatedData
+            })
           }
-        })
+        }
       }
     }
     
@@ -499,7 +627,7 @@ export const useBroadcastData = () => {
     }
 
     const handleBroadcastQuote = (data: any) => {
-      setBroadcastData(prev => {
+      setBroadcastData((prev: RealtimePrice[]) => {
         const newData = [...prev, {
           assetId: data.asset_id,
           ticker: data.ticker,
