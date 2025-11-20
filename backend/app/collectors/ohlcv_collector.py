@@ -39,18 +39,24 @@ class OHLCVCollector(BaseCollector):
         super().__init__(db, config_manager, api_manager, redis_queue_manager)
         # 스케줄 그룹별 interval 필터링을 위한 설정
         self.scheduled_intervals = None  # None이면 모든 interval 수집
+        self.asset_type_filter = None    # None이면 모든 자산 타입 수집
 
-    def set_schedule_config(self, scheduled_intervals: List[str] = None):
+    def set_schedule_config(self, scheduled_intervals: List[str] = None, asset_type_filter: List[str] = None):
         """
-        스케줄 그룹별로 수집할 interval을 설정합니다.
+        스케줄 그룹별로 수집할 interval과 자산 타입을 설정합니다.
         - scheduled_intervals가 None이면 모든 interval 수집
         - scheduled_intervals가 지정되면 해당 interval만 수집
+        - asset_type_filter가 None이면 모든 자산 타입 수집
+        - asset_type_filter가 지정되면 해당 자산 타입만 수집
         """
         self.scheduled_intervals = scheduled_intervals
+        self.asset_type_filter = asset_type_filter
         if scheduled_intervals:
-            self.logging_helper.log_info(f"[OHLCVCollector] 스케줄 그룹별 interval 필터링: {scheduled_intervals}")
-        else:
-            self.logging_helper.log_info(f"[OHLCVCollector] 모든 interval 수집 (필터링 없음)")
+            self.logging_helper.log_info(f"[OHLCVCollector] Interval filter: {scheduled_intervals}")
+        if asset_type_filter:
+            self.logging_helper.log_info(f"[OHLCVCollector] Asset type filter: {asset_type_filter}")
+        if not scheduled_intervals and not asset_type_filter:
+            self.logging_helper.log_info(f"[OHLCVCollector] No filters (collecting all)")
 
     async def _collect_data(self) -> Dict[str, Any]:
         """
@@ -116,7 +122,15 @@ class OHLCVCollector(BaseCollector):
                     Asset.collection_settings.op('->>')('collect_price') == 'true'
                 )
             )
+            
+            # 자산 타입 필터 적용
+            if self.asset_type_filter:
+                query = query.filter(AssetType.type_name.in_(self.asset_type_filter))
+                self.logging_helper.log_info(f"[OHLCVCollector] Filtering by asset types: {self.asset_type_filter}")
+            
             asset_id_tuples = query.all()
+            result_count = len(asset_id_tuples)
+            self.logging_helper.log_info(f"[OHLCVCollector] Found {result_count} assets to collect")
             return [asset_id for (asset_id,) in asset_id_tuples]
         except Exception as e:
             self.logging_helper.log_error(f"Failed to fetch target asset IDs: {e}")

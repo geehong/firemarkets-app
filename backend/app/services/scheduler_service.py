@@ -44,6 +44,74 @@ class SchedulerService:
         "WorldAssets": {"class": WorldAssetsCollector, "config_key": "is_world_assets_collection_enabled"},
         "StockFinancialsMacrotrends": {"class": MacrotrendsFinancialsCollector, "config_key": "is_stock_collection_enabled"},
     }
+    
+    # Maps temp.json collector keys to actual job configurations
+    COLLECTOR_KEY_MAPPING = {
+        "ohlcv_day_clients": {
+            "job_key": "OHLCV",
+            "config": {
+                "scheduled_intervals": ["1d"],
+                "asset_type_filter": ["Stocks", "ETFs", "Indices", "Currencies"]
+            }
+        },
+        "ohlcv_intraday_clients": {
+            "job_key": "OHLCV",
+            "config": {
+                "scheduled_intervals": ["4h", "1h"],
+                "asset_type_filter": ["Stocks", "ETFs", "Indices"]
+            }
+        },
+        "crypto_ohlcv_clients": {
+            "job_key": "OHLCV",
+            "config": {
+                "scheduled_intervals": ["1d", "4h", "1h"],
+                "asset_type_filter": ["Crypto"]
+            }
+        },
+        "commodity_ohlcv_clients": {
+            "job_key": "OHLCV",
+            "config": {
+                "scheduled_intervals": ["1d"],
+                "asset_type_filter": ["Commodities"]
+            }
+        },
+        "onchain_clients": {
+            "job_key": "Onchain",
+            "config": {}
+        },
+        "crypto_clients": {
+            "job_key": "CryptoInfo",
+            "config": {}
+        },
+        "etf_clients": {
+            "job_key": "ETFInfo",
+            "config": {}
+        },
+        "stock_profiles_clients": {
+            "job_key": "StockProfile",
+            "config": {}
+        },
+        "stock_profiles_fmp_clients": {
+            "job_key": "StockProfile",
+            "config": {"use_fmp": True}
+        },
+        "stock_financials_clients": {
+            "job_key": "StockProfile",
+            "config": {"collect_financials": True}
+        },
+        "stock_analyst_estimates_clients": {
+            "job_key": "StockProfile",
+            "config": {"collect_estimates": True}
+        },
+        "stock_financials_macrotrends_clients": {
+            "job_key": "StockFinancialsMacrotrends",
+            "config": {}
+        },
+        "world_assets_clients": {
+            "job_key": "WorldAssets",
+            "config": {}
+        }
+    }
 
     def __init__(self):
         self.scheduler = BackgroundScheduler(timezone="UTC")
@@ -66,10 +134,14 @@ class SchedulerService:
         """Sets up the logger for this service."""
         self.logger = logging.getLogger(__name__)
 
-    def _create_collection_function(self, collector_class: Type[BaseCollector]):
+    def _create_collection_function(self, collector_class: Type[BaseCollector], collector_config: Dict[str, Any] = None):
         """
         Creates a wrapper function to run an async collector from the sync scheduler.
         It handles dependency injection and session management.
+        
+        Args:
+            collector_class: The collector class to instantiate
+            collector_config: Optional configuration for the collector (filters, etc.)
         """
         def run_collection_sync():
             # Create a new event loop for this thread.
@@ -105,6 +177,20 @@ class SchedulerService:
                     api_manager=api_manager,
                     redis_queue_manager=self.redis_queue_manager,
                 )
+                
+                # Apply filters for OHLCVCollector
+                if isinstance(collector_instance, OHLCVCollector) and collector_config:
+                    scheduled_intervals = collector_config.get("scheduled_intervals")
+                    asset_type_filter = collector_config.get("asset_type_filter")
+                    if scheduled_intervals or asset_type_filter:
+                        collector_instance.set_schedule_config(
+                            scheduled_intervals=scheduled_intervals,
+                            asset_type_filter=asset_type_filter
+                        )
+                        self.logger.info(
+                            f"Applied filters to {job_name} - intervals: {scheduled_intervals}, "
+                            f"asset_types: {asset_type_filter}"
+                        )
                 
                 # The `collect_with_settings` method in BaseCollector handles all logging.
                 result = loop.run_until_complete(collector_instance.collect_with_settings())
@@ -414,10 +500,89 @@ class SchedulerService:
             db.close()
 
 
+    def schedule_jobs_from_config(self):
+        """Schedule jobs from temp.json configuration."""
+        try:
+            import json
+            config_json = self.config_manager.get_scheduler_config()
+            if not config_json:
+                self.logger.warning("No scheduler config found in temp.json")
+                return
+            
+            config = json.loads(config_json)
+            schedules = config.get("schedules", [])
+            timezone = config.get("timezone", "UTC")
+            
+            for schedule in schedules:
+                hour = schedule.get("hour")
+                minute = schedule.get("minute", 0)
+                day_of_week = schedule.get("day_of_week", "*")
+                collectors = schedule.get("collectors", [])
+                
+                # Convert hour list to comma-separated string for CronTrigger
+                if isinstance(hour, list):
+                    hour_str = ",".join(str(h) for h in hour)
+                else:
+                    hour_str = str(hour) if hour is not None else "*"
+                
+                for collector_key in collectors:
+                    # Map temp.json key to actual job configuration
+                    if collector_key not in self.COLLECTOR_KEY_MAPPING:
+                        self.logger.warning(f"Unknown collector key in temp.json: {collector_key}")
+                        continue
+                    
+                    mapping = self.COLLECTOR_KEY_MAPPING[collector_key]
+                    job_key = mapping["job_key"]
+                    collector_config = mapping.get("config", {})
+                    
+                    if job_key not in self.JOB_MAPPING:
+                        self.logger.warning(f"No JOB_MAPPING for: {job_key}")
+                        continue
+                    
+                    collector_class = self.JOB_MAPPING[job_key]["class"]
+                    
+                    # Create job function with filters
+                    job_func = self._create_collection_function(collector_class, collector_config)
+                    
+                    # Create unique job ID (use first hour if list)
+                    hour_id = hour[0] if isinstance(hour, list) else hour
+                    job_id = f"{collector_key}_{hour_id}_{minute}"
+                    
+                    # Schedule the job
+                    self.scheduler.add_job(
+                        job_func,
+                        trigger=CronTrigger(
+                            hour=hour_str,
+                            minute=minute,
+                            day_of_week=day_of_week,
+                            timezone=timezone
+                        ),
+                        id=job_id,
+                        replace_existing=True,
+                        misfire_grace_time=300  # 5 minutes
+                    )
+                    
+                    self.logger.info(
+                        f"✅ Scheduled {collector_key} ({job_key}) at {hour}:{minute:02d} "
+                        f"({day_of_week}) with filters: {collector_config}"
+                    )
+            
+            self.logger.info(f"✅ Scheduled {len(self.scheduler.get_jobs())} jobs from temp.json config")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to schedule jobs from config: {e}", exc_info=True)
+
     def start_scheduler(self, test_mode: bool = False):
         """Sets up jobs and starts the scheduler if not already running."""
         if not self.scheduler.running:
-            self.setup_jobs(test_mode=test_mode)
+            # Try to use temp.json config first, fallback to setup_jobs
+            try:
+                self.schedule_jobs_from_config()
+                self.logger.info("Using temp.json configuration for scheduling")
+            except Exception as e:
+                self.logger.warning(f"Failed to load temp.json config, using default setup_jobs: {e}")
+                self.setup_jobs(test_mode=test_mode)
+            
             self.scheduler.start()
             mode_text = "TEST MODE" if test_mode else "NORMAL MODE"
             self.logger.info(f"Scheduler started successfully in {mode_text}.")
