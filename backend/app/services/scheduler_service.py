@@ -57,7 +57,7 @@ class SchedulerService:
         "ohlcv_intraday_clients": {
             "job_key": "OHLCV",
             "config": {
-                "scheduled_intervals": ["4h", "1h"],
+                "scheduled_intervals": ["1m", "5m", "15m", "30m", "1h", "4h"],
                 "asset_type_filter": ["Stocks", "ETFs", "Indices"]
             }
         },
@@ -566,6 +566,10 @@ class SchedulerService:
                         f"✅ Scheduled {collector_key} ({job_key}) at {hour}:{minute:02d} "
                         f"({day_of_week}) with filters: {collector_config}"
                     )
+            
+            # Always add heartbeat job
+            self.scheduler.add_job(self._update_heartbeat, 'interval', minutes=1, id='scheduler_heartbeat', replace_existing=True)
+            self.logger.info("✅ Scheduled job: 'scheduler_heartbeat'")
             
             self.logger.info(f"✅ Scheduled {len(self.scheduler.get_jobs())} jobs from temp.json config")
             
