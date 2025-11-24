@@ -147,6 +147,7 @@ docker-compose restart scheduler
 docker-compose restart backend
 docker-compose restart nginx-proxy-manager
 docker-compose restart data_processor
+docker-compose restart websocket_orchestrator
 
 ```
 

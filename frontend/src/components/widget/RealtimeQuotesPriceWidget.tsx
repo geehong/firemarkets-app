@@ -95,6 +95,17 @@ const RealtimeQuotesPriceWidget: React.FC<RealtimeQuotesPriceWidgetProps> = ({
   // API 응답 구조: { quote: {...}, timestamp: "..." }
   const quote = quoteData?.quote || quoteData
 
+  // 디버깅: 실제 API 응답 확인
+  if (quoteData && typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    console.log('[RealtimeQuotesPriceWidget] API Response:', {
+      assetIdentifier,
+      isStocksOrEtf,
+      quoteData,
+      quote,
+      price: quote?.price
+    })
+  }
+
   if (!quote) {
     return (
       <ComponentCard title="Delayed Price (15min)" className={className}>

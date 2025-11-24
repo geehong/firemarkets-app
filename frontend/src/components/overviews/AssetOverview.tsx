@@ -9,8 +9,11 @@ import ComponentCard from '@/components/common/ComponentCard'
 import Badge from '@/components/ui/badge/Badge'
 import Alert from '@/components/ui/alert/Alert'
 import { ArrowUpIcon, DollarLineIcon, PieChartIcon, UserIcon } from '@/icons'
-// OHLCVChart를 직접 import (SSR 문제 해결)
-import OHLCVChart from '@/components/charts/ohlcvcharts/OHLCVChart'
+// Live Chart 컴포넌트들 import
+import LiveChart from '@/components/charts/live/livechart'
+import LivePriceStocksEtfChart from '@/components/charts/live/LivePriceStocksEtfChart'
+import LivePriceCryptoChart from '@/components/charts/live/LivePriceCryptoChart'
+import LivePriceCommoditiesChart from '@/components/charts/live/LivePriceCommoditiesChart'
 import OHLCVCustomGUIChart from '@/components/charts/ohlcvcharts/OHLCVCustomGUIChart'
 import { getStringValue, formatDate, formatIPODate, formatTime } from '@/components/overviews/utils/formatters'
 import StocksInfoCard from '@/components/overviews/tab/StocksInfoCard'
@@ -571,8 +574,8 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
         <BasicAssetInfoCard asset={asset} commonData={overviewsData?.common} />
       )}
 
-      {/* 가격 차트 */}
-      <ComponentCard title="Price Charts">
+      {/* Live 차트 */}
+      <ComponentCard title="Charts">
         {/* 탭 메뉴 */}
         <div className="mb-4 border-b border-gray-200 dark:border-gray-700">
           <nav className="flex space-x-8" aria-label="Chart Tabs">
@@ -587,7 +590,7 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
                 }
               `}
             >
-              Price Chart
+              Live Chart
             </button>
             <button
               onClick={() => setActiveChartTab('interactive')}
@@ -615,22 +618,46 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
           </div>
         }>
           {activeChartTab === 'price' ? (
-            <OHLCVChart
-              assetIdentifier={assetIdentifier as string}
-              dataInterval="1d"
-              height={600}
-              showVolume={true}
-              showRangeSelector={true}
-              showExporting={true}
-              title={`${assetName} Price Chart`}
-              subtitle={`${assetExchange} • ${assetCurrency}`}
-            />
+            (() => {
+              // 자산 타입에 따라 적절한 Live 차트 컴포넌트 선택
+              if (isStock || isETF) {
+                return (
+                  <LivePriceStocksEtfChart
+                    assetIdentifier={assetIdentifier as string}
+                    height={600}
+                  />
+                )
+              } else if (isCrypto) {
+                return (
+                  <LivePriceCryptoChart
+                    assetIdentifier={assetIdentifier as string}
+                    height={600}
+                  />
+                )
+              } else if (assetTypeName === 'Commodity') {
+                return (
+                  <LivePriceCommoditiesChart
+                    assetIdentifier={assetIdentifier as string}
+                    height={600}
+                  />
+                )
+              } else {
+                // 기본 Live 차트 (기타 자산 타입)
+                return (
+                  <LiveChart
+                    assetIdentifier={assetIdentifier as string}
+                    height={600}
+                  />
+                )
+              }
+            })()
           ) : (
+            // Interactive Chart는 OHLCVCustomGUIChart 사용
             <OHLCVCustomGUIChart
               assetIdentifier={assetIdentifier as string}
               dataInterval="1d"
-              seriesId={`${assetIdentifier}-ohlc`}
-              seriesName={`${assetName} Price`}
+              seriesId={`${assetIdentifier}-interactive`}
+              seriesName={assetName || assetTicker}
               height={650}
             />
           )}

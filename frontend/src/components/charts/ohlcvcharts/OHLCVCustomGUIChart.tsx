@@ -42,6 +42,16 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
   const [volumeData, setVolumeData] = useState<number[][] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false)
+  const [selectedRange, setSelectedRange] = useState<string>('default')
+
+  // 디버깅: selectedRange 변경 감지
+  useEffect(() => {
+    console.log('[OHLCVCustomGUIChart] selectedRange changed:', selectedRange, {
+      assetIdentifier,
+      isTimeData,
+      useIntradayData
+    })
+  }, [selectedRange, assetIdentifier, isTimeData, useIntradayData])
 
   // Highcharts CSS를 동적으로 추가
   useEffect(() => {
@@ -156,19 +166,34 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
   }, [isClient])
 
   // 데이터 소스 선택
-  const isTimeData = useIntradayData
-  const isDailyData = !useIntradayData
+  // 1d 또는 1w가 선택되면 intraday 데이터를 사용
+  const isTimeData = useIntradayData || selectedRange === '1d' || selectedRange === '1w'
+  const isDailyData = !isTimeData
 
   const { data: timeData, isLoading: timeLoading, error: timeError } = useIntraday(
     assetIdentifier || '',
     { dataInterval, days: 1 },
-    { enabled: !!assetIdentifier && isTimeData, staleTime: 60_000, retry: 3 }
+    { enabled: !!assetIdentifier && isTimeData && selectedRange === 'default', staleTime: 60_000, retry: 3 }
+  )
+
+  // 1d 데이터: 15m 간격, limit=4*24 (96)
+  const { data: timeData1d, isLoading: timeLoading1d, error: timeError1d } = useIntraday(
+    assetIdentifier || '',
+    { dataInterval: '15m', days: 1, limit: 4 * 24 },
+    { enabled: !!assetIdentifier && selectedRange === '1d', staleTime: 60_000, retry: 3 }
+  )
+
+  // 1w 데이터: 1h 간격, limit=24*7 (168)
+  const { data: timeData1w, isLoading: timeLoading1w, error: timeError1w } = useIntraday(
+    assetIdentifier || '',
+    { dataInterval: '1h', days: 1, limit: 24 * 7 },
+    { enabled: !!assetIdentifier && selectedRange === '1w', staleTime: 60_000, retry: 3 }
   )
 
   const { data: delayedData, isLoading: delayedLoading, error: delayedError } = useDelayedQuotes(
     assetIdentifier ? [assetIdentifier] : [],
     {},
-    { enabled: !!assetIdentifier && isTimeData && dataInterval === '15m', staleTime: 60_000, retry: 3 }
+    { enabled: !!assetIdentifier && isTimeData && dataInterval === '15m' && selectedRange === 'default', staleTime: 60_000, retry: 3 }
   )
 
   const { data: dailyData, isLoading: dailyLoading, error: dailyError } = useOhlcv(
@@ -177,9 +202,30 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
     { enabled: !!assetIdentifier && isDailyData, staleTime: 60_000, retry: 3 }
   )
 
-  const apiData = isTimeData ? (dataInterval === '15m' ? delayedData : timeData) : dailyData
-  const apiLoading = isTimeData ? (dataInterval === '15m' ? delayedLoading : timeLoading) : dailyLoading
-  const apiError = isTimeData ? (dataInterval === '15m' ? delayedError : timeError) : dailyError
+  // 선택된 범위에 따라 데이터 선택
+  let currentTimeData: any = null
+  let currentTimeLoading = false
+  let currentTimeError: any = null
+
+  if (isTimeData) {
+    if (selectedRange === '1d') {
+      currentTimeData = timeData1d
+      currentTimeLoading = timeLoading1d
+      currentTimeError = timeError1d
+    } else if (selectedRange === '1w') {
+      currentTimeData = timeData1w
+      currentTimeLoading = timeLoading1w
+      currentTimeError = timeError1w
+    } else {
+      currentTimeData = dataInterval === '15m' ? delayedData : timeData
+      currentTimeLoading = dataInterval === '15m' ? delayedLoading : timeLoading
+      currentTimeError = dataInterval === '15m' ? delayedError : timeError
+    }
+  }
+
+  const apiData = isTimeData ? currentTimeData : dailyData
+  const apiLoading = isTimeData ? currentTimeLoading : dailyLoading
+  const apiError = isTimeData ? currentTimeError : dailyError
 
   // 데이터 변환 및 설정
   useEffect(() => {
@@ -249,8 +295,16 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
     }
 
     let rows: any[] = []
-    if (isTimeData && dataInterval === '15m' && delayedData) {
-      rows = delayedData.quotes || []
+    if (isTimeData) {
+      if (selectedRange === '1d' && timeData1d) {
+        rows = timeData1d?.data || timeData1d || []
+      } else if (selectedRange === '1w' && timeData1w) {
+        rows = timeData1w?.data || timeData1w || []
+      } else if (dataInterval === '15m' && delayedData) {
+        rows = delayedData.quotes || []
+      } else {
+        rows = apiData?.data || apiData || []
+      }
     } else {
       rows = apiData?.data || apiData || []
     }
@@ -260,16 +314,25 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
         .map((item: any) => {
           let timestamp: number
           let open: number, high: number, low: number, close: number
-          if (isTimeData && dataInterval === '15m') {
-            timestamp = new Date(String(item.timestamp_utc)).getTime()
-            const price = parseFloat(String(item.price)) || 0
-            open = high = low = close = price
-          } else if (isTimeData) {
-            timestamp = new Date(String(item.timestamp || item.timestamp_utc)).getTime()
-            open = parseFloat(String(item.open || item.open_price)) || 0
-            high = parseFloat(String(item.high || item.high_price)) || 0
-            low = parseFloat(String(item.low || item.low_price)) || 0
-            close = parseFloat(String(item.close || item.close_price)) || 0
+          if (isTimeData) {
+            if (selectedRange === '1d' || selectedRange === '1w') {
+              // 1d와 1w는 intraday API를 사용하므로 OHLCV 데이터 구조
+              timestamp = new Date(String(item.timestamp || item.timestamp_utc)).getTime()
+              open = parseFloat(String(item.open || item.open_price)) || 0
+              high = parseFloat(String(item.high || item.high_price)) || 0
+              low = parseFloat(String(item.low || item.low_price)) || 0
+              close = parseFloat(String(item.close || item.close_price)) || 0
+            } else if (dataInterval === '15m') {
+              timestamp = new Date(String(item.timestamp_utc)).getTime()
+              const price = parseFloat(String(item.price)) || 0
+              open = high = low = close = price
+            } else {
+              timestamp = new Date(String(item.timestamp || item.timestamp_utc)).getTime()
+              open = parseFloat(String(item.open || item.open_price)) || 0
+              high = parseFloat(String(item.high || item.high_price)) || 0
+              low = parseFloat(String(item.low || item.low_price)) || 0
+              close = parseFloat(String(item.close || item.close_price)) || 0
+            }
           } else {
             timestamp = new Date(String(item.timestamp_utc)).getTime()
             open = parseFloat(String(item.open_price)) || 0
@@ -284,11 +347,18 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
 
       const vol = rows
         .map((item: any) => {
-          const ts = isTimeData
-            ? (dataInterval === '15m'
-              ? new Date(String(item.timestamp_utc)).getTime()
-              : new Date(String(item.timestamp || item.timestamp_utc)).getTime())
-            : new Date(String(item.timestamp_utc)).getTime()
+          let ts: number
+          if (isTimeData) {
+            if (selectedRange === '1d' || selectedRange === '1w') {
+              ts = new Date(String(item.timestamp || item.timestamp_utc)).getTime()
+            } else if (dataInterval === '15m') {
+              ts = new Date(String(item.timestamp_utc)).getTime()
+            } else {
+              ts = new Date(String(item.timestamp || item.timestamp_utc)).getTime()
+            }
+          } else {
+            ts = new Date(String(item.timestamp_utc)).getTime()
+          }
           const v = parseFloat(String(item.volume)) || 0
           return [ts, v]
         })
@@ -298,10 +368,10 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
       setChartData(ohlc)
       setVolumeData(vol)
       setError(null)
-    } else if (!apiLoading) {
+    } else if (!apiLoading && !currentTimeLoading) {
       setError('차트 데이터가 없습니다.')
     }
-  }, [assetIdentifier, dataInterval, externalOhlcvData, apiData, apiLoading, apiError, isTimeData, isDailyData, delayedData, useIntradayData, dataUrl])
+  }, [assetIdentifier, dataInterval, externalOhlcvData, apiData, apiLoading, apiError, isTimeData, isDailyData, delayedData, useIntradayData, dataUrl, selectedRange, timeData1d, timeData1w, timeLoading1d, timeLoading1w, currentTimeLoading])
 
   useEffect(() => {
     if (!isClient || !Highcharts || !chartContainerRef.current) return
@@ -456,13 +526,75 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
             height: height,
             width: null, // 부모 컨테이너 크기에 맞춤
             events: {
-                load: function () {
+                load: function (this: any) {
                 addPopupEvents(this)
                 }
             }
         },
+        xAxis: {
+            events: {
+              afterSetExtremes: function(this: any, e: any) {
+                // rangeSelector 버튼 클릭 감지
+                setTimeout(() => {
+                  const activeButton = chartContainerRef.current?.querySelector('.highcharts-range-selector-buttons .highcharts-range-selector-button.highcharts-active')
+                  if (activeButton) {
+                    const buttonText = activeButton.textContent?.trim()
+                    console.log('[OHLCVCustomGUIChart] Range selector button active:', buttonText)
+                    if (buttonText === '1d') {
+                      setSelectedRange('1d')
+                    } else if (buttonText === '1w') {
+                      setSelectedRange('1w')
+                    } else {
+                      setSelectedRange('default')
+                    }
+                  }
+                }, 100)
+              }
+            }
+        },
         rangeSelector: {
-            selected: 2
+            selected: 2,
+            buttons: [
+              {
+                type: 'day',
+                count: 1,
+                text: '1d'
+              },
+              {
+                type: 'week',
+                count: 1,
+                text: '1w'
+              },
+              {
+                type: 'month',
+                count: 1,
+                text: '1m'
+              },
+              {
+                type: 'month',
+                count: 3,
+                text: '3m'
+              },
+              {
+                type: 'month',
+                count: 6,
+                text: '6m'
+              },
+              {
+                type: 'ytd',
+                text: 'YTD'
+              },
+              {
+                type: 'year',
+                count: 1,
+                text: '1y'
+              },
+              {
+                type: 'all',
+                text: 'All'
+              }
+            ],
+            inputEnabled: false
         },
           yAxis: [
             {
@@ -616,7 +748,7 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
     )
   }
 
-  if (apiLoading || (assetIdentifier && !chartData)) {
+  if (apiLoading || currentTimeLoading || (assetIdentifier && !chartData)) {
     return (
       <div className="flex items-center justify-center" style={{ height: `${height}px` }}>
         <div className="text-center">

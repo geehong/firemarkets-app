@@ -528,6 +528,7 @@ class DataProcessor:
             logger.debug("📖 Consumer Group으로 데이터 읽기 시작")
             # Consumer Group으로 데이터 읽기 (각 스트림별로 개별 처리)
             all_stream_data = []
+            stream_read_results = {}  # 스트림별 읽기 결과 저장 (헬스 업데이트용)
             for stream_name in self.realtime_streams.keys():
                 group_name = self.realtime_streams[stream_name]
                 try:
@@ -537,22 +538,55 @@ class DataProcessor:
                     stream_exists = await self.redis_client.exists(stream_name)
                     if not stream_exists:
                         logger.debug(f"📭 스트림 {stream_name}이 존재하지 않음, 건너뜀")
+                        stream_read_results[stream_name] = []  # 빈 결과 저장
                         continue
                     
-                    stream_data = await self.redis_client.xreadgroup(
+                    stream_data = None
+                    # 먼저 pending 메시지 확인 및 처리
+                    try:
+                        pending_info = await self.redis_client.xpending(stream_name, group_name)
+                        if pending_info and pending_info.get('pending', 0) > 0:
+                            logger.info(f"⚠️ {stream_name}에 pending 메시지 {pending_info['pending']}개 발견, 재처리 시도")
+                            # Pending 메시지 읽기 (0부터 시작)
+                            pending_data = await self.redis_client.xreadgroup(
+                                groupname=group_name,
+                                consumername="data_processor_worker",
+                                streams={stream_name: "0"},
+                                count=min(self.batch_size, pending_info['pending'])
+                            )
+                            if pending_data:
+                                logger.info(f"📖 {stream_name} pending 메시지 {len(pending_data)}개 읽기 성공")
+                                stream_data = pending_data
+                    except Exception as e:
+                        logger.debug(f"⚠️ {stream_name} pending 메시지 처리 중 오류 (무시): {e}")
+                    
+                    # 새로운 메시지 읽기
+                    new_stream_data = await self.redis_client.xreadgroup(
                         groupname=group_name,
                         consumername="data_processor_worker",
                         streams={stream_name: ">"},
                         count=self.batch_size,
                         block=self.stream_block_ms  # 설정 가능한 블록 시간
                     )
-                    logger.info(f"📖 스트림 {stream_name} 읽기 결과: {len(stream_data) if stream_data else 0}개 메시지")
+                    if new_stream_data:
+                        if stream_data:
+                            stream_data.extend(new_stream_data)
+                        else:
+                            stream_data = new_stream_data
+                    message_count = len(stream_data) if stream_data else 0
+                    logger.info(f"📖 스트림 {stream_name} 읽기 결과: {message_count}개 메시지")
+                    
+                    # 읽기 결과 저장 (메시지가 없어도 저장하여 헬스 체크 가능)
                     if stream_data:
                         all_stream_data.extend(stream_data)
+                        stream_read_results[stream_name] = stream_data
+                    else:
+                        stream_read_results[stream_name] = []  # 빈 결과 저장
                 except Exception as e:
                     import traceback
                     logger.error(f"❌ 스트림 {stream_name} 읽기 실패: {e}")
                     logger.error(f"🔍 오류 상세: {traceback.format_exc()}")
+                    stream_read_results[stream_name] = []  # 오류 시 빈 결과 저장
                     # 스트림별 오류를 개별적으로 처리하고 계속 진행
                     continue
             
@@ -572,14 +606,18 @@ class DataProcessor:
                 pg_db.close()
             
             # 먼저 모든 스트림의 헬스를 업데이트 (활성 소스 결정 전에)
-            for stream_name_bytes, messages in all_stream_data:
-                stream_name_str = stream_name_bytes.decode('utf-8') if isinstance(stream_name_bytes, bytes) else stream_name_bytes
-                source_name = stream_name_str.split(':')[0]  # 'binance:realtime' -> 'binance'
+            # all_stream_data에 있는 스트림뿐만 아니라 읽기 시도한 모든 스트림에 대해 헬스 업데이트
+            for stream_name, stream_data in stream_read_results.items():
+                source_name = stream_name.split(':')[0]  # 'binance:realtime' -> 'binance'
                 
-                # 실제 메시지가 있을 때만 마지막 수신 시간 업데이트
-                if messages:
-                    self._update_source_health(source_name)
-                    logger.info(f"📊 {source_name} 소스 헬스 업데이트: {self.source_last_seen.get(source_name)}")
+                # 스트림에서 메시지를 읽었으면 (빈 배열이 아니면) 헬스 업데이트
+                if stream_data:
+                    # stream_data는 [(stream_name_bytes, messages), ...] 형식
+                    for stream_name_bytes, messages in stream_data:
+                        if messages:  # 실제 메시지가 있을 때만 헬스 업데이트
+                            self._update_source_health(source_name)
+                            logger.info(f"📊 {source_name} 소스 헬스 업데이트 (메시지 {len(messages)}개): {self.source_last_seen.get(source_name)}")
+                            break  # 한 번만 업데이트하면 됨
             
             # 모든 헬스 업데이트 후 활성 소스 결정
             active_crypto_source = self._get_active_crypto_source()
