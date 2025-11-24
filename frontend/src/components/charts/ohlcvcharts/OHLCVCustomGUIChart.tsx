@@ -44,15 +44,6 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false)
   const [selectedRange, setSelectedRange] = useState<string>('default')
 
-  // 디버깅: selectedRange 변경 감지
-  useEffect(() => {
-    console.log('[OHLCVCustomGUIChart] selectedRange changed:', selectedRange, {
-      assetIdentifier,
-      isTimeData,
-      useIntradayData
-    })
-  }, [selectedRange, assetIdentifier, isTimeData, useIntradayData])
-
   // Highcharts CSS를 동적으로 추가
   useEffect(() => {
     if (typeof document === 'undefined') return
@@ -169,6 +160,15 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
   // 1d 또는 1w가 선택되면 intraday 데이터를 사용
   const isTimeData = useIntradayData || selectedRange === '1d' || selectedRange === '1w'
   const isDailyData = !isTimeData
+
+  // 디버깅: selectedRange 변경 감지
+  useEffect(() => {
+    console.log('[OHLCVCustomGUIChart] selectedRange changed:', selectedRange, {
+      assetIdentifier,
+      isTimeData,
+      useIntradayData
+    })
+  }, [selectedRange, assetIdentifier, isTimeData, useIntradayData])
 
   const { data: timeData, isLoading: timeLoading, error: timeError } = useIntraday(
     assetIdentifier || '',
