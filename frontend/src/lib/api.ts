@@ -231,7 +231,13 @@ export class ApiClient {
     search.append('days', String(params.days ?? 1))
     if (params.limit) search.append('limit', String(params.limit))
     const qs = search.toString()
-    return this.request(`/realtime/intraday-ohlcv${qs ? `?${qs}` : ''}`)
+    const url = `/realtime/intraday-ohlcv${qs ? `?${qs}` : ''}`
+    console.log('[ApiClient.getIntradayOhlcv] Request URL:', url, {
+      params,
+      data_interval: params.data_interval ?? '4h (default)',
+      limit: params.limit
+    })
+    return this.request(url)
   }
 
   // Crypto

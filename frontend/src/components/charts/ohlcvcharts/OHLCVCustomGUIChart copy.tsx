@@ -42,8 +42,6 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
   const [volumeData, setVolumeData] = useState<number[][] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false)
-  const [selectedInterval, setSelectedInterval] = useState<string>(dataInterval || '1d')
-  const [useLogScale, setUseLogScale] = useState<boolean>(false)
 
   // Highcharts CSS를 동적으로 추가
   useEffect(() => {
@@ -157,102 +155,32 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
     return () => window.removeEventListener('resize', onResize)
   }, [isClient])
 
-  // dataInterval prop이 변경되면 selectedInterval도 업데이트
-  useEffect(() => {
-    if (dataInterval && dataInterval !== selectedInterval) {
-      setSelectedInterval(dataInterval)
-    }
-  }, [dataInterval])
+  // 데이터 소스 선택
+  // 1d 또는 1w가 선택되면 intraday 데이터를 사용
+  const isTimeData = useIntradayData
+  const isDailyData = !isTimeData
 
-  // 시간대별 API 엔드포인트 매핑
-  // 분봉/시봉: intraday API 사용, 일봉/주봉/월봉: daily API 사용
-  const intradayIntervals = ['1m', '5m', '15m', '30m', '1h', '4h']
-  const dailyIntervals = ['1d', '1w', '1M']
-  
-  const isIntradayInterval = intradayIntervals.includes(selectedInterval)
-  const isDailyInterval = dailyIntervals.includes(selectedInterval)
-  
-  // limit 계산
-  const getIntradayLimit = (interval: string): number => {
-    switch (interval) {
-      case '1m': return 1440 * 2   // 2880 (2일치)
-      case '5m': return 288 * 7     // 2016 (7일치)
-      case '15m': return 96 * 14    // 1344 (14일치)
-      case '30m': return 48 * 30    // 1440 (30일치)
-      case '1h': return 24 * 120   // 2880 (120일치)
-      case '4h': return 6 * 360    // 2160 (360일치)
-      default: return 1000
-    }
-  }
-
-  const getDailyLimit = (interval: string): number => {
-    switch (interval) {
-      case '1d': return 365 * 10    // 10년치 일봉 (3650)
-      case '1w': return 52 * 20     // 20년치 주봉 (1040)
-      case '1M': return 12 * 30     // 30년치 월봉 (360)
-      default: return 50000    // 백엔드 기본값
-    }
-  }
-
-  const intradayLimit = getIntradayLimit(selectedInterval)
-  const dailyLimit = getDailyLimit(selectedInterval)
-
-  // 로그 출력
-  useEffect(() => {
-    console.log('[OHLCVCustomGUIChart] Interval & Limit Settings:', {
-      selectedInterval,
-      isIntradayInterval,
-      isDailyInterval,
-      intradayLimit: isIntradayInterval ? intradayLimit : 'N/A',
-      dailyLimit: isDailyInterval ? dailyLimit : 'N/A',
-      assetIdentifier
-    })
-  }, [selectedInterval, isIntradayInterval, isDailyInterval, intradayLimit, dailyLimit, assetIdentifier])
-  
-  // intraday 데이터 (분봉, 시봉)
-  const intradayOptions = { dataInterval: selectedInterval, days: 1, limit: intradayLimit }
-  
-  // 로그: 실제 전달되는 옵션 확인
-  useEffect(() => {
-    if (isIntradayInterval && assetIdentifier) {
-      console.log('[OHLCVCustomGUIChart] Intraday API Request Options:', {
-        assetIdentifier,
-        ...intradayOptions,
-        willRequest: true
-      })
-    }
-  }, [isIntradayInterval, assetIdentifier, selectedInterval, intradayLimit])
-  
   const { data: timeData, isLoading: timeLoading, error: timeError } = useIntraday(
     assetIdentifier || '',
-    intradayOptions,
-    { enabled: !!assetIdentifier && isIntradayInterval, staleTime: 60_000, retry: 3 }
+    { dataInterval, days: 1 },
+    { enabled: !!assetIdentifier && isTimeData, staleTime: 60_000, retry: 3 }
   )
 
-  // daily 데이터 (일봉, 주봉, 월봉)
+  const { data: delayedData, isLoading: delayedLoading, error: delayedError } = useDelayedQuotes(
+    assetIdentifier ? [assetIdentifier] : [],
+    {},
+    { enabled: !!assetIdentifier && isTimeData && dataInterval === '15m', staleTime: 60_000, retry: 3 }
+  )
+
   const { data: dailyData, isLoading: dailyLoading, error: dailyError } = useOhlcv(
     assetIdentifier || '',
-    { dataInterval: selectedInterval, limit: dailyLimit },
-    { enabled: !!assetIdentifier && isDailyInterval, staleTime: 60_000, retry: 3 }
+    { dataInterval },
+    { enabled: !!assetIdentifier && isDailyData, staleTime: 60_000, retry: 3 }
   )
 
-  const apiData = isIntradayInterval ? timeData : dailyData
-  const apiLoading = isIntradayInterval ? timeLoading : dailyLoading
-  const apiError = isIntradayInterval ? timeError : dailyError
-
-  // API 응답 데이터 로그
-  useEffect(() => {
-    if (apiData) {
-      const dataCount = Array.isArray(apiData) ? apiData.length : (apiData?.data?.length || apiData?.count || 0)
-      console.log('[OHLCVCustomGUIChart] API Response:', {
-        selectedInterval,
-        apiType: isIntradayInterval ? 'intraday' : 'daily',
-        requestedLimit: isIntradayInterval ? intradayLimit : dailyLimit,
-        actualDataCount: dataCount,
-        hasData: dataCount > 0
-      })
-    }
-  }, [apiData, selectedInterval, isIntradayInterval, intradayLimit, dailyLimit])
+  const apiData = isTimeData ? (dataInterval === '15m' ? delayedData : timeData) : dailyData
+  const apiLoading = isTimeData ? (dataInterval === '15m' ? delayedLoading : timeLoading) : dailyLoading
+  const apiError = isTimeData ? (dataInterval === '15m' ? delayedError : timeError) : dailyError
 
   // 데이터 변환 및 설정
   useEffect(() => {
@@ -322,23 +250,34 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
     }
 
     let rows: any[] = []
-    rows = apiData?.data || apiData || []
+    if (isTimeData) {
+      if (dataInterval === '15m' && delayedData) {
+        rows = delayedData.quotes || []
+      } else {
+        rows = apiData?.data || apiData || []
+      }
+    } else {
+      rows = apiData?.data || apiData || []
+    }
 
     if (rows && rows.length > 0) {
       const ohlc = rows
         .map((item: any) => {
           let timestamp: number
           let open: number, high: number, low: number, close: number
-          
-          if (isIntradayInterval) {
-            // intraday 데이터 구조
-            timestamp = new Date(String(item.timestamp || item.timestamp_utc)).getTime()
-            open = parseFloat(String(item.open || item.open_price)) || 0
-            high = parseFloat(String(item.high || item.high_price)) || 0
-            low = parseFloat(String(item.low || item.low_price)) || 0
-            close = parseFloat(String(item.close || item.close_price)) || 0
+          if (isTimeData) {
+            if (dataInterval === '15m') {
+              timestamp = new Date(String(item.timestamp_utc)).getTime()
+              const price = parseFloat(String(item.price)) || 0
+              open = high = low = close = price
+            } else {
+              timestamp = new Date(String(item.timestamp || item.timestamp_utc)).getTime()
+              open = parseFloat(String(item.open || item.open_price)) || 0
+              high = parseFloat(String(item.high || item.high_price)) || 0
+              low = parseFloat(String(item.low || item.low_price)) || 0
+              close = parseFloat(String(item.close || item.close_price)) || 0
+            }
           } else {
-            // daily 데이터 구조
             timestamp = new Date(String(item.timestamp_utc)).getTime()
             open = parseFloat(String(item.open_price)) || 0
             high = parseFloat(String(item.high_price)) || 0
@@ -353,8 +292,12 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
       const vol = rows
         .map((item: any) => {
           let ts: number
-          if (isIntradayInterval) {
-            ts = new Date(String(item.timestamp || item.timestamp_utc)).getTime()
+          if (isTimeData) {
+            if (dataInterval === '15m') {
+              ts = new Date(String(item.timestamp_utc)).getTime()
+            } else {
+              ts = new Date(String(item.timestamp || item.timestamp_utc)).getTime()
+            }
           } else {
             ts = new Date(String(item.timestamp_utc)).getTime()
           }
@@ -370,7 +313,7 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
     } else if (!apiLoading) {
       setError('차트 데이터가 없습니다.')
     }
-  }, [assetIdentifier, selectedInterval, externalOhlcvData, apiData, apiLoading, apiError, isIntradayInterval, isDailyInterval, dataUrl])
+  }, [assetIdentifier, dataInterval, externalOhlcvData, apiData, apiLoading, apiError, isTimeData, isDailyData, delayedData, useIntradayData, dataUrl])
 
   useEffect(() => {
     if (!isClient || !Highcharts || !chartContainerRef.current) return
@@ -524,10 +467,6 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
         chart: {
             height: height,
             width: null, // 부모 컨테이너 크기에 맞춤
-            spacingTop: 10,
-            spacingBottom: 10,
-            spacingRight: 10,
-            spacingLeft: 10,
             events: {
                 load: function (this: any) {
                 addPopupEvents(this)
@@ -568,51 +507,12 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
             ],
             inputEnabled: false
         },
-        navigator: {
-            enabled: true,
-            height: 50,
-            margin: 5,
-            handles: {
-                backgroundColor: '#3b82f6',
-                borderColor: '#1d4ed8',
-                width: 8,
-                height: 20
-            },
-            outlineColor: '#d1d5db',
-            outlineWidth: 1,
-            maskFill: 'rgba(59, 130, 246, 0.1)',
-            maskInside: true,
-            series: {
-                type: 'line',
-                color: '#6b7280',
-                lineWidth: 1,
-                dataGrouping: {
-                    enabled: false
-                }
-            }
-        },
-        scrollbar: {
-            enabled: true,
-            barBackgroundColor: '#f3f4f6',
-            barBorderRadius: 7,
-            barBorderWidth: 0,
-            buttonBackgroundColor: '#f3f4f6',
-            buttonBorderWidth: 0,
-            buttonBorderRadius: 7,
-            rifleColor: '#6b7280',
-            trackBackgroundColor: '#ffffff',
-            trackBorderWidth: 1,
-            trackBorderRadius: 8,
-            trackBorderColor: '#d1d5db',
-            height: 14
-        },
           yAxis: [
             {
             labels: {
                 align: 'left'
             },
             height: '80%',
-            type: useLogScale ? 'logarithmic' : 'linear',
             resize: {
                 enabled: true
             }
@@ -746,26 +646,7 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
         chartRef.current = null
       }
     }
-  }, [isClient, Highcharts, chartData, volumeData, seriesId, seriesName, assetIdentifier, selectedInterval, useLogScale])
-
-  const intervalLabels: Record<string, string> = {
-    '1m': '1분',
-    '5m': '5분',
-    '15m': '15분',
-    '30m': '30분',
-    '1h': '1시간',
-    '4h': '4시간',
-    '1d': '일봉',
-    '1w': '주봉',
-    '1M': '월봉'
-  }
-
-  const getIntervalLabel = (interval: string) => intervalLabels[interval] || interval
-
-  const intervalOptions = [
-    '1m', '5m', '15m', '30m',
-    '1h', '4h', '1d', '1w', '1M'
-  ]
+  }, [isClient, Highcharts, chartData, volumeData, seriesId, seriesName, assetIdentifier])
 
   if (!isClient) {
     return (
@@ -810,28 +691,7 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
   }
 
   return (
-    <div className="chart-wrapper" style={{ 
-      width: '100%', 
-      minHeight: `${height + 70}px`, // 네비게이터 공간 추가 (약 70px)
-      position: 'relative',
-      display: 'flex',
-      flexDirection: 'column'
-    }}>
-        <div className="custom-interval-selector">
-          <label htmlFor={`${seriesId}-interval-select`}>Interval</label>
-          <select
-            id={`${seriesId}-interval-select`}
-            value={selectedInterval}
-            onChange={e => setSelectedInterval(e.target.value)}
-          >
-            {intervalOptions.map(option => (
-              <option key={option} value={option}>
-                {getIntervalLabel(option)}
-              </option>
-            ))}
-          </select>
-        </div>
-
+    <div className="chart-wrapper" style={{ width: '100%', height: `${height}px`, position: 'relative' }}>
         {/* Indicators Popup */}
         <div className="highcharts-popup highcharts-popup-indicators" style={{ display: 'none' }}>
           <span className="highcharts-close-popup">×</span>
@@ -1052,17 +912,6 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
                   </li>
                 </ul>
               </li>
-              <li 
-                className={`highcharts-log-toggle ${useLogScale ? 'active' : ''}`} 
-                title={useLogScale ? 'Switch to linear scale' : 'Switch to log scale'} 
-                onClick={() => setUseLogScale(prev => !prev)}
-              >
-                <span 
-                  className={`highcharts-menu-item-btn ${useLogScale ? 'linear-icon' : 'log-icon'}`}
-                  style={{ width: 25, height: 25 }}
-                  title={useLogScale ? 'Linear Scale' : 'Log Scale'}
-                ></span>
-              </li>
               <li className="highcharts-save-chart right" title="Save chart">
                 <span className="highcharts-menu-item-btn"></span>
               </li>
@@ -1103,13 +952,7 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
           ref={chartContainerRef} 
           id={`chart-container-${seriesId}`}
           className="chart" 
-          style={{ 
-            height: `${height}px`, 
-            width: '100%',
-            flex: '1 1 auto',
-            minHeight: 0,
-            overflow: 'visible'
-          }}
+          style={{ height: `${height}px`, width: '100%' }}
         ></div>
       </div>
   )

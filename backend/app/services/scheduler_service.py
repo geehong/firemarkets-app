@@ -64,7 +64,7 @@ class SchedulerService:
         "crypto_ohlcv_clients": {
             "job_key": "OHLCV",
             "config": {
-                "scheduled_intervals": ["1d", "4h", "1h"],
+                "scheduled_intervals": ["1m", "5m", "15m", "30m", "1h", "4h", "1d"],
                 "asset_type_filter": ["Crypto"]
             }
         },
@@ -396,12 +396,12 @@ class SchedulerService:
                                                         collector_instance.set_schedule_config(scheduled_intervals=["1m", "5m", "15m", "30m", "1h", "4h"])
                                                         self.logger.info(f"Setting scheduled_intervals=['1m', '5m', '15m', '30m', '1h', '4h'] for {group_name}")
                                                     elif group_name == "crypto_ohlcv_clients":
-                                                        # 암호화폐 OHLCV 데이터 수집 (1d, 4h, 1h)
+                                                        # 암호화폐 OHLCV 데이터 수집 (1m, 5m, 15m, 30m, 1h, 4h, 1d)
                                                         collector_instance.set_schedule_config(
-                                                            scheduled_intervals=["1d", "4h", "1h"],
+                                                            scheduled_intervals=["1m", "5m", "15m", "30m", "1h", "4h", "1d"],
                                                             asset_type_filter=["Crypto"]
                                                         )
-                                                        self.logger.info(f"Setting scheduled_intervals=['1d', '4h', '1h'] and asset_type_filter=['Crypto'] for {group_name}")
+                                                        self.logger.info(f"Setting scheduled_intervals=['1m', '5m', '15m', '30m', '1h', '4h', '1d'] and asset_type_filter=['Crypto'] for {group_name}")
                                                     elif group_name == "commodity_ohlcv_clients":
                                                         # 원자재 OHLCV 데이터 수집 (1d)
                                                         collector_instance.set_schedule_config(

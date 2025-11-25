@@ -55,13 +55,17 @@
     background-repeat: no-repeat;
     cursor: pointer;
     float: left;
-    height: 40px;
+    height: 30px;
     list-style: none;
     margin-right: 2px;
     margin-bottom: 3px;
     padding: 0;
     position: relative;
-    width: auto;
+    width: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
 }
 
 .highcharts-stocktools-toolbar li ul {
@@ -70,19 +74,25 @@
     padding-left: 0;
     position: absolute;
     z-index: 125;
+    background-color: var(--highcharts-neutral-color-3, #f7f7f7);
+    padding: 4px;
+    border-radius: 4px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    min-width: 120px;
 }
 
-.highcharts-stocktools-toolbar li ul li {
-    margin-bottom: 0;
-    width: 160px;
+.highcharts-stocktools-toolbar li {
+    position: relative;
 }
 
 .highcharts-stocktools-toolbar li:hover {
     background-color: var(--highcharts-highlight-color-10, #e6ebf5);
 }
 
-.highcharts-stocktools-toolbar li:hover ul {
-    display: block;
+.highcharts-stocktools-toolbar li:hover > ul {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
 
 .highcharts-stocktools-toolbar li > span.highcharts-menu-item-btn {
@@ -90,15 +100,75 @@
     background-position: 50% 50%;
     display: block;
     float: left;
-    height: 100%;
-    width: 40px;
+    height: 30px;
+    width: 30px;
+    background-size: 22px 22px;
+}
+
+.highcharts-stocktools-toolbar li ul li {
+    margin-bottom: 0;
+    width: 100%;
+    height: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+}
+
+.highcharts-stocktools-toolbar li ul li:hover {
+    background-color: var(--highcharts-highlight-color-10, #e6ebf5);
+}
+
+.highcharts-stocktools-toolbar li ul li > span.highcharts-menu-item-btn {
+    height: 24px;
+    width: 24px;
+    background-size: 20px 20px;
 }
 
 .highcharts-stocktools-toolbar li > .highcharts-menu-item-title {
-    color: var(--highcharts-neutral-color-60, #666);
-    line-height: 40px;
-    font-size: 0.876em;
-    padding: 0 10px 0 5px;
+    display: none;
+}
+
+.highcharts-stocktools-toolbar li ul li > .highcharts-menu-item-title {
+    display: none;
+}
+
+.custom-interval-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    justify-content: flex-end;
+}
+
+.custom-interval-selector label {
+    font-size: 12px;
+    color: #374151;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.custom-interval-selector select {
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 13px;
+    color: #111827;
+    background-color: #ffffff;
+    min-width: 110px;
+}
+
+.custom-interval-selector select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3);
+}
+
+@media (max-width: 768px) {
+    .custom-interval-selector {
+        justify-content: center;
+    }
 }
 
 .highcharts-indicators > .highcharts-menu-item-btn {
@@ -265,7 +335,52 @@
     background-image: url("/images/icons/stock-icons/save-chart.svg");
 }
 
+.highcharts-interval-selector > .highcharts-menu-item-btn {
+    background-image: url("/images/icons/stock-icons/Interval_view.svg");
+    background-size: 20px 20px;
+}
+
+.highcharts-log-toggle > .highcharts-menu-item-btn {
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 20px 20px;
+}
+
+.highcharts-log-toggle > .highcharts-menu-item-btn.log-icon {
+    background-image: url("/images/icons/chart-icons/Log.svg");
+}
+
+.highcharts-log-toggle > .highcharts-menu-item-btn.linear-icon {
+    background-image: url("/images/icons/chart-icons/Linear.svg");
+}
+
 li.highcharts-active {
+    background-color: var(--highcharts-highlight-color-10, #e6ebf5);
+}
+
+/* Interval Selector 스타일 */
+.highcharts-interval-selector li.highcharts-active {
+    background-color: var(--highcharts-highlight-color-10, #e6ebf5);
+    font-weight: 600;
+}
+
+.highcharts-interval-selector li {
+    cursor: pointer;
+}
+
+.highcharts-interval-selector li:hover {
+    background-color: var(--highcharts-highlight-color-10, #e6ebf5);
+}
+
+.highcharts-log-toggle {
+    cursor: pointer;
+}
+
+.highcharts-log-toggle.active {
+    background-color: var(--highcharts-highlight-color-10, #e6ebf5);
+}
+
+.highcharts-log-toggle:hover {
     background-color: var(--highcharts-highlight-color-10, #e6ebf5);
 }
 
@@ -291,7 +406,7 @@ li.highcharts-active {
     width: 100%;
     background: var(--highcharts-background-color, #fff);
     padding-top: 10px;
-    overflow: hidden;
+    overflow: visible;
     box-sizing: border-box;
 }
 

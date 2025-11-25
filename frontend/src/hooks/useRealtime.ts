@@ -64,10 +64,16 @@ export const useIntradayOhlcv = (
 ) => {
   return useQuery({
     queryKey: ['intraday-ohlcv', assetIdentifier, options],
-    queryFn: () => apiClient.getIntradayOhlcv({
-      asset_identifier: assetIdentifier,
-      ...options
-    }),
+    queryFn: () => {
+      const params = {
+        asset_identifier: assetIdentifier,
+        data_interval: options?.dataInterval, // dataInterval을 data_interval로 매핑
+        days: options?.days,
+        limit: options?.limit
+      }
+      console.log('[useIntradayOhlcv] Calling API with params:', params)
+      return apiClient.getIntradayOhlcv(params)
+    },
     enabled: !!assetIdentifier,
     staleTime: 30 * 1000, // 30초
     ...queryOptions,

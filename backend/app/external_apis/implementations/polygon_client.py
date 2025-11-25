@@ -2,6 +2,7 @@
 Polygon.io API client for financial data.
 """
 import logging
+import time
 from typing import Dict, List, Optional, Any
 import httpx
 import asyncio
@@ -25,19 +26,54 @@ class PolygonClient(TradFiAPIClient):
         self.name = "Polygon"
         self.base_url = "https://api.polygon.io"
         self.api_key_env = "POLYGON_API_KEY"
-        self.rate_limit_info = {
-            "calls_per_minute": 2,
-            "calls_per_day": None,
-            "notes": "Lowered to avoid 429s on free tier"
-        }
+        
+        # Rate limiting 설정 (무료 플랜: 분당 5회 제한, 안전을 위해 4회로 제한)
+        self.calls_per_minute = 4
+        self.calls_per_day = 500
+        self.min_delay_between_requests = 15.0  # 분당 4회 = 15초 간격 (안전 마진 포함)
+        
         # 직접 환경 변수에서 읽기
         import os
         self.api_key = os.getenv(self.api_key_env, "tUWX3e7_Z_ppi90QUsiogmxTbwuWnpa_")
         if not self.api_key:
             logger.warning(f"{self.api_key_env} is not configured.")
+        
+        # Rate limiting을 위한 변수
+        self.request_times = []
+    
+    async def _enforce_rate_limit(self):
+        """Enforce rate limiting for Polygon API (무료 플랜: 분당 5회 제한)"""
+        current_time = time.time()
+        
+        # 1분 이전의 요청 기록 제거
+        self.request_times = [t for t in self.request_times if current_time - t < 60]
+        
+        # 분당 제한 체크
+        if len(self.request_times) >= self.calls_per_minute:
+            wait_time = 60 - (current_time - self.request_times[0]) + 2  # 2초 여유 추가
+            if wait_time > 0:
+                logger.info(f"⏳ Polygon rate limit reached ({len(self.request_times)}/{self.calls_per_minute}), waiting {wait_time:.1f}s")
+                await asyncio.sleep(wait_time)
+                # 대기 후 다시 정리
+                current_time = time.time()
+                self.request_times = [t for t in self.request_times if current_time - t < 60]
+        
+        # 최소 요청 간격 보장
+        if self.request_times:
+            time_since_last = current_time - self.request_times[-1]
+            if time_since_last < self.min_delay_between_requests:
+                wait_time = self.min_delay_between_requests - time_since_last
+                logger.debug(f"Polygon minimum delay: waiting {wait_time:.1f}s")
+                await asyncio.sleep(wait_time)
+        
+        # 현재 요청 시간 기록
+        self.request_times.append(time.time())
 
     async def _request(self, path: str, params: Dict[str, Any] = None) -> Any:
         """Internal helper to perform GET requests with api key injected."""
+        # Rate limiting 적용
+        await self._enforce_rate_limit()
+        
         if params is None:
             params = {}
         
@@ -54,11 +90,34 @@ class PolygonClient(TradFiAPIClient):
                     logger.info(f"Polygon: Symbol not supported (미지원 티커): {path}")
                     return None
                 
+                # 429 에러 처리: Rate limit 초과
+                if resp.status_code == 429:
+                    error_data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+                    error_msg = error_data.get("error", "Rate limit exceeded")
+                    logger.warning(f"Polygon API rate limit exceeded (429). Waiting 60s before retry. Error: {error_msg}")
+                    await asyncio.sleep(60)  # 1분 대기
+                    # 재시도 (한 번만)
+                    await self._enforce_rate_limit()
+                    resp = await client.get(url, params=params, timeout=self.api_timeout)
+                
+                # 403 에러 처리: 인증 실패 또는 권한 없음
+                if resp.status_code == 403:
+                    error_data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+                    error_msg = error_data.get("error", "Forbidden")
+                    logger.error(f"Polygon API 403 Forbidden: {error_msg}. Check API key and subscription plan.")
+                    return None
+                
                 resp.raise_for_status()
                 return resp.json()
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 logger.info(f"Polygon: Symbol not supported (미지원 티커): {path}")
+                return None
+            if e.response.status_code == 429:
+                logger.warning(f"Polygon API rate limit exceeded (429) after retry. Skipping this request.")
+                return None
+            if e.response.status_code == 403:
+                logger.error(f"Polygon API 403 Forbidden. Check API key and subscription plan.")
                 return None
             logger.error(f"Polygon API error: {e.response.status_code} - {e.response.text}")
             raise
@@ -80,8 +139,8 @@ class PolygonClient(TradFiAPIClient):
         """Return known public rate limits for Polygon free plan"""
         return {
             "free_tier": {
-                "calls_per_minute": 4,
-                "calls_per_day": 500,
+                "calls_per_minute": self.calls_per_minute,
+                "calls_per_day": self.calls_per_day,
                 "real_time_quotes": False
             }
         }
