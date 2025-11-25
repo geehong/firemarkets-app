@@ -395,6 +395,20 @@ class SchedulerService:
                                                         # 인트라데이 데이터만 수집 (1m, 5m, 15m, 30m, 1h, 4h 등)
                                                         collector_instance.set_schedule_config(scheduled_intervals=["1m", "5m", "15m", "30m", "1h", "4h"])
                                                         self.logger.info(f"Setting scheduled_intervals=['1m', '5m', '15m', '30m', '1h', '4h'] for {group_name}")
+                                                    elif group_name == "crypto_ohlcv_clients":
+                                                        # 암호화폐 OHLCV 데이터 수집 (1d, 4h, 1h)
+                                                        collector_instance.set_schedule_config(
+                                                            scheduled_intervals=["1d", "4h", "1h"],
+                                                            asset_type_filter=["Crypto"]
+                                                        )
+                                                        self.logger.info(f"Setting scheduled_intervals=['1d', '4h', '1h'] and asset_type_filter=['Crypto'] for {group_name}")
+                                                    elif group_name == "commodity_ohlcv_clients":
+                                                        # 원자재 OHLCV 데이터 수집 (1d)
+                                                        collector_instance.set_schedule_config(
+                                                            scheduled_intervals=["1d"],
+                                                            asset_type_filter=["Commodities"]
+                                                        )
+                                                        self.logger.info(f"Setting scheduled_intervals=['1d'] and asset_type_filter=['Commodities'] for {group_name}")
                                                 
                                                 # stock_profiles_fmp_clients 그룹인 경우 FMP 클라이언트 사용 설정 (위에서 이미 처리됨)
                                                 if group_name == "stock_profiles_fmp_clients" and hasattr(collector_instance, 'use_fmp_clients'):
