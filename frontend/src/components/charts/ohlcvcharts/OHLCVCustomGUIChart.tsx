@@ -41,6 +41,7 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
   const [volumeData, setVolumeData] = useState<number[][] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selectedInterval, setSelectedInterval] = useState<string>(dataInterval || '1d')
+  const [useLogScale, setUseLogScale] = useState<boolean>(false)
 
   // Load Highcharts
   useEffect(() => {
@@ -55,8 +56,14 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
         const modules = [
           () => import('highcharts/modules/exporting'),
           () => import('highcharts/modules/accessibility'),
+          () => import('highcharts/modules/drag-panes'),
+          () => import('highcharts/modules/full-screen'),
+          () => import('highcharts/modules/annotations-advanced'),
+          () => import('highcharts/modules/price-indicator'),
+          () => import('highcharts/modules/stock-tools'), // Disabled but needed for modules
           () => import('highcharts/modules/heikinashi'),
-          () => import('highcharts/modules/hollowcandlestick')
+          () => import('highcharts/modules/hollowcandlestick'),
+          () => import('highcharts/themes/adaptive')
         ]
 
         await Promise.all(
@@ -111,9 +118,9 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
 
   const getDailyLimit = (interval: string): number => {
     switch (interval) {
-      case '1d': return 365 * 10
-      case '1w': return 52 * 20
-      case '1M': return 12 * 30
+      case '1d': return 365 * 20
+      case '1w': return 52 * 30
+      case '1M': return 12 * 40
       default: return 50000
     }
   }
@@ -268,6 +275,61 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
       const ohlc = chartData
       const volume = volumeData || []
 
+      // Set Highcharts global options (light theme)
+      Highcharts.setOptions({
+        chart: {
+          backgroundColor: '#ffffff'
+        },
+        title: {
+          style: {
+            color: '#333333'
+          }
+        },
+        xAxis: {
+          gridLineColor: '#e0e0e0',
+          labels: {
+            style: {
+              color: '#666666'
+            }
+          }
+        },
+        yAxis: {
+          gridLineColor: '#e0e0e0',
+          labels: {
+            style: {
+              color: '#666666'
+            }
+          }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(255, 255, 255, 0.95)',
+          style: {
+            color: '#333333'
+          }
+        },
+        scrollbar: {
+          barBackgroundColor: '#e0e0e0',
+          barBorderRadius: 0,
+          barBorderWidth: 0,
+          buttonBorderWidth: 0,
+          buttonArrowColor: '#666666',
+          rifleColor: '#666666',
+          trackBackgroundColor: '#f5f5f5',
+          trackBorderRadius: 0,
+          trackBorderWidth: 1,
+          trackBorderColor: '#e0e0e0'
+        },
+        exporting: {
+          buttons: {
+            contextButton: {
+              theme: {
+                fill: '#ffffff'
+              }
+            }
+          }
+        }
+      })
+
       const chart = Highcharts.stockChart(chartContainerRef.current, {
         chart: {
           height: height,
@@ -320,10 +382,17 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
           trackBorderColor: '#d1d5db',
           height: 14
         },
+        stockTools: {
+          gui: {
+            enabled: true,
+            iconsURL: '/images/icons/stock-icons/'
+          }
+        },
         yAxis: [
           {
             labels: { align: 'left' },
             height: '70%',
+            type: useLogScale ? 'logarithmic' : 'linear',
             resize: { enabled: true }
           },
           {
@@ -407,7 +476,44 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
         chartRef.current = null
       }
     }
-  }, [isClient, Highcharts, chartData, volumeData, seriesId, seriesName, assetIdentifier, height])
+  }, [isClient, Highcharts, chartData, volumeData, seriesId, seriesName, assetIdentifier, height, useLogScale])
+
+
+  // Load CSS dynamically
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    // Load Highcharts CSS files
+    const loadCSS = (href: string) => {
+      const link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = href
+      document.head.appendChild(link)
+      return link
+    }
+
+    const links = [
+      loadCSS('https://code.highcharts.com/css/stocktools/gui.css'),
+      loadCSS('https://code.highcharts.com/css/annotations/popup.css')
+    ]
+
+    // Add global styles (light theme)
+    const style = document.createElement('style')
+    style.textContent = `
+      :root {
+        --highcharts-neutral-color-3: rgba(0, 0, 0, 0);
+      }
+      .highcharts-description {
+        margin: 0.3rem 10px;
+      }
+    `
+    document.head.appendChild(style)
+
+    return () => {
+      links.forEach(link => link.remove())
+      style.remove()
+    }
+  }, [])
 
   const intervalLabels: Record<string, string> = {
     '1m': '1분',
@@ -532,6 +638,42 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
               </option>
             ))}
           </select>
+          <button
+            onClick={() => setUseLogScale(prev => !prev)}
+            title={useLogScale ? 'Switch to linear scale' : 'Switch to log scale'}
+            style={{
+              width: '35px',
+              height: '35px',
+              padding: '0',
+              border: '1px solid #d0d0d0',
+              borderRadius: '4px',
+              background: '#ffffff',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              outline: 'none',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = '#3b82f6'
+              e.currentTarget.style.backgroundColor = '#f5f5f5'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = '#d0d0d0'
+              e.currentTarget.style.backgroundColor = '#ffffff'
+            }}
+          >
+            <img
+              src={useLogScale ? '/images/icons/chart-icons/Linear.svg' : '/images/icons/chart-icons/Log.svg'}
+              alt={useLogScale ? 'Linear Scale' : 'Log Scale'}
+              style={{
+                width: '35px',
+                height: '35px',
+                objectFit: 'contain'
+              }}
+            />
+          </button>
         </div>
       </div>
 
