@@ -9,6 +9,7 @@ import MiniPriceCommoditiesChart from '@/components/charts/minicharts/MiniPriceC
 import CompareMultipleAssetsChart from '@/components/charts/line/CompareMultipleAssetsChart'
 import LiveChart from '@/components/charts/live/livechart'
 import OHLCVCustomGUIChart from '@/components/charts/ohlcvcharts/OHLCVCustomGUIChart'
+import OHLCVVolumeChart from '@/components/charts/ohlcvcharts/OHLCVVolumeChart'
 
 // Dynamic import로 ApexCharts 로드
 const ReactApexChart = dynamic(() => import('react-apexcharts'), { ssr: false })
@@ -183,6 +184,16 @@ export default function ChartsPage() {
           >
             Custom GUI Chart
           </button>
+          <button
+            onClick={() => setActiveChart('volume')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              activeChart === 'volume'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            Candle & Volume
+          </button>
         </div>
       </div>
 
@@ -253,6 +264,17 @@ export default function ChartsPage() {
               seriesId="aapl-ohlc"
               seriesName="AAPL Stock Price"
               height={650}
+            />
+          </div>
+        ) : activeChart === 'volume' ? (
+          <div key="volume-chart">
+            <h3 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Candlestick and Volume Chart</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Default candlestick chart with volume and Ichimoku indicators.
+            </p>
+            <OHLCVVolumeChart 
+              assetIdentifier="BTCUSDT"
+              dataInterval="1d"
             />
           </div>
         ) : (

@@ -15,6 +15,7 @@ import LivePriceStocksEtfChart from '@/components/charts/live/LivePriceStocksEtf
 import LivePriceCryptoChart from '@/components/charts/live/LivePriceCryptoChart'
 import LivePriceCommoditiesChart from '@/components/charts/live/LivePriceCommoditiesChart'
 import OHLCVCustomGUIChart from '@/components/charts/ohlcvcharts/OHLCVCustomGUIChart'
+import OHLCVVolumeChart from '@/components/charts/ohlcvcharts/OHLCVVolumeChart'
 import { getStringValue, formatDate, formatIPODate, formatTime } from '@/components/overviews/utils/formatters'
 import StocksInfoCard from '@/components/overviews/tab/StocksInfoCard'
 import CryptoInfoCard from '@/components/overviews/tab/CryptoInfoCard'
@@ -32,7 +33,7 @@ interface AssetOverviewProps {
 const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData }) => {
   const { assetIdentifier } = useParams() as { assetIdentifier: string }
   const [isMobile, setIsMobile] = useState(false)
-  const [activeChartTab, setActiveChartTab] = useState<'price' | 'interactive'>('price')
+  const [activeChartTab, setActiveChartTab] = useState<'price' | 'interactive' | 'volume'>('price')
   
   // 기본 자산 정보 fetching (타입 확인용)
   const { data: assetDetail, loading: assetDetailLoading, error: assetDetailError } = useAssetDetail(assetIdentifier as string)
@@ -605,6 +606,19 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
             >
               Interactive Chart
             </button>
+            <button
+              onClick={() => setActiveChartTab('volume')}
+              className={`
+                py-4 px-1 border-b-2 font-medium text-sm transition-colors
+                ${
+                  activeChartTab === 'volume'
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                }
+              `}
+            >
+              Volume Chart
+            </button>
           </nav>
         </div>
 
@@ -651,7 +665,7 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
                 )
               }
             })()
-          ) : (
+          ) : activeChartTab === 'interactive' ? (
             // Interactive Chart는 OHLCVCustomGUIChart 사용
             <OHLCVCustomGUIChart
               assetIdentifier={assetIdentifier as string}
@@ -659,6 +673,13 @@ const AssetOverview: React.FC<AssetOverviewProps> = ({ className, initialData })
               seriesId={`${assetIdentifier}-interactive`}
               seriesName={assetName || assetTicker}
               height={650}
+            />
+          ) : (
+            // Volume Chart는 OHLCVVolumeChart 사용
+            <OHLCVVolumeChart
+              assetIdentifier={assetIdentifier as string}
+              height={650}
+              title={`${assetName || assetTicker} - Candlestick and Volume`}
             />
           )}
         </React.Suspense>

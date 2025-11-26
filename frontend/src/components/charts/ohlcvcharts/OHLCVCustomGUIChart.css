@@ -384,20 +384,9 @@ li.highcharts-active {
     background-color: var(--highcharts-highlight-color-10, #e6ebf5);
 }
 
-/* Light/dark mode */
-.highcharts-menu-item-btn,
-.highcharts-light .highcharts-menu-item-btn {
+/* Light mode - no filter needed */
+.highcharts-menu-item-btn {
     filter: none;
-}
-
-.highcharts-dark .highcharts-menu-item-btn {
-    filter: invert(1);
-}
-
-@media (prefers-color-scheme: dark) {
-    .highcharts-menu-item-btn {
-        filter: invert(1);
-    }
 }
 
 /* Popup */
