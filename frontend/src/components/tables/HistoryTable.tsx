@@ -2,7 +2,8 @@
 
 import React, { useMemo, useState } from 'react'
 import TableBase, { TableColumn } from './TableBase'
-import { useOhlcvData } from '@/hooks/useAssets'
+import { useOhlcvData, useAssetDetail } from '@/hooks/useAssets'
+import { useDelayedQuoteLast, useSparklinePrice } from '@/hooks/useRealtime'
 
 type OhlcvRow = {
   Date: string
@@ -31,12 +32,88 @@ export default function HistoryTable({
 }: HistoryTableProps) {
   const [interval, setInterval] = useState<'1d' | '1w' | '1m'>(initialInterval)
 
+  // 오늘자(실시간/딜레이) 가격을 위해 자산 타입 조회
+  const { data: assetDetail } = useAssetDetail(assetIdentifier)
+  const isCrypto = assetDetail?.asset_type_id === 8
+  const dataSource = isCrypto ? 'binance' : undefined
+  const isStocksOrEtf =
+    assetDetail?.asset_type_id === 2 || // Stocks
+    assetDetail?.asset_type_id === 5 || // ETFs
+    assetDetail?.type_name?.toLowerCase() === 'stocks' ||
+    assetDetail?.type_name?.toLowerCase() === 'etfs'
+
+  // RealtimeQuotesPriceWidget 과 동일한 로직으로 오늘자 quote 조회
+  const delayedQuoteQuery = useDelayedQuoteLast(
+    assetIdentifier,
+    {
+      dataInterval: '15m',
+      dataSource
+    },
+    {
+      refetchInterval: 15 * 60 * 1000,
+      staleTime: 0,
+      gcTime: 0,
+      enabled: !!assetIdentifier && !isStocksOrEtf
+    }
+  )
+
+  const sparklineQuery = useSparklinePrice(
+    assetIdentifier,
+    { dataInterval: '15m', days: 1, dataSource },
+    {
+      refetchInterval: 15 * 60 * 1000,
+      staleTime: 0,
+      gcTime: 0,
+      enabled: !!assetIdentifier && isStocksOrEtf
+    }
+  )
+
+  let quoteData: any = null
+  if (isStocksOrEtf && sparklineQuery.data) {
+    const quotes = sparklineQuery.data?.quotes || []
+    if (quotes.length > 0) {
+      quoteData = {
+        quote: quotes[0],
+        timestamp: quotes[0]?.timestamp_utc
+      }
+    }
+  } else if (!isStocksOrEtf) {
+    quoteData = delayedQuoteQuery.data
+  }
+
+  const quote = quoteData?.quote || quoteData
+
   const { data, isLoading, error } = useOhlcvData(assetIdentifier, {
     dataInterval: interval,
     // limit 생략하여 백엔드 기본값 사용
   }) as any
 
-  const rows: OhlcvRow[] = useMemo(() => {
+  // 오늘자 row (RealtimeQuotesPriceWidget 과 동일한 소스) 생성
+  const todayRow: OhlcvRow | null = useMemo(() => {
+    if (!quote) return null
+
+    const price = Number(quote.price) || 0
+    const changePercent =
+      quote.change_percent !== null && quote.change_percent !== undefined
+        ? Number(quote.change_percent)
+        : null
+    const volume = Number(quote.volume) || 0
+    const timestamp: string =
+      quote.timestamp_utc || quoteData?.timestamp || new Date().toISOString()
+
+    return {
+      Date: timestamp,
+      Price: price,
+      Change_Percent: changePercent,
+      // intraday 이므로 OHLC 정보는 price로 동일하게 채움
+      Open: price,
+      High: price,
+      Low: price,
+      Volume: volume
+    }
+  }, [quote, quoteData])
+
+  const baseRows: OhlcvRow[] = useMemo(() => {
     const src = Array.isArray(data) ? data : (data?.data || data?.rows || [])
     if (!src || src.length === 0) return []
 
@@ -60,6 +137,22 @@ export default function HistoryTable({
 
     return processed
   }, [data])
+
+  // 히스토리(API) + 오늘(todayRow)을 합친 최종 rows
+  const rows: OhlcvRow[] = useMemo(() => {
+    if (!todayRow) return baseRows
+
+    const todayDate = todayRow.Date ? todayRow.Date.split('T')[0] : null
+    if (!todayDate) return baseRows
+
+    const filtered = baseRows.filter(r => {
+      if (!r.Date) return true
+      const d = r.Date.split('T')[0]
+      return d !== todayDate
+    })
+
+    return [todayRow, ...filtered]
+  }, [baseRows, todayRow])
 
   const columns: TableColumn<OhlcvRow>[] = useMemo(() => {
     const base: TableColumn<OhlcvRow>[] = [

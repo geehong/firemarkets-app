@@ -638,6 +638,42 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
               </option>
             ))}
           </select>
+          <button
+            onClick={() => setUseLogScale(prev => !prev)}
+            title={useLogScale ? 'Switch to linear scale' : 'Switch to log scale'}
+            style={{
+              width: '35px',
+              height: '35px',
+              padding: '0',
+              border: '1px solid #d0d0d0',
+              borderRadius: '4px',
+              background: '#ffffff',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              outline: 'none',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = '#3b82f6'
+              e.currentTarget.style.backgroundColor = '#f5f5f5'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = '#d0d0d0'
+              e.currentTarget.style.backgroundColor = '#ffffff'
+            }}
+          >
+            <img
+              src={useLogScale ? '/images/icons/chart-icons/Linear.svg' : '/images/icons/chart-icons/Log.svg'}
+              alt={useLogScale ? 'Linear Scale' : 'Log Scale'}
+              style={{
+                width: '35px',
+                height: '35px',
+                objectFit: 'contain'
+              }}
+            />
+          </button>
         </div>
       </div>
 
