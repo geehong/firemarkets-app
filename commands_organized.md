@@ -100,12 +100,24 @@ docker-compose --profile processing stop frontend && docker-compose --profile pr
 
 docker-compose --profile processing stop backend && docker-compose --profile processing rm -f backend && docker-compose --profile processing up -d --build backend
 
+
+
+docker-compose restart scheduler
+docker-compose restart backend
+docker-compose restart nginx-proxy-manager
+docker-compose restart data_processor
+docker-compose restart websocket_orchestrator
+docker-compose restart websocket_broadcaster
+
+
+
+
 docker-compose logs data_processor --tail 50 -f
 docker-compose logs websocket_orchestrator --tail 50 -f
 docker-compose logs scheduler --tail 50 -f
 docker-compose logs backend --tail 50 -f
 docker-compose logs frontend --tail 50 -f
-docker-compose logs websocket_orchestrator --tail 50 -f
+docker-compose logs websocket_broadcaster --tail 50 -f
         
 ```
 
