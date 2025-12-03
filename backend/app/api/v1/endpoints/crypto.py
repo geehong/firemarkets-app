@@ -60,6 +60,14 @@ HALVING_DATES = {
     4: {"start": "2024-04-20", "end": date.today().strftime('%Y-%m-%d')},
 }
 
+# 비트코인 사이클 ERA 정의 (시작일+4년)
+CYCLE_ERA_DATES = {
+    1: {"start": "2011-11-28", "end": "2015-11-28"},
+    2: {"start": "2015-01-14", "end": "2019-01-14"},
+    3: {"start": "2018-12-15", "end": "2022-12-15"},
+    4: {"start": "2022-11-21", "end": date.today().strftime('%Y-%m-%d')},  # 현재까지
+}
+
 @router.get("/bitcoin/halving-data/{period_number}")
 async def get_bitcoin_halving_data(
     period_number: int = Path(..., ge=1, le=len(HALVING_DATES), description=f"Bitcoin halving period (1-{len(HALVING_DATES)})"),
@@ -587,5 +595,181 @@ async def get_global_crypto_metrics(db: Session = Depends(get_postgres_db)):
         logger.error(f"Error getting global crypto metrics: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get global crypto metrics: {str(e)}")
 
+# Comparison Cycle Data Response Models
+class ComparisonCycleDataPoint(BaseModel):
+    timestamp_utc: date
+    close_price: float
+    normalized_price: float
+    change_percent: Optional[float] = None
+    days: int  # ERA 시작일 기준 경과일수
 
+class ComparisonCycleAssetData(BaseModel):
+    asset_id: int
+    ticker: str
+    name: Optional[str] = None
+    data: List[ComparisonCycleDataPoint]
+
+class ComparisonCycleDataResponse(BaseModel):
+    era_number: int
+    start_date: date
+    end_date: date
+    normalize_to_price: float
+    assets: List[ComparisonCycleAssetData]
+    metadata: dict
+
+@router.get("/bitcoin/comparison-cycle-data/{era_number}", response_model=ComparisonCycleDataResponse)
+async def get_comparison_cycle_data(
+    era_number: int = Path(..., ge=1, le=4, description="Bitcoin cycle ERA number (1-4)"),
+    normalize_to_price: Optional[float] = Query(None, description="정규화할 기준 가격 (null이면 4차 ERA 시작가격 사용)"),
+    asset_identifiers: Optional[str] = Query(None, description="비교할 자산 목록 (쉼표로 구분, 예: BTC,AAPL,MSFT)"),
+    db: Session = Depends(get_postgres_db)
+):
+    """비트코인 사이클 ERA별 비교 데이터를 조회합니다. 여러 자산을 동시에 비교할 수 있습니다."""
+    try:
+        # ERA 정의
+        CYCLE_ERA_DATES = {
+            1: {"start": "2011-11-28", "end": "2015-11-28"},
+            2: {"start": "2015-01-14", "end": "2019-01-14"},
+            3: {"start": "2018-12-15", "end": "2022-12-15"},
+            4: {"start": "2022-11-21", "end": date.today().strftime('%Y-%m-%d')},
+        }
+        
+        if era_number not in CYCLE_ERA_DATES:
+            raise HTTPException(status_code=404, detail="Invalid ERA number.")
+        
+        era_info = CYCLE_ERA_DATES[era_number]
+        start_date_obj = datetime.strptime(era_info["start"], "%Y-%m-%d").date()
+        
+        # 종료일 계산 (시작일+4년 또는 현재 날짜 중 작은 값)
+        end_date_obj = datetime.strptime(era_info["end"], "%Y-%m-%d").date()
+        calculated_end = start_date_obj + timedelta(days=4*365)
+        if calculated_end > date.today():
+            end_date_obj = date.today()
+        else:
+            end_date_obj = calculated_end
+        
+        # 자산 목록 파싱 (기본값: BTC만)
+        asset_tickers = ["BTC", "BTCUSDT"]  # 기본값
+        if asset_identifiers:
+            asset_tickers = [ticker.strip().upper() for ticker in asset_identifiers.split(",")]
+        
+        # 자산 ID 해석 함수
+        def resolve_asset_id(identifier: str) -> Optional[int]:
+            try:
+                asset_id = int(identifier)
+                asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
+                return asset.asset_id if asset else None
+            except ValueError:
+                asset = db.query(Asset).filter(Asset.ticker == identifier.upper()).first()
+                return asset.asset_id if asset else None
+        
+        # 자산 ID 목록 생성
+        asset_ids = []
+        for ticker in asset_tickers:
+            asset_id = resolve_asset_id(ticker)
+            if asset_id:
+                asset_ids.append(asset_id)
+        
+        if not asset_ids:
+            raise HTTPException(status_code=404, detail="No valid assets found.")
+        
+        # 4차 ERA 시작가격 가져오기 (정규화 기준)
+        if normalize_to_price is None:
+            fourth_era_info = CYCLE_ERA_DATES[4]
+            fourth_start_date = datetime.strptime(fourth_era_info["start"], "%Y-%m-%d").date()
+            
+            # BTC 자산 찾기
+            btc_assets = db.query(Asset).filter(Asset.ticker.in_(["BTC", "BTCUSDT"])).all()
+            btc_asset = None
+            for preferred_ticker in ["BTCUSDT", "BTC"]:
+                asset = next((a for a in btc_assets if a.ticker == preferred_ticker), None)
+                if asset:
+                    btc_asset = asset
+                    break
+            if not btc_asset and btc_assets:
+                btc_asset = btc_assets[0]
+            
+            if btc_asset:
+                fourth_ohlcv = db.query(OHLCVData).filter(
+                    OHLCVData.asset_id == btc_asset.asset_id,
+                    OHLCVData.timestamp_utc >= fourth_start_date,
+                    OHLCVData.timestamp_utc < (fourth_start_date + timedelta(days=1))
+                ).order_by(OHLCVData.timestamp_utc).first()
+                
+                if fourth_ohlcv:
+                    normalize_to_price = float(fourth_ohlcv.close_price)
+                else:
+                    normalize_to_price = 64940  # 기본값
+            else:
+                normalize_to_price = 64940  # 기본값
+        
+        # 각 자산별 데이터 조회 및 정규화
+        assets_data = []
+        for asset_id in asset_ids:
+            asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
+            if not asset:
+                continue
+            
+            # OHLCV 데이터 조회
+            ohlcv_records = db.query(OHLCVData).filter(
+                OHLCVData.asset_id == asset_id,
+                OHLCVData.timestamp_utc >= start_date_obj,
+                OHLCVData.timestamp_utc <= end_date_obj
+            ).order_by(OHLCVData.timestamp_utc).all()
+            
+            if not ohlcv_records:
+                continue
+            
+            # 첫 번째 가격을 기준으로 정규화
+            first_price = float(ohlcv_records[0].close_price)
+            adjustment_factor = float(normalize_to_price) / first_price if first_price > 0 else 1.0
+            
+            # 데이터 변환 및 정규화
+            data_points = []
+            for i, record in enumerate(ohlcv_records):
+                days = (record.timestamp_utc.date() - start_date_obj).days
+                normalized_price = float(record.close_price) * adjustment_factor
+                
+                change_percent = None
+                if i > 0 and record.close_price and ohlcv_records[i-1].close_price:
+                    prev_close = ohlcv_records[i-1].close_price
+                    change_percent = ((record.close_price - prev_close) / prev_close) * 100
+                
+                data_points.append(ComparisonCycleDataPoint(
+                    timestamp_utc=record.timestamp_utc.date(),
+                    close_price=float(record.close_price),
+                    normalized_price=normalized_price,
+                    change_percent=change_percent,
+                    days=days
+                ))
+            
+            assets_data.append(ComparisonCycleAssetData(
+                asset_id=asset.asset_id,
+                ticker=asset.ticker,
+                name=asset.name,
+                data=data_points
+            ))
+        
+        # 메타데이터
+        metadata = {
+            "era_name": f"ERA {era_number}",
+            "total_days": (end_date_obj - start_date_obj).days,
+            "normalize_to_price": normalize_to_price,
+            "asset_count": len(assets_data)
+        }
+        
+        return ComparisonCycleDataResponse(
+            era_number=era_number,
+            start_date=start_date_obj,
+            end_date=end_date_obj,
+            normalize_to_price=normalize_to_price,
+            assets=assets_data,
+            metadata=metadata
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting comparison cycle data for ERA {era_number}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get comparison cycle data: {str(e)}")
 

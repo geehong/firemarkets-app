@@ -294,6 +294,21 @@ export class ApiClient {
     return this.request('/crypto/bitcoin/halving-summary');
   }
 
+  // Comparison Cycle Data
+  getComparisonCycleData(
+    eraNumber: number,
+    params?: {
+      normalizeToPrice?: number
+      assetIdentifiers?: string
+    }
+  ) {
+    const search = new URLSearchParams()
+    if (params?.normalizeToPrice) search.append('normalize_to_price', String(params.normalizeToPrice))
+    if (params?.assetIdentifiers) search.append('asset_identifiers', params.assetIdentifiers)
+    const qs = search.toString()
+    return this.request(`/crypto/bitcoin/comparison-cycle-data/${eraNumber}${qs ? `?${qs}` : ''}`)
+  }
+
   // Next Halving Info
   getNextHalvingInfo() {
     return this.request('/crypto/bitcoin/next-halving');
