@@ -1,78 +1,181 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
+import { useSystemLogs, SystemLog } from '@/hooks/admin/useSystemLogs'
 import { useSchedulerLogs } from '@/hooks/admin/useSchedulerLogs'
+import { useApiLogs, ApiLog } from '@/hooks/admin/useApiLogs'
 
-interface LogEntry {
-  log_id: number
-  job_name: string
-  status: 'completed' | 'running' | 'failed'
-  start_time: string
-  end_time: string | null
-  duration_seconds: number | null
-  assets_processed: number
-  data_points_added: number
-  error_message: string | null
-  created_at: string
-}
+type LogType = 'system' | 'scheduler' | 'api'
 
 const LogsTable: React.FC = () => {
-  const { data: logs, isLoading: loading, error, refetch } = useSchedulerLogs()
-  const [filterStatus, setFilterStatus] = useState<string>('all')
-  const [filterJob, setFilterJob] = useState<string>('all')
+  const [logType, setLogType] = useState<LogType>('system')
+  const [filterLevel, setFilterLevel] = useState<string>('all')
+  const [filterModule, setFilterModule] = useState<string>('')
 
-  // 고유한 job_name 목록 추출
-  const jobNames = React.useMemo(() => {
-    if (!logs) return []
-    return Array.from(new Set(logs.map(log => log.job_name))).sort()
-  }, [logs])
+  // Hooks for each log type
+  const systemLogs = useSystemLogs({
+    enabled: logType === 'system',
+    limit: 100,
+    level: filterLevel !== 'all' ? filterLevel : undefined,
+    module: filterModule || undefined
+  })
 
-  // 필터링된 로그
-  const filteredLogs = React.useMemo(() => {
-    if (!logs) return []
-    
-    return logs.filter(log => {
-      const statusMatch = filterStatus === 'all' || log.status === filterStatus
-      const jobMatch = filterJob === 'all' || log.job_name === filterJob
-      return statusMatch && jobMatch
-    })
-  }, [logs, filterStatus, filterJob])
+  const schedulerLogs = useSchedulerLogs({
+    enabled: logType === 'scheduler',
+    // limit: 100 // Scheduler hook doesn't support limit param in current version, need update if needed
+  })
 
-  // 상태별 색상
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'bg-green-100 text-green-800'
-      case 'running':
-        return 'bg-blue-100 text-blue-800'
-      case 'failed':
-        return 'bg-red-100 text-red-800'
-      default:
-        return 'bg-gray-100 text-gray-800'
+  const apiLogs = useApiLogs({
+    enabled: logType === 'api',
+    limit: 100,
+    // endpoint: filterModule || undefined // Reusing filterModule for endpoint filter
+  })
+
+  const currentLogs = () => {
+    switch (logType) {
+      case 'system': return systemLogs
+      case 'scheduler': return schedulerLogs
+      case 'api': return apiLogs
     }
   }
 
-  // 시간 포맷팅
+  const { data: logs, isLoading: loading, error, refetch } = currentLogs() as {
+    data: any[]
+    isLoading: boolean
+    error: Error | null
+    refetch: () => Promise<void>
+  }
+
+  // Helper functions
+  const getLevelColor = (level: string) => {
+    switch (level) {
+      case 'INFO': return 'bg-blue-100 text-blue-800'
+      case 'WARNING': return 'bg-yellow-100 text-yellow-800'
+      case 'ERROR':
+      case 'CRITICAL': return 'bg-red-100 text-red-800'
+      case 'DEBUG': return 'bg-gray-100 text-gray-800'
+      default: return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  const getStatusColor = (status: string | number) => {
+    if (typeof status === 'number') {
+      if (status >= 200 && status < 300) return 'bg-green-100 text-green-800'
+      if (status >= 400) return 'bg-red-100 text-red-800'
+      return 'bg-gray-100 text-gray-800'
+    }
+    switch (status) {
+      case 'completed': return 'bg-green-100 text-green-800'
+      case 'running': return 'bg-blue-100 text-blue-800'
+      case 'failed': return 'bg-red-100 text-red-800'
+      default: return 'bg-gray-100 text-gray-800'
+    }
+  }
+
   const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString('ko-KR', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    })
+    try {
+      return new Date(dateString).toLocaleString('ko-KR', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+      })
+    } catch (e) {
+      return dateString
+    }
   }
 
-  // 지속 시간 포맷팅
-  const formatDuration = (seconds: number | null) => {
-    if (seconds === null) return '-'
-    if (seconds < 60) return `${seconds}s`
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
-    return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`
-  }
+  // Render functions for different log types
+  const renderSystemLogs = () => (
+    <>
+      <thead className="bg-gray-50">
+        <tr>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level</th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Module</th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Message</th>
+        </tr>
+      </thead>
+      <tbody className="bg-white divide-y divide-gray-200">
+        {(logs as SystemLog[]).map((log) => (
+          <tr key={log.id} className="hover:bg-gray-50">
+            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{log.id}</td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDateTime(log.timestamp)}</td>
+            <td className="px-6 py-4 whitespace-nowrap">
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getLevelColor(log.level)}`}>
+                {log.level}
+              </span>
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{log.module || '-'}</td>
+            <td className="px-6 py-4 text-sm text-gray-500 break-all">{log.message}</td>
+          </tr>
+        ))}
+      </tbody>
+    </>
+  )
 
-  if (loading) {
+  const renderSchedulerLogs = () => (
+    <>
+      <thead className="bg-gray-50">
+        <tr>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Job Name</th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Start Time</th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Message</th>
+        </tr>
+      </thead>
+      <tbody className="bg-white divide-y divide-gray-200">
+        {(logs as any[]).map((log) => (
+          <tr key={log.log_id} className="hover:bg-gray-50">
+            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{log.log_id}</td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{log.job_name}</td>
+            <td className="px-6 py-4 whitespace-nowrap">
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(log.status)}`}>
+                {log.status}
+              </span>
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDateTime(log.start_time)}</td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{log.duration_seconds ? `${log.duration_seconds}s` : '-'}</td>
+            <td className="px-6 py-4 text-sm text-gray-500 break-all">{log.error_message || '-'}</td>
+          </tr>
+        ))}
+      </tbody>
+    </>
+  )
+
+  const renderApiLogs = () => (
+    <>
+      <thead className="bg-gray-50">
+        <tr>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Method</th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Endpoint</th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time (ms)</th>
+        </tr>
+      </thead>
+      <tbody className="bg-white divide-y divide-gray-200">
+        {(logs as ApiLog[]).map((log) => (
+          <tr key={log.log_id} className="hover:bg-gray-50">
+            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{log.log_id}</td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDateTime(log.created_at)}</td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">{log.api_name || 'API'}</td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{log.endpoint}</td>
+            <td className="px-6 py-4 whitespace-nowrap">
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(log.status_code)}`}>
+                {log.status_code}
+              </span>
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{log.response_time_ms}ms</td>
+          </tr>
+        ))}
+      </tbody>
+    </>
+  )
+
+  if (loading && (!logs || logs.length === 0)) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="flex flex-col items-center">
@@ -87,10 +190,7 @@ const LogsTable: React.FC = () => {
     return (
       <div className="text-center p-8">
         <div className="text-red-600 mb-4">Error: {error.message}</div>
-        <button
-          onClick={() => refetch()}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-        >
+        <button onClick={() => refetch()} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
           Retry
         </button>
       </div>
@@ -99,34 +199,45 @@ const LogsTable: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      {/* 필터 및 새로고침 */}
+      {/* Controls */}
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-        <div className="flex flex-col sm:flex-row gap-2">
+        <div className="flex flex-col sm:flex-row gap-2 items-center">
+          <label className="text-sm font-medium text-gray-700 mr-2">Log Source:</label>
           <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            value={logType}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setLogType(e.target.value as LogType)}
+            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white"
           >
-            <option value="all">All Status</option>
-            <option value="completed">Completed</option>
-            <option value="running">Running</option>
-            <option value="failed">Failed</option>
+            <option value="system">System Logs</option>
+            <option value="scheduler">Scheduler Logs</option>
+            <option value="api">API Logs</option>
           </select>
-          
-          <select
-            value={filterJob}
-            onChange={(e) => setFilterJob(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="all">All Jobs</option>
-            {jobNames.map(jobName => (
-              <option key={jobName} value={jobName}>
-                {jobName}
-              </option>
-            ))}
-          </select>
+
+          {logType === 'system' && (
+            <select
+              value={filterLevel}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilterLevel(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="all">All Levels</option>
+              <option value="INFO">INFO</option>
+              <option value="WARNING">WARNING</option>
+              <option value="ERROR">ERROR</option>
+              <option value="DEBUG">DEBUG</option>
+            </select>
+          )}
+
+          {(logType === 'system' || logType === 'api') && (
+            <input
+              type="text"
+              value={filterModule}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilterModule(e.target.value)}
+              placeholder={logType === 'system' ? "Filter by module..." : "Filter by endpoint..."}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            />
+          )}
         </div>
-        
+
         <button
           onClick={() => refetch()}
           className="px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
@@ -135,102 +246,31 @@ const LogsTable: React.FC = () => {
         </button>
       </div>
 
-      {/* 로그 테이블 */}
+      {/* Table */}
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  ID
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Job Name
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Start Time
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Duration
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Assets
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Data Points
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Error
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredLogs.map((log) => (
-                <tr key={log.log_id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {log.log_id}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    <div className="max-w-xs truncate" title={log.job_name}>
-                      {log.job_name}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(log.status)}`}>
-                      {log.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatDateTime(log.start_time)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatDuration(log.duration_seconds)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {log.assets_processed}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {log.data_points_added}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
-                    {log.error_message ? (
-                      <div className="max-w-xs">
-                        <div className="truncate text-red-600" title={log.error_message}>
-                          {log.error_message}
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="text-gray-400">-</span>
-                    )}
+            {logType === 'system' && renderSystemLogs()}
+            {logType === 'scheduler' && renderSchedulerLogs()}
+            {logType === 'api' && renderApiLogs()}
+
+            {(!logs || logs.length === 0) && (
+              <tbody>
+                <tr>
+                  <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
+                    No logs found
                   </td>
                 </tr>
-              ))}
-            </tbody>
+              </tbody>
+            )}
           </table>
         </div>
       </div>
 
-      {/* 통계 */}
+      {/* Footer */}
       <div className="flex justify-between items-center text-sm text-gray-500">
         <div>
-          Showing {filteredLogs.length} of {logs?.length || 0} logs
-        </div>
-        <div className="flex gap-4">
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-            Completed: {logs?.filter(l => l.status === 'completed').length || 0}
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-            Running: {logs?.filter(l => l.status === 'running').length || 0}
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 bg-red-500 rounded-full"></span>
-            Failed: {logs?.filter(l => l.status === 'failed').length || 0}
-          </span>
+          Showing {logs?.length || 0} logs
         </div>
       </div>
     </div>

@@ -9,7 +9,11 @@ import httpx
 import json
 
 from ..base.tradfi_client import TradFiAPIClient
-from ...config import settings
+import os
+
+# ... (imports)
+
+# from ...config import settings  <-- Removed
 from ...utils.retry import retry_decorator
 
 log = logging.getLogger(__name__)
@@ -31,14 +35,15 @@ class EdgarClient(TradFiAPIClient):
         super().__init__()
         
         # EDGAR API requires a User-Agent with contact info
-        if not settings.edgar_user_agent_email:
+        edgar_email = os.getenv("EDGAR_USER_AGENT_EMAIL")
+        if not edgar_email:
             log.warning("EDGAR_USER_AGENT_EMAIL not set. EDGAR API requests may fail.")
             self.headers = {
                 'User-Agent': 'Personal Application your.email@example.com'
             }
         else:
             self.headers = {
-                'User-Agent': f'Personal Application {settings.edgar_user_agent_email}'
+                'User-Agent': f'Personal Application {edgar_email}'
             }
     
     async def test_connection(self) -> bool:

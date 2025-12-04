@@ -8,7 +8,7 @@ import logging
 
 from ....core.database import get_postgres_db
 from ....models.asset import ApiCallLog
-from ....models.asset import SchedulerLog
+from ....models.asset import SchedulerLog, SystemLog
 from ....schemas.common import LogDeleteResponse
 
 logger = logging.getLogger(__name__)
@@ -243,6 +243,101 @@ def clear_api_logs(
     except Exception as e:
         logger.error(f"Failed to clear API logs: {e}")
         raise HTTPException(status_code=500, detail="Failed to clear API logs")
+
+# System Log Endpoints
+
+class SystemLogResponse(BaseModel):
+    id: int
+    level: str
+    module: Optional[str]
+    message: str
+    timestamp: datetime
+
+    class Config:
+        from_attributes = True
+
+@router.get("/system", response_model=List[SystemLogResponse])
+def get_system_logs(
+    limit: int = Query(50, ge=1, le=200, description="Number of logs to return"),
+    level: Optional[str] = Query(None, description="Filter by log level"),
+    module: Optional[str] = Query(None, description="Filter by module"),
+    db: Session = Depends(get_postgres_db)
+):
+    """시스템 로그를 조회합니다."""
+    try:
+        query = db.query(SystemLog)
+        
+        if level:
+            query = query.filter(SystemLog.level == level)
+        if module:
+            query = query.filter(SystemLog.module.contains(module))
+        
+        logs = query.order_by(SystemLog.timestamp.desc()).limit(limit).all()
+        
+        return [SystemLogResponse.from_orm(log) for log in logs]
+    except Exception as e:
+        logger.error(f"Failed to get system logs: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get system logs")
+
+@router.get("/system/summary", response_model=LogSummary)
+def get_system_logs_summary(
+    days: int = Query(7, ge=1, le=30, description="Number of days to analyze"),
+    db: Session = Depends(get_postgres_db)
+):
+    """시스템 로그 요약을 조회합니다."""
+    try:
+        start_date = datetime.now() - timedelta(days=days)
+        logs = db.query(SystemLog).filter(
+            SystemLog.timestamp >= start_date
+        ).all()
+        
+        total_logs = len(logs)
+        error_count = len([log for log in logs if log.level == "ERROR" or log.level == "CRITICAL"])
+        success_count = total_logs - error_count # Just a rough estimate
+        
+        recent_errors = []
+        error_logs = [log for log in logs if log.level in ["ERROR", "CRITICAL"]]
+        for log in error_logs[:5]:
+            recent_errors.append({
+                "log_id": log.id,
+                "level": log.level,
+                "module": log.module,
+                "error_message": log.message,
+                "created_at": log.timestamp.isoformat()
+            })
+        
+        return LogSummary(
+            total_logs=total_logs,
+            success_count=success_count,
+            error_count=error_count,
+            avg_response_time=None,
+            recent_errors=recent_errors
+        )
+    except Exception as e:
+        logger.error(f"Failed to get system logs summary: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get system logs summary")
+
+@router.delete("/system", response_model=LogDeleteResponse)
+def clear_system_logs(
+    days: int = Query(30, ge=1, description="Delete logs older than N days"),
+    db: Session = Depends(get_postgres_db)
+):
+    """오래된 시스템 로그를 삭제합니다."""
+    try:
+        cutoff_date = datetime.now() - timedelta(days=days)
+        deleted_count = db.query(SystemLog).filter(
+            SystemLog.timestamp < cutoff_date
+        ).delete()
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": f"Deleted {deleted_count} system logs older than {days} days"
+        }
+    except Exception as e:
+        logger.error(f"Failed to clear system logs: {e}")
+        raise HTTPException(status_code=500, detail="Failed to clear system logs")
 
 
 

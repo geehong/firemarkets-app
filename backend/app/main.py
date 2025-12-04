@@ -14,21 +14,26 @@ from app.core.database import engine
 from app.models.user import User
 from app.models.session import UserSession, TokenBlacklist, AuditLog
 from app.core.websocket import sio
-from app.core.config import load_and_set_global_configs, initialize_bitcoin_asset_id
+from app.core.config import GLOBAL_APP_CONFIGS, load_and_set_global_configs, initialize_bitcoin_asset_id
 from app.services.session_cleanup_scheduler import session_cleanup_scheduler
+from app.utils.db_logger import setup_db_logging
 import socketio
 
+# 로깅 설정 (DB 로깅 포함)
+setup_db_logging()
+
+# 로거 설정
 logger = logging.getLogger(__name__)
 
 # 전역 설정 로드
 load_and_set_global_configs()
 initialize_bitcoin_asset_id()
 
-# 데이터베이스 테이블 생성
-User.__table__.create(bind=engine, checkfirst=True)
-UserSession.__table__.create(bind=engine, checkfirst=True)
-TokenBlacklist.__table__.create(bind=engine, checkfirst=True)
-AuditLog.__table__.create(bind=engine, checkfirst=True)
+# 데이터베이스 테이블 생성 코드는 Alembic 마이그레이션으로 대체됨
+# User.__table__.create(bind=engine, checkfirst=True)
+# UserSession.__table__.create(bind=engine, checkfirst=True)
+# TokenBlacklist.__table__.create(bind=engine, checkfirst=True)
+# AuditLog.__table__.create(bind=engine, checkfirst=True)
 
 app = FastAPI(
     title="FireMarkets Admin API",

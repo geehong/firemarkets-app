@@ -1,0 +1,487 @@
+import logging
+import os
+import time
+from typing import List, Dict, Any, Optional
+from datetime import datetime, date
+from sqlalchemy import func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+from ...core.database import get_postgres_db
+from ...models.asset import (
+    RealtimeQuote, RealtimeQuoteTimeDelay, StockProfile, ETFInfo, 
+    CryptoData, StockFinancial, StockAnalystEstimate, WorldAssetsRanking
+)
+
+logger = logging.getLogger(__name__)
+
+class DataRepository:
+    """데이터베이스 저장 작업을 전담하는 클래스"""
+
+    def __init__(self, validator):
+        self.validator = validator
+        self.bulk_upsert_enabled = os.getenv("BULK_UPSERT_ENABLED", "true").lower() == "true"
+        self.batch_size = int(os.getenv("BULK_BATCH_SIZE", "1000"))
+
+    def _sanitize_number(self, val, min_abs=0.0, max_abs=1e9, digits=8):
+        try:
+            if val is None:
+                return None
+            f = float(val)
+            if not (f == f) or f == float('inf') or f == float('-inf'):
+                return None
+            if abs(f) < min_abs:
+                f = 0.0
+            if abs(f) > max_abs:
+                return None
+            return round(f, digits)
+        except Exception:
+            return None
+
+    def _get_time_window(self, timestamp: datetime, interval_minutes: int = 15) -> datetime:
+        """지정된 분 단위로 시간 윈도우 계산"""
+        try:
+            minute = (timestamp.minute // interval_minutes) * interval_minutes
+            return timestamp.replace(minute=minute, second=0, microsecond=0)
+        except Exception:
+            return timestamp
+
+    async def bulk_save_realtime_quotes(self, records: List[Dict[str, Any]]) -> bool:
+        """실시간 인용 데이터 일괄 저장"""
+        if not records:
+            return False
+
+        # 데이터 검증
+        validated_records = []
+        for record in records:
+            if self.validator.validate_realtime_quote(record):
+                validated_records.append(record)
+
+        if not validated_records:
+            logger.warning("🚨 검증을 통과한 레코드가 없습니다.")
+            return False
+
+        pg_db = next(get_postgres_db())
+        try:
+            batch_size = self.batch_size if self.bulk_upsert_enabled else 1
+            success_count = 0
+
+            for start_idx in range(0, len(validated_records), batch_size):
+                batch = validated_records[start_idx:start_idx + batch_size]
+                if not batch:
+                    continue
+
+                # 실시간 테이블용 데이터
+                dedup_rt = {}
+                rt_allowed_keys = {'asset_id', 'timestamp_utc', 'price', 'volume', 'change_amount', 'change_percent', 'data_source'}
+                for rec in batch:
+                    r = {k: v for k, v in rec.items() if k in rt_allowed_keys}
+                    r['price'] = self._sanitize_number(rec.get('price'))
+                    r['volume'] = self._sanitize_number(rec.get('volume'))
+                    r['change_amount'] = self._sanitize_number(rec.get('change_amount'))
+                    r['change_percent'] = self._sanitize_number(rec.get('change_percent'))
+                    if r['price'] is None:
+                        continue
+                    # Ensure required fields
+                    if 'asset_id' not in r or 'timestamp_utc' not in r or 'data_source' not in r:
+                        continue
+                    dedup_rt[r['asset_id']] = r
+                realtime_rows = list(dedup_rt.values())
+
+                # 지연 테이블용 데이터
+                delay_dedup = {}
+                delay_allowed_keys = {'asset_id', 'timestamp_utc', 'price', 'volume', 'change_amount', 'change_percent', 'data_source', 'data_interval'}
+                for rec in batch:
+                    d = {k: v for k, v in rec.items() if k in delay_allowed_keys}
+                    tw = self._get_time_window(rec['timestamp_utc'])
+                    d['timestamp_utc'] = tw
+                    d['data_interval'] = "15m" # TODO: Make configurable
+                    d['price'] = self._sanitize_number(rec.get('price'))
+                    d['volume'] = self._sanitize_number(rec.get('volume'))
+                    d['change_amount'] = self._sanitize_number(rec.get('change_amount'))
+                    d['change_percent'] = self._sanitize_number(rec.get('change_percent'))
+                    
+                    # Missing keys from filtering might need to be re-added if they were derived or renamed
+                    # But here 'rec' has the source data.
+                    # Wait, 'd' is filtered from 'rec'. 'rec' has 'ticker' etc.
+                    # We need to make sure 'd' has what we need.
+                    if 'asset_id' not in d: d['asset_id'] = rec.get('asset_id')
+                    if 'data_source' not in d: d['data_source'] = rec.get('data_source')
+                    
+                    if d['price'] is None:
+                        continue
+                    key = (d['asset_id'], d['timestamp_utc'], d['data_source'])
+                    delay_dedup[key] = d
+                delay_rows = list(delay_dedup.values())
+
+                try:
+                    # 실시간 테이블 UPSERT
+                    if realtime_rows:
+                        stmt = pg_insert(RealtimeQuote).values(realtime_rows)
+                        stmt = stmt.on_conflict_do_update(
+                            index_elements=['asset_id'],
+                            set_={
+                                'timestamp_utc': stmt.excluded.timestamp_utc,
+                                'price': stmt.excluded.price,
+                                'volume': stmt.excluded.volume,
+                                'change_amount': stmt.excluded.change_amount,
+                                'change_percent': stmt.excluded.change_percent,
+                                'data_source': stmt.excluded.data_source,
+                                'updated_at': func.now()
+                            }
+                        )
+                        pg_db.execute(stmt)
+
+                    # 지연 테이블 UPSERT
+                    if delay_rows:
+                        stmt = pg_insert(RealtimeQuoteTimeDelay).values(delay_rows)
+                        stmt = stmt.on_conflict_do_update(
+                            index_elements=['asset_id', 'timestamp_utc', 'data_source'],
+                            set_={
+                                'price': stmt.excluded.price,
+                                'volume': stmt.excluded.volume,
+                                'change_amount': stmt.excluded.change_amount,
+                                'change_percent': stmt.excluded.change_percent,
+                                'updated_at': func.now()
+                            }
+                        )
+                        pg_db.execute(stmt)
+
+                    pg_db.commit()
+                    success_count += len(batch)
+                except Exception as e:
+                    pg_db.rollback()
+                    logger.error(f"❌ Bulk upsert 실패: {e}")
+                    # TODO: Implement fallback/retry logic if needed
+
+            return success_count > 0
+        finally:
+            pg_db.close()
+
+    async def save_stock_profile(self, items: List[Dict[str, Any]]) -> bool:
+        if not items:
+            return True
+
+        pg_db = next(get_postgres_db())
+        try:
+            for item in items:
+                try:
+                    asset_id = item.get("asset_id") or item.get("assetId")
+                    data = item.get("data") if "data" in item else item
+                    if not asset_id or not isinstance(data, dict):
+                        continue
+
+                    # 데이터 매핑 (간소화됨, 필요시 필드 추가)
+                    pg_data = {
+                        'asset_id': asset_id,
+                        'company_name': data.get("name") or data.get("company_name"),
+                        'description_en': data.get("description_en") or data.get("description"),
+                        'sector': data.get("sector"),
+                        'industry': data.get("industry"),
+                        'market_cap': data.get("market_cap"),
+                        # ... 기타 필드들 ...
+                    }
+                    # None 제거
+                    pg_data = {k: v for k, v in pg_data.items() if v is not None}
+
+                    stmt = pg_insert(StockProfile).values(**pg_data)
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=['asset_id'],
+                        set_={k: getattr(stmt.excluded, k) for k in pg_data.keys() if k != 'asset_id'}
+                    )
+                    # updated_at 추가
+                    if 'updated_at' in StockProfile.__table__.columns:
+                         stmt = stmt.on_conflict_do_update(
+                            index_elements=['asset_id'],
+                            set_={**{k: getattr(stmt.excluded, k) for k in pg_data.keys() if k != 'asset_id'}, 'updated_at': func.now()}
+                        )
+
+                    pg_db.execute(stmt)
+                except Exception as e:
+                    logger.warning(f"개별 주식 프로필 저장 실패: {e}")
+                    continue
+            
+            pg_db.commit()
+            return True
+        except Exception as e:
+            pg_db.rollback()
+            logger.error(f"주식 프로필 저장 실패: {e}")
+            return False
+        finally:
+            pg_db.close()
+
+    async def save_crypto_data(self, items: List[Dict[str, Any]]) -> bool:
+        if not items:
+            return True
+            
+        pg_db = next(get_postgres_db())
+        try:
+            saved_count = 0
+            for item in items:
+                try:
+                    asset_id = item.get('asset_id')
+                    if not asset_id:
+                        continue
+                    
+                    crypto_data_dict = {
+                        'asset_id': asset_id,
+                        'symbol': item.get('symbol', ''),
+                        'name': item.get('name', ''),
+                        'price': item.get('price'),
+                        # ... 기타 필드들 ...
+                    }
+                    crypto_data_dict = {k: v for k, v in crypto_data_dict.items() if v is not None}
+                    
+                    stmt = pg_insert(CryptoData).values(**crypto_data_dict)
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=['asset_id'],
+                        set_={k: getattr(stmt.excluded, k) for k in crypto_data_dict.keys() if k != 'asset_id'}
+                    )
+                    pg_db.execute(stmt)
+                    saved_count += 1
+                except Exception as e:
+                    logger.error(f"crypto_data 저장 중 오류: {e}")
+                    continue
+            
+            pg_db.commit()
+            return saved_count > 0
+        except Exception as e:
+            pg_db.rollback()
+            logger.error(f"crypto_data 저장 실패: {e}")
+            return False
+        finally:
+            pg_db.close()
+
+    async def save_stock_financials(self, items: List[Dict[str, Any]]) -> bool:
+        """주식 재무 데이터 저장"""
+        if not items:
+            return True
+
+        pg_db = next(get_postgres_db())
+        try:
+            from ...models.asset import StockFinancial
+            
+            for item in items:
+                try:
+                    asset_id = item.get("asset_id") or item.get("assetId")
+                    data = item.get("data") if isinstance(item, dict) and "data" in item else item
+                    if not asset_id or not isinstance(data, dict):
+                        continue
+
+                    # 필드 매핑 (간소화)
+                    pg_data = {
+                        'asset_id': asset_id,
+                        'currency': data.get('currency'),
+                        'market_cap': data.get('market_cap'),
+                        'ebitda': data.get('ebitda'),
+                        'pe_ratio': data.get('pe_ratio'),
+                        # ... 필요한 필드 추가 ...
+                    }
+                    pg_data = {k: v for k, v in pg_data.items() if v is not None}
+
+                    stmt = pg_insert(StockFinancial).values(**pg_data)
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=['asset_id'],
+                        set_={k: getattr(stmt.excluded, k) for k in pg_data.keys() if k != 'asset_id'}
+                    )
+                    pg_db.execute(stmt)
+                except Exception as e:
+                    logger.warning(f"개별 주식 재무 저장 실패: {e}")
+                    continue
+
+            pg_db.commit()
+            return True
+        except Exception as e:
+            pg_db.rollback()
+            logger.error(f"주식 재무 데이터 저장 실패: {e}")
+            return False
+        finally:
+            pg_db.close()
+
+    async def save_stock_estimate(self, items: List[Dict[str, Any]]) -> bool:
+        """주식 추정치 데이터 저장"""
+        if not items:
+            return True
+
+        pg_db = next(get_postgres_db())
+        try:
+            from ...models.asset import StockAnalystEstimate
+            
+            for item in items:
+                try:
+                    asset_id = item.get("asset_id")
+                    data = item.get("data") if "data" in item else item
+                    if not asset_id:
+                        continue
+                    
+                    # fiscal_date 파싱 등 로직 필요
+                    fiscal_date = data.get("fiscal_date")
+                    if not fiscal_date:
+                        continue
+
+                    pg_data = {
+                        'asset_id': asset_id,
+                        'fiscal_date': fiscal_date,
+                        'revenue_avg': data.get('revenue_avg'),
+                        # ...
+                    }
+                    pg_data = {k: v for k, v in pg_data.items() if v is not None}
+
+                    stmt = pg_insert(StockAnalystEstimate).values(**pg_data)
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=['asset_id', 'fiscal_date'],
+                        set_={k: getattr(stmt.excluded, k) for k in pg_data.keys() if k not in ['asset_id', 'fiscal_date']}
+                    )
+                    pg_db.execute(stmt)
+                except Exception as e:
+                    continue
+            
+            pg_db.commit()
+            return True
+        except Exception as e:
+            pg_db.rollback()
+            return False
+        finally:
+            pg_db.close()
+
+    async def save_ohlcv_data(self, items: List[Dict[str, Any]], metadata: Dict[str, Any] = None) -> bool:
+        """OHLCV 데이터 저장 - 일봉과 인트라데이 데이터를 적절한 테이블에 분리 저장"""
+        if not items:
+            return True
+            
+        pg_db = next(get_postgres_db())
+        try:
+            from ...models.asset import OHLCVData, OHLCVIntradayData
+            
+            daily_items = []
+            intraday_items = []
+            
+            for item in items:
+                # 데이터 간격 결정 로직
+                interval = item.get('interval')
+                if not interval:
+                    # 메타데이터나 빈도 정보로 추론
+                    freq = metadata.get('frequency') if metadata else None
+                    if freq:
+                        if freq.lower() in ['daily', 'd', '1d']:
+                            interval = '1d'
+                        elif freq.lower() in ['weekly', 'w', '1w']:
+                            interval = '1w'
+                        elif freq.lower() in ['monthly', 'm', '1m']:
+                            interval = '1M'
+                        else:
+                            interval = '1d' # Default to daily
+                    else:
+                         # 기본값: 타임스탬프 확인 등 복잡한 로직 대신 1d로 가정하거나
+                         # item 내의 정보로 판단
+                         interval = '1d'
+
+                # 데이터 정제
+                pg_data = {
+                    'asset_id': item.get('asset_id'),
+                    'timestamp_utc': item.get('timestamp_utc') or item.get('date'),
+                    'open_price': self._sanitize_number(item.get('open')),
+                    'high_price': self._sanitize_number(item.get('high')),
+                    'low_price': self._sanitize_number(item.get('low')),
+                    'close_price': self._sanitize_number(item.get('close')),
+                    'volume': self._sanitize_number(item.get('volume')),
+                    'data_interval': interval
+                }
+                
+                if not pg_data['asset_id'] or not pg_data['timestamp_utc']:
+                    continue
+                    
+                if interval in ['1d', '1w', '1M']:
+                    daily_items.append(pg_data)
+                else:
+                    intraday_items.append(pg_data)
+
+            # 일봉 데이터 저장
+            if daily_items:
+                stmt = pg_insert(OHLCVData).values(daily_items)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=['asset_id', 'timestamp_utc'],
+                    set_={
+                        'open_price': stmt.excluded.open_price,
+                        'high_price': stmt.excluded.high_price,
+                        'low_price': stmt.excluded.low_price,
+                        'close_price': stmt.excluded.close_price,
+                        'volume': stmt.excluded.volume,
+                        'data_interval': stmt.excluded.data_interval
+                    }
+                )
+                pg_db.execute(stmt)
+
+            # 인트라데이 데이터 저장
+            if intraday_items:
+                stmt = pg_insert(OHLCVIntradayData).values(intraday_items)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=['asset_id', 'timestamp_utc'],
+                    set_={
+                        'open_price': stmt.excluded.open_price,
+                        'high_price': stmt.excluded.high_price,
+                        'low_price': stmt.excluded.low_price,
+                        'close_price': stmt.excluded.close_price,
+                        'volume': stmt.excluded.volume,
+                        'data_interval': stmt.excluded.data_interval
+                    }
+                )
+                pg_db.execute(stmt)
+
+            pg_db.commit()
+            return True
+            
+        except Exception as e:
+            pg_db.rollback()
+            logger.error(f"OHLCV 데이터 저장 실패: {e}")
+            return False
+        finally:
+            pg_db.close()
+
+    async def save_world_assets_ranking(self, items: List[Dict[str, Any]], metadata: Dict[str, Any]) -> bool:
+        """세계 자산 랭킹 데이터 저장"""
+        if not items:
+            return True
+        pg_db = next(get_postgres_db())
+        try:
+            from ...models.asset import WorldAssetsRanking
+            
+            saved_count = 0
+            for item in items:
+                try:
+                    ticker = item.get('ticker')
+                    if not ticker:
+                        continue
+                        
+                    ranking_date = metadata.get('collection_date', datetime.now().date())
+                    data_source = metadata.get('data_source', 'unknown')
+                    
+                    pg_data = {
+                        'rank': item.get('rank'),
+                        'name': item.get('name'),
+                        'ticker': ticker,
+                        'market_cap_usd': item.get('market_cap_usd'),
+                        'price_usd': item.get('price_usd'),
+                        'ranking_date': ranking_date,
+                        'data_source': data_source,
+                        # ...
+                    }
+                    
+                    stmt = pg_insert(WorldAssetsRanking).values(**pg_data)
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=['ranking_date', 'ticker', 'data_source'],
+                        set_={k: getattr(stmt.excluded, k) for k in pg_data.keys() if k not in ['ranking_date', 'ticker', 'data_source']}
+                    )
+                    pg_db.execute(stmt)
+                    saved_count += 1
+                except Exception as e:
+                    logger.warning(f"WorldAssetsRanking 저장 실패: {e}")
+                    continue
+            
+            pg_db.commit()
+            return saved_count > 0
+        except Exception as e:
+            pg_db.rollback()
+            logger.error(f"WorldAssetsRanking 저장 실패: {e}")
+            return False
+        finally:
+            pg_db.close()

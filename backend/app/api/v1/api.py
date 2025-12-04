@@ -57,5 +57,6 @@ api_router.include_router(metrics.router, tags=["metrics"])
 api_router.include_router(open_interest.router, tags=["open-interest"])
 api_router.include_router(realtime.router, prefix="/realtime", tags=["realtime"])
 
+
 # External APIs router
 api_router.include_router(external_apis_router, tags=["external-apis"])

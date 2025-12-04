@@ -67,6 +67,63 @@ export const useNavigation = (language: string = 'ko') => {
     }
   };
 
+  // CRUD Operations
+  const getMenus = async () => {
+    try {
+      setLoading(true);
+      // Use direct API call for admin management (flat list)
+      const { apiClient } = await import('../lib/api');
+      return await apiClient.getMenus();
+    } catch (err: any) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createMenu = async (data: any) => {
+    try {
+      setLoading(true);
+      const { apiClient } = await import('../lib/api');
+      await apiClient.createMenu(data);
+      await loadMenuItems();
+    } catch (err: any) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateMenu = async (id: number, data: any) => {
+    try {
+      setLoading(true);
+      const { apiClient } = await import('../lib/api');
+      await apiClient.updateMenu(id, data);
+      await loadMenuItems();
+    } catch (err: any) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteMenu = async (id: number) => {
+    try {
+      setLoading(true);
+      const { apiClient } = await import('../lib/api');
+      await apiClient.deleteMenu(id);
+      await loadMenuItems();
+    } catch (err: any) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // 현재 경로에 해당하는 메뉴 아이템 찾기
   const findCurrentMenuItem = (): MenuItem | null => {
     if (!menuItems || menuItems.length === 0) return null;
@@ -77,7 +134,7 @@ export const useNavigation = (language: string = 'ko') => {
         if (item.path === pathname) {
           return item;
         }
-        
+
         // 하위 메뉴에서 재귀 검색
         if (item.children && item.children.length > 0) {
           const found = findInMenu(item.children);
@@ -98,7 +155,11 @@ export const useNavigation = (language: string = 'ko') => {
     loading,
     error,
     refreshMenus,
-    reloadMenus: loadMenuItems
+    reloadMenus: loadMenuItems,
+    getMenus,
+    createMenu,
+    updateMenu,
+    deleteMenu
   };
 };
 

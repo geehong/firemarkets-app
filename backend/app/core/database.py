@@ -9,10 +9,8 @@ import time
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from dotenv import load_dotenv
-import greenlet
-
-# greenlet 초기화 (SQLAlchemy 비동기 지원을 위해 필요)
-greenlet.greenlet()
+# greenlet 초기화 제거 (불필요)
+# greenlet.greenlet()
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
@@ -21,10 +19,7 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # PostgreSQL 데이터베이스 URL 설정
-POSTGRES_DATABASE_URL = os.getenv(
-    "POSTGRES_DATABASE_URL",
-    "postgresql+psycopg2://geehong:Power6100@db_postgres:5432/markets"
-)
+POSTGRES_DATABASE_URL = os.getenv("POSTGRES_DATABASE_URL")
 
 if not POSTGRES_DATABASE_URL:
     raise ValueError("POSTGRES_DATABASE_URL 환경 변수가 설정되지 않았습니다.")

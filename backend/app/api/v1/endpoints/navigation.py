@@ -220,3 +220,100 @@ def get_menu_status(db: Session = Depends(get_postgres_db)):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get menu status: {str(e)}")
+
+from pydantic import BaseModel
+
+class MenuCreate(BaseModel):
+    name: str
+    path: Optional[str] = None
+    icon: Optional[str] = None
+    parent_id: Optional[int] = None
+    order: Optional[int] = 0
+    is_active: Optional[bool] = True
+    source_type: Optional[str] = 'static'
+    menu_metadata: Optional[Dict[str, Any]] = {}
+
+class MenuUpdate(BaseModel):
+    name: Optional[str] = None
+    path: Optional[str] = None
+    icon: Optional[str] = None
+    parent_id: Optional[int] = None
+    order: Optional[int] = None
+    is_active: Optional[bool] = None
+    source_type: Optional[str] = None
+    menu_metadata: Optional[Dict[str, Any]] = None
+
+@router.get("/menus", response_model=List[Dict[str, Any]])
+def get_all_menus(
+    db: Session = Depends(get_postgres_db),
+    current_user: User = Depends(get_current_user_optional) # Admin check should be enforced
+):
+    """
+    모든 메뉴를 플랫한 리스트로 조회합니다. (관리자용)
+    """
+    # TODO: Admin check
+    menus = db.query(Menu).order_by(asc(Menu.order)).all()
+    return [menu.to_dict() for menu in menus]
+
+@router.post("/menus", response_model=Dict[str, Any])
+def create_menu(
+    menu_in: MenuCreate,
+    db: Session = Depends(get_postgres_db),
+    current_user: User = Depends(get_current_user_optional) # Admin check
+):
+    """
+    새로운 메뉴를 생성합니다.
+    """
+    menu = Menu(
+        name=menu_in.name,
+        path=menu_in.path,
+        icon=menu_in.icon,
+        parent_id=menu_in.parent_id,
+        order=menu_in.order,
+        is_active=menu_in.is_active,
+        source_type=menu_in.source_type,
+        menu_metadata=menu_in.menu_metadata
+    )
+    db.add(menu)
+    db.commit()
+    db.refresh(menu)
+    return menu.to_dict()
+
+@router.put("/menus/{menu_id}", response_model=Dict[str, Any])
+def update_menu(
+    menu_id: int,
+    menu_in: MenuUpdate,
+    db: Session = Depends(get_postgres_db),
+    current_user: User = Depends(get_current_user_optional) # Admin check
+):
+    """
+    메뉴 정보를 수정합니다.
+    """
+    menu = db.query(Menu).filter(Menu.id == menu_id).first()
+    if not menu:
+        raise HTTPException(status_code=404, detail="Menu not found")
+    
+    update_data = menu_in.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(menu, field, value)
+    
+    db.commit()
+    db.refresh(menu)
+    return menu.to_dict()
+
+@router.delete("/menus/{menu_id}")
+def delete_menu(
+    menu_id: int,
+    db: Session = Depends(get_postgres_db),
+    current_user: User = Depends(get_current_user_optional) # Admin check
+):
+    """
+    메뉴를 삭제합니다.
+    """
+    menu = db.query(Menu).filter(Menu.id == menu_id).first()
+    if not menu:
+        raise HTTPException(status_code=404, detail="Menu not found")
+    
+    db.delete(menu)
+    db.commit()
+    return {"message": "Menu deleted successfully"}

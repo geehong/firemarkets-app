@@ -774,3 +774,16 @@ class TokenBlacklist(Base):
     def __repr__(self):
         return f"<TokenBlacklist(id={self.id}, user_id={self.user_id}, token_hash='{self.token_hash[:10]}...')>"
 
+
+class SystemLog(Base):
+    """시스템 일반 로그 테이블"""
+    __tablename__ = 'system_logs'
+    
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    level = Column(String(20), nullable=False, index=True)
+    module = Column(String(100), nullable=True)
+    message = Column(Text, nullable=False)
+    timestamp = Column(DateTime, server_default=func.now(), index=True)
+    
+    def __repr__(self):
+        return f"<SystemLog(id={self.id}, level='{self.level}', module='{self.module}')>"
