@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import navigationService from '../services/navigationService';
 
+import { useAuth } from '@/hooks/useAuthNew';
+
 export interface MenuItem {
   id: number;
   name: string;
@@ -25,6 +27,7 @@ export const useNavigation = (language: string = 'ko') => {
   const [error, setError] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
   const pathname = usePathname();
+  const { isAuthenticated } = useAuth();
 
   useEffect(() => {
     // 클라이언트 사이드 감지
@@ -39,7 +42,7 @@ export const useNavigation = (language: string = 'ko') => {
       // 서버 사이드에서는 로딩 상태 해제
       setLoading(false);
     }
-  }, [isClient, language]);
+  }, [isClient, language, isAuthenticated]);
 
   const loadMenuItems = async () => {
     try {

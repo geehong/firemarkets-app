@@ -14,6 +14,7 @@ interface SessionState {
 
 interface SessionEvent {
   type: 'login' | 'logout' | 'token_refresh' | 'session_expired' | 'error'
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data?: any
   timestamp: number
 }
@@ -162,7 +163,7 @@ class SessionService {
   private async refreshToken(): Promise<boolean> {
     try {
       const refreshResult = await authService.refreshToken()
-      
+
       if (refreshResult.success && refreshResult.data) {
         tokenService.updateTokens(refreshResult.data)
         this.emitEvent({ type: 'token_refresh', data: refreshResult.data, timestamp: Date.now() })
@@ -192,7 +193,7 @@ class SessionService {
     if (typeof window === 'undefined') return
 
     const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click']
-    
+
     const updateActivity = () => {
       this.state.lastActivity = Date.now()
       this.clearActivityTimer()
@@ -247,7 +248,7 @@ class SessionService {
       this.setState({ isLoading: true, error: null })
 
       const loginResult = await authService.login(credentials)
-      
+
       if (loginResult.success && loginResult.data) {
         const tokenData: TokenData = {
           accessToken: loginResult.data.access_token,
@@ -301,7 +302,7 @@ class SessionService {
     } finally {
       this.clearRefreshTimer()
       this.clearActivityTimer()
-      
+
       this.setState({
         isAuthenticated: false,
         user: null,

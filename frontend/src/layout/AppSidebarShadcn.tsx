@@ -10,6 +10,60 @@ import { useNavigation } from "../hooks/useNavigation";
 import { useLanguage } from "../contexts/LanguageContext";
 import SidebarWidget from "./SidebarWidget";
 import { cn } from "@/lib/utils";
+import {
+  GridIcon,
+  PlusIcon,
+  CloseIcon,
+  BoxIcon,
+  CheckCircleIcon,
+  AlertIcon,
+  InfoIcon,
+  ErrorIcon,
+  BoltIcon,
+  ArrowUpIcon,
+  ArrowDownIcon,
+  FolderIcon,
+  VideoIcon,
+  AudioIcon,
+  FileIcon,
+  DownloadIcon,
+  ArrowRightIcon,
+  GroupIcon,
+  BoxIconLine,
+  ShootingStarIcon,
+  DollarLineIcon,
+  TrashBinIcon,
+  AngleUpIcon,
+  AngleDownIcon,
+  PencilIcon,
+  CheckLineIcon,
+  CloseLineIcon,
+  PaperPlaneIcon,
+  LockIcon,
+  EnvelopeIcon,
+  UserIcon,
+  CalenderIcon,
+  EyeIcon,
+  EyeCloseIcon,
+  TimeIcon,
+  CopyIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  UserCircleIcon,
+  ListIcon,
+  TableIcon,
+  PageIcon,
+  TaskIcon,
+  PieChartIcon,
+  BoxCubeIcon,
+  PlugInIcon,
+  DocsIcon,
+  MailIcon,
+  ChatIcon,
+  MoreDotIcon,
+  BellIcon,
+  BookIcon,
+} from "../icons/index";
 
 // shadcn/ui sidebar 컴포넌트들
 // 참고: 다음 패키지들이 필요합니다: @radix-ui/react-slot, class-variance-authority, clsx
@@ -26,6 +80,76 @@ type NavItem = {
     new?: boolean;
     subItems?: { name: string; path: string; pro?: boolean; new?: boolean }[];
   }[];
+};
+
+// Helper function to map icon string to icon component
+const getIconComponent = (iconName?: string): React.ReactNode => {
+  if (!iconName) {
+    return <GridIcon />; // Default icon
+  }
+
+  const iconMap: Record<string, React.ReactNode> = {
+    'plus': <PlusIcon />,
+    'close': <CloseIcon />,
+    'box': <BoxIcon />,
+    'check-circle': <CheckCircleIcon />,
+    'alert': <AlertIcon />,
+    'info': <InfoIcon />,
+    'error': <ErrorIcon />,
+    'bolt': <BoltIcon />,
+    'arrow-up': <ArrowUpIcon />,
+    'arrow-down': <ArrowDownIcon />,
+    'folder': <FolderIcon />,
+    'video': <VideoIcon />,
+    'audio': <AudioIcon />,
+    'grid': <GridIcon />,
+    'file': <FileIcon />,
+    'download': <DownloadIcon />,
+    'arrow-right': <ArrowRightIcon />,
+    'group': <GroupIcon />,
+    'box-line': <BoxIconLine />,
+    'shooting-star': <ShootingStarIcon />,
+    'dollar-line': <DollarLineIcon />,
+    'trash': <TrashBinIcon />,
+    'angle-up': <AngleUpIcon />,
+    'angle-down': <AngleDownIcon />,
+    'pencil': <PencilIcon />,
+    'check-line': <CheckLineIcon />,
+    'close-line': <CloseLineIcon />,
+    'paper-plane': <PaperPlaneIcon />,
+    'lock': <LockIcon />,
+    'envelope': <EnvelopeIcon />,
+    'user': <UserIcon />,
+    'user-line': <UserIcon />,
+    'calendar': <CalenderIcon />,
+    'calender-line': <CalenderIcon />,
+    'eye': <EyeIcon />,
+    'eye-close': <EyeCloseIcon />,
+    'time': <TimeIcon />,
+    'copy': <CopyIcon />,
+    'chevron-left': <ChevronLeftIcon />,
+    'chevron-right': <ChevronRightIcon />,
+    'user-circle': <UserCircleIcon />,
+    'list': <ListIcon />,
+    'table': <TableIcon />,
+    'page': <PageIcon />,
+    'task': <TaskIcon />,
+    'pie-chart': <PieChartIcon />,
+    'box-cube': <BoxCubeIcon />,
+    'plug-in': <PlugInIcon />,
+    'docs': <DocsIcon />,
+    'mail': <MailIcon />,
+    'mail-line': <MailIcon />,
+    'chat': <ChatIcon />,
+    'more-dot': <MoreDotIcon />,
+    'bell': <BellIcon />,
+    'book': <BookIcon />,
+  };
+
+  // Normalize icon name (lowercase, remove spaces, handle variations)
+  const normalizedName = iconName.toLowerCase().trim().replace(/\s+/g, '-');
+  
+  return iconMap[normalizedName] || iconMap[iconName] || <GridIcon />;
 };
 
 const Sidebar = React.forwardRef<
@@ -283,7 +407,7 @@ const AppSidebarShadcn: React.FC = () => {
         return {
           name: item.name,
           path: item.path,
-          icon: <Menu className="w-5 h-5" />,
+          icon: getIconComponent(item.icon), // Use icon from menu item data
           subItems:
             item.children && item.children.length > 0
               ? item.children

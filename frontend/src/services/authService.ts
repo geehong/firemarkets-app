@@ -147,6 +147,7 @@ class AuthService {
   }
 
   // 세션 정보 조회
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getSessions(): Promise<{ success: boolean; data?: any[]; error?: string }> {
     try {
       const accessToken = tokenService.getAccessToken()

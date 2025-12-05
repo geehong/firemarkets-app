@@ -7,10 +7,10 @@ const getAPIBaseURL = () => {
   if (typeof window === 'undefined') {
     return '';
   }
-  
-  // 브라우저 환경에서 현재 호스트 기반으로 API URL 결정
-  const hostname = window.location.hostname;
-  
+
+  // 브라우저 환경에서 현재 호스트 기반으로 API URL 결정 (현재는 사용하지 않음)
+  // const hostname = window.location.hostname;
+
   // 모든 환경에서 프로덕션 API 사용
   return 'https://backend.firemarkets.net';
 };
@@ -50,21 +50,21 @@ class NavigationService {
 
     try {
       const currentAPIURL = getAPIBaseURL();
-      
+
       // API URL이 없으면 정적 메뉴 반환
       if (!currentAPIURL) {
         return this.getStaticMenu();
       }
-      
+
       // 인증 헤더 가져오기
       const token = this.getAuthToken();
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      
+
       const BACKEND_BASE = process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'
       const url = `${BACKEND_BASE}/navigation/menu?lang=${language}`;
       console.log('🔍 [navigationService] Fetching menu from:', url);
       console.log('🔍 [navigationService] Headers:', headers);
-      
+
       const response = await axios.get(url, {
         headers,
         timeout: 15000, // 15초 타임아웃 (모바일 네트워크 고려)
@@ -73,11 +73,11 @@ class NavigationService {
           return status >= 200 && status < 300; // 기본값
         }
       });
-      
+
       console.log('🔍 [navigationService] Response status:', response.status);
       console.log('🔍 [navigationService] Response data:', response.data);
       return response.data;
-    } catch (error: any) {
+    } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       console.error('navigationService - Failed to fetch menu structure:', error);
       console.error('navigationService - Error details:', {
         message: error.message,
@@ -87,14 +87,14 @@ class NavigationService {
         url: error.config?.url,
         hostname: window.location.hostname
       });
-      
+
       // 네트워크 에러 처리
       if (error.code === 'NETWORK_ERROR' || error.code === 'ECONNREFUSED' || error.message.includes('Network Error')) {
         throw new Error('서버에 연결할 수 없습니다. 네트워크를 확인해주세요.');
       } else if (error.code === 'TIMEOUT' || error.message.includes('timeout')) {
         throw new Error('요청 시간이 초과되었습니다. 다시 시도해주세요.');
       }
-      
+
       // 권한 관련 에러 처리
       if (error.response?.status === 401) {
         console.log('navigationService - 401 error, returning static menu');
@@ -109,7 +109,7 @@ class NavigationService {
         console.log('navigationService - 5xx error, returning static menu');
         return this.getStaticMenu();
       }
-      
+
       // 기타 에러의 경우에도 정적 메뉴 반환
       console.log('navigationService - Other error, returning static menu');
       return this.getStaticMenu();
@@ -122,20 +122,21 @@ class NavigationService {
   async refreshDynamicMenus() {
     try {
       const headers = this.getAuthHeaders();
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const currentAPIURL = getAPIBaseURL();
       const response = await axios.post('/api/v1/navigation/menu/refresh', {}, {
         headers
       });
       return response.data;
-    } catch (error: any) {
+    } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       console.error('Failed to refresh dynamic menus:', error);
-      
+
       if (error.response?.status === 401) {
         throw new Error('인증이 필요합니다. 로그인해주세요.');
       } else if (error.response?.status === 403) {
         throw new Error('관리자 권한이 필요합니다.');
       }
-      
+
       throw new Error('동적 메뉴 새로고침에 실패했습니다.');
     }
   }
@@ -146,20 +147,21 @@ class NavigationService {
   async getMenuStatus() {
     try {
       const headers = this.getAuthHeaders();
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const currentAPIURL = getAPIBaseURL();
       const response = await axios.get('/api/v1/navigation/menu/status', {
         headers
       });
       return response.data;
-    } catch (error: any) {
+    } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       console.error('Failed to get menu status:', error);
-      
+
       if (error.response?.status === 401) {
         throw new Error('인증이 필요합니다. 로그인해주세요.');
       } else if (error.response?.status === 403) {
         throw new Error('관리자 권한이 필요합니다.');
       }
-      
+
       throw new Error('메뉴 상태를 가져오는데 실패했습니다.');
     }
   }

@@ -13,7 +13,7 @@ import os
 
 # ... (imports)
 
-# from ...config import settings  <-- Removed
+# from app.core.config import settings  <-- Removed
 from ...utils.retry import retry_decorator
 
 log = logging.getLogger(__name__)

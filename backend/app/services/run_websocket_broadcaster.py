@@ -163,7 +163,7 @@ async def listen_to_redis_and_broadcast():
                             logger.debug(f"📭 스트림 '{stream_name}'이 존재하지 않음, 건너뜀")
                             continue
                             
-                        logger.info(f"[Broadcaster] XREADGROUP from '{stream_name}' as '{group_name}'...")
+                        logger.debug(f"[Broadcaster] XREADGROUP from '{stream_name}' as '{group_name}'...")
                         # 각 스트림에서 개별적으로 데이터 읽기
                         stream_data = await redis_client.xreadgroup(
                             groupname=group_name,
@@ -172,15 +172,15 @@ async def listen_to_redis_and_broadcast():
                             count=100,
                             block=10  # 짧은 블로킹 시간
                         )
-                        logger.info(f"[Broadcaster] XREADGROUP result for '{stream_name}': {len(stream_data) if stream_data else 0} batches")
+                        logger.debug(f"[Broadcaster] XREADGROUP result for '{stream_name}': {len(stream_data) if stream_data else 0} batches")
                         if stream_data:
                             for stream_name_bytes, messages in stream_data:
                                 stream_name_str = stream_name_bytes.decode('utf-8') if isinstance(stream_name_bytes, bytes) else str(stream_name_bytes)
-                                logger.info(f"📥 [BROADCASTER←REDIS] 스트림 '{stream_name_str}'에서 {len(messages)}개 메시지 수신")
+                                logger.debug(f"📥 [BROADCASTER←REDIS] 스트림 '{stream_name_str}'에서 {len(messages)}개 메시지 수신")
                                 for message_id, message_data in messages:
                                     symbol = message_data.get(b'symbol', b'').decode('utf-8').upper()
                                     price = message_data.get(b'price', b'').decode('utf-8')
-                                    logger.info(f"📥 [BROADCASTER←REDIS] 메시지 처리: {symbol} = ${price}")
+                                    logger.debug(f"📥 [BROADCASTER←REDIS] 메시지 처리: {symbol} = ${price}")
                         if stream_data:
                             # (stream_name, messages) 튜플을 리스트에 추가
                             all_messages.extend(stream_data)
@@ -227,12 +227,12 @@ async def listen_to_redis_and_broadcast():
                                 # ETH-USD -> ETHUSDT 변환 (Coinbase 형식)
                                 base = symbol[:-4]  # '-USD' 제거
                                 symbol = f"{base}USDT"
-                                logger.info(f"🔄 티커 변환: {original_symbol} -> {symbol} (provider: {provider}, stream: {stream_name})")
+                                logger.debug(f"🔄 티커 변환: {original_symbol} -> {symbol} (provider: {provider}, stream: {stream_name})")
                             elif not symbol.endswith('USDT') and provider == 'binance':
                                 # Binance는 USDT 접미사가 없으면 추가
                                 if not any(symbol.endswith(suffix) for suffix in ['USDT', 'BUSD', 'BTC', 'ETH']):
                                     symbol = f"{symbol}USDT"
-                                    logger.info(f"🔄 Binance 티커 변환: {original_symbol} -> {symbol}")
+                                    logger.debug(f"🔄 Binance 티커 변환: {original_symbol} -> {symbol}")
 
                             # 먼저 전체 심볼로 검색
                             asset_id = ticker_to_asset_id_cache.get(symbol)
@@ -250,8 +250,8 @@ async def listen_to_redis_and_broadcast():
                                 logger.debug(f"🔍 Full symbol '{symbol}' not found, trying without USDT: '{symbol_for_db}'")
                             
                             if not asset_id:
-                                logger.warning(f"⚠️ Asset ID not found for symbol: {symbol} (original: {original_symbol}, provider: {provider})")
-                                logger.warning(f"📋 Available symbols in cache: {list(ticker_to_asset_id_cache.keys())[:10]}...")
+                                logger.debug(f"⚠️ Asset ID not found for symbol: {symbol} (original: {original_symbol}, provider: {provider})")
+                                logger.debug(f"📋 Available symbols in cache: {list(ticker_to_asset_id_cache.keys())[:10]}...")
                                 continue
                             else:
                                 logger.debug(f"✅ Found asset_id {asset_id} for symbol: {symbol} (original: {original_symbol})")
@@ -268,9 +268,9 @@ async def listen_to_redis_and_broadcast():
                             }
 
                             if sio_client.connected:
-                                logger.info(f"📤 [BROADCASTER→BACKEND] 전송 시도: {symbol} = ${price} (asset_id: {asset_id})")
+                                logger.debug(f"📤 [BROADCASTER→BACKEND] 전송 시도: {symbol} = ${price} (asset_id: {asset_id})")
                                 await sio_client.emit('broadcast_quote', quote_data)
-                                logger.info(f"✅ [BROADCASTER→BACKEND] 전송 완료: {symbol} = ${price}")
+                                logger.debug(f"✅ [BROADCASTER→BACKEND] 전송 완료: {symbol} = ${price}")
                             else:
                                 logger.warning(f"⚠️ [BROADCASTER→BACKEND] 백엔드 연결 실패: {symbol} 전송 불가")
 

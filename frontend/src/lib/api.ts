@@ -59,6 +59,7 @@ export class ApiClient {
     this.baseURL = baseURL
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async request<T = any>(endpoint: string, init?: RequestInit): Promise<T> {
     const url = `${this.baseURL}${endpoint}`
 
@@ -354,6 +355,7 @@ export class ApiClient {
   }
 
   // Update Asset Overview - 자산 개요 정보 업데이트
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   updateAssetOverview(assetIdentifier: string, data: Record<string, any>) {
     return this.request(`/assets/overview/${assetIdentifier}`, {
       method: 'PUT',
@@ -463,6 +465,7 @@ export class ApiClient {
     return this.request('/posts/tags/');
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   createBlog(data: any) {
     return this.request('/posts/', {
       method: 'POST',
@@ -470,6 +473,7 @@ export class ApiClient {
     });
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   updateBlog(id: number, data: any) {
     return this.request(`/posts/${id}`, {
       method: 'PUT',
@@ -489,6 +493,7 @@ export class ApiClient {
     return this.request('/navigation/menus');
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   createMenu(data: any) {
     return this.request('/navigation/menus', {
       method: 'POST',
@@ -496,6 +501,7 @@ export class ApiClient {
     });
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   updateMenu(id: number, data: any) {
     return this.request(`/navigation/menus/${id}`, {
       method: 'PUT',

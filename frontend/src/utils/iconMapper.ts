@@ -10,42 +10,50 @@ import {
   PlugInIcon,
   TableIcon,
   UserCircleIcon,
+  DollarLineIcon,
+  ShootingStarIcon,
+  TaskIcon,
+  BoltIcon,
+  CheckCircleIcon,
+  AlertIcon,
+  InfoIcon,
+  ErrorIcon,
 } from '../icons/index';
 
 // 아이콘 컴포넌트 매핑 객체
 const iconComponentMap: Record<string, React.ComponentType> = {
   // CoreUI Icons
-  'cilSpeedometer': GridIcon,
-  'cilChartPie': PieChartIcon,
+  'cilSpeedometer': GridIcon,     // Dashboard
+  'cilChartPie': PieChartIcon,    // Charts/Map
   'cilPuzzle': BoxCubeIcon,
   'cilCursor': PlugInIcon,
   'cilNotes': ListIcon,
   'cilStar': PageIcon,
-  'cilBell': PlugInIcon,
+  'cilBell': AlertIcon,
   'cilCalculator': TableIcon,
-  'cilBug': PlugInIcon,
+  'cilBug': ErrorIcon,
   'cilDescription': PageIcon,
-  'cilDrop': PlugInIcon,
-  'cilPencil': PlugInIcon,
+  'cilDrop': BoltIcon,
+  'cilPencil': TaskIcon,
   'cilExternalLink': PlugInIcon,
-  'cilGoldenline': PieChartIcon,
-  'cilBitcoin': PlugInIcon,
-  'cilMatrix': TableIcon,
+  'cilGoldenline': DollarLineIcon, // Assets/Funds (Goldenline -> Dollar/Money)
+  'cilBitcoin': DollarLineIcon,    // Crypto (Bitcoin -> Dollar/Money)
+  'cilMatrix': TableIcon,         // Matrix -> Table
   'cilShieldAlt': UserCircleIcon,
   'cilChartLine': PieChartIcon,
-  'cilSpiral': PlugInIcon,
-  'cilProgress': PlugInIcon,
+  'cilSpiral': ShootingStarIcon,
+  'cilProgress': TaskIcon,
   'cilCalendar': CalenderIcon,
-  
-  // Brand Icons
-  'cibBitcoin': PlugInIcon,
+
+  // Brand Icons (Mapping cibs to similar cils or best fit)
+  'cibBitcoin': DollarLineIcon,    // Crypto
   'cibChartLine': PieChartIcon,
-  'cibSpiral': PlugInIcon,
-  'cibProgress': PlugInIcon,
+  'cibSpiral': ShootingStarIcon,
+  'cibProgress': TaskIcon,
   'cibCalendar': CalenderIcon,
   'cibMatrix': TableIcon,
   'cibShieldAlt': UserCircleIcon,
-  'cibGoldenline': PieChartIcon,
+  'cibGoldenline': DollarLineIcon, // Assets
 };
 
 /**
@@ -57,30 +65,38 @@ export const getIconComponent = (iconName?: string): React.ReactNode => {
   if (!iconName) {
     return React.createElement(PlugInIcon); // 기본 아이콘
   }
-  
+
   const IconComponent = iconComponentMap[iconName] || PlugInIcon;
   return React.createElement(IconComponent);
 };
+
+interface MetadataWithBadge {
+  badge?: string | { text?: string; color?: string };
+}
+
+interface MetadataWithDescription {
+  description?: string | { [key: string]: string | undefined; en?: string; ko?: string };
+}
 
 /**
  * 메뉴 아이템의 메타데이터에서 배지 정보를 추출합니다
  * @param metadata - 메뉴 메타데이터
  * @returns 배지 정보 또는 null
  */
-export const getBadgeFromMetadata = (metadata?: any) => {
+export const getBadgeFromMetadata = (metadata?: MetadataWithBadge) => {
   if (!metadata || !metadata.badge) {
     return null;
   }
-  
+
   if (typeof metadata.badge === 'string') {
     return {
       text: metadata.badge,
       color: 'info'
     };
   }
-  
+
   return {
-    text: metadata.badge.text || metadata.badge,
+    text: metadata.badge.text || '', // Removed unsafe cast
     color: metadata.badge.color || 'info'
   };
 };
@@ -91,14 +107,15 @@ export const getBadgeFromMetadata = (metadata?: any) => {
  * @param language - 언어 코드 (기본값: 'ko')
  * @returns 설명 텍스트
  */
-export const getDescriptionFromMetadata = (metadata?: any, language: string = 'ko') => {
+export const getDescriptionFromMetadata = (metadata?: MetadataWithDescription, language: string = 'ko') => {
   if (!metadata || !metadata.description) {
     return '';
   }
-  
+
   if (typeof metadata.description === 'string') {
     return metadata.description;
   }
-  
-  return metadata.description[language] || metadata.description.en || metadata.description.ko || '';
+
+  const desc = metadata.description as { [key: string]: string | undefined };
+  return desc[language] || desc.en || desc.ko || '';
 };
