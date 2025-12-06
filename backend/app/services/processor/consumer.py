@@ -57,10 +57,9 @@ class StreamConsumer:
                     if "BUSYGROUP" not in str(e):
                         logger.warning(f"xgroup_create error {stream_name}: {e}")
 
-            # 스트림 읽기
+            # Pending 메시지 먼저 처리
             for stream_name, group_name in self.realtime_streams.items():
                 try:
-                    # Pending 메시지 확인
                     pending_info = await self.redis_client.xpending(stream_name, group_name)
                     if pending_info and pending_info.get('pending', 0) > 0:
                         pending_data = await self.redis_client.xreadgroup(
@@ -71,20 +70,41 @@ class StreamConsumer:
                         )
                         if pending_data:
                             await self._process_messages(pending_data, records_to_save, ack_items)
-
-                    # 새로운 메시지 읽기
-                    new_data = await self.redis_client.xreadgroup(
-                        groupname=group_name,
-                        consumername="processor_worker",
-                        streams={stream_name: ">"},
-                        count=self.batch_size,
-                        block=100
-                    )
-                    if new_data:
-                        await self._process_messages(new_data, records_to_save, ack_items)
-
                 except Exception as e:
-                    logger.error(f"스트림 {stream_name} 읽기 실패: {e}")
+                    logger.error(f"Pending 처리 실패 {stream_name}: {e}")
+
+            # 모든 스트림을 한 번에 읽기 (CPU 효율성 향상)
+            streams_dict = {name: ">" for name in self.realtime_streams.keys()}
+            try:
+                new_data = await self.redis_client.xreadgroup(
+                    groupname=list(self.realtime_streams.values())[0],  # 첫 번째 그룹명 사용
+                    consumername="processor_worker",
+                    streams=streams_dict,
+                    count=self.batch_size,
+                    block=500  # 500ms 블로킹으로 CPU 부하 완화
+                )
+                if new_data:
+                    await self._process_messages(new_data, records_to_save, ack_items)
+            except Exception as e:
+                # 그룹이 다를 수 있으므로 개별 처리로 폴백
+                logger.debug(f"통합 스트림 읽기 실패, 개별 처리로 전환: {e}")
+                for stream_name, group_name in self.realtime_streams.items():
+                    try:
+                        new_data = await self.redis_client.xreadgroup(
+                            groupname=group_name,
+                            consumername="processor_worker",
+                            streams={stream_name: ">"},
+                            count=self.batch_size,
+                            block=100 if stream_name == list(self.realtime_streams.keys())[0] else 0
+                        )
+                        if new_data:
+                            await self._process_messages(new_data, records_to_save, ack_items)
+                    except Exception as stream_error:
+                        logger.error(f"스트림 {stream_name} 읽기 실패: {stream_error}")
+            
+            # 데이터가 없으면 추가 대기로 CPU 부하 완화
+            if not records_to_save:
+                await asyncio.sleep(0.2)
 
             # DB 저장
             if records_to_save:

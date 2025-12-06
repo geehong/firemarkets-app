@@ -27,19 +27,19 @@ type PricePoint = [number, number] // [timestamp, close]
 const interpolateColor = (color1: string, color2: string, ratio: number): string => {
   const hex1 = color1.replace('#', '')
   const hex2 = color2.replace('#', '')
-  
+
   const r1 = parseInt(hex1.substring(0, 2), 16)
   const g1 = parseInt(hex1.substring(2, 4), 16)
   const b1 = parseInt(hex1.substring(4, 6), 16)
-  
+
   const r2 = parseInt(hex2.substring(0, 2), 16)
   const g2 = parseInt(hex2.substring(2, 4), 16)
   const b2 = parseInt(hex2.substring(4, 6), 16)
-  
+
   const r = Math.round(r1 + (r2 - r1) * ratio)
   const g = Math.round(g1 + (g2 - g1) * ratio)
   const b = Math.round(b1 + (b2 - b1) * ratio)
-  
+
   return `#${[r, g, b].map(x => x.toString(16).padStart(2, '0')).join('')}`
 }
 
@@ -77,7 +77,7 @@ const LiveChart: React.FC<LiveChartProps> = ({
   containerId = 'live-chart-container',
   height = 400,
   initialData,
-  updateInterval = 100,
+  updateInterval = 2000,
   assetIdentifier: assetIdentifierProp = 'BTCUSDT',
   dataSource: dataSourceProp = undefined, // undefined by default - backend will choose appropriate source
   useWebSocket: useWebSocketProp = true,
@@ -103,9 +103,9 @@ const LiveChart: React.FC<LiveChartProps> = ({
 
   // 자산 정보 가져오기 (주식/ETF 확인용)
   const { data: assetDetail } = useAssetDetail(assetIdentifier)
-  
+
   // 주식/ETF인지 확인
-  const isStocksOrEtf = 
+  const isStocksOrEtf =
     assetDetail?.asset_type_id === 2 || // Stocks
     assetDetail?.asset_type_id === 5 || // ETFs
     assetDetail?.type_name?.toLowerCase() === 'stocks' ||
@@ -119,14 +119,14 @@ const LiveChart: React.FC<LiveChartProps> = ({
     { dataSource, limit: 96, days: apiDays },
     { enabled: !isStocksOrEtf, staleTime: 60 * 1000, refetchInterval: apiRefetchIntervalMs }
   )
-  
+
   // sparkline-price API는 days가 최대 1로 제한되어 있으므로 1로 제한
   const sparklineQuery = useSparklinePrice(
     assetIdentifier,
     { dataInterval: '15m', days: 1, dataSource },
     { enabled: isStocksOrEtf, staleTime: 60 * 1000, refetchInterval: apiRefetchIntervalMs }
   )
-  
+
   // 주식/ETF인 경우 sparkline-price 결과 사용, 그 외에는 기존 delayed quotes 사용
   const apiResponse = isStocksOrEtf ? sparklineQuery.data : delayedQuotesQuery.data
   const apiLoading = isStocksOrEtf ? sparklineQuery.isLoading : delayedQuotesQuery.isLoading
@@ -147,7 +147,7 @@ const LiveChart: React.FC<LiveChartProps> = ({
 
   // 실시간 가격 데이터
   const { latestPrice, isConnected: socketConnected } = useRealtimePrices(assetIdentifier)
-  
+
   // 테마 가져오기
   const { theme } = useTheme()
 
@@ -205,7 +205,7 @@ const LiveChart: React.FC<LiveChartProps> = ({
     }
 
     const result = baseData.length > 0 ? baseData.sort((a, b) => a[0] - b[0]) : (initialData || [])
-    
+
     // API 데이터 콘솔 출력 (1번만)
     if (result.length > 0 && !hasLoggedChartData.current) {
       console.log('[LiveChart] Chart Data (API only):', {
@@ -216,7 +216,7 @@ const LiveChart: React.FC<LiveChartProps> = ({
       })
       hasLoggedChartData.current = true
     }
-    
+
     return result
   }, [apiResponse, assetIdentifier, initialData])
 
@@ -260,7 +260,7 @@ const LiveChart: React.FC<LiveChartProps> = ({
             try {
               const mod = await loader()
               if (mod && typeof mod.default === 'function') {
-                ;(mod.default as any)(HighchartsCore)
+                ; (mod.default as any)(HighchartsCore)
               }
             } catch (moduleError) {
               console.warn('Failed to load Highcharts module:', moduleError)
@@ -293,9 +293,9 @@ const LiveChart: React.FC<LiveChartProps> = ({
     // Modify last data point
     const newClose = Highcharts?.correctFloat
       ? Highcharts.correctFloat(
-          lastPoint[1] + Highcharts.correctFloat(Math.random() - 0.5, 2),
-          4
-        )
+        lastPoint[1] + Highcharts.correctFloat(Math.random() - 0.5, 2),
+        4
+      )
       : Number((lastPoint[1] + (Math.random() - 0.5)).toFixed(4))
 
     return [
@@ -308,7 +308,7 @@ const LiveChart: React.FC<LiveChartProps> = ({
   const generateTitleHTML = useMemo(() => {
     const isDark = theme === 'dark'
     const textColor = isDark ? '#FFFFFF' : '#000000'
-    
+
     // 기준 가격: 우선순위 - lastQuoteResponse.quote.price (폐장), 실시간, 마지막 차트 포인트
     const price = (lastQuoteResponse?.quote?.price as number | undefined)
       ?? latestPrice?.price
@@ -319,7 +319,7 @@ const LiveChart: React.FC<LiveChartProps> = ({
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(price)
-    
+
     // 변화율/변화액 계산
     // - 코인 외(웹소켓 비활성)에는 lastQuoteResponse.quote.change_amount/change_percent를 우선 사용
     // - 그 외에는 실시간 changePercent가 있으면 사용
@@ -359,16 +359,16 @@ const LiveChart: React.FC<LiveChartProps> = ({
     const isPositive = computedChangePercent >= 0
     const changeSign = computedChangePercent > 0 ? '+' : (computedChangePercent < 0 ? '-' : '')
     const formattedChangePercent = `${changeSign}${Math.abs(computedChangePercent).toFixed(2)}%`
-    
+
     // 가격에 변화율에 따른 단계별 색상 적용
     const priceColor = getChangeColor(computedChangePercent)
-    
+
     // 변화율과 변화량은 단순 색상 (상승=초록색, 하강=붉은색)
     const changeColor = isPositive ? '#2ecc59' : '#f73539'
-    
+
     // 변화액 포맷
     const formattedChangeAmount = `${changeSign}${Math.abs(computedChangeAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    
+
     return `
       <div style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;">
         <span style="font-size: 16px; color: ${textColor}; font-weight: 500;">
@@ -476,7 +476,7 @@ const LiveChart: React.FC<LiveChartProps> = ({
   // Title 업데이트 (latestPrice 변경 시) - 차트 그래프에 영향 없이 title만 업데이트
   useEffect(() => {
     if (!chartRef.current || !Highcharts) return
-    
+
     const chart = chartRef.current
     // setTitle의 두 번째 파라미터를 false로 설정하여 차트를 다시 그리지 않음
     // title만 업데이트되고 차트의 시리즈나 그래프는 영향받지 않음

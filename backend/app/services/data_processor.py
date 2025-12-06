@@ -122,8 +122,11 @@ class DataProcessor:
                 total_processed = stream_count + batch_count
                 self.stats["processed_count"] += total_processed
                 
+                # CPU 사용량 조절: 데이터 처리 여부와 관계없이 항상 대기
                 if total_processed == 0:
-                    await asyncio.sleep(0.1) # Idle 대기
+                    await asyncio.sleep(0.5) # Idle 대기 시간 증가
+                else:
+                    await asyncio.sleep(0.05) # 처리 후에도 대기 시간 증가로 CPU 부하 완화
                     
             except Exception as e:
                 logger.error(f"DataProcessor 메인 루프 오류: {e}")
@@ -156,7 +159,7 @@ class DataProcessor:
         processed_count = 0
         try:
             # 큐에서 데이터 가져오기 (최대 100개씩)
-            for _ in range(100):
+            for i in range(100):
                 task_wrapper = None
                 if self.queue_manager:
                     task_wrapper = await self.queue_manager.pop_batch_task(timeout_seconds=0.1)
@@ -173,12 +176,22 @@ class DataProcessor:
                     break
                 
                 # 태스크 처리
+                task_type = task_wrapper.get('type', 'unknown')
                 success = await self._process_batch_task(task_wrapper)
                 if success:
                     processed_count += 1
+                    # 배치 태스크 성공 로그 (OHLCV, macrotrends 등 주요 타입만)
+                    if task_type in ('ohlcv_day_data', 'ohlcv_intraday_data', 'macrotrends_financials'):
+                        payload = task_wrapper.get('payload', {})
+                        items_count = len(payload.get('items', [])) if isinstance(payload, dict) else 0
+                        logger.info(f"✅ 배치 태스크 처리 성공: {task_type} ({items_count}건)")
                 else:
                     # 실패 시 DLQ 등 처리 (여기서는 로그만)
-                    logger.warning(f"배치 태스크 처리 실패: {task_wrapper.get('type')}")
+                    logger.warning(f"배치 태스크 처리 실패: {task_type}")
+                
+                # CPU 부하 완화: 10개 처리마다 짧은 대기
+                if (i + 1) % 10 == 0:
+                    await asyncio.sleep(0.001)
                     
         except Exception as e:
             logger.error(f"배치 큐 처리 중 오류: {e}")

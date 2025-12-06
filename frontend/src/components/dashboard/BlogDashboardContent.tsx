@@ -42,7 +42,7 @@ const BlogPostCard: React.FC<BlogPostCardProps> = ({
   const safeTags = tags && Array.isArray(tags) ? tags.filter((tag: any) => typeof tag === 'string') : [];
 
   return (
-    <Link 
+    <Link
       href={`/blog/${slug}`}
       className="block bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all hover:scale-[1.02]"
     >
@@ -71,7 +71,7 @@ const BlogPostCard: React.FC<BlogPostCardProps> = ({
         {safeTags.length > 0 && (
           <div className="flex gap-2 flex-wrap">
             {safeTags.slice(0, 3).map((tag, idx) => (
-              <span 
+              <span
                 key={idx}
                 className="px-2 py-1 text-xs rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
               >
@@ -87,22 +87,16 @@ const BlogPostCard: React.FC<BlogPostCardProps> = ({
 
 export default function BlogDashboardContent() {
   // 최근 블로그 포스트 조회
-  const { data: recentPosts, isLoading: recentLoading } = useQuery({
+  const { data: recentPosts, isLoading: recentLoading, isError: recentError } = useQuery({
     queryKey: ['blog-posts', 'recent'],
     queryFn: () => apiClient.getPosts({ page: 1, page_size: 6, status: 'published' }),
     staleTime: 5 * 60 * 1000,
-    retry: 0,
+    retry: 1,
     refetchOnWindowFocus: false,
   });
 
-  // 인기 블로그 포스트 조회 (조회수 기준)
-  const { data: popularPosts, isLoading: popularLoading } = useQuery({
-    queryKey: ['blog-posts', 'popular'],
-    queryFn: () => apiClient.getPosts({ page: 1, page_size: 6, status: 'published' }),
-    staleTime: 10 * 60 * 1000,
-    retry: 0,
-    refetchOnWindowFocus: false,
-  });
+  // 인기 블로그 포스트 조회 (최신 포스트와 동일 데이터 사용)
+  // Note: 별도의 인기 정렬 API가 없어서 최신 포스트와 동일한 데이터를 사용합니다
 
   // 카테고리 조회
   const { data: categories } = useQuery({
@@ -152,7 +146,6 @@ export default function BlogDashboardContent() {
   };
 
   const normalizedRecent = normalizeArrayData(recentPosts);
-  const normalizedPopular = normalizeArrayData(popularPosts);
 
   return (
     <>
@@ -213,14 +206,14 @@ export default function BlogDashboardContent() {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
             최근 포스트
           </h2>
-          <Link 
+          <Link
             href="/blog"
             className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium text-sm"
           >
             전체 보기 →
           </Link>
         </div>
-        
+
         {recentLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[...Array(6)].map((_, i) => (
@@ -231,6 +224,17 @@ export default function BlogDashboardContent() {
                 <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3"></div>
               </div>
             ))}
+          </div>
+        ) : recentError ? (
+          <div className="text-center py-12">
+            <div className="text-red-500 dark:text-red-400 mb-2">⚠️ 블로그 데이터를 불러오는 데 실패했습니다.</div>
+            <p className="text-sm text-gray-500 dark:text-gray-400">잠시 후 다시 시도해주세요.</p>
+          </div>
+        ) : normalizedRecent.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="text-4xl mb-4">📝</div>
+            <p className="text-gray-500 dark:text-gray-400">아직 작성된 포스트가 없습니다.</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">새로운 포스트가 곧 게시될 예정입니다.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -278,28 +282,31 @@ export default function BlogDashboardContent() {
             })}
           </div>
         </div>
-      )}
+      )
+      }
 
       {/* 인기 태그 */}
-      {tags?.tags && tags.tags.length > 0 && (
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg p-8 shadow-lg text-white">
-          <h2 className="text-2xl font-bold mb-4">인기 태그</h2>
-          <div className="flex flex-wrap gap-3">
-            {tags.tags.slice(0, 20).map((tag: any) => {
-              const tagStr = normalizeString(tag);
-              return (
-                <Link
-                  key={tagStr}
-                  href={`/blog?tag=${encodeURIComponent(tagStr)}`}
-                  className="bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 transition-all hover:scale-105"
-                >
-                  #{tagStr}
-                </Link>
-              );
-            })}
+      {
+        tags?.tags && tags.tags.length > 0 && (
+          <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg p-8 shadow-lg text-white">
+            <h2 className="text-2xl font-bold mb-4">인기 태그</h2>
+            <div className="flex flex-wrap gap-3">
+              {tags.tags.slice(0, 20).map((tag: any) => {
+                const tagStr = normalizeString(tag);
+                return (
+                  <Link
+                    key={tagStr}
+                    href={`/blog?tag=${encodeURIComponent(tagStr)}`}
+                    className="bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 transition-all hover:scale-105"
+                  >
+                    #{tagStr}
+                  </Link>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
     </>
   );
 }

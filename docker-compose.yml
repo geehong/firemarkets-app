@@ -324,11 +324,14 @@ services:
       BACKEND_API_BASE: https://backend.firemarkets.net/api/v1
       NEXT_PUBLIC_API_URL: https://backend.firemarkets.net/api/v1
       NEXT_TELEMETRY_DISABLED: 1
-      # 개발 모드 추가 설정
+      # 개발 모드 추가 설정 (CPU 사용량 최적화)
       WATCHPACK_POLLING: false
       CHOKIDAR_USEPOLLING: false
-      TURBOPACK_THREADS: 2
+      CHOKIDAR_INTERVAL: 1000  # 파일 감시 간격 증가 (기본값보다 느리게)
+      CHOKIDAR_BINARY_INTERVAL: 1000
+      TURBOPACK_THREADS: 1  # 스레드 수 감소
       FAST_REFRESH: true
+      NEXT_WEBPACK_USE_POLLING: false
     volumes:
       - ./frontend:/app:delegated
       - /app/node_modules

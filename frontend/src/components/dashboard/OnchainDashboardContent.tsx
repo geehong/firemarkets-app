@@ -98,40 +98,40 @@ export default function OnchainDashboardContent() {
   });
 
   // 주요 온체인 메트릭 데이터 조회
-  const { data: mvrvData, isLoading: mvrvLoading } = useQuery({
+  const { data: mvrvData, isLoading: mvrvLoading, isError: mvrvError } = useQuery({
     queryKey: ['onchain-metric', 'mvrv_z_score'],
     queryFn: () => apiClient.getOnchainMetricData('mvrv_z_score', { limit: 1 }),
     staleTime: 5 * 60 * 1000,
-    retry: 0,
+    retry: 1,
     refetchOnWindowFocus: false,
-    enabled: !!metrics,
+    enabled: !!metrics?.metrics?.length,
   });
 
-  const { data: soprData, isLoading: soprLoading } = useQuery({
+  const { data: soprData, isLoading: soprLoading, isError: soprError } = useQuery({
     queryKey: ['onchain-metric', 'sopr'],
     queryFn: () => apiClient.getOnchainMetricData('sopr', { limit: 1 }),
     staleTime: 5 * 60 * 1000,
-    retry: 0,
+    retry: 1,
     refetchOnWindowFocus: false,
-    enabled: !!metrics,
+    enabled: !!metrics?.metrics?.length,
   });
 
-  const { data: nuplData, isLoading: nuplLoading } = useQuery({
+  const { data: nuplData, isLoading: nuplLoading, isError: nuplError } = useQuery({
     queryKey: ['onchain-metric', 'nupl'],
     queryFn: () => apiClient.getOnchainMetricData('nupl', { limit: 1 }),
     staleTime: 5 * 60 * 1000,
-    retry: 0,
+    retry: 1,
     refetchOnWindowFocus: false,
-    enabled: !!metrics,
+    enabled: !!metrics?.metrics?.length,
   });
 
-  const { data: hashrateData, isLoading: hashrateLoading } = useQuery({
+  const { data: hashrateData, isLoading: hashrateLoading, isError: hashrateError } = useQuery({
     queryKey: ['onchain-metric', 'hashrate'],
     queryFn: () => apiClient.getOnchainMetricData('hashrate', { limit: 1 }),
     staleTime: 5 * 60 * 1000,
-    retry: 0,
+    retry: 1,
     refetchOnWindowFocus: false,
-    enabled: !!metrics,
+    enabled: !!metrics?.metrics?.length,
   });
 
   // 정규화 헬퍼
@@ -233,14 +233,14 @@ export default function OnchainDashboardContent() {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
             모든 온체인 메트릭
           </h2>
-          <Link 
+          <Link
             href="/onchain"
             className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium text-sm"
           >
             상세 분석 보기 →
           </Link>
         </div>
-        
+
         {metrics?.metrics ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {metrics.metrics.slice(0, 9).map((metric: any) => (

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import CompareMultipleAssetsChart from "@/components/charts/line/CompareMultipleAssetsChart";
@@ -14,21 +14,35 @@ import LivePriceStocksEtfChart from "@/components/charts/live/LivePriceStocksEtf
 import LivePriceCommoditiesChart from "@/components/charts/live/LivePriceCommoditiesChart";
 
 // 동적 import로 각 페이지 컴포넌트 로드
-const AssetsDashboard = dynamic(() => import("./assets/page"), { 
+const LoadingSpinner = () => (
+  <div className="flex flex-col items-center justify-center h-64 gap-4">
+    <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+    <p className="text-gray-500 dark:text-gray-400 animate-pulse">로딩 중...</p>
+  </div>
+);
+
+const AssetsDashboard = dynamic(() => import("./assets/page"), {
   ssr: false,
-  loading: () => <div className="flex items-center justify-center h-64">Loading...</div>
+  loading: () => <LoadingSpinner />
 });
-const BlogDashboard = dynamic(() => import("./blog/page"), { 
+const BlogDashboard = dynamic(() => import("./blog/page"), {
   ssr: false,
-  loading: () => <div className="flex items-center justify-center h-64">Loading...</div>
+  loading: () => <LoadingSpinner />
 });
-const OnchainDashboard = dynamic(() => import("./onchain/page"), { 
+const OnchainDashboard = dynamic(() => import("./onchain/page"), {
   ssr: false,
-  loading: () => <div className="flex items-center justify-center h-64">Loading...</div>
+  loading: () => <LoadingSpinner />
 });
 const PerformanceTreeMapToday = dynamic(() => import("@/components/charts/treemap/PerformanceTreeMapToday"), {
   ssr: false,
-  loading: () => <div className="flex items-center justify-center h-64">Loading chart...</div>
+  loading: () => (
+    <div className="flex items-center justify-center h-64">
+      <div className="animate-pulse flex flex-col items-center gap-2">
+        <div className="h-8 w-8 rounded bg-gray-200 dark:bg-gray-700"></div>
+        <p className="text-gray-400 text-sm">차트 로딩 중...</p>
+      </div>
+    </div>
+  )
 });
 
 type TabType = 'overview' | 'assets' | 'blog' | 'onchain';
@@ -46,18 +60,18 @@ function DashboardContent() {
 
   // AssetsList 헤더 정보를 위한 데이터 조회
   const { data: treemapData } = useTreemapLive(
-    typeNameFromQuery 
-      ? { 
-          type_name: typeNameFromQuery,
-          sort_by: 'market_cap',
-          sort_order: 'desc'
-        } 
+    typeNameFromQuery
+      ? {
+        type_name: typeNameFromQuery,
+        sort_by: 'market_cap',
+        sort_order: 'desc'
+      }
       : {
-          sort_by: 'market_cap',
-          sort_order: 'desc'
-        }
+        sort_by: 'market_cap',
+        sort_order: 'desc'
+      }
   );
-  
+
   const firstAsset = (treemapData as any)?.data?.[0];
   const { isConnected } = useRealtimePrices(firstAsset?.ticker || '');
 
@@ -123,10 +137,9 @@ function DashboardContent() {
               onClick={() => setActiveTab(tab.id)}
               className={`
                 flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors
-                ${
-                  activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                ${activeTab === tab.id
+                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
                 }
               `}
             >
@@ -138,10 +151,12 @@ function DashboardContent() {
       </div>
 
       {/* 탭별 콘텐츠 */}
-      {activeTab === 'overview' && <OverviewContent />}
-      {activeTab === 'assets' && <AssetsDashboard />}
-      {activeTab === 'blog' && <BlogDashboard />}
-      {activeTab === 'onchain' && <OnchainDashboard />}
+      <div className="transition-opacity duration-300 ease-in-out animate-fadeIn">
+        {activeTab === 'overview' && <OverviewContent />}
+        {activeTab === 'assets' && <AssetsDashboard />}
+        {activeTab === 'blog' && <BlogDashboard />}
+        {activeTab === 'onchain' && <OnchainDashboard />}
+      </div>
     </main>
   );
 }
@@ -169,7 +184,7 @@ function OverviewContent() {
             <LivePriceCryptoChart
               containerId="dashboard-btc-live"
               height={300}
-              updateInterval={100}
+              updateInterval={2000}
               assetIdentifier="BTCUSDT"
             />
           </div>
@@ -179,7 +194,7 @@ function OverviewContent() {
             <LivePriceCryptoChart
               containerId="dashboard-eth-live"
               height={300}
-              updateInterval={100}
+              updateInterval={2000}
               assetIdentifier="ETHUSDT"
             />
           </div>
@@ -189,7 +204,7 @@ function OverviewContent() {
             <LivePriceStocksEtfChart
               containerId="dashboard-spy-live"
               height={300}
-              updateInterval={100}
+              updateInterval={2000}
               assetIdentifier="SPY"
             />
           </div>
@@ -199,7 +214,7 @@ function OverviewContent() {
             <LivePriceStocksEtfChart
               containerId="dashboard-qqq-live"
               height={300}
-              updateInterval={100}
+              updateInterval={2000}
               assetIdentifier="QQQ"
             />
           </div>
@@ -209,7 +224,7 @@ function OverviewContent() {
             <LivePriceCommoditiesChart
               containerId="dashboard-gcusd-live"
               height={300}
-              updateInterval={100}
+              updateInterval={2000}
               assetIdentifier="GCUSD"
             />
           </div>
@@ -219,7 +234,7 @@ function OverviewContent() {
             <LivePriceCommoditiesChart
               containerId="dashboard-siusd-live"
               height={300}
-              updateInterval={100}
+              updateInterval={2000}
               assetIdentifier="SIUSD"
             />
           </div>
@@ -229,7 +244,7 @@ function OverviewContent() {
             <LivePriceStocksEtfChart
               containerId="dashboard-nvda-live"
               height={300}
-              updateInterval={100}
+              updateInterval={2000}
               assetIdentifier="NVDA"
             />
           </div>
@@ -239,7 +254,7 @@ function OverviewContent() {
             <LivePriceStocksEtfChart
               containerId="dashboard-aapl-live"
               height={300}
-              updateInterval={100}
+              updateInterval={2000}
               assetIdentifier="AAPL"
             />
           </div>
@@ -258,7 +273,7 @@ function OverviewContent() {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
             주요 자산 가격 추이 ({currentYear}년)
           </h2>
-          <Link 
+          <Link
             href="/assets"
             className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium text-sm"
           >
@@ -286,7 +301,7 @@ function OverviewContent() {
       <div className="mt-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg p-8 shadow-lg text-white">
         <h2 className="text-2xl font-bold mb-4">더 많은 기능 탐색하기</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Link 
+          <Link
             href="/assets"
             className="bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-lg p-4 transition-all hover:scale-105"
           >
@@ -294,8 +309,8 @@ function OverviewContent() {
             <div className="font-semibold mb-1">자산 탐색</div>
             <div className="text-sm text-blue-100">모든 주식, 암호화폐, ETF 보기</div>
           </Link>
-          
-          <Link 
+
+          <Link
             href="/onchain"
             className="bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-lg p-4 transition-all hover:scale-105"
           >
@@ -303,8 +318,8 @@ function OverviewContent() {
             <div className="font-semibold mb-1">온체인 분석</div>
             <div className="text-sm text-blue-100">블록체인 메트릭 및 상관관계</div>
           </Link>
-          
-          <Link 
+
+          <Link
             href="/blog"
             className="bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-lg p-4 transition-all hover:scale-105"
           >

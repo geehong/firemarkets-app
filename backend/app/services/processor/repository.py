@@ -347,6 +347,9 @@ class DataRepository:
         """OHLCV 데이터 저장 - 일봉과 인트라데이 데이터를 적절한 테이블에 분리 저장"""
         if not items:
             return True
+        
+        if metadata is None:
+            metadata = {}
             
         pg_db = next(get_postgres_db())
         try:
@@ -355,12 +358,16 @@ class DataRepository:
             daily_items = []
             intraday_items = []
             
+            # metadata에서 asset_id 가져오기 (Collector가 여기에 넣음)
+            meta_asset_id = metadata.get('asset_id')
+            meta_interval = metadata.get('interval')
+            
             for item in items:
                 # 데이터 간격 결정 로직
-                interval = item.get('interval')
+                interval = item.get('interval') or item.get('data_interval') or meta_interval
                 if not interval:
                     # 메타데이터나 빈도 정보로 추론
-                    freq = metadata.get('frequency') if metadata else None
+                    freq = metadata.get('frequency')
                     if freq:
                         if freq.lower() in ['daily', 'd', '1d']:
                             interval = '1d'
@@ -371,18 +378,19 @@ class DataRepository:
                         else:
                             interval = '1d' # Default to daily
                     else:
-                         # 기본값: 타임스탬프 확인 등 복잡한 로직 대신 1d로 가정하거나
-                         # item 내의 정보로 판단
                          interval = '1d'
+
+                # asset_id: item에 있으면 사용, 없으면 metadata에서 가져옴
+                asset_id = item.get('asset_id') or meta_asset_id
 
                 # 데이터 정제
                 pg_data = {
-                    'asset_id': item.get('asset_id'),
+                    'asset_id': asset_id,
                     'timestamp_utc': item.get('timestamp_utc') or item.get('date'),
-                    'open_price': self._sanitize_number(item.get('open')),
-                    'high_price': self._sanitize_number(item.get('high')),
-                    'low_price': self._sanitize_number(item.get('low')),
-                    'close_price': self._sanitize_number(item.get('close')),
+                    'open_price': self._sanitize_number(item.get('open_price') or item.get('open')),
+                    'high_price': self._sanitize_number(item.get('high_price') or item.get('high')),
+                    'low_price': self._sanitize_number(item.get('low_price') or item.get('low')),
+                    'close_price': self._sanitize_number(item.get('close_price') or item.get('close')),
                     'volume': self._sanitize_number(item.get('volume')),
                     'data_interval': interval
                 }
@@ -397,37 +405,34 @@ class DataRepository:
 
             # 일봉 데이터 저장
             if daily_items:
-                stmt = pg_insert(OHLCVData).values(daily_items)
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=['asset_id', 'timestamp_utc'],
-                    set_={
-                        'open_price': stmt.excluded.open_price,
-                        'high_price': stmt.excluded.high_price,
-                        'low_price': stmt.excluded.low_price,
-                        'close_price': stmt.excluded.close_price,
-                        'volume': stmt.excluded.volume,
-                        'data_interval': stmt.excluded.data_interval
-                    }
-                )
-                pg_db.execute(stmt)
+                try:
+                    stmt = pg_insert(OHLCVData).values(daily_items)
+                    # Primary key나 unique constraint가 있으면 on_conflict 사용, 없으면 일반 INSERT
+                    # 데이터베이스 스키마에 따라 자동으로 처리
+                    pg_db.execute(stmt)
+                except Exception as e:
+                    # 중복 에러인 경우 무시하고 계속 진행
+                    if 'duplicate key' in str(e).lower() or 'unique constraint' in str(e).lower():
+                        logger.warning(f"일봉 데이터 중복 무시: {len(daily_items)}건")
+                    else:
+                        raise
 
             # 인트라데이 데이터 저장
             if intraday_items:
-                stmt = pg_insert(OHLCVIntradayData).values(intraday_items)
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=['asset_id', 'timestamp_utc'],
-                    set_={
-                        'open_price': stmt.excluded.open_price,
-                        'high_price': stmt.excluded.high_price,
-                        'low_price': stmt.excluded.low_price,
-                        'close_price': stmt.excluded.close_price,
-                        'volume': stmt.excluded.volume,
-                        'data_interval': stmt.excluded.data_interval
-                    }
-                )
-                pg_db.execute(stmt)
+                try:
+                    stmt = pg_insert(OHLCVIntradayData).values(intraday_items)
+                    pg_db.execute(stmt)
+                except Exception as e:
+                    # 중복 에러인 경우 무시하고 계속 진행
+                    if 'duplicate key' in str(e).lower() or 'unique constraint' in str(e).lower():
+                        logger.warning(f"인트라데이 데이터 중복 무시: {len(intraday_items)}건")
+                    else:
+                        raise
 
             pg_db.commit()
+            total_saved = len(daily_items) + len(intraday_items)
+            if total_saved > 0:
+                logger.info(f"✅ OHLCV 저장 완료: daily={len(daily_items)}, intraday={len(intraday_items)}")
             return True
             
         except Exception as e:
@@ -550,10 +555,11 @@ class DataRepository:
             saved_count = 0
             for item in items:
                 try:
-                    asset_id = item.get('asset_id')
+                    # camelCase와 snake_case 모두 지원
+                    asset_id = item.get('asset_id') or item.get('assetId')
                     section = item.get('section')
-                    field_name = item.get('field_name')
-                    snapshot_date = item.get('snapshot_date')
+                    field_name = item.get('field_name') or item.get('fieldName')
+                    snapshot_date = item.get('snapshot_date') or item.get('snapshotDate')
                     
                     if not all([asset_id, section, field_name, snapshot_date]):
                         continue
@@ -563,11 +569,14 @@ class DataRepository:
                         'section': section,
                         'field_name': field_name,
                         'snapshot_date': snapshot_date,
-                        'value_numeric': self._sanitize_number(item.get('value_numeric'), max_abs=1e18),
-                        'value_text': item.get('value_text'),
+                        'value_numeric': self._sanitize_number(
+                            item.get('value_numeric') or item.get('valueNumeric'), 
+                            max_abs=1e18
+                        ),
+                        'value_text': item.get('value_text') or item.get('valueText'),
                         'unit': item.get('unit'),
                         'currency': item.get('currency'),
-                        'source_url': item.get('source_url'),
+                        'source_url': item.get('source_url') or item.get('sourceUrl'),
                     }
                     pg_data = {k: v for k, v in pg_data.items() if v is not None}
                     

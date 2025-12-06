@@ -25,6 +25,18 @@ const nextConfig: NextConfig = {
           },
         },
       }
+      
+      // 파일 감시 최적화로 CPU 사용량 감소
+      config.watchOptions = {
+        poll: false, // 폴링 비활성화 (Docker 환경에서도 inotify 사용)
+        aggregateTimeout: 300, // 변경 후 300ms 대기 후 재컴파일
+        ignored: [
+          '**/node_modules/**',
+          '**/.next/**',
+          '**/.git/**',
+          '**/public/**', // public 폴더는 변경 감지 제외
+        ],
+      };
     }
     
     return config;
