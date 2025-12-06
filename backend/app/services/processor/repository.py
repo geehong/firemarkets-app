@@ -485,3 +485,110 @@ class DataRepository:
             return False
         finally:
             pg_db.close()
+
+    async def save_etf_info(self, items: List[Dict[str, Any]]) -> bool:
+        """ETF 정보 저장"""
+        if not items:
+            return True
+            
+        pg_db = next(get_postgres_db())
+        try:
+            from ...models.asset import ETFInfo
+            
+            saved_count = 0
+            for item in items:
+                try:
+                    asset_id = item.get('asset_id')
+                    if not asset_id:
+                        continue
+                    
+                    data = item.get('data') if 'data' in item else item
+                    
+                    pg_data = {
+                        'asset_id': asset_id,
+                        'snapshot_date': data.get('snapshot_date') or date.today(),
+                        'net_assets': self._sanitize_number(data.get('net_assets'), max_abs=1e18),
+                        'net_expense_ratio': self._sanitize_number(data.get('net_expense_ratio')),
+                        'portfolio_turnover': self._sanitize_number(data.get('portfolio_turnover')),
+                        'dividend_yield': self._sanitize_number(data.get('dividend_yield')),
+                        'inception_date': data.get('inception_date'),
+                        'leveraged': data.get('leveraged'),
+                        'sectors': data.get('sectors'),
+                        'holdings': data.get('holdings'),
+                    }
+                    pg_data = {k: v for k, v in pg_data.items() if v is not None}
+                    
+                    stmt = pg_insert(ETFInfo).values(**pg_data)
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=['asset_id'],
+                        set_={k: getattr(stmt.excluded, k) for k in pg_data.keys() if k != 'asset_id'}
+                    )
+                    pg_db.execute(stmt)
+                    saved_count += 1
+                except Exception as e:
+                    logger.warning(f"ETF 정보 저장 실패: {e}")
+                    continue
+            
+            pg_db.commit()
+            return saved_count > 0
+        except Exception as e:
+            pg_db.rollback()
+            logger.error(f"ETF 정보 저장 실패: {e}")
+            return False
+        finally:
+            pg_db.close()
+
+    async def save_macrotrends_financials(self, items: List[Dict[str, Any]]) -> bool:
+        """Macrotrends 재무 데이터 저장"""
+        if not items:
+            return True
+            
+        pg_db = next(get_postgres_db())
+        try:
+            from ...models.asset import MacrotrendsFinancial
+            
+            saved_count = 0
+            for item in items:
+                try:
+                    asset_id = item.get('asset_id')
+                    section = item.get('section')
+                    field_name = item.get('field_name')
+                    snapshot_date = item.get('snapshot_date')
+                    
+                    if not all([asset_id, section, field_name, snapshot_date]):
+                        continue
+                    
+                    pg_data = {
+                        'asset_id': asset_id,
+                        'section': section,
+                        'field_name': field_name,
+                        'snapshot_date': snapshot_date,
+                        'value_numeric': self._sanitize_number(item.get('value_numeric'), max_abs=1e18),
+                        'value_text': item.get('value_text'),
+                        'unit': item.get('unit'),
+                        'currency': item.get('currency'),
+                        'source_url': item.get('source_url'),
+                    }
+                    pg_data = {k: v for k, v in pg_data.items() if v is not None}
+                    
+                    stmt = pg_insert(MacrotrendsFinancial).values(**pg_data)
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=['asset_id', 'section', 'field_name', 'snapshot_date'],
+                        set_={k: getattr(stmt.excluded, k) for k in pg_data.keys() 
+                              if k not in ['asset_id', 'section', 'field_name', 'snapshot_date']}
+                    )
+                    pg_db.execute(stmt)
+                    saved_count += 1
+                except Exception as e:
+                    logger.warning(f"Macrotrends 재무 데이터 저장 실패: {e}")
+                    continue
+            
+            pg_db.commit()
+            logger.info(f"✅ macrotrends_financials 저장 완료: {saved_count}건")
+            return saved_count > 0
+        except Exception as e:
+            pg_db.rollback()
+            logger.error(f"Macrotrends 재무 데이터 저장 실패: {e}")
+            return False
+        finally:
+            pg_db.close()

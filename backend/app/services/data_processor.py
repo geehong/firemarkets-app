@@ -210,10 +210,17 @@ class DataProcessor:
                 return await self.repository.save_etf_info(items)
             elif task_type in ("crypto_info", "crypto_data"):
                 return await self.repository.save_crypto_data(items)
-            elif task_type == "ohlcv_data":
-                return await self.repository.save_ohlcv_data(items, task.get("meta"))
+            elif task_type in ("ohlcv_data", "ohlcv_day_data", "ohlcv_intraday_data"):
+                meta = {}
+                if isinstance(payload, dict):
+                    meta = payload.get("metadata") or payload.get("meta") or {}
+                if not meta:
+                    meta = task.get("meta") or {}
+                return await self.repository.save_ohlcv_data(items, meta)
             elif task_type == "world_assets_ranking":
                 return await self.repository.save_world_assets_ranking(items, task.get("meta", {}))
+            elif task_type == "macrotrends_financials":
+                return await self.repository.save_macrotrends_financials(items)
             else:
                 logger.warning(f"알 수 없는 태스크 타입: {task_type}")
                 return False

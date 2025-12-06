@@ -22,7 +22,7 @@
       "day_of_week": "mon,tue,wed,thu,fri,sat,sun"
     },
     {
-      "hour": 8,
+      "hour": 12,
       "minute": 0,
       "collectors": [
         "ohlcv_day_clients",
