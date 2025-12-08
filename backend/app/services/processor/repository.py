@@ -48,8 +48,10 @@ class DataRepository:
     async def bulk_save_realtime_quotes(self, records: List[Dict[str, Any]]) -> bool:
         """실시간 인용 데이터 일괄 저장"""
         if not records:
+            logger.warning("⚠️ 저장할 레코드가 없습니다.")
             return False
 
+        logger.debug(f"🔍 검증 시작: {len(records)}개 레코드")
         # 데이터 검증
         validated_records = []
         for record in records:
@@ -57,8 +59,10 @@ class DataRepository:
                 validated_records.append(record)
 
         if not validated_records:
-            logger.warning("🚨 검증을 통과한 레코드가 없습니다.")
+            logger.warning(f"🚨 검증을 통과한 레코드가 없습니다. (입력: {len(records)}개)")
             return False
+        
+        logger.debug(f"✅ 검증 통과: {len(validated_records)}/{len(records)}개")
 
         pg_db = next(get_postgres_db())
         try:
@@ -148,11 +152,13 @@ class DataRepository:
 
                     pg_db.commit()
                     success_count += len(batch)
+                    logger.debug(f"💾 배치 저장 성공: {len(batch)}개 (실시간: {len(realtime_rows)}, 지연: {len(delay_rows)})")
                 except Exception as e:
                     pg_db.rollback()
-                    logger.error(f"❌ Bulk upsert 실패: {e}")
+                    logger.error(f"❌ Bulk upsert 실패: {e}", exc_info=True)
                     # TODO: Implement fallback/retry logic if needed
 
+            logger.info(f"💾 총 저장 완료: {success_count}/{len(validated_records)}개")
             return success_count > 0
         finally:
             pg_db.close()
@@ -406,27 +412,64 @@ class DataRepository:
             # 일봉 데이터 저장
             if daily_items:
                 try:
+                    logger.debug(f"💾 일봉 데이터 저장 시도: {len(daily_items)}건")
                     stmt = pg_insert(OHLCVData).values(daily_items)
-                    # Primary key나 unique constraint가 있으면 on_conflict 사용, 없으면 일반 INSERT
-                    # 데이터베이스 스키마에 따라 자동으로 처리
+                    # asset_id, timestamp_utc, data_interval 조합이 unique constraint일 가능성 고려
+                    # unique constraint가 없으면 에러가 발생하지만, 그 경우에도 처리
+                    try:
+                        stmt = stmt.on_conflict_do_update(
+                            index_elements=['asset_id', 'timestamp_utc', 'data_interval'],
+                            set_={
+                                'open_price': stmt.excluded.open_price,
+                                'high_price': stmt.excluded.high_price,
+                                'low_price': stmt.excluded.low_price,
+                                'close_price': stmt.excluded.close_price,
+                                'volume': stmt.excluded.volume,
+                                'change_percent': stmt.excluded.change_percent,
+                            }
+                        )
+                    except Exception:
+                        # unique constraint가 다른 조합이거나 없는 경우, 일반 insert 시도
+                        pass
                     pg_db.execute(stmt)
+                    logger.debug(f"✅ 일봉 데이터 저장 성공: {len(daily_items)}건")
                 except Exception as e:
                     # 중복 에러인 경우 무시하고 계속 진행
                     if 'duplicate key' in str(e).lower() or 'unique constraint' in str(e).lower():
-                        logger.warning(f"일봉 데이터 중복 무시: {len(daily_items)}건")
+                        logger.warning(f"⚠️ 일봉 데이터 중복 무시: {len(daily_items)}건")
                     else:
+                        logger.error(f"❌ 일봉 데이터 저장 실패: {e}", exc_info=True)
                         raise
 
             # 인트라데이 데이터 저장
             if intraday_items:
                 try:
+                    logger.debug(f"💾 인트라데이 데이터 저장 시도: {len(intraday_items)}건")
                     stmt = pg_insert(OHLCVIntradayData).values(intraday_items)
+                    # asset_id, timestamp_utc, data_interval 조합이 unique constraint일 가능성 고려
+                    try:
+                        stmt = stmt.on_conflict_do_update(
+                            index_elements=['asset_id', 'timestamp_utc', 'data_interval'],
+                            set_={
+                                'open_price': stmt.excluded.open_price,
+                                'high_price': stmt.excluded.high_price,
+                                'low_price': stmt.excluded.low_price,
+                                'close_price': stmt.excluded.close_price,
+                                'volume': stmt.excluded.volume,
+                                'change_percent': stmt.excluded.change_percent,
+                            }
+                        )
+                    except Exception:
+                        # unique constraint가 다른 조합이거나 없는 경우, 일반 insert 시도
+                        pass
                     pg_db.execute(stmt)
+                    logger.debug(f"✅ 인트라데이 데이터 저장 성공: {len(intraday_items)}건")
                 except Exception as e:
                     # 중복 에러인 경우 무시하고 계속 진행
                     if 'duplicate key' in str(e).lower() or 'unique constraint' in str(e).lower():
-                        logger.warning(f"인트라데이 데이터 중복 무시: {len(intraday_items)}건")
+                        logger.warning(f"⚠️ 인트라데이 데이터 중복 무시: {len(intraday_items)}건")
                     else:
+                        logger.error(f"❌ 인트라데이 데이터 저장 실패: {e}", exc_info=True)
                         raise
 
             pg_db.commit()

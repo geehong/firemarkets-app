@@ -110,28 +110,64 @@ class DataProcessor:
         # 자산 맵 로드 및 주입
         await self._refresh_asset_map()
 
-        # 메인 루프
+        # 스트림 처리를 별도 task로 실행 (배치 처리와 병렬 동작)
+        stream_task = asyncio.create_task(self._stream_processing_loop())
+        logger.info("📡 실시간 스트림 처리 태스크 시작")
+
+        # 메인 루프 (배치 처리 전담)
+        loop_count = 0
         while self.running:
             try:
-                # 1. 실시간 스트림 처리
-                stream_count = await self.stream_consumer.process_streams()
+                loop_count += 1
                 
-                # 2. 배치 큐 처리
+                # 배치 큐 처리
                 batch_count = await self._process_batch_queue()
                 
-                total_processed = stream_count + batch_count
-                self.stats["processed_count"] += total_processed
+                if batch_count > 0:
+                    self.stats["processed_count"] += batch_count
+                    logger.info(f"✅ 배치 처리 완료: {batch_count}개 태스크")
                 
-                # CPU 사용량 조절: 데이터 처리 여부와 관계없이 항상 대기
-                if total_processed == 0:
-                    await asyncio.sleep(0.5) # Idle 대기 시간 증가
+                # 주기적으로 통계 로깅 (약 10초마다 = 20 loops @ 0.5s sleep)
+                if loop_count % 20 == 0:
+                    elapsed = time.time() - self.stats["start_time"]
+                    logger.info(f"📊 처리 통계: 총 {self.stats['processed_count']}개 처리, 에러 {self.stats['errors']}개, 실행 시간 {elapsed:.0f}초")
+                
+                # CPU 사용량 조절
+                if batch_count == 0:
+                    await asyncio.sleep(0.5)  # Idle 대기
                 else:
-                    await asyncio.sleep(0.05) # 처리 후에도 대기 시간 증가로 CPU 부하 완화
+                    await asyncio.sleep(0.05)  # 처리 후 짧은 대기
                     
             except Exception as e:
-                logger.error(f"DataProcessor 메인 루프 오류: {e}")
+                logger.error(f"DataProcessor 메인 루프 오류: {e}", exc_info=True)
                 self.stats["errors"] += 1
                 await asyncio.sleep(1)
+        
+        # 종료 시 스트림 task도 취소
+        stream_task.cancel()
+        try:
+            await stream_task
+        except asyncio.CancelledError:
+            pass
+
+    async def _stream_processing_loop(self):
+        """실시간 스트림 처리 루프 (별도 task로 실행)"""
+        logger.info("📡 실시간 스트림 처리 루프 시작")
+        while self.running:
+            try:
+                stream_count = await self.stream_consumer.process_streams()
+                if stream_count > 0:
+                    self.stats["processed_count"] += stream_count
+                    logger.info(f"📈 실시간 데이터 처리: {stream_count}개 레코드")
+                # 스트림 처리 간격 (process_streams 내부에서 이미 대기하므로 짧게)
+                await asyncio.sleep(0.1)
+            except asyncio.CancelledError:
+                logger.info("📡 실시간 스트림 처리 루프 종료")
+                break
+            except Exception as e:
+                logger.error(f"스트림 처리 오류: {e}", exc_info=True)
+                self.stats["errors"] += 1
+                await asyncio.sleep(2)  # 에러 시 더 긴 대기
 
     async def stop(self):
         """서비스 종료"""

@@ -66,48 +66,53 @@ class StreamConsumer:
                             groupname=group_name,
                             consumername="processor_worker",
                             streams={stream_name: "0"},
-                            count=min(self.batch_size, pending_info['pending'])
+                            count=min(self.batch_size, pending_info['pending']),
+                            block=0  # Non-blocking to prevent infinite wait
                         )
                         if pending_data:
                             await self._process_messages(pending_data, records_to_save, ack_items)
                 except Exception as e:
                     logger.error(f"Pending 처리 실패 {stream_name}: {e}")
 
-            # 모든 스트림을 한 번에 읽기 (CPU 효율성 향상)
-            streams_dict = {name: ">" for name in self.realtime_streams.keys()}
-            try:
-                new_data = await self.redis_client.xreadgroup(
-                    groupname=list(self.realtime_streams.values())[0],  # 첫 번째 그룹명 사용
-                    consumername="processor_worker",
-                    streams=streams_dict,
-                    count=self.batch_size,
-                    block=500  # 500ms 블로킹으로 CPU 부하 완화
-                )
-                if new_data:
-                    await self._process_messages(new_data, records_to_save, ack_items)
-            except Exception as e:
-                # 그룹이 다를 수 있으므로 개별 처리로 폴백
-                logger.debug(f"통합 스트림 읽기 실패, 개별 처리로 전환: {e}")
-                for stream_name, group_name in self.realtime_streams.items():
-                    try:
-                        new_data = await self.redis_client.xreadgroup(
+            # 각 스트림별로 개별 처리 (각 스트림마다 다른 consumer group 사용)
+            # 처음에는 짧은 blocking, 이후에는 non-blocking으로 빠르게 처리
+            first_stream = True
+            for stream_name, group_name in self.realtime_streams.items():
+                try:
+                    # 첫 번째 스트림만 짧게 blocking (100ms), 나머지는 non-blocking
+                    block_time = 100 if first_stream else 0
+                    first_stream = False
+                    
+                    # Timeout 보호 (최대 1초)
+                    new_data = await asyncio.wait_for(
+                        self.redis_client.xreadgroup(
                             groupname=group_name,
                             consumername="processor_worker",
                             streams={stream_name: ">"},
                             count=self.batch_size,
-                            block=100 if stream_name == list(self.realtime_streams.keys())[0] else 0
-                        )
-                        if new_data:
-                            await self._process_messages(new_data, records_to_save, ack_items)
-                    except Exception as stream_error:
-                        logger.error(f"스트림 {stream_name} 읽기 실패: {stream_error}")
+                            block=block_time
+                        ),
+                        timeout=1.0
+                    )
+                    if new_data:
+                        total_messages = sum(len(msgs) for _, msgs in new_data)
+                        logger.debug(f"📨 스트림 {stream_name}에서 {total_messages}개 메시지 읽음")
+                        await self._process_messages(new_data, records_to_save, ack_items)
+                except asyncio.TimeoutError:
+                    logger.warning(f"스트림 {stream_name} 읽기 timeout")
+                except Exception as stream_error:
+                    # 에러 발생해도 다음 스트림 처리 계속
+                    logger.warning(f"스트림 {stream_name} 읽기 실패: {stream_error}")
             
             # 데이터가 없으면 추가 대기로 CPU 부하 완화
             if not records_to_save:
                 await asyncio.sleep(0.2)
+            else:
+                logger.debug(f"📥 처리할 레코드: {len(records_to_save)}개")
 
             # DB 저장
             if records_to_save:
+                logger.info(f"💾 DB 저장 시도: {len(records_to_save)}개 레코드")
                 success = await self.repository.bulk_save_realtime_quotes(records_to_save)
                 if success:
                     processed_count = len(records_to_save)
@@ -154,13 +159,22 @@ class StreamConsumer:
                         # No, repository saves. Validator validates.
                         # Let's add a method to inject asset_map.
                         
-                        if hasattr(self, 'ticker_to_asset_id') and parsed_data['ticker'] in self.ticker_to_asset_id:
-                             parsed_data['asset_id'] = self.ticker_to_asset_id[parsed_data['ticker']]
+                        ticker = parsed_data.get('ticker')
+                        if not ticker:
+                            logger.warning(f"⚠️ Ticker가 없는 메시지: {stream_name}:{message_id}")
+                            ack_items.append((stream_name, group_name, message_id))
+                            continue
+                            
+                        if hasattr(self, 'ticker_to_asset_id') and ticker in self.ticker_to_asset_id:
+                             parsed_data['asset_id'] = self.ticker_to_asset_id[ticker]
                              records_to_save.append(parsed_data)
                              ack_items.append((stream_name, group_name, message_id))
                         else:
                              # 매핑 실패 시 로그
-                             # logger.warning(f"Asset ID not found for {parsed_data['ticker']}")
+                             if not hasattr(self, 'ticker_to_asset_id'):
+                                 logger.warning(f"⚠️ Asset 맵이 설정되지 않음. Ticker: {ticker}")
+                             else:
+                                 logger.warning(f"⚠️ Asset ID를 찾을 수 없음. Ticker: {ticker} (맵 크기: {len(self.ticker_to_asset_id)})")
                              # ACK는 해야 하나? 실패한 메시지는 ACK해서 넘어가야 함.
                              ack_items.append((stream_name, group_name, message_id))
 

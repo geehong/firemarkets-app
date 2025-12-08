@@ -28,6 +28,7 @@ from app.collectors.crypto_data_collector import CryptoDataCollector
 from app.collectors.world_assets_collector import WorldAssetsCollector
 # from app.collectors.index_collector import IndexCollector  # Temporarily disabled
 from app.collectors.macrotrends_financials_collector import MacrotrendsFinancialsCollector
+from app.collectors.commodity_ohlcv_aggregator_collector import CommodityOHLCVAggregatorCollector
 
 
 class SchedulerService:
@@ -43,6 +44,7 @@ class SchedulerService:
         "CryptoInfo": {"class": CryptoDataCollector, "config_key": "is_crypto_collection_enabled"},
         "WorldAssets": {"class": WorldAssetsCollector, "config_key": "is_world_assets_collection_enabled"},
         "StockFinancialsMacrotrends": {"class": MacrotrendsFinancialsCollector, "config_key": "is_stock_collection_enabled"},
+        "CommodityOHLCVAggregator": {"class": CommodityOHLCVAggregatorCollector, "config_key": "is_ohlcv_collection_enabled"},
     }
     
     # Maps temp.json collector keys to actual job configurations
@@ -110,6 +112,14 @@ class SchedulerService:
         "world_assets_clients": {
             "job_key": "WorldAssets",
             "config": {}
+        },
+        "commodity_ohlcv_aggregator_intraday": {
+            "job_key": "CommodityOHLCVAggregator",
+            "config": {"intervals": ["1h", "4h"]}
+        },
+        "commodity_ohlcv_aggregator_daily": {
+            "job_key": "CommodityOHLCVAggregator",
+            "config": {"intervals": ["1d"]}
         }
     }
 
@@ -348,6 +358,8 @@ class SchedulerService:
                                                 "stock_analyst_estimates_clients": [],
                                                 "etf_clients": ["ETFInfo"],
                                                 "world_assets_clients": ["WorldAssets"],
+                                                "commodity_ohlcv_aggregator_intraday": ["CommodityOHLCVAggregator"],
+                                                "commodity_ohlcv_aggregator_daily": ["CommodityOHLCVAggregator"],
                                             }
                                             job_names = mapping.get(group_name, [])
                                             for job_name in job_names:
@@ -409,6 +421,15 @@ class SchedulerService:
                                                             asset_type_filter=["Commodities"]
                                                         )
                                                         self.logger.info(f"Setting scheduled_intervals=['1d'] and asset_type_filter=['Commodities'] for {group_name}")
+                                                
+                                                # CommodityOHLCVAggregatorCollector인 경우 집계할 interval 설정
+                                                if collector_class.__name__ == "CommodityOHLCVAggregatorCollector" and hasattr(collector_instance, 'set_schedule_config'):
+                                                    if group_name == "commodity_ohlcv_aggregator_intraday":
+                                                        collector_instance.set_schedule_config(intervals=["1h", "4h"])
+                                                        self.logger.info(f"Setting aggregation intervals=['1h', '4h'] for {group_name}")
+                                                    elif group_name == "commodity_ohlcv_aggregator_daily":
+                                                        collector_instance.set_schedule_config(intervals=["1d"])
+                                                        self.logger.info(f"Setting aggregation intervals=['1d'] for {group_name}")
                                                 
                                                 # stock_profiles_fmp_clients 그룹인 경우 FMP 클라이언트 사용 설정 (위에서 이미 처리됨)
                                                 if group_name == "stock_profiles_fmp_clients" and hasattr(collector_instance, 'use_fmp_clients'):
