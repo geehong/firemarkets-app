@@ -130,10 +130,11 @@ def backfill_daily(days_back: int = 90):
         start_time = now - timedelta(days=days_back)
         
         aggregate_sql = text("""
-            INSERT INTO ohlcv_day_data (asset_id, timestamp_utc, open_price, high_price, low_price, close_price, volume)
+            INSERT INTO ohlcv_day_data (asset_id, timestamp_utc, data_interval, open_price, high_price, low_price, close_price, volume)
             SELECT 
                 r.asset_id,
                 date_trunc('day', r.timestamp_utc) as agg_timestamp,
+                '1d' as data_interval,
                 (array_agg(r.price ORDER BY r.timestamp_utc ASC))[1] as open_price,
                 MAX(r.price) as high_price,
                 MIN(r.price) as low_price,
@@ -147,6 +148,7 @@ def backfill_daily(days_back: int = 90):
               AND r.timestamp_utc < :end_time
             GROUP BY r.asset_id, date_trunc('day', r.timestamp_utc)
             ON CONFLICT (asset_id, timestamp_utc) DO UPDATE SET
+                data_interval = EXCLUDED.data_interval,
                 high_price = GREATEST(ohlcv_day_data.high_price, EXCLUDED.high_price),
                 low_price = LEAST(ohlcv_day_data.low_price, EXCLUDED.low_price),
                 close_price = EXCLUDED.close_price,

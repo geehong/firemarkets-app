@@ -1425,6 +1425,7 @@ def db_get_ohlcv_data(db: Session, asset_id: int, start_date: Optional[date], en
             or_(
                 OHLCVData.data_interval == '1d', 
                 OHLCVData.data_interval == '1day',
+                OHLCVData.data_interval == '',  # 빈 문자열도 포함
                 OHLCVData.data_interval.is_(None)
             )
         )

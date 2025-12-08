@@ -112,10 +112,11 @@ class CommodityOHLCVAggregatorCollector(BaseCollector):
             """)
         else:  # ohlcv_day_data
             aggregate_sql = text(f"""
-                INSERT INTO {table_name} (asset_id, timestamp_utc, open_price, high_price, low_price, close_price, volume)
+                INSERT INTO {table_name} (asset_id, timestamp_utc, data_interval, open_price, high_price, low_price, close_price, volume)
                 SELECT 
                     r.asset_id,
                     {truncate_sql} as agg_timestamp,
+                    :interval as data_interval,
                     (array_agg(r.price ORDER BY r.timestamp_utc ASC))[1] as open_price,
                     MAX(r.price) as high_price,
                     MIN(r.price) as low_price,
@@ -129,6 +130,7 @@ class CommodityOHLCVAggregatorCollector(BaseCollector):
                   AND r.timestamp_utc < :end_time
                 GROUP BY r.asset_id, {truncate_sql}
                 ON CONFLICT (asset_id, timestamp_utc) DO UPDATE SET
+                    data_interval = EXCLUDED.data_interval,
                     high_price = GREATEST({table_name}.high_price, EXCLUDED.high_price),
                     low_price = LEAST({table_name}.low_price, EXCLUDED.low_price),
                     close_price = EXCLUDED.close_price,

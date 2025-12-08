@@ -18,6 +18,7 @@ from app.external_apis.implementations import (
     BinanceClient, CoinbaseClient, CoinGeckoClient, CoinMarketCapClient,
     BitcoinDataClient, FinnhubClient
 )
+from app.external_apis.implementations.goldapi_client import GoldAPIClient
 from app.external_apis.implementations.macrotrends_client import MacrotrendsClient
 from app.crud.asset import crud_ohlcv
 from app.utils.logging_helper import ApiLoggingHelper as LoggingHelper
@@ -95,9 +96,10 @@ class ApiStrategyManager:
             #TwelveDataClient(),
         ]
         
-        # 7. 커머디티용 클라이언트 (커머디티 지원 확인된 API만)
+        # 7. 커머디티용 클라이언트 (GoldAPI 사용 - 금/은 OHLCV)
         self.commodity_ohlcv_clients = [
-            FMPClient(),
+            GoldAPIClient(),  # 금/은 전용 API ($99/월 - Unlimited)
+            #FMPClient(),     # 커머디티 데이터 제공 안함
             #PolygonClient(),
             #TiingoClient(),
            # TwelveDataClient()
