@@ -17,6 +17,7 @@ from .coinmarketcap_client import CoinMarketCapClient
 from .twelvedata_client import TwelveDataClient
 from .finnhub_client import FinnhubClient
 from .macrotrends_client import MacrotrendsClient
+from .marketdata_client import MarketDataClient
 
 __all__ = [
     # Traditional Financial API Clients
@@ -27,6 +28,7 @@ __all__ = [
     "TwelveDataClient",
     "FinnhubClient",
     "MacrotrendsClient",
+    "MarketDataClient",
     
     # Cryptocurrency API Clients
     "BinanceClient",
@@ -37,3 +39,4 @@ __all__ = [
     # On-chain Data API Clients
     "BitcoinDataClient",
 ]
+

@@ -65,11 +65,11 @@ const SparklineChart = ({ data }: { data: number[] }) => {
 
   // Y축 범위를 약간 확장하여 차트가 더 잘 보이도록 함
   // 데이터가 1개인 경우에도 적절한 범위 설정
-  const yAxisMin = data.length === 1 
-    ? minValue - (minValue * 0.05) 
+  const yAxisMin = data.length === 1
+    ? minValue - (minValue * 0.05)
     : minValue - (range * 0.1);
-  const yAxisMax = data.length === 1 
-    ? maxValue + (maxValue * 0.05) 
+  const yAxisMax = data.length === 1
+    ? maxValue + (maxValue * 0.05)
     : maxValue + (range * 0.1);
 
   // 배경색을 위한 색상 결정 (상승: 파란색, 하강: 빨간색)
@@ -77,10 +77,10 @@ const SparklineChart = ({ data }: { data: number[] }) => {
   const gradientId = `gradient-${isPositive ? 'blue' : 'red'}`;
 
   return (
-    <div className="w-full h-10 relative rounded overflow-hidden">
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart 
-          data={chartData} 
+    <div className="w-full h-10 min-w-[60px] min-h-[40px] relative rounded overflow-hidden">
+      <ResponsiveContainer width="100%" height="100%" minWidth={60} minHeight={40}>
+        <AreaChart
+          data={chartData}
           margin={{ top: 2, right: 2, bottom: 2, left: 2 }}
         >
           <defs>
@@ -89,12 +89,12 @@ const SparklineChart = ({ data }: { data: number[] }) => {
               <stop offset="100%" stopColor={strokeColor} stopOpacity={0.05} />
             </linearGradient>
           </defs>
-          <YAxis 
+          <YAxis
             domain={[yAxisMin, yAxisMax]}
             hide={true}
             allowDataOverflow={true}
           />
-          <Tooltip 
+          <Tooltip
             content={() => null}
             cursor={false}
           />
@@ -118,25 +118,25 @@ const SparklineChart = ({ data }: { data: number[] }) => {
 // 미국시장 개장시간 체크 함수 (한국시간 기준)
 const checkUSMarketHours = (): boolean => {
   const now = new Date();
-  const koreanTime = new Date(now.toLocaleString("en-US", {timeZone: "Asia/Seoul"}));
+  const koreanTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
   const hour = koreanTime.getHours();
   const minute = koreanTime.getMinutes();
   const currentTime = hour * 60 + minute;
-  
+
   // 미국시장 개장시간: 한국시간 23:30 - 06:00 (다음날)
   const marketOpenStart = 23 * 60 + 30; // 23:30
   const marketOpenEnd = 6 * 60; // 06:00
-  
+
   return currentTime >= marketOpenStart || currentTime <= marketOpenEnd;
 };
 
 // Price 위젯 (텍스트만 표시, 스타일 제거)
-const PriceWidget = ({ 
-  ticker, 
-  assetType, 
-  treemapData 
-}: { 
-  ticker: string; 
+const PriceWidget = ({
+  ticker,
+  assetType,
+  treemapData
+}: {
+  ticker: string;
   assetType: string;
   treemapData?: any;
 }) => {
@@ -146,39 +146,39 @@ const PriceWidget = ({
   const isETF = assetTypeLower === 'etf' || assetTypeLower === 'etfs';
   const isFund = assetTypeLower === 'fund' || assetTypeLower === 'funds';
   const isCommodity = assetTypeLower === 'commodity' || assetTypeLower === 'commodities';
-  
+
   const isMarketOpen = checkUSMarketHours();
-  
+
   // 코인: 항상 Mini Widgets 사용 (24시간 거래)
   // 주식/ETF/펀드: 개장시간에만 Mini Widgets, 이후는 treemap_live_view 사용
   // 커머디티: treemap_live_view 사용
   const useMiniWidget = isCrypto || ((isStock || isETF || isFund) && isMarketOpen);
-  
+
   // treemap_live_view에서 해당 자산 찾기
-  const treemapAsset = treemapData?.data?.find((a: any) => 
+  const treemapAsset = treemapData?.data?.find((a: any) =>
     (a.ticker || a.asset_identifier) === ticker
   );
-  
+
   // Mini Widget (WebSocket)
   const { latestPrice: realtimePrice } = useRealtimePrices(ticker);
-  
+
   // 가격 결정: 웹소켓 사용 시 realtimePrice, 없으면 treemap_live_view의 current_price를 fallback으로 사용
-  const price = useMiniWidget 
+  const price = useMiniWidget
     ? (realtimePrice?.price || treemapAsset?.current_price || 0)
     : (treemapAsset?.current_price || 0);
-  
+
   if (!price) return <span className="text-gray-400">-</span>;
-  
+
   return <span className="font-medium">${price.toFixed(2)}</span>;
 };
 
 // Change Percent 위젯 (리얼타임)
-const ChangePercentWidget = ({ 
-  ticker, 
-  assetType, 
-  treemapData 
-}: { 
-  ticker: string; 
+const ChangePercentWidget = ({
+  ticker,
+  assetType,
+  treemapData
+}: {
+  ticker: string;
   assetType: string;
   treemapData?: any;
 }) => {
@@ -188,30 +188,30 @@ const ChangePercentWidget = ({
   const isETF = assetTypeLower === 'etf' || assetTypeLower === 'etfs';
   const isFund = assetTypeLower === 'fund' || assetTypeLower === 'funds';
   const isCommodity = assetTypeLower === 'commodity' || assetTypeLower === 'commodities';
-  
+
   const isMarketOpen = checkUSMarketHours();
   const useMiniWidget = isCrypto || ((isStock || isETF || isFund) && isMarketOpen);
-  
+
   // treemap_live_view에서 해당 자산 찾기
-  const treemapAsset = treemapData?.data?.find((a: any) => 
+  const treemapAsset = treemapData?.data?.find((a: any) =>
     (a.ticker || a.asset_identifier) === ticker
   );
-  
+
   // Mini Widget (WebSocket) - changePercent를 직접 사용
   const { latestPrice: realtimePrice, isConnected } = useRealtimePrices(ticker);
-  
+
   // 현재 가격
-  const currentPrice = useMiniWidget 
+  const currentPrice = useMiniWidget
     ? (realtimePrice?.price || treemapAsset?.current_price || 0)
     : (treemapAsset?.current_price || 0);
-  
+
   // 변경률: WebSocket에서 받은 changePercent 우선 사용
   // WebSocket에 연결되어 있고 가격을 받았으면 changePercent가 계산될 때까지 기다림
   let changePercent: number | null = null;
-  
+
   // WebSocket 연결 상태 확인 (useMiniWidget이든 아니든 WebSocket 연결되어 있으면 사용)
   const isWebSocketActive = isConnected && realtimePrice?.price !== undefined && realtimePrice?.price !== null;
-  
+
   if (useMiniWidget || isWebSocketActive) {
     // WebSocket 사용 시
     // changePercent가 명시적으로 제공되면 사용 (0도 유효한 값)
@@ -230,13 +230,13 @@ const ChangePercentWidget = ({
     // WebSocket 미사용 시 → treemap_live_view 사용
     changePercent = treemapAsset?.price_change_percentage_24h ?? null;
   }
-  
+
   if (currentPrice === 0 || changePercent === null) {
     return <span className="text-gray-400">-</span>;
   }
-  
+
   const isPositive = changePercent >= 0;
-  
+
   return (
     <Badge size="sm" color={isPositive ? "success" : "error"}>
       {isPositive ? "+" : ""}{changePercent.toFixed(2)}%
@@ -245,12 +245,12 @@ const ChangePercentWidget = ({
 };
 
 // Volume 위젯 (리얼타임)
-const VolumeWidget = ({ 
-  ticker, 
-  assetType, 
-  treemapData 
-}: { 
-  ticker: string; 
+const VolumeWidget = ({
+  ticker,
+  assetType,
+  treemapData
+}: {
+  ticker: string;
   assetType: string;
   treemapData?: any;
 }) => {
@@ -260,25 +260,25 @@ const VolumeWidget = ({
   const isETF = assetTypeLower === 'etf' || assetTypeLower === 'etfs';
   const isFund = assetTypeLower === 'fund' || assetTypeLower === 'funds';
   const isCommodity = assetTypeLower === 'commodity' || assetTypeLower === 'commodities';
-  
+
   const isMarketOpen = checkUSMarketHours();
   const useMiniWidget = isCrypto || ((isStock || isETF || isFund) && isMarketOpen);
-  
+
   // treemap_live_view에서 해당 자산 찾기
-  const treemapAsset = treemapData?.data?.find((a: any) => 
+  const treemapAsset = treemapData?.data?.find((a: any) =>
     (a.ticker || a.asset_identifier) === ticker
   );
-  
+
   // Mini Widget (WebSocket)
   const { latestPrice: realtimePrice } = useRealtimePrices(ticker);
-  
+
   // Volume 결정: 웹소켓 사용 시 realtimePrice?.volume, 없으면 treemap_live_view의 volume을 fallback으로 사용
   const volume = useMiniWidget
     ? (realtimePrice?.volume || treemapAsset?.volume || 0)
     : (treemapAsset?.volume || 0);
-  
+
   if (!volume) return <span className="text-gray-400">-</span>;
-  
+
   return <span>{volume.toLocaleString('en-US')}</span>;
 };
 
@@ -291,14 +291,14 @@ export default function SparklineTable({
   const { data: treemapData, isLoading } = useTreemapLive(
     typeName
       ? {
-          type_name: typeName,
-          sort_by: "market_cap",
-          sort_order: "desc",
-        }
+        type_name: typeName,
+        sort_by: "market_cap",
+        sort_order: "desc",
+      }
       : {
-          sort_by: "market_cap",
-          sort_order: "desc",
-        }
+        sort_by: "market_cap",
+        sort_order: "desc",
+      }
   );
 
   // 필터링된 자산 목록 (delayed quotes 조회용)
@@ -308,24 +308,24 @@ export default function SparklineTable({
     }
 
     const assets = (treemapData as any)?.data || [];
-    
+
     // 제외 목록 필터링
     let filteredByExclusion = filterExcludedAssets(assets)
-    
+
     // assetIdentifiers가 제공된 경우 해당 자산만 필터링, 아니면 전체 자산 사용
     let filteredAssets = assetIdentifiers && assetIdentifiers.length > 0
-      ? filteredByExclusion.filter((asset: any) => 
-          assetIdentifiers.includes(asset.ticker || asset.asset_identifier)
-        )
+      ? filteredByExclusion.filter((asset: any) =>
+        assetIdentifiers.includes(asset.ticker || asset.asset_identifier)
+      )
       : filteredByExclusion;
-    
+
     // 시가 총액으로 정렬 (내림차순)
     filteredAssets = filteredAssets.sort((a: any, b: any) => {
       const marketCapA = parseFloat(a.market_cap) || 0;
       const marketCapB = parseFloat(b.market_cap) || 0;
       return marketCapB - marketCapA;
     });
-    
+
     // 상위 maxRows개만 사용
     filteredAssets = filteredAssets.slice(0, maxRows);
 
@@ -344,19 +344,19 @@ export default function SparklineTable({
       const isStocksOrEtf = assetTypeLower === 'stocks' || assetTypeLower === 'etfs';
       // USDT, USDC 같은 stablecoin은 coinbase 사용, 나머지는 binance 사용
       const isStablecoin = ['USDT', 'USDC', 'BUSD', 'DAI', 'TUSD'].includes(item.identifier.toUpperCase());
-      
+
       // crypto인 경우 data_source 결정
       // stablecoin은 coinbase, 나머지는 binance
       const dataSource = isCrypto ? (isStablecoin ? 'coinbase' : 'binance') : undefined;
-      
+
       return {
         queryKey: ['delayed-quotes-sparkline', item.identifier, dataSource, isStocksOrEtf],
         queryFn: async () => {
           const BACKEND_BASE = process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1';
-          
+
           // 주식/ETF인 경우 sparkline-price 사용, 그 외에는 기존 quotes-delay-price 사용
           const endpoint = isStocksOrEtf ? '/realtime/sparkline-price' : '/realtime/pg/quotes-delay-price';
-          
+
           const search = new URLSearchParams();
           search.append('asset_identifier', item.identifier);
           search.append('data_interval', '15m');
@@ -365,7 +365,7 @@ export default function SparklineTable({
             search.append('data_source', dataSource);
           }
           const url = `${BACKEND_BASE}${endpoint}?${search.toString()}`;
-          
+
           try {
             const response = await fetch(url);
             if (!response.ok) {
@@ -394,14 +394,14 @@ export default function SparklineTable({
   // delayed quotes 데이터를 맵으로 변환
   const delayedQuotesMap = useMemo(() => {
     const map: Record<string, number[]> = {};
-    
+
     delayedQuotesQueries.forEach((query, index) => {
       const item = filteredAssetIdentifiers[index];
       if (!item || !query.data) return;
-      
+
       const identifier = item.identifier;
       const response = query.data as any;
-      
+
       // 응답 형식에 따라 quotes 배열 추출
       let quotes: any[] = [];
       if (response?.quotes && Array.isArray(response.quotes)) {
@@ -413,20 +413,20 @@ export default function SparklineTable({
           quotes = firstItem.quotes;
         }
       }
-      
+
       // 타임스탬프 순으로 정렬하고 가격만 추출
       const timeline = quotes
-        .sort((a: any, b: any) => 
+        .sort((a: any, b: any) =>
           new Date(a.timestamp_utc).getTime() - new Date(b.timestamp_utc).getTime()
         )
         .map((quote: any) => parseFloat(quote.price) || 0)
         .filter((price: number) => price > 0);
-      
+
       if (timeline.length > 0) {
         map[identifier] = timeline;
       }
     });
-    
+
     return map;
   }, [delayedQuotesQueries, filteredAssetIdentifiers]);
 
@@ -437,24 +437,24 @@ export default function SparklineTable({
     }
 
     const assets = (treemapData as any)?.data || [];
-    
+
     // 제외 목록 필터링
     let filteredByExclusion = filterExcludedAssets(assets)
-    
+
     // assetIdentifiers가 제공된 경우 해당 자산만 필터링, 아니면 전체 자산 사용
     let filteredAssets = assetIdentifiers && assetIdentifiers.length > 0
-      ? filteredByExclusion.filter((asset: any) => 
-          assetIdentifiers.includes(asset.ticker || asset.asset_identifier)
-        )
+      ? filteredByExclusion.filter((asset: any) =>
+        assetIdentifiers.includes(asset.ticker || asset.asset_identifier)
+      )
       : filteredByExclusion;
-    
+
     // 시가 총액으로 정렬 (내림차순) - AssetsList.tsx와 동일한 로직
     filteredAssets = filteredAssets.sort((a: any, b: any) => {
       const marketCapA = parseFloat(a.market_cap) || 0;
       const marketCapB = parseFloat(b.market_cap) || 0;
       return marketCapB - marketCapA;
     });
-    
+
     // 상위 maxRows개만 사용
     filteredAssets = filteredAssets.slice(0, maxRows);
 
@@ -463,10 +463,10 @@ export default function SparklineTable({
         // 현재 가격
         const currentPrice = asset.current_price || 0;
         const identifier = asset.ticker || asset.asset_identifier;
-        
+
         // delayed quotes에서 타임라인 가져오기
         let timeline: number[] = delayedQuotesMap[identifier] || [];
-        
+
         // delayed quotes 데이터가 없으면 현재 가격으로 fallback
         if (timeline.length === 0 && currentPrice > 0) {
           timeline = [currentPrice * 0.99, currentPrice];
@@ -478,13 +478,13 @@ export default function SparklineTable({
         const queryIndex = filteredAssetIdentifiers.findIndex((item) => item.identifier === identifier);
         const query = queryIndex >= 0 ? delayedQuotesQueries[queryIndex] : null;
         const isSubscribed = query?.isSuccess && timeline.length > 0;
-        const subscriptionStatus = query?.isLoading 
-          ? 'loading' 
-          : query?.isError 
-          ? 'error' 
-          : isSubscribed 
-          ? 'subscribed' 
-          : 'no-data';
+        const subscriptionStatus = query?.isLoading
+          ? 'loading'
+          : query?.isError
+            ? 'error'
+            : isSubscribed
+              ? 'subscribed'
+              : 'no-data';
 
         return {
           ticker: identifier,
@@ -617,32 +617,31 @@ export default function SparklineTable({
                           {/* 구독 상태 표시 */}
                           {asset.subscriptionStatus && (
                             <span
-                              className={`text-xs px-1.5 py-0.5 rounded ${
-                                asset.subscriptionStatus === 'subscribed'
+                              className={`text-xs px-1.5 py-0.5 rounded ${asset.subscriptionStatus === 'subscribed'
                                   ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
                                   : asset.subscriptionStatus === 'loading'
-                                  ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
-                                  : asset.subscriptionStatus === 'error'
-                                  ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
-                                  : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
-                              }`}
+                                    ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
+                                    : asset.subscriptionStatus === 'error'
+                                      ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+                                      : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                                }`}
                               title={
                                 asset.subscriptionStatus === 'subscribed'
                                   ? '구독됨'
                                   : asset.subscriptionStatus === 'loading'
-                                  ? '로딩 중'
-                                  : asset.subscriptionStatus === 'error'
-                                  ? '에러'
-                                  : '데이터 없음'
+                                    ? '로딩 중'
+                                    : asset.subscriptionStatus === 'error'
+                                      ? '에러'
+                                      : '데이터 없음'
                               }
                             >
                               {asset.subscriptionStatus === 'subscribed'
                                 ? '✓'
                                 : asset.subscriptionStatus === 'loading'
-                                ? '⋯'
-                                : asset.subscriptionStatus === 'error'
-                                ? '✗'
-                                : '○'}
+                                  ? '⋯'
+                                  : asset.subscriptionStatus === 'error'
+                                    ? '✗'
+                                    : '○'}
                             </span>
                           )}
                         </div>
@@ -680,8 +679,8 @@ export default function SparklineTable({
                     {asset.marketCap >= 1e9
                       ? `$${(asset.marketCap / 1e9).toFixed(2)}B`
                       : asset.marketCap >= 1e6
-                      ? `$${(asset.marketCap / 1e6).toFixed(2)}M`
-                      : `$${asset.marketCap.toFixed(2)}`}
+                        ? `$${(asset.marketCap / 1e6).toFixed(2)}M`
+                        : `$${asset.marketCap.toFixed(2)}`}
                   </TableCell>
                 </TableRow>
               ))}
