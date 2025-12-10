@@ -21,6 +21,22 @@ class BinanceClient(CryptoAPIClient):
         super().__init__()
         self.base_url = "https://api.binance.com/api/v3"
         
+        # Binance에서 USDT 페어로 지원하지 않는 심볼 목록
+        # 이 심볼들은 API 호출 시 건너뜀 (400 Bad Request 방지)
+        self.unsupported_symbols = {
+            'CRO',      # Crypto.com Coin - Binance에서 USDT 페어 없음
+            'HNT',      # Helium - Binance에서 거래 중단됨
+            'RSR',      # Reserve Rights - USDT 페어 제한적
+            'FTT',      # FTX Token - 상장폐지됨
+            'LUNA',     # Terra Luna Classic - 일부 지역에서 제한
+            'LUNC',     # Terra Luna Classic 
+            'USTC',     # TerraClassicUSD
+            'USDT',     # 스테이블코인 - USDT 페어 없음 (자기자신)
+            'USDC',     # 스테이블코인
+            'FTM',      # Fantom - Binance에서 상장폐지됨 (Sonic으로 전환)
+            'MSOL',     # Marinade Staked SOL - Binance에서 USDT 페어 없음
+        }
+        
         # Binance에서 지원하는 심볼 매핑
         self.symbol_mapping = {
             'BTC': 'BTCUSDT',
@@ -59,11 +75,14 @@ class BinanceClient(CryptoAPIClient):
             'ALICE': 'ALICEUSDT',
             'TLM': 'TLMUSDT',
             'ICP': 'ICPUSDT',
-            'XLM': 'XLMUSDT',
-            'TRX': 'TRXUSDT',
-            'UNI': 'UNIUSDT',
             'SHIB': 'SHIBUSDT',
-            'TON': 'TONUSDT'
+            'TON': 'TONUSDT',
+            'INJ': 'INJUSDT',
+            'JASMY': 'JASMYUSDT',
+            'AVAX': 'AVAXUSDT',
+            'HBAR': 'HBARUSDT',
+            'STX': 'STXUSDT',
+            'RNDR': 'RNDRUSDT',
         }
     
     def _normalize_symbol_for_binance(self, symbol: str) -> str:
@@ -110,6 +129,12 @@ class BinanceClient(CryptoAPIClient):
         """Get OHLCV data from Binance.
         Supports optional startTime/endTime (milliseconds) to fetch a specific window.
         """
+        # 지원하지 않는 심볼 체크
+        base_symbol = symbol.replace('USDT', '') if symbol.endswith('USDT') else symbol
+        if base_symbol in self.unsupported_symbols:
+            logger.info(f"Binance: Skipping unsupported symbol {symbol} (no USDT pair)")
+            return []
+        
         try:
             # 심볼 정규화
             normalized_symbol = self._normalize_symbol_for_binance(symbol)
@@ -157,6 +182,12 @@ class BinanceClient(CryptoAPIClient):
     
     async def get_realtime_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Get real-time quote for a symbol"""
+        # 지원하지 않는 심볼 체크
+        base_symbol = symbol.replace('USDT', '') if symbol.endswith('USDT') else symbol
+        if base_symbol in self.unsupported_symbols:
+            logger.info(f"Binance: Skipping unsupported symbol {symbol} (no USDT pair)")
+            return None
+        
         try:
             # 심볼 정규화
             normalized_symbol = self._normalize_symbol_for_binance(symbol)
@@ -204,6 +235,12 @@ class BinanceClient(CryptoAPIClient):
     
     async def get_crypto_data(self, symbol: str) -> Optional[CryptoData]:
         """Get comprehensive cryptocurrency data from Binance"""
+        # 지원하지 않는 심볼 체크
+        base_symbol = symbol.replace('USDT', '') if symbol.endswith('USDT') else symbol
+        if base_symbol in self.unsupported_symbols:
+            logger.info(f"Binance: Skipping unsupported symbol {symbol} (no USDT pair)")
+            return None
+        
         try:
             # 심볼 정규화
             normalized_symbol = self._normalize_symbol_for_binance(symbol)

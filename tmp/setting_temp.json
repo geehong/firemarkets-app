@@ -73,15 +73,18 @@
       "minute": 0,
       "collectors": ["stock_financials_macrotrends_clients"],
       "day_of_week": "mon,tue,wed,thu,fri,sat,sun"
+    },
+    {
+      "hour": 8,
+      "minute": 0,
+      "collectors": ["commodity_ohlcv_aggregator_intraday"],
+      "day_of_week": "mon,tue,wed,thu,fri,sat,sun"
+    },
+    {
+      "hour": 9,
+      "minute": 0,
+      "collectors": ["commodity_ohlcv_aggregator_daily"],
+      "day_of_week": "mon,tue,wed,thu,fri,sat,sun"
     }
-  ],
-  "client_overrides": {
-    "stock_profiles_clients": [
-      "FinnhubClient",
-      "PolygonClient",
-      "TwelveDataClient"
-    ],
-    "stock_financials_clients": [],
-    "stock_analyst_estimates_clients": []
-  }
+  ]
 }

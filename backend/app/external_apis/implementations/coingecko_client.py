@@ -263,7 +263,30 @@ class CoinGeckoClient(CryptoAPIClient):
             "DEXEUSDT": "dexe",
             "ALGOUSDT": "algorand",
             "FLOWUSDT": "flow",
-            "WBTCUSDT": "wrapped-bitcoin"
+            "WBTCUSDT": "wrapped-bitcoin",
+            # 추가된 심볼 매핑 (에러 방지)
+            "CROUSDT": "crypto-com-chain",
+            "CRO": "crypto-com-chain",
+            "HNTUSDT": "helium",
+            "HNT": "helium",
+            "AVAXUSDT": "avalanche-2",
+            "AVAX": "avalanche-2",
+            "HBARUSDT": "hedera-hashgraph",
+            "HBAR": "hedera-hashgraph",
+            "STXUSDT": "blockstack",
+            "STX": "blockstack",
+            "RNDRUSDT": "render-token",
+            "RNDR": "render-token",
+            "RSRUSDT": "reserve-rights-token",
+            "RSR": "reserve-rights-token",
+            "THETAUSDT": "theta-token",
+            "THETA": "theta-token",
+            "FILUSDT": "filecoin",
+            "FIL": "filecoin",
+            "LUNAUSDT": "terra-luna-2",
+            "LUNA": "terra-luna-2",
+            "FTTUSDT": "ftx-token",
+            "FTT": "ftx-token",
         }
         
         # 매핑이 있으면 사용, 없으면 USDT 제거 후 소문자로 변환

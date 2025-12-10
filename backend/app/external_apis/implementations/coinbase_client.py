@@ -58,6 +58,16 @@ class CoinbaseClient(CryptoAPIClient):
             'ALICE': 'ALICE-USD',
             'TLM': 'TLM-USD',
             'ICP': 'ICP-USD',
+            # 추가된 심볼들 (Binance에서 지원하지 않는 심볼 포함)
+            'CRO': 'CRO-USD',      # Crypto.com Coin - Coinbase에서 지원
+            'AVAX': 'AVAX-USD',
+            'INJ': 'INJ-USD',
+            'JASMY': 'JASMY-USD',
+            'HBAR': 'HBAR-USD',
+            'STX': 'STX-USD',
+            'RNDR': 'RNDR-USD',
+            'HNT': 'HNT-USD',      # Helium - Coinbase에서 지원
+            'RSR': 'RSR-USD',      # Reserve Rights
             # Coinbase에서 지원하지 않는 심볼들
             'XLM': None,  # Coinbase에서 지원하지 않음
             'TRX': None,  # Coinbase에서 지원하지 않음
@@ -66,6 +76,10 @@ class CoinbaseClient(CryptoAPIClient):
             'TON': None,  # Coinbase에서 지원하지 않음
             'USDC': None,  # USDC는 스테이블코인으로 거래 페어가 아님
             'USDT': None,  # USDT는 스테이블코인으로 거래 페어가 아님
+            'FTT': None,   # FTX Token - 상장폐지됨
+            'LUNA': None,  # Terra Luna Classic - 제한됨
+            'FTM': None,   # Fantom - Coinbase에서 404 에러 (Sonic으로 전환)
+            'MSOL': None,  # Marinade Staked SOL - Coinbase에서 지원하지 않음
         }
         
         # 매핑 테이블에서 찾기

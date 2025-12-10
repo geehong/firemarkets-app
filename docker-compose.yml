@@ -164,6 +164,8 @@ services:
       FINNHUB_SECRET_KEY: ${FINNHUB_SECRET_KEY}
       TZ: Asia/Seoul
     depends_on:
+      db_postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
@@ -199,6 +201,8 @@ services:
       DISABLE_WEBSOCKET_FILE_LOGS: "true"
       REALTIME_PROCESSING_INTERVAL_SECONDS: "10"
     depends_on:
+      db_postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
@@ -327,9 +331,9 @@ services:
       # 개발 모드 추가 설정 (CPU 사용량 최적화)
       WATCHPACK_POLLING: false
       CHOKIDAR_USEPOLLING: false
-      CHOKIDAR_INTERVAL: 1000  # 파일 감시 간격 증가 (기본값보다 느리게)
+      CHOKIDAR_INTERVAL: 1000 # 파일 감시 간격 증가 (기본값보다 느리게)
       CHOKIDAR_BINARY_INTERVAL: 1000
-      TURBOPACK_THREADS: 1  # 스레드 수 감소
+      TURBOPACK_THREADS: 1 # 스레드 수 감소
       FAST_REFRESH: true
       NEXT_WEBPACK_USE_POLLING: false
     volumes:
