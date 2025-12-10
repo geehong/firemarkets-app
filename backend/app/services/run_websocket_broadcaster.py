@@ -236,17 +236,21 @@ async def listen_to_redis_and_broadcast():
 
                             # 먼저 전체 심볼로 검색
                             asset_id = ticker_to_asset_id_cache.get(symbol)
+                            ticker_for_broadcast = symbol  # 브로드캐스트에 사용할 티커
                             
                             # 없으면 원본 심볼로도 시도
                             if not asset_id and original_symbol != symbol:
                                 asset_id = ticker_to_asset_id_cache.get(original_symbol)
                                 if asset_id:
+                                    ticker_for_broadcast = original_symbol
                                     logger.debug(f"🔍 변환된 심볼 '{symbol}' not found, using original: '{original_symbol}'")
                             
                             # 여전히 없으면 USDT 접미사 제거하여 검색
                             if not asset_id and symbol.endswith('USDT'):
                                 symbol_for_db = symbol.replace('USDT', '')
                                 asset_id = ticker_to_asset_id_cache.get(symbol_for_db)
+                                if asset_id:
+                                    ticker_for_broadcast = symbol_for_db  # DB 티커 사용 (예: ETH)
                                 logger.debug(f"🔍 Full symbol '{symbol}' not found, trying without USDT: '{symbol_for_db}'")
                             
                             if not asset_id:
@@ -256,11 +260,11 @@ async def listen_to_redis_and_broadcast():
                             else:
                                 logger.debug(f"✅ Found asset_id {asset_id} for symbol: {symbol} (original: {original_symbol})")
 
-                            # 브로드캐스트할 때는 데이터베이스에 저장된 티커 형식 사용 (USDT 형식)
-                            # 하지만 원본 티커 정보도 유지
+                            # 브로드캐스트할 때는 데이터베이스에 저장된 티커 형식 사용 (예: ETH)
+                            # Frontend의 useRealtimePrices와 일치하도록 DB 티커 형식으로 전송
                             quote_data = {
                                 "asset_id": asset_id,
-                                "ticker": symbol,  # 변환된 티커 (ETHUSDT 형식)
+                                "ticker": ticker_for_broadcast,  # DB 티커 형식 (예: ETH, BTC)
                                 "timestamp_utc": datetime.now(timezone.utc).isoformat(),
                                 "price": price,
                                 "volume": volume,

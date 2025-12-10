@@ -15,11 +15,13 @@ class StreamConsumer:
         self.repository = repository
         self.batch_size = batch_size
         self.realtime_streams = {
-            "finnhub:realtime": "finnhub_group",
-            "alpaca:realtime": "alpaca_group",
+            # High priority: Active WebSocket streams with frequent updates
             "binance:realtime": "binance_group",
             "coinbase:realtime": "coinbase_group",
             "swissquote:realtime": "swissquote_group",
+            # Lower priority: May have timeouts or less frequent updates
+            "alpaca:realtime": "alpaca_group",
+            "finnhub:realtime": "finnhub_group",
         }
 
     async def connect(self) -> bool:
@@ -75,15 +77,14 @@ class StreamConsumer:
                     logger.error(f"Pending 처리 실패 {stream_name}: {e}")
 
             # 각 스트림별로 개별 처리 (각 스트림마다 다른 consumer group 사용)
-            # 처음에는 짧은 blocking, 이후에는 non-blocking으로 빠르게 처리
-            first_stream = True
+            # 고우선순위 스트림(binance, coinbase)은 짧은 blocking으로 처리
+            high_priority_streams = {"binance:realtime", "coinbase:realtime"}
             for stream_name, group_name in self.realtime_streams.items():
                 try:
-                    # 첫 번째 스트림만 짧게 blocking (100ms), 나머지는 non-blocking
-                    block_time = 100 if first_stream else 0
-                    first_stream = False
+                    # 고우선순위 스트림은 50ms blocking, 나머지는 non-blocking
+                    block_time = 50 if stream_name in high_priority_streams else 0
                     
-                    # Timeout 보호 (최대 1초)
+                    # Timeout 보호 (최대 500ms)
                     new_data = await asyncio.wait_for(
                         self.redis_client.xreadgroup(
                             groupname=group_name,
@@ -92,11 +93,12 @@ class StreamConsumer:
                             count=self.batch_size,
                             block=block_time
                         ),
-                        timeout=1.0
+                        timeout=0.5
                     )
                     if new_data:
                         total_messages = sum(len(msgs) for _, msgs in new_data)
-                        logger.debug(f"📨 스트림 {stream_name}에서 {total_messages}개 메시지 읽음")
+                        if total_messages > 0:
+                            logger.info(f"📨 스트림 {stream_name}에서 {total_messages}개 메시지 읽음")
                         await self._process_messages(new_data, records_to_save, ack_items)
                 except asyncio.TimeoutError:
                     logger.warning(f"스트림 {stream_name} 읽기 timeout")
@@ -164,19 +166,52 @@ class StreamConsumer:
                             logger.warning(f"⚠️ Ticker가 없는 메시지: {stream_name}:{message_id}")
                             ack_items.append((stream_name, group_name, message_id))
                             continue
-                            
-                        if hasattr(self, 'ticker_to_asset_id') and ticker in self.ticker_to_asset_id:
-                             parsed_data['asset_id'] = self.ticker_to_asset_id[ticker]
-                             records_to_save.append(parsed_data)
-                             ack_items.append((stream_name, group_name, message_id))
+                        
+                        # Ticker normalization: try original first, then try without USDT suffix
+                        asset_id = None
+                        if hasattr(self, 'ticker_to_asset_id'):
+                            # Try original ticker first (e.g., BTCUSDT, ETH, SOL-USD)
+                            if ticker in self.ticker_to_asset_id:
+                                asset_id = self.ticker_to_asset_id[ticker]
+                            # If not found and has USDT suffix, try without it (e.g., SOLUSDT -> SOL)
+                            elif ticker.endswith('USDT') and len(ticker) > 4:
+                                normalized_ticker = ticker[:-4]  # Remove 'USDT'
+                                if normalized_ticker in self.ticker_to_asset_id:
+                                    asset_id = self.ticker_to_asset_id[normalized_ticker]
+                            # Coinbase format: SOL-USD -> SOL
+                            elif ticker.endswith('-USD') and len(ticker) > 4:
+                                normalized_ticker = ticker[:-4]  # Remove '-USD'
+                                if normalized_ticker in self.ticker_to_asset_id:
+                                    asset_id = self.ticker_to_asset_id[normalized_ticker]
+                            # Some exchanges use XXX-USDT format (e.g., BTC-USDT -> BTC)
+                            elif ticker.endswith('-USDT') and len(ticker) > 5:
+                                normalized_ticker = ticker[:-5]  # Remove '-USDT'
+                                if normalized_ticker in self.ticker_to_asset_id:
+                                    asset_id = self.ticker_to_asset_id[normalized_ticker]
+                            # Swissquote format: XAU/USD -> XAU
+                            elif '/USD' in ticker:
+                                normalized_ticker = ticker.split('/')[0]
+                                if normalized_ticker in self.ticker_to_asset_id:
+                                    asset_id = self.ticker_to_asset_id[normalized_ticker]
+                        
+                        if asset_id is not None:
+                            parsed_data['asset_id'] = asset_id
+                            records_to_save.append(parsed_data)
+                            ack_items.append((stream_name, group_name, message_id))
                         else:
-                             # 매핑 실패 시 로그
-                             if not hasattr(self, 'ticker_to_asset_id'):
-                                 logger.warning(f"⚠️ Asset 맵이 설정되지 않음. Ticker: {ticker}")
-                             else:
-                                 logger.warning(f"⚠️ Asset ID를 찾을 수 없음. Ticker: {ticker} (맵 크기: {len(self.ticker_to_asset_id)})")
-                             # ACK는 해야 하나? 실패한 메시지는 ACK해서 넘어가야 함.
-                             ack_items.append((stream_name, group_name, message_id))
+                            # 매핑 실패 시 로그
+                            if not hasattr(self, 'ticker_to_asset_id'):
+                                logger.warning(f"⚠️ Asset 맵이 설정되지 않음. Ticker: {ticker}")
+                            else:
+                                # Only log periodically to reduce log spam (every 100th occurrence)
+                                if not hasattr(self, '_missing_ticker_counts'):
+                                    self._missing_ticker_counts = {}
+                                count = self._missing_ticker_counts.get(ticker, 0) + 1
+                                self._missing_ticker_counts[ticker] = count
+                                if count == 1 or count % 100 == 0:
+                                    logger.warning(f"⚠️ Asset ID를 찾을 수 없음. Ticker: {ticker} (맵 크기: {len(self.ticker_to_asset_id)}, 발생: {count}회)")
+                            # ACK는 해야 하나? 실패한 메시지는 ACK해서 넘어가야 함.
+                            ack_items.append((stream_name, group_name, message_id))
 
                 except Exception as e:
                     logger.error(f"메시지 파싱 실패 ({stream_name}:{message_id}): {e}")

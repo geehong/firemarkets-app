@@ -7,6 +7,7 @@ import { useTreemapLive } from "@/hooks/useAssets";
 import CompareMultipleAssetsChart from "@/components/charts/line/CompareMultipleAssetsChart";
 import Link from "next/link";
 import SparklineTable from "@/components/tables/SparklineTable";
+import RealtimePriceTable from "@/components/tables/RealtimePriceTable";
 
 interface AssetRowProps {
   rank: number;
@@ -262,211 +263,40 @@ export default function AssetsDashboardContent() {
         />
       </div>
 
-      {/* 자산 타입별 테이블 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-        {/* 암호화폐 테이블 */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-              상위 암호화폐
-            </h2>
-            <Link
-              href="/assets?type_name=Crypto"
-              className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium text-sm"
-            >
-              전체 보기 →
-            </Link>
-          </div>
-
-          {cryptoLoading ? (
-            <div className="space-y-3">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="animate-pulse flex items-center gap-3">
-                  <div className="h-4 w-4 bg-gray-200 dark:bg-gray-700 rounded"></div>
-                  <div className="flex-1 space-y-2">
-                    <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
-                    <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
-                  </div>
-                  <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-16"></div>
-                </div>
-              ))}
-            </div>
-          ) : cryptoError ? (
-            <div className="text-center py-8">
-              <div className="text-red-500 dark:text-red-400 mb-2">⚠️</div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">데이터를 불러올 수 없습니다</p>
-            </div>
-          ) : normalizedCrypto.length === 0 ? (
-            <div className="text-center py-8">
-              <div className="text-2xl mb-2">💰</div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">암호화폐 데이터가 없습니다</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="text-left text-xs text-gray-600 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
-                    <th className="py-2 px-2 w-8 text-center">#</th>
-                    <th className="py-2 px-2">자산</th>
-                    <th className="py-2 px-2 text-right">가격</th>
-                    <th className="py-2 px-2 text-right">24h</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {normalizedCrypto.slice(0, 5).map((crypto: any, index: number) => (
-                    <AssetRow
-                      key={crypto.asset_id || crypto.ticker || index}
-                      rank={index + 1}
-                      symbol={crypto.ticker || 'N/A'}
-                      name={crypto.name || 'N/A'}
-                      price={crypto.current_price || 0}
-                      change24h={crypto.price_change_percentage_24h || 0}
-                      marketCap={0}
-                      volume24h={0}
-                      type="Crypto"
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* 주식 테이블 */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-              상위 주식
-            </h2>
-            <Link
-              href="/assets?type_name=Stocks"
-              className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium text-sm"
-            >
-              전체 보기 →
-            </Link>
-          </div>
-
-          {stockLoading ? (
-            <div className="space-y-3">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="animate-pulse flex items-center gap-3">
-                  <div className="h-4 w-4 bg-gray-200 dark:bg-gray-700 rounded"></div>
-                  <div className="flex-1 space-y-2">
-                    <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
-                    <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
-                  </div>
-                  <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-16"></div>
-                </div>
-              ))}
-            </div>
-          ) : stockError ? (
-            <div className="text-center py-8">
-              <div className="text-red-500 dark:text-red-400 mb-2">⚠️</div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">데이터를 불러올 수 없습니다</p>
-            </div>
-          ) : normalizedStock.length === 0 ? (
-            <div className="text-center py-8">
-              <div className="text-2xl mb-2">📈</div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">주식 데이터가 없습니다</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="text-left text-xs text-gray-600 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
-                    <th className="py-2 px-2 w-8 text-center">#</th>
-                    <th className="py-2 px-2">자산</th>
-                    <th className="py-2 px-2 text-right">가격</th>
-                    <th className="py-2 px-2 text-right">24h</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {normalizedStock.slice(0, 5).map((stock: any, index: number) => (
-                    <AssetRow
-                      key={stock.asset_id || stock.ticker || index}
-                      rank={index + 1}
-                      symbol={stock.ticker || 'N/A'}
-                      name={stock.name || 'N/A'}
-                      price={stock.current_price || 0}
-                      change24h={stock.price_change_percentage_24h || 0}
-                      marketCap={0}
-                      volume24h={0}
-                      type="Stock"
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* ETF 테이블 */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-              상위 ETF
-            </h2>
-            <Link
-              href="/assets?type_name=ETFs"
-              className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium text-sm"
-            >
-              전체 보기 →
-            </Link>
-          </div>
-
-          {etfLoading ? (
-            <div className="space-y-3">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="animate-pulse flex items-center gap-3">
-                  <div className="h-4 w-4 bg-gray-200 dark:bg-gray-700 rounded"></div>
-                  <div className="flex-1 space-y-2">
-                    <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
-                    <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
-                  </div>
-                  <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-16"></div>
-                </div>
-              ))}
-            </div>
-          ) : etfError ? (
-            <div className="text-center py-8">
-              <div className="text-red-500 dark:text-red-400 mb-2">⚠️</div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">데이터를 불러올 수 없습니다</p>
-            </div>
-          ) : normalizedEtf.length === 0 ? (
-            <div className="text-center py-8">
-              <div className="text-2xl mb-2">📊</div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">ETF 데이터가 없습니다</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="text-left text-xs text-gray-600 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
-                    <th className="py-2 px-2 w-8 text-center">#</th>
-                    <th className="py-2 px-2">자산</th>
-                    <th className="py-2 px-2 text-right">가격</th>
-                    <th className="py-2 px-2 text-right">24h</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {normalizedEtf.slice(0, 5).map((etf: any, index: number) => (
-                    <AssetRow
-                      key={etf.asset_id || etf.ticker || index}
-                      rank={index + 1}
-                      symbol={etf.ticker || 'N/A'}
-                      name={etf.name || 'N/A'}
-                      price={etf.current_price || 0}
-                      change24h={etf.price_change_percentage_24h || 0}
-                      marketCap={0}
-                      volume24h={0}
-                      type="ETF"
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+      {/* 실시간 자산 테이블 - 4개 타입 (2x2 그리드, 모바일 1열) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        {/* 암호화폐 */}
+        <RealtimePriceTable
+          typeName="Crypto"
+          showFilter={false}
+          showPagination={false}
+          maxRows={10}
+          title="암호화폐"
+        />
+        {/* 주식 */}
+        <RealtimePriceTable
+          typeName="Stocks"
+          showFilter={false}
+          showPagination={false}
+          maxRows={10}
+          title="주식"
+        />
+        {/* ETF + 펀드 */}
+        <RealtimePriceTable
+          typeName="ETFs"
+          showFilter={false}
+          showPagination={false}
+          maxRows={10}
+          title="ETF / 펀드"
+        />
+        {/* 상품 */}
+        <RealtimePriceTable
+          typeName="Commodities"
+          showFilter={false}
+          showPagination={false}
+          maxRows={10}
+          title="상품"
+        />
       </div>
 
       {/* 자산 타입 통계 */}

@@ -134,11 +134,13 @@ const checkUSMarketHours = (): boolean => {
 const PriceWidget = ({
   ticker,
   assetType,
-  treemapData
+  treemapData,
+  realtimeData,
 }: {
   ticker: string;
   assetType: string;
   treemapData?: any;
+  realtimeData?: { price: number | null; volume?: number | null; changePercent?: number | null; isConnected: boolean };
 }) => {
   const assetTypeLower = assetType?.toLowerCase() || '';
   const isCrypto = assetTypeLower === 'crypto';
@@ -159,12 +161,9 @@ const PriceWidget = ({
     (a.ticker || a.asset_identifier) === ticker
   );
 
-  // Mini Widget (WebSocket)
-  const { latestPrice: realtimePrice } = useRealtimePrices(ticker);
-
-  // 가격 결정: 웹소켓 사용 시 realtimePrice, 없으면 treemap_live_view의 current_price를 fallback으로 사용
+  // 가격 결정: realtimeData 사용 시 price, 없으면 treemap_live_view의 current_price를 fallback으로 사용
   const price = useMiniWidget
-    ? (realtimePrice?.price || treemapAsset?.current_price || 0)
+    ? (realtimeData?.price || treemapAsset?.current_price || 0)
     : (treemapAsset?.current_price || 0);
 
   if (!price) return <span className="text-gray-400">-</span>;
@@ -176,11 +175,13 @@ const PriceWidget = ({
 const ChangePercentWidget = ({
   ticker,
   assetType,
-  treemapData
+  treemapData,
+  realtimeData,
 }: {
   ticker: string;
   assetType: string;
   treemapData?: any;
+  realtimeData?: { price: number | null; volume?: number | null; changePercent?: number | null; isConnected: boolean };
 }) => {
   const assetTypeLower = assetType?.toLowerCase() || '';
   const isCrypto = assetTypeLower === 'crypto';
@@ -197,37 +198,27 @@ const ChangePercentWidget = ({
     (a.ticker || a.asset_identifier) === ticker
   );
 
-  // Mini Widget (WebSocket) - changePercent를 직접 사용
-  const { latestPrice: realtimePrice, isConnected } = useRealtimePrices(ticker);
-
   // 현재 가격
   const currentPrice = useMiniWidget
-    ? (realtimePrice?.price || treemapAsset?.current_price || 0)
+    ? (realtimeData?.price || treemapAsset?.current_price || 0)
     : (treemapAsset?.current_price || 0);
 
-  // 변경률: WebSocket에서 받은 changePercent 우선 사용
-  // WebSocket에 연결되어 있고 가격을 받았으면 changePercent가 계산될 때까지 기다림
+  // 변경률: realtimeData에서 받은 changePercent 우선 사용
   let changePercent: number | null = null;
 
-  // WebSocket 연결 상태 확인 (useMiniWidget이든 아니든 WebSocket 연결되어 있으면 사용)
-  const isWebSocketActive = isConnected && realtimePrice?.price !== undefined && realtimePrice?.price !== null;
+  // WebSocket 연결 상태 확인
+  const isWebSocketActive = realtimeData?.isConnected && realtimeData?.price !== undefined && realtimeData?.price !== null;
 
   if (useMiniWidget || isWebSocketActive) {
     // WebSocket 사용 시
-    // changePercent가 명시적으로 제공되면 사용 (0도 유효한 값)
-    if (realtimePrice?.changePercent !== undefined && realtimePrice.changePercent !== null) {
-      // WebSocket에서 받은 changePercent 사용 (한국시간 기준 전일 종가 대비 계산된 값)
-      changePercent = realtimePrice.changePercent;
+    if (realtimeData?.changePercent !== undefined && realtimeData.changePercent !== null) {
+      changePercent = realtimeData.changePercent;
     } else if (isWebSocketActive) {
-      // WebSocket에 연결되어 있고 가격을 받았지만 changePercent가 아직 계산 중인 경우
-      // treemap_live_view 값 절대 사용하지 않음 (계산될 때까지 대기)
       changePercent = null;
     } else {
-      // WebSocket 연결 안 됨 또는 가격 데이터 없음 → treemap_live_view 사용
       changePercent = treemapAsset?.price_change_percentage_24h ?? null;
     }
   } else {
-    // WebSocket 미사용 시 → treemap_live_view 사용
     changePercent = treemapAsset?.price_change_percentage_24h ?? null;
   }
 
@@ -248,11 +239,13 @@ const ChangePercentWidget = ({
 const VolumeWidget = ({
   ticker,
   assetType,
-  treemapData
+  treemapData,
+  realtimeData,
 }: {
   ticker: string;
   assetType: string;
   treemapData?: any;
+  realtimeData?: { price: number | null; volume?: number | null; changePercent?: number | null; isConnected: boolean };
 }) => {
   const assetTypeLower = assetType?.toLowerCase() || '';
   const isCrypto = assetTypeLower === 'crypto';
@@ -269,17 +262,136 @@ const VolumeWidget = ({
     (a.ticker || a.asset_identifier) === ticker
   );
 
-  // Mini Widget (WebSocket)
-  const { latestPrice: realtimePrice } = useRealtimePrices(ticker);
-
-  // Volume 결정: 웹소켓 사용 시 realtimePrice?.volume, 없으면 treemap_live_view의 volume을 fallback으로 사용
+  // Volume 결정: realtimeData 사용 시 volume, 없으면 treemap_live_view의 volume을 fallback으로 사용
   const volume = useMiniWidget
-    ? (realtimePrice?.volume || treemapAsset?.volume || 0)
+    ? (realtimeData?.volume || treemapAsset?.volume || 0)
     : (treemapAsset?.volume || 0);
 
   if (!volume) return <span className="text-gray-400">-</span>;
 
   return <span>{volume.toLocaleString('en-US')}</span>;
+};
+
+// 테이블 행 컴포넌트 - useRealtimePrices를 한 번만 호출하고 위젯들에 전달
+const SparklineTableRow = ({
+  asset,
+  treemapData,
+}: {
+  asset: AssetData;
+  treemapData: any;
+}) => {
+  // useRealtimePrices를 행 단위로 한 번만 호출
+  const { latestPrice, isConnected } = useRealtimePrices(asset.ticker);
+
+  // realtimeData 객체 생성 (위젯에 전달)
+  const realtimeData = {
+    price: latestPrice?.price ?? null,
+    volume: latestPrice?.volume ?? null,
+    changePercent: latestPrice?.changePercent ?? null,
+    isConnected,
+  };
+
+  return (
+    <TableRow key={asset.ticker}>
+      {/* Name - 모바일: 티커만, 데스크톱: 로고+티커+이름 */}
+      <TableCell className="px-5 py-4 sm:px-6 text-start md:w-auto w-[40%]">
+        <Link
+          href={`/assets/${asset.ticker || asset.assetId}`}
+          className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+        >
+          {/* 로고 - 데스크톱에서만 표시 */}
+          {asset.logo_url ? (
+            <div className="w-10 h-10 overflow-hidden rounded-full hidden md:block">
+              <Image
+                width={40}
+                height={40}
+                src={asset.logo_url}
+                alt={`${asset.ticker} logo`}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          ) : (
+            <div className="w-10 h-10 flex items-center justify-center bg-gray-200 dark:bg-gray-700 rounded-full hidden md:block">
+              <span className="text-xs font-bold text-gray-600 dark:text-gray-300">
+                {asset.ticker.substring(0, 1)}
+              </span>
+            </div>
+          )}
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <span className="block font-medium text-gray-800 text-theme-sm dark:text-white/90">
+                {asset.ticker}
+              </span>
+              {/* 구독 상태 표시 */}
+              {asset.subscriptionStatus && (
+                <span
+                  className={`text-xs px-1.5 py-0.5 rounded ${asset.subscriptionStatus === 'subscribed'
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                    : asset.subscriptionStatus === 'loading'
+                      ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
+                      : asset.subscriptionStatus === 'error'
+                        ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+                        : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                    }`}
+                  title={
+                    asset.subscriptionStatus === 'subscribed'
+                      ? '구독됨'
+                      : asset.subscriptionStatus === 'loading'
+                        ? '로딩 중'
+                        : asset.subscriptionStatus === 'error'
+                          ? '에러'
+                          : '데이터 없음'
+                  }
+                >
+                  {asset.subscriptionStatus === 'subscribed'
+                    ? '✓'
+                    : asset.subscriptionStatus === 'loading'
+                      ? '⋯'
+                      : asset.subscriptionStatus === 'error'
+                        ? '✗'
+                        : '○'}
+                </span>
+              )}
+            </div>
+            <span className="block text-gray-500 text-theme-xs dark:text-gray-400 hidden md:block">
+              {asset.name}
+            </span>
+          </div>
+        </Link>
+      </TableCell>
+      {/* Chart - 데스크톱에서만 표시 */}
+      <TableCell className="px-4 py-3 text-start hidden md:table-cell">
+        <SparklineChart data={asset.timeline} />
+      </TableCell>
+      {/* Price + Change - 모바일 전용 */}
+      <TableCell className="px-4 py-3 text-start text-theme-sm dark:text-gray-400 md:hidden w-[60%]">
+        <div className="flex items-center gap-2">
+          <PriceWidget ticker={asset.ticker} assetType={asset.assetType} treemapData={treemapData} realtimeData={realtimeData} />
+          <ChangePercentWidget ticker={asset.ticker} assetType={asset.assetType} treemapData={treemapData} realtimeData={realtimeData} />
+        </div>
+      </TableCell>
+      {/* Price - 데스크톱 전용 */}
+      <TableCell className="px-4 py-3 text-start text-theme-sm dark:text-gray-400 hidden md:table-cell">
+        <PriceWidget ticker={asset.ticker} assetType={asset.assetType} treemapData={treemapData} realtimeData={realtimeData} />
+      </TableCell>
+      {/* Change - 데스크톱 전용 */}
+      <TableCell className="px-4 py-3 text-start text-theme-sm dark:text-gray-400 hidden md:table-cell">
+        <ChangePercentWidget ticker={asset.ticker} assetType={asset.assetType} treemapData={treemapData} realtimeData={realtimeData} />
+      </TableCell>
+      {/* Volume - 데스크톱에서만 표시 */}
+      <TableCell className="px-4 py-3 text-start text-theme-sm dark:text-gray-400 w-32 hidden md:table-cell">
+        <VolumeWidget ticker={asset.ticker} assetType={asset.assetType} treemapData={treemapData} realtimeData={realtimeData} />
+      </TableCell>
+      {/* Market Cap - 데스크톱에서만 표시 */}
+      <TableCell className="px-4 py-3 text-gray-500 text-start text-theme-sm dark:text-gray-400 hidden md:table-cell">
+        {asset.marketCap >= 1e9
+          ? `$${(asset.marketCap / 1e9).toFixed(2)}B`
+          : asset.marketCap >= 1e6
+            ? `$${(asset.marketCap / 1e6).toFixed(2)}M`
+            : `$${asset.marketCap.toFixed(2)}`}
+      </TableCell>
+    </TableRow>
+  );
 };
 
 export default function SparklineTable({
@@ -584,105 +696,11 @@ export default function SparklineTable({
             {/* Table Body */}
             <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
               {tableData.map((asset) => (
-                <TableRow key={asset.ticker}>
-                  {/* Name - 모바일: 티커만, 데스크톱: 로고+티커+이름 */}
-                  <TableCell className="px-5 py-4 sm:px-6 text-start md:w-auto w-[40%]">
-                    <Link
-                      href={`/assets/${asset.ticker || asset.assetId}`}
-                      className="flex items-center gap-3 hover:opacity-80 transition-opacity"
-                    >
-                      {/* 로고 - 데스크톱에서만 표시 */}
-                      {asset.logo_url ? (
-                        <div className="w-10 h-10 overflow-hidden rounded-full hidden md:block">
-                          <Image
-                            width={40}
-                            height={40}
-                            src={asset.logo_url}
-                            alt={`${asset.ticker} logo`}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                      ) : (
-                        <div className="w-10 h-10 flex items-center justify-center bg-gray-200 dark:bg-gray-700 rounded-full hidden md:block">
-                          <span className="text-xs font-bold text-gray-600 dark:text-gray-300">
-                            {asset.ticker.substring(0, 1)}
-                          </span>
-                        </div>
-                      )}
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="block font-medium text-gray-800 text-theme-sm dark:text-white/90">
-                            {asset.ticker}
-                          </span>
-                          {/* 구독 상태 표시 */}
-                          {asset.subscriptionStatus && (
-                            <span
-                              className={`text-xs px-1.5 py-0.5 rounded ${asset.subscriptionStatus === 'subscribed'
-                                  ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                                  : asset.subscriptionStatus === 'loading'
-                                    ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
-                                    : asset.subscriptionStatus === 'error'
-                                      ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
-                                      : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
-                                }`}
-                              title={
-                                asset.subscriptionStatus === 'subscribed'
-                                  ? '구독됨'
-                                  : asset.subscriptionStatus === 'loading'
-                                    ? '로딩 중'
-                                    : asset.subscriptionStatus === 'error'
-                                      ? '에러'
-                                      : '데이터 없음'
-                              }
-                            >
-                              {asset.subscriptionStatus === 'subscribed'
-                                ? '✓'
-                                : asset.subscriptionStatus === 'loading'
-                                  ? '⋯'
-                                  : asset.subscriptionStatus === 'error'
-                                    ? '✗'
-                                    : '○'}
-                            </span>
-                          )}
-                        </div>
-                        <span className="block text-gray-500 text-theme-xs dark:text-gray-400 hidden md:block">
-                          {asset.name}
-                        </span>
-                      </div>
-                    </Link>
-                  </TableCell>
-                  {/* Chart - 데스크톱에서만 표시 */}
-                  <TableCell className="px-4 py-3 text-start hidden md:table-cell">
-                    <SparklineChart data={asset.timeline} />
-                  </TableCell>
-                  {/* Price + Change - 모바일 전용 */}
-                  <TableCell className="px-4 py-3 text-start text-theme-sm dark:text-gray-400 md:hidden w-[60%]">
-                    <div className="flex items-center gap-2">
-                      <PriceWidget ticker={asset.ticker} assetType={asset.assetType} treemapData={treemapData} />
-                      <ChangePercentWidget ticker={asset.ticker} assetType={asset.assetType} treemapData={treemapData} />
-                    </div>
-                  </TableCell>
-                  {/* Price - 데스크톱 전용 */}
-                  <TableCell className="px-4 py-3 text-start text-theme-sm dark:text-gray-400 hidden md:table-cell">
-                    <PriceWidget ticker={asset.ticker} assetType={asset.assetType} treemapData={treemapData} />
-                  </TableCell>
-                  {/* Change - 데스크톱 전용 */}
-                  <TableCell className="px-4 py-3 text-start text-theme-sm dark:text-gray-400 hidden md:table-cell">
-                    <ChangePercentWidget ticker={asset.ticker} assetType={asset.assetType} treemapData={treemapData} />
-                  </TableCell>
-                  {/* Volume - 데스크톱에서만 표시 */}
-                  <TableCell className="px-4 py-3 text-start text-theme-sm dark:text-gray-400 w-32 hidden md:table-cell">
-                    <VolumeWidget ticker={asset.ticker} assetType={asset.assetType} treemapData={treemapData} />
-                  </TableCell>
-                  {/* Market Cap - 데스크톱에서만 표시 */}
-                  <TableCell className="px-4 py-3 text-gray-500 text-start text-theme-sm dark:text-gray-400 hidden md:table-cell">
-                    {asset.marketCap >= 1e9
-                      ? `$${(asset.marketCap / 1e9).toFixed(2)}B`
-                      : asset.marketCap >= 1e6
-                        ? `$${(asset.marketCap / 1e6).toFixed(2)}M`
-                        : `$${asset.marketCap.toFixed(2)}`}
-                  </TableCell>
-                </TableRow>
+                <SparklineTableRow
+                  key={asset.ticker}
+                  asset={asset}
+                  treemapData={treemapData}
+                />
               ))}
             </TableBody>
           </Table>
