@@ -4,13 +4,28 @@ const nextConfig: NextConfig = {
   /* 개발 모드 설정 */
   // 개발 모드 활성화
   reactStrictMode: true,
-  
+
   webpack(config, { dev, isServer }) {
     config.module.rules.push({
       test: /\.svg$/,
       use: ["@svgr/webpack"],
     });
-    
+
+    // jQuery alias 설정 (대소문자 불일치 해결)
+    if (!config.resolve) config.resolve = {};
+    if (!config.resolve.alias) config.resolve.alias = {};
+    // @ts-ignore
+    config.resolve.alias['jQuery'] = 'jquery';
+
+    // jQuery 전역 제공 설정 (Summernote 등 레거시 라이브러리용)
+    config.plugins.push(
+      new (require("webpack").ProvidePlugin)({
+        $: "jquery",
+        jQuery: "jquery",
+        "window.jQuery": "jquery",
+      })
+    );
+
     // 개발 모드에서 디버깅을 위한 설정
     if (dev) {
       config.devtool = 'eval-source-map';
@@ -25,7 +40,7 @@ const nextConfig: NextConfig = {
           },
         },
       }
-      
+
       // 파일 감시 최적화로 CPU 사용량 감소
       config.watchOptions = {
         poll: false, // 폴링 비활성화 (Docker 환경에서도 inotify 사용)
@@ -38,24 +53,24 @@ const nextConfig: NextConfig = {
         ],
       };
     }
-    
+
     return config;
   },
-  
+
   // 개발 모드 인디케이터 설정
   devIndicators: {
     position: 'bottom-right',
   },
-  
+
   // 개발 모드에서 콘솔 로그 유지
   compiler: {
     removeConsole: false,
   },
-  
+
   // 개발 모드 헤더 설정
   poweredByHeader: false,
   generateEtags: false,
-  
+
   // 개발 환경 최적화 설정
   experimental: {
     // 개발 모드에서 CSS 최적화 비활성화
@@ -147,7 +162,7 @@ const nextConfig: NextConfig = {
   async rewrites() {
     // 환경 변수에서 백엔드 URL 가져오기
     const backendUrl = process.env.BACKEND_API_URL || 'http://localhost:8001';
-    
+
     return [
       {
         // API 요청을 백엔드로 프록시합니다.

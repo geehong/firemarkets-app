@@ -4,7 +4,7 @@ import React from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import BlogEdit from '@/components/edit/BlogEdit'
-import BlogEditor from '@/components/blog/editor/BlogEditor'
+
 
 export default function BlogEditPage() {
   const params = useParams()

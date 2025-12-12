@@ -1,7 +1,13 @@
 'use client'
 
 import React, { useState, useEffect, useRef, useCallback, ReactNode, useMemo } from 'react'
-import SimpleCKEditor from './SimpleCKEditor'
+import dynamic from 'next/dynamic'
+
+// Dynamic imports for editors
+const SimpleTiptapEditor = dynamic(() => import('./SimpleTiptapEditor'), { ssr: false })
+const SimpleQuillEditor = dynamic(() => import('./SimpleQuillEditor'), { ssr: false })
+const SimpleEditorJS = dynamic(() => import('./SimpleEditorJS'), { ssr: false })
+const SimpleSummernote = dynamic(() => import('./SimpleSummernote'), { ssr: false })
 import FinancialDataBlock from './editorblock/FinancialDataBlock'
 import { usePost, useCreatePost, useUpdatePost, Post, PostCreateData, PostUpdateData } from '@/hooks/usePosts'
 import { useAssetOverviews } from '@/hooks/useAssetOverviews'
@@ -40,9 +46,9 @@ export interface BaseEditProps {
   onAssetDataChange?: (assetData: any) => void
 }
 
-export default function BaseEdit({ 
-  postId, 
-  mode = 'create', 
+export default function BaseEdit({
+  postId,
+  mode = 'create',
   postType,
   onSave,
   onCancel,
@@ -62,23 +68,31 @@ export default function BaseEdit({
   onAssetDataChange
 }: BaseEditProps) {
   console.log('🔍 BaseEdit - postId received:', postId)
-  
+
   // React Query 훅들 사용
   const { data: postData, isLoading: postLoading, error: postError } = usePost(postId)
   const createPostMutation = useCreatePost()
   const updatePostMutation = useUpdatePost()
-  
+
   console.log('🔍 BaseEdit - usePost result:', { postData: postData ? 'exists' : 'null', postLoading, postError })
-  
+
   const [activeLanguage, setActiveLanguage] = useState<'ko' | 'en'>('ko')
-  
+  const [editorType, setEditorType] = useState<string>('tiptap') // Default editor editorType
+
+  const editors = [
+    { id: 'tiptap', name: 'Tiptap' },
+    { id: 'quill', name: 'Quill' },
+    { id: 'summernote', name: 'Summernote' },
+    { id: 'editorjs', name: 'Editor.js' },
+  ]
+
   // activeLanguage 변경 시 children에 알림
   useEffect(() => {
     if (onActiveLanguageChange) {
       onActiveLanguageChange(activeLanguage)
     }
   }, [activeLanguage, onActiveLanguageChange])
-  
+
   // 자산 타입 확인 (assetIdentifier로부터)
   const { data: assetDetail } = useAssetDetail(assetIdentifier || '')
   const assetType = assetDetail?.type_name
@@ -145,9 +159,9 @@ export default function BaseEdit({
   console.log('🔍 BaseEdit - assetType:', assetType)
   console.log('🔍 BaseEdit - overviewsData received:', overviewsData)
   console.log('🔍 BaseEdit - assetData (converted):', assetData)
-  
+
   const lastAssetSyncRef = useRef<{ assetData: any; activeLanguage: 'ko' | 'en' } | null>(null)
-  
+
   // assetData를 부모 컴포넌트에 전달
   useEffect(() => {
     if (onAssetDataChange) {
@@ -195,7 +209,7 @@ export default function BaseEdit({
 
   const [loading, setLoading] = useState(mode === 'edit')
   const [saving, setSaving] = useState(false)
-  
+
   // CKEditor 내용 변경을 추적하기 위한 ref
   const editorContentRef = useRef<string>('')
   const isUpdatingFromEditor = useRef(false)
@@ -206,12 +220,12 @@ export default function BaseEdit({
     if (!isUpdatingFromEditor.current && value !== editorContentRef.current) {
       isUpdatingFromEditor.current = true
       editorContentRef.current = value
-      
+
       setFormData(prev => ({
         ...prev,
         [activeLanguage === 'ko' ? 'content_ko' : 'content']: value
       }))
-      
+
       // 다음 렌더링 사이클에서 플래그 리셋
       setTimeout(() => {
         isUpdatingFromEditor.current = false
@@ -227,13 +241,13 @@ export default function BaseEdit({
         return
       }
       lastAssetSyncRef.current = { assetData, activeLanguage }
-      
+
       console.log('📦 BaseEdit - Updating formData with assetData.post_overview:', assetData.post_overview)
       console.log('📦 BaseEdit - Current activeLanguage:', activeLanguage)
       console.log('📦 BaseEdit - postOverview.title:', assetData.post_overview.title)
       console.log('📦 BaseEdit - postOverview.content:', assetData.post_overview.content)
       console.log('📦 BaseEdit - postOverview.description:', assetData.post_overview.description)
-      
+
       const postOverview = assetData.post_overview
       setFormData(prev => {
         const newFormData = {
@@ -267,10 +281,10 @@ export default function BaseEdit({
   // 수정 모드일 때 기존 데이터 불러오기 (React Query 사용)
   useEffect(() => {
     console.log('🔍 BaseEdit - useEffect triggered:', { mode, postData: postData ? 'exists' : 'null', postId })
-    
+
     if (mode === 'edit' && postData) {
       console.log('📦 BaseEdit - Post data loaded from React Query:', postData)
-      
+
       // 다국어 필드를 안전하게 처리하는 헬퍼 함수
       const processMultilingualField = (field: any) => {
         if (typeof field === 'string') {
@@ -310,7 +324,7 @@ export default function BaseEdit({
         updated_at: postData.updated_at,
         published_at: postData.published_at,
         scheduled_at: postData.scheduled_at,
-        
+
         // API에서 실제로 제공하는 필수 필드들
         author_id: postData.author_id || null,
         category_id: postData.category_id || null,
@@ -321,7 +335,7 @@ export default function BaseEdit({
         meta_title: processMultilingualField(postData.meta_title),
         meta_description: processMultilingualField(postData.meta_description),
         read_time_minutes: postData.read_time_minutes || null,
-        
+
         // 추가 API 필드들
         sync_with_asset: postData.sync_with_asset || false,
         auto_sync_content: postData.auto_sync_content || false,
@@ -333,13 +347,13 @@ export default function BaseEdit({
         ping_status: postData.ping_status || 'open',
         last_sync_at: postData.last_sync_at || null,
         sync_status: postData.sync_status || 'pending',
-        
+
         // author와 category 객체 포함
         author: postData.author || null,
         category: postData.category || null,
         tags: postData.tags || []
       }
-      
+
       console.log('📝 Processed data:', {
         title: processedData.title,
         description: processedData.description,
@@ -378,7 +392,7 @@ export default function BaseEdit({
       [field]: value
     }
     setFormData(newFormData)
-    
+
     // 부모 컴포넌트에 변경사항 전달
     if (onFormDataChange) {
       onFormDataChange(newFormData)
@@ -413,7 +427,7 @@ export default function BaseEdit({
       ...(typeof currentFieldValue === 'object' && currentFieldValue !== null ? currentFieldValue : {}),
       [activeLanguage]: value
     }
-    
+
     setFormData((prev: PostFormState) => ({
       ...prev,
       [field]: newValue
@@ -433,21 +447,21 @@ export default function BaseEdit({
   // 읽기 시간 계산 함수
   const calculateReadTime = (content: string): number => {
     if (!content) return 0
-    
+
     // HTML 태그 제거하고 텍스트만 추출
     const textContent = content.replace(/<[^>]*>/g, '')
-    
+
     // 한국어와 영어 단어 수 계산 (한국어는 글자 수, 영어는 단어 수)
     const koreanChars = textContent.match(/[가-힣]/g) || []
     const englishWords = textContent.match(/[a-zA-Z]+/g) || []
-    
+
     // 한국어는 글자 수로, 영어는 단어 수로 계산
     const totalWords = koreanChars.length + englishWords.length
-    
+
     // 평균 읽기 속도: 분당 200단어 (한국어 기준)
     const wordsPerMinute = 200
     const readTime = Math.ceil(totalWords / wordsPerMinute)
-    
+
     return Math.max(1, readTime) // 최소 1분
   }
 
@@ -455,23 +469,23 @@ export default function BaseEdit({
   const handleSave = React.useCallback(async (status: 'draft' | 'published' = 'draft') => {
     try {
       setSaving(true)
-      
+
       // 데이터 유효성 검사
       const validationErrors: string[] = []
-      
+
       // 제목 검사 - 더 엄격한 검사
       if (!formData.title) {
         validationErrors.push('제목을 입력해주세요.')
       } else if (typeof formData.title === 'object') {
-        const hasValidTitle = (formData.title.ko && formData.title.ko.trim() !== '') || 
-                             (formData.title.en && formData.title.en.trim() !== '')
+        const hasValidTitle = (formData.title.ko && formData.title.ko.trim() !== '') ||
+          (formData.title.en && formData.title.en.trim() !== '')
         if (!hasValidTitle) {
           validationErrors.push('제목을 입력해주세요.')
         }
       } else if (typeof formData.title === 'string' && formData.title.trim() === '') {
         validationErrors.push('제목을 입력해주세요.')
       }
-      
+
       // 슬러그 검사
       if (!formData.slug || formData.slug.trim() === '') {
         validationErrors.push('슬러그를 입력해주세요.')
@@ -489,14 +503,14 @@ export default function BaseEdit({
           formData.slug = cleanSlug
         }
       }
-      
+
       // 내용 검사 - content 또는 content_ko 중 하나는 있어야 함
-      const hasContent = (formData.content && formData.content.trim() !== '') || 
-                        (formData.content_ko && formData.content_ko.trim() !== '')
+      const hasContent = (formData.content && formData.content.trim() !== '') ||
+        (formData.content_ko && formData.content_ko.trim() !== '')
       if (!hasContent) {
         validationErrors.push('내용을 입력해주세요.')
       }
-      
+
       if (validationErrors.length > 0) {
         throw new Error(validationErrors.join(' '))
       }
@@ -506,14 +520,14 @@ export default function BaseEdit({
         status,
         published_at: status === 'published' ? new Date().toISOString() : formData.published_at
       }
-      
+
       console.log('📝 Sending post data:', JSON.stringify(postData, null, 2))
 
       if (mode === 'create') {
         // React Query mutation 사용
         const result = await createPostMutation.mutateAsync(postData as PostCreateData)
         console.log('✅ Post created:', result)
-        
+
         if (onSave) {
           onSave(result)
         }
@@ -524,7 +538,7 @@ export default function BaseEdit({
           postData: postData as PostUpdateData
         })
         console.log('✅ Post updated:', result)
-        
+
         if (onSave) {
           onSave(result)
         }
@@ -547,7 +561,7 @@ export default function BaseEdit({
   // onHandleSave에 handleSave 함수 전달 (useRef 사용)
   const handleSaveRef = React.useRef(handleSave)
   handleSaveRef.current = handleSave
-  
+
   React.useEffect(() => {
     if (onHandleSave) {
       onHandleSave(handleSaveRef.current)
@@ -607,6 +621,19 @@ export default function BaseEdit({
               {mode === 'create' ? '새 포스트 작성' : '포스트 편집'}
             </h1>
             <div className="flex space-x-2">
+              {/* Editor Selector */}
+              <select
+                value={editorType}
+                onChange={(e) => setEditorType(e.target.value)}
+                className="px-3 py-1 rounded text-sm font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {editors.map(editor => (
+                  <option key={editor.id} value={editor.id}>
+                    {editor.name}
+                  </option>
+                ))}
+              </select>
+
               <button
                 type="button"
                 onClick={() => {
@@ -614,11 +641,10 @@ export default function BaseEdit({
                   console.log('🔍 BaseEdit - Before language change:', { activeLanguage, assetIdentifier })
                   setActiveLanguage('ko')
                 }}
-                className={`px-3 py-1 rounded text-sm font-medium ${
-                  activeLanguage === 'ko'
+                className={`px-3 py-1 rounded text-sm font-medium ${activeLanguage === 'ko'
                     ? 'bg-blue-600 text-white'
                     : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
+                  }`}
               >
                 한국어
               </button>
@@ -629,11 +655,10 @@ export default function BaseEdit({
                   console.log('🔍 BaseEdit - Before language change:', { activeLanguage, assetIdentifier })
                   setActiveLanguage('en')
                 }}
-                className={`px-3 py-1 rounded text-sm font-medium ${
-                  activeLanguage === 'en'
+                className={`px-3 py-1 rounded text-sm font-medium ${activeLanguage === 'en'
                     ? 'bg-blue-600 text-white'
                     : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
+                  }`}
               >
                 English
               </button>
@@ -731,12 +756,36 @@ export default function BaseEdit({
 
               {/* 본문 */}
               <div className="p-6">
-                <SimpleCKEditor
-                  value={activeLanguage === 'ko' ? formData.content_ko : formData.content}
-                  onChange={handleEditorChange}
-                  placeholder="본문을 입력하세요..."
-                  height={500}
-                />
+                {editorType === 'tiptap' && (
+                  <SimpleTiptapEditor
+                    value={activeLanguage === 'ko' ? formData.content_ko : formData.content}
+                    onChange={handleEditorChange}
+                    placeholder="본문을 입력하세요..."
+                    height={500}
+                  />
+                )}
+                {editorType === 'quill' && (
+                  <SimpleQuillEditor
+                    value={activeLanguage === 'ko' ? formData.content_ko : formData.content}
+                    onChange={handleEditorChange}
+                    placeholder="본문을 입력하세요..."
+                    height={500}
+                  />
+                )}
+                {editorType === 'editorjs' && (
+                  <SimpleEditorJS
+                    value={activeLanguage === 'ko' ? formData.content_ko : formData.content}
+                    onChange={handleEditorChange}
+                    height={500}
+                  />
+                )}
+                {editorType === 'summernote' && (
+                  <SimpleSummernote
+                    value={activeLanguage === 'ko' ? formData.content_ko : formData.content}
+                    onChange={handleEditorChange}
+                    height={500}
+                  />
+                )}
               </div>
 
               {/* 재무 데이터 블럭 (Assets 타입일 때만 표시) */}
@@ -756,7 +805,7 @@ export default function BaseEdit({
                 <div className="p-6 border-t">
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">자산 정보</h3>
-                    
+
                     {assetData.numeric_overview && (
                       <div className="space-y-4">
                         {/* 기본 정보 */}
@@ -794,11 +843,10 @@ export default function BaseEdit({
                             </div>
                             <div>
                               <label className="text-sm font-medium text-gray-600">24시간 변동률</label>
-                              <p className={`text-lg font-semibold ${
-                                (assetData.numeric_overview.percent_change_24h || assetData.numeric_overview.price_change_percentage_24h || 0) >= 0 
-                                  ? 'text-green-600' 
+                              <p className={`text-lg font-semibold ${(assetData.numeric_overview.percent_change_24h || assetData.numeric_overview.price_change_percentage_24h || 0) >= 0
+                                  ? 'text-green-600'
                                   : 'text-red-600'
-                              }`}>
+                                }`}>
                                 {(assetData.numeric_overview.percent_change_24h || assetData.numeric_overview.price_change_percentage_24h)?.toFixed(2)}%
                               </p>
                             </div>
@@ -866,8 +914,8 @@ export default function BaseEdit({
                           <div>
                             <label className="text-sm font-medium text-gray-600">설명</label>
                             <p className="text-gray-700 text-sm leading-relaxed">
-                              {typeof assetData.post_overview?.description === 'string' 
-                                ? assetData.post_overview.description 
+                              {typeof assetData.post_overview?.description === 'string'
+                                ? assetData.post_overview.description
                                 : assetData.post_overview?.description?.ko || assetData.numeric_overview?.description || '-'}
                             </p>
                           </div>

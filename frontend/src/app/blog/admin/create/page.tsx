@@ -1,12 +1,12 @@
 "use client";
 
 import React from 'react';
-import BlogEditor from '@/components/blog/editor/BlogEditor';
+import BlogEdit from '@/components/edit/BlogEdit';
 
 export default function CreateBlogPost() {
   return (
-    
-      <BlogEditor />
-    
-  );
+    <div>
+      <BlogEdit mode="create" />
+    </div>
+  )
 }

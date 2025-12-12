@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
-import BlogEditor from '@/components/blog/editor/BlogEditor'
+import BlogEdit from '@/components/edit/BlogEdit'
 import AssetsEdit from '@/components/edit/AssetsEdit'
 import OnChainEdit from '@/components/edit/OnChainEdit'
 
@@ -40,11 +40,11 @@ const TickerEditorPage = () => {
       try {
         setLoading(true)
         const response = await fetch(`https://backend.firemarkets.net/api/v1/assets/${tickerId}`)
-        
+
         if (!response.ok) {
           throw new Error(`Asset not found: ${response.status}`)
         }
-        
+
         const data = await response.json()
         setAssetInfo(data)
       } catch (err) {
@@ -106,9 +106,9 @@ const TickerEditorPage = () => {
   // 자산 타입에 따라 적절한 편집 컴포넌트 선택
   const renderEditor = () => {
     const assetType = assetInfo.type_name?.toLowerCase()
-    
+
     console.log('Asset type:', assetType) // 디버깅용
-    
+
     switch (assetType) {
       case 'stocks':
       case 'etfs':
@@ -131,7 +131,7 @@ const TickerEditorPage = () => {
             assetId={assetInfo?.asset_id}
           />
         )
-      
+
       case 'onchain':
         return (
           <OnChainEdit
@@ -146,10 +146,10 @@ const TickerEditorPage = () => {
             }}
           />
         )
-      
+
       default:
-        // 기본적으로 BlogEditor 사용 (기존 동작)
-        return <BlogEditor tickerId={tickerId} mode="ticker" />
+        // 기본적으로 BlogEdit 사용
+        return <BlogEdit mode="create" financialAssetId={tickerId} />
     }
   }
 
@@ -167,9 +167,9 @@ const TickerEditorPage = () => {
             </p>
           </div>
           <div className="text-sm text-gray-500">
-            {assetInfo.type_name?.toLowerCase() === 'onchain' ? '🔗 OnChain Editor' : 
-             ['stocks', 'etfs', 'funds', 'commodities', 'crypto'].includes(assetInfo.type_name?.toLowerCase()) ? '📊 Assets Editor' : 
-             '📝 Blog Editor'}
+            {assetInfo.type_name?.toLowerCase() === 'onchain' ? '🔗 OnChain Editor' :
+              ['stocks', 'etfs', 'funds', 'commodities', 'crypto'].includes(assetInfo.type_name?.toLowerCase()) ? '📊 Assets Editor' :
+                '📝 Blog Editor'}
           </div>
         </div>
       </div>
