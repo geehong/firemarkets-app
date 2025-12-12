@@ -642,8 +642,8 @@ export default function BaseEdit({
                   setActiveLanguage('ko')
                 }}
                 className={`px-3 py-1 rounded text-sm font-medium ${activeLanguage === 'ko'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                   }`}
               >
                 한국어
@@ -656,8 +656,8 @@ export default function BaseEdit({
                   setActiveLanguage('en')
                 }}
                 className={`px-3 py-1 rounded text-sm font-medium ${activeLanguage === 'en'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                   }`}
               >
                 English
@@ -819,12 +819,30 @@ export default function BaseEdit({
                           <div>
                             <label className="text-sm font-medium text-gray-600">이름</label>
                             <p className="text-lg font-semibold text-gray-900">
-                              {assetData.numeric_overview.name || assetData.post_overview?.company_name || assetData.post_overview?.title?.ko || '-'}
+                              {(() => {
+                                const name = assetData.numeric_overview?.name
+                                const companyName = assetData.post_overview?.company_name
+                                const title = assetData.post_overview?.title
+                                if (typeof name === 'string' && name) return name
+                                if (name && typeof name === 'object' && name.ko) return name.ko
+                                if (typeof companyName === 'string' && companyName) return companyName
+                                if (companyName && typeof companyName === 'object' && companyName.ko) return companyName.ko
+                                if (typeof title === 'string' && title) return title
+                                if (title && typeof title === 'object' && title.ko) return title.ko
+                                return '-'
+                              })()}
                             </p>
                           </div>
                           <div>
                             <label className="text-sm font-medium text-gray-600">거래소</label>
-                            <p className="text-gray-900">{assetData.numeric_overview.exchange || assetData.post_overview?.exchange || '-'}</p>
+                            <p className="text-gray-900">
+                              {(() => {
+                                const v = assetData.numeric_overview?.exchange || assetData.post_overview?.exchange
+                                if (typeof v === 'string') return v || '-'
+                                if (v && typeof v === 'object' && v.ko) return v.ko
+                                return '-'
+                              })()}
+                            </p>
                           </div>
                           <div>
                             <label className="text-sm font-medium text-gray-600">통화</label>
@@ -844,8 +862,8 @@ export default function BaseEdit({
                             <div>
                               <label className="text-sm font-medium text-gray-600">24시간 변동률</label>
                               <p className={`text-lg font-semibold ${(assetData.numeric_overview.percent_change_24h || assetData.numeric_overview.price_change_percentage_24h || 0) >= 0
-                                  ? 'text-green-600'
-                                  : 'text-red-600'
+                                ? 'text-green-600'
+                                : 'text-red-600'
                                 }`}>
                                 {(assetData.numeric_overview.percent_change_24h || assetData.numeric_overview.price_change_percentage_24h)?.toFixed(2)}%
                               </p>
@@ -892,19 +910,47 @@ export default function BaseEdit({
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <label className="text-sm font-medium text-gray-600">회사명</label>
-                              <p className="text-gray-900">{assetData.post_overview?.company_name || assetData.numeric_overview.company_name || '-'}</p>
+                              <p className="text-gray-900">
+                                {(() => {
+                                  const v = assetData.post_overview?.company_name || assetData.numeric_overview?.company_name
+                                  if (typeof v === 'string') return v || '-'
+                                  if (v && typeof v === 'object' && v.ko) return v.ko
+                                  return '-'
+                                })()}
+                              </p>
                             </div>
                             <div>
                               <label className="text-sm font-medium text-gray-600">섹터</label>
-                              <p className="text-gray-900">{assetData.post_overview?.sector || assetData.numeric_overview.sector || '-'}</p>
+                              <p className="text-gray-900">
+                                {(() => {
+                                  const v = assetData.post_overview?.sector || assetData.numeric_overview?.sector
+                                  if (typeof v === 'string') return v || '-'
+                                  if (v && typeof v === 'object' && v.ko) return v.ko
+                                  return '-'
+                                })()}
+                              </p>
                             </div>
                             <div>
                               <label className="text-sm font-medium text-gray-600">산업</label>
-                              <p className="text-gray-900">{assetData.post_overview?.industry || assetData.numeric_overview.industry || '-'}</p>
+                              <p className="text-gray-900">
+                                {(() => {
+                                  const v = assetData.post_overview?.industry || assetData.numeric_overview?.industry
+                                  if (typeof v === 'string') return v || '-'
+                                  if (v && typeof v === 'object' && v.ko) return v.ko
+                                  return '-'
+                                })()}
+                              </p>
                             </div>
                             <div>
                               <label className="text-sm font-medium text-gray-600">국가</label>
-                              <p className="text-gray-900">{assetData.post_overview?.country || assetData.numeric_overview.country || '-'}</p>
+                              <p className="text-gray-900">
+                                {(() => {
+                                  const v = assetData.post_overview?.country || assetData.numeric_overview?.country
+                                  if (typeof v === 'string') return v || '-'
+                                  if (v && typeof v === 'object' && v.ko) return v.ko
+                                  return '-'
+                                })()}
+                              </p>
                             </div>
                           </div>
                         )}
@@ -914,9 +960,23 @@ export default function BaseEdit({
                           <div>
                             <label className="text-sm font-medium text-gray-600">설명</label>
                             <p className="text-gray-700 text-sm leading-relaxed">
-                              {typeof assetData.post_overview?.description === 'string'
-                                ? assetData.post_overview.description
-                                : assetData.post_overview?.description?.ko || assetData.numeric_overview?.description || '-'}
+                              {(() => {
+                                const postDesc = assetData.post_overview?.description
+                                const numericDesc = assetData.numeric_overview?.description
+                                // postDesc 처리
+                                if (typeof postDesc === 'string') return postDesc
+                                if (postDesc && typeof postDesc === 'object') {
+                                  if (typeof postDesc.ko === 'string' && postDesc.ko) return postDesc.ko
+                                  if (typeof postDesc.en === 'string' && postDesc.en) return postDesc.en
+                                }
+                                // numericDesc 처리
+                                if (typeof numericDesc === 'string') return numericDesc
+                                if (numericDesc && typeof numericDesc === 'object') {
+                                  if (typeof numericDesc.ko === 'string' && numericDesc.ko) return numericDesc.ko
+                                  if (typeof numericDesc.en === 'string' && numericDesc.en) return numericDesc.en
+                                }
+                                return '-'
+                              })()}
                             </p>
                           </div>
                         )}

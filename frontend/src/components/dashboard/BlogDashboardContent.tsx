@@ -4,6 +4,8 @@ import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api";
 import Link from "next/link";
+import { useAuth } from '@/hooks/useAuthNew';
+import BlogManage from '../blog/admin/BlogManage';
 
 interface BlogPostCardProps {
   title: string;
@@ -86,6 +88,7 @@ const BlogPostCard: React.FC<BlogPostCardProps> = ({
 };
 
 export default function BlogDashboardContent() {
+  const { isAuthenticated } = useAuth();
   // 최근 블로그 포스트 조회
   const { data: recentPosts, isLoading: recentLoading, isError: recentError } = useQuery({
     queryKey: ['blog-posts', 'recent'],
@@ -199,6 +202,12 @@ export default function BlogDashboardContent() {
           </div>
         </div>
       </div>
+
+      {isAuthenticated && (
+        <div className="mb-8 border-b pb-8 dark:border-gray-700">
+          <BlogManage />
+        </div>
+      )}
 
       {/* 최근 포스트 */}
       <div className="mb-8">

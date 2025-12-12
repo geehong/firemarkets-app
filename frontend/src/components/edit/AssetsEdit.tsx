@@ -69,7 +69,7 @@ export default function AssetsEdit({
   categoryId,
   authorId,
   assetId,
-  ...props 
+  ...props
 }: AssetsEditProps) {
   console.log('🚀 AssetsEdit - Component initialized with:', { postId, mode, categoryId, authorId, assetId })
   // assetIdentifier만 관리 (BaseEdit에서 assetData를 useAssetOverviewBundle로 가져옴)
@@ -80,11 +80,11 @@ export default function AssetsEdit({
   // 현재 사용자 정보 가져오기 (authorId가 없을 경우 사용)
   const { user } = useAuth()
   const currentUserId = user?.user_id || user?.id || null
-  
+
   // BaseEdit에서 사용할 상태들
   // authorId는 prop으로 받거나, 없으면 현재 사용자 ID 사용 (관리자/슈퍼관리자만 접근 가능)
   const effectiveAuthorId = authorId || currentUserId
-  
+
   const [formData, setFormData] = useState<PostFormState>({
     title: { ko: '', en: '' },
     content: '',
@@ -124,16 +124,16 @@ export default function AssetsEdit({
   const [activeLanguage, setActiveLanguage] = useState<'ko' | 'en'>('ko')
   const [saving] = useState(false)
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
-  
+
   // BaseEdit에서 이미 useAssetOverviewBundle을 호출하므로 중복 제거
   // assetBundle 데이터는 BaseEdit의 assetData를 props로 받아서 사용
-  
+
   // 드롭다운용 자산 목록은 useAssets 훅 사용 (컴포넌트에서 직접 API 호출 대신)
   const { data: assetsData, loading: assetsLoading, error: assetsError } = useAssets({
     limit: 100,
     offset: 0
   })
-  
+
   // useAssets 훅의 응답 구조에 맞게 변환
   const assets: Asset[] = assetsData?.data || assetsData || []
 
@@ -186,18 +186,18 @@ export default function AssetsEdit({
       if (!formData.asset_id && !assetIdentifier) {
         throw new Error('Asset ID is required to save financial data')
       }
-      
+
       const assetIdToUse = assetIdentifier || formData.asset_id?.toString()
       if (!assetIdToUse) {
         throw new Error('Asset identifier is required')
       }
-      
+
       const result = await apiClient.updateAssetOverview(assetIdToUse, data)
       console.log('Financial data saved:', result)
-      
+
       // assetInfo는 BaseEdit의 assetData를 사용하므로 별도 업데이트 불필요
       // BaseEdit에서 자동으로 refetch됨
-      
+
       return result
     } catch (error) {
       console.error('Failed to save financial data:', error)
@@ -208,7 +208,7 @@ export default function AssetsEdit({
   // 자산 저장 핸들러
   const handleAssetsSave = (data: PostFormState) => {
     console.log('💰 Assets save triggered:', data)
-    
+
     // 자산 특화 데이터 처리
     const assetsData = {
       ...data,
@@ -228,13 +228,29 @@ export default function AssetsEdit({
         } : null
       }
     }
-    
+
     if (onSave) {
       onSave(assetsData)
     }
   }
 
   // 에러 상태는 BaseEdit에서 처리하므로 여기서는 제거
+
+  // DEBUG: 렌더링 전 데이터 로그
+  console.log('🔍 DEBUG AssetsEdit RENDER - formData:', {
+    title: formData.title,
+    title_type: typeof formData.title,
+    description: formData.description,
+    description_type: typeof formData.description,
+    excerpt: formData.excerpt,
+    excerpt_type: typeof formData.excerpt,
+    meta_title: formData.meta_title,
+    meta_title_type: typeof formData.meta_title,
+    meta_description: formData.meta_description,
+    meta_description_type: typeof formData.meta_description,
+  })
+  console.log('🔍 DEBUG AssetsEdit RENDER - assetDataFromBase:', assetDataFromBase)
+  console.log('🔍 DEBUG AssetsEdit RENDER - props:', { postId, mode, categoryId, authorId, assetId })
 
   return (
     <BaseEdit
@@ -260,8 +276,9 @@ export default function AssetsEdit({
         status={formData.status}
         onStatusChange={(status) => updateFormData('status', status)}
         onPreview={() => console.log('미리보기')}
-        onPublish={() => handleAssetsSave({ ...formData, status: 'published' })}
-        onSaveDraft={() => handleAssetsSave({ ...formData, status: 'draft' })}
+        onSave={async (status) => {
+          handleAssetsSave({ ...formData, status })
+        }}
         saving={saving}
       />
 
@@ -309,9 +326,9 @@ export default function AssetsEdit({
       <SEOSettings
         keywords={formData.keywords}
         onKeywordsChange={(keywords) => updateFormData('keywords', keywords)}
-        metaTitle={formData.meta_title}
+        metaTitle={formData.meta_title && typeof formData.meta_title === 'object' ? formData.meta_title : { ko: '', en: '' }}
         onMetaTitleChange={(metaTitle) => updateFormData('meta_title', metaTitle)}
-        metaDescription={formData.meta_description}
+        metaDescription={formData.meta_description && typeof formData.meta_description === 'object' ? formData.meta_description : { ko: '', en: '' }}
         onMetaDescriptionChange={(metaDescription) => updateFormData('meta_description', metaDescription)}
         canonicalUrl={formData.canonical_url}
         onCanonicalUrlChange={(canonicalUrl) => updateFormData('canonical_url', canonicalUrl)}

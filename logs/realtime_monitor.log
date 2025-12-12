@@ -1,1 +1,9 @@
 2025-12-12 09:17:32,648 - INFO - Monitor started.
+2025-12-12 18:07:43,986 - WARNING - Integrity violation detected in /home/geehong/firemarkets-app/frontend/postcss.config.js
+2025-12-12 18:07:43,989 - INFO - RESTORED: /home/geehong/firemarkets-app/frontend/postcss.config.js was recovered to healthy state.
+2025-12-12 18:07:43,991 - WARNING - Integrity violation detected in /home/geehong/firemarkets-app/frontend/prettier.config.js
+2025-12-12 18:07:43,992 - INFO - RESTORED: /home/geehong/firemarkets-app/frontend/prettier.config.js was recovered to healthy state.
+2025-12-12 18:32:59,352 - WARNING - Integrity violation detected in /home/geehong/firemarkets-app/frontend/postcss.config.js
+2025-12-12 18:32:59,352 - INFO - RESTORED: /home/geehong/firemarkets-app/frontend/postcss.config.js was recovered to healthy state.
+2025-12-12 18:32:59,353 - WARNING - Integrity violation detected in /home/geehong/firemarkets-app/frontend/prettier.config.js
+2025-12-12 18:32:59,353 - INFO - RESTORED: /home/geehong/firemarkets-app/frontend/prettier.config.js was recovered to healthy state.
