@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { optimizeImagePath } from '@/utils/fallbackImage';
 
 interface NewsCardProps {
     title: string;
@@ -19,16 +20,16 @@ export const NewsCard: React.FC<NewsCardProps> = ({ title, summary, source, time
     // Enhanced Fallback image logic using slug hash for variety from local assets
     const getFallbackImage = (slugStr: string, cat?: string) => {
         const fallbacks = [
-            '/images/posts/temp/abstract_finance.png',
-            '/images/posts/temp/bitcoin_gold.png',
-            '/images/posts/temp/blockchain_blocks.png',
-            '/images/posts/temp/bull_bear.png',
-            '/images/posts/temp/ethereum_network.png',
-            '/images/posts/temp/future_city.png',
-            '/images/posts/temp/global_network.png',
-            '/images/posts/temp/stock_chart.png',
-            '/images/posts/temp/tech_bg.png',
-            '/images/posts/temp/trading_desk.png'
+            '/images/posts/temp/abstract_finance.webp',
+            '/images/posts/temp/bitcoin_gold.webp',
+            '/images/posts/temp/blockchain_blocks.webp',
+            '/images/posts/temp/bull_bear.webp',
+            '/images/posts/temp/ethereum_network.webp',
+            '/images/posts/temp/future_city.webp',
+            '/images/posts/temp/global_network.webp',
+            '/images/posts/temp/stock_chart.webp',
+            '/images/posts/temp/tech_bg.webp',
+            '/images/posts/temp/trading_desk.webp'
         ];
 
         // Simple hash function for string
@@ -41,13 +42,13 @@ export const NewsCard: React.FC<NewsCardProps> = ({ title, summary, source, time
         const c = cat?.toLowerCase() || '';
 
         // Priority themed fallbacks if local assets exist
-        if (c.includes('bitcoin') || c.includes('btc')) return '/images/posts/temp/bitcoin_gold.png';
-        if (c.includes('eth') || c.includes('blockchain')) return '/images/posts/temp/ethereum_network.png';
+        if (c.includes('bitcoin') || c.includes('btc')) return '/images/posts/temp/bitcoin_gold.webp';
+        if (c.includes('eth') || c.includes('blockchain')) return '/images/posts/temp/ethereum_network.webp';
 
         return fallbacks[index];
     };
 
-    const displayImage = image || getFallbackImage(slug, category);
+    const displayImage = optimizeImagePath(image) || getFallbackImage(slug, category);
     const finalHref = href || `/blog/${slug}`;
 
     return (

@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, ArrowUpDown, Bot } from 'lucide-react';
 import { useAuth } from '@/hooks/auth/useAuthNew';
+import { nanoid } from 'nanoid';
 import { parseLocalized } from '@/utils/parseLocalized';
 import { useLocale } from 'next-intl';
 import { usePosts, useDeletePost, useUpdatePost, useMergePosts, Post } from '@/hooks/data/usePosts';
@@ -191,6 +192,61 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
         } finally {
           setIsMerging(false);
         }
+      } else if (bulkAction === 'publish_brief') {
+        setIsMerging(true); // Reuse merging loading state for UI feedback
+        try {
+          await Promise.all(selectedPosts.map(id => {
+            const post = blogs.find(b => b.id === id);
+            // Default extract from post_info or existing fields
+            // Assuming post_info is available in the list data (it should be if included in API)
+            // If post_info is a string, parse it.
+            let imageUrl: string | null = null;
+            if (post) {
+              // @ts-ignore
+              const info = typeof post.post_info === 'string' ? JSON.parse(post.post_info) : post.post_info;
+              // User request: explicit use of image_url. If null, set cover_image to null.
+              imageUrl = info?.image_url || null;
+            }
+
+            // Generate English slug from title
+            let slugTitle = '';
+            // @ts-ignore
+            if (typeof post.title === 'string') {
+              // @ts-ignore
+              slugTitle = post.title;
+            } else if (post?.title && typeof post.title === 'object') {
+              // @ts-ignore
+              slugTitle = post.title.en || post.title.ko || '';
+            }
+
+            let newSlug = slugTitle
+              .toLowerCase()
+              .replace(/[^a-z0-9\s-]/g, '') // Remove invalid chars
+              .trim()
+              .replace(/\s+/g, '-') // Replace spaces with -
+              .replace(/-+/g, '-'); // Merge multiple -
+
+            if (!newSlug || newSlug.length < 5) {
+              newSlug = `brief-${nanoid(10)}`;
+            }
+
+            return updatePostMutation.mutateAsync({
+              postId: id,
+              postData: {
+                status: 'published',
+                post_type: 'brief_news',
+                category_id: 2, // 투자 가이드 ID
+                slug: newSlug,
+                cover_image: imageUrl // Explicitly set cover_image (can be null)
+              }
+            });
+          }));
+          setSelectedPosts([]);
+          alert('선택된 뉴스들이 단신으로 발행되었습니다.');
+        } finally {
+          setIsMerging(false);
+          refetch(); // Refresh list to show updates
+        }
       }
     } catch (err) {
       console.error('Bulk action error:', err);
@@ -297,13 +353,15 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
               <option value="delete">삭제</option>
               <option value="publish">발행</option>
               <option value="ai_merge">AI 병합 (Merge)</option>
+              {/* Only show brief option if mainly raw_news or relevant context */}
+              <option value="publish_brief">단신 발행 (Brief)</option>
             </select>
             <button
               onClick={handleBulkAction}
               disabled={isMerging}
               className={`text-white px-3 py-1 rounded-md text-sm ${isMerging
                 ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-red-600 hover:bg-red-700'
+                : bulkAction === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
                 }`}
             >
               {isMerging ? '처리중...' : '적용'}
@@ -479,8 +537,8 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
                       <span className={`px-2 py-0.5 rounded text-xs flex items-center gap-1 w-fit ${blog.post_type.startsWith('ai_')
-                          ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
-                          : 'bg-gray-100 dark:bg-gray-700'
+                        ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
+                        : 'bg-gray-100 dark:bg-gray-700'
                         }`}>
                         {blog.post_type.startsWith('ai_') && <Bot className="w-3 h-3" />}
                         {blog.post_type}

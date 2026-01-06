@@ -112,6 +112,74 @@ const FeatureCard = ({ title, description, icon, href, color }: any) => (
     </Link>
 );
 
+import { BriefNewsListTable } from '@/components/tables/BriefNewsListTable';
+import { apiClient } from '@/lib/api';
+
+// ...
+
+const BriefNewsSection = () => {
+    const [briefNews, setBriefNews] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetchBriefNews = React.useCallback(() => {
+        setLoading(true);
+        apiClient.getPosts({
+            post_type: 'brief_news',
+            status: 'published',
+            page_size: 50
+        })
+            .then((res: any) => {
+                if (res && res.posts) {
+                    const now = new Date();
+                    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+                    // Filter posts within last 24 hours
+                    let recentPosts = res.posts.filter((post: any) => new Date(post.created_at) > oneDayAgo);
+
+                    // Shuffle randomly
+                    recentPosts = recentPosts.sort(() => Math.random() - 0.5);
+
+                    // Take up to 10 items
+                    setBriefNews(recentPosts.slice(0, 10));
+                }
+            })
+            .catch(err => console.error(err))
+            .finally(() => setLoading(false));
+    }, []);
+
+    useEffect(() => {
+        fetchBriefNews();
+    }, [fetchBriefNews]);
+
+    if (loading) return <div className="h-60 bg-gray-100 dark:bg-gray-800 rounded-2xl animate-pulse"></div>;
+    // if (briefNews.length === 0) return null; // Show structure even if empty
+
+    return (
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl shadow-slate-200/50 dark:shadow-none p-6 border border-slate-100 dark:border-gray-700">
+            <div className="flex justify-between items-end mb-6">
+                <h3 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-transparent flex items-center gap-2">
+                    Brief News
+                </h3>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={fetchBriefNews}
+                        className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-slate-500 transition-colors"
+                        title="Refresh"
+                    >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                    </button>
+                    <Link href="/news" className="text-sm font-medium text-slate-500 hover:text-violet-600 transition-colors">
+                        View All →
+                    </Link>
+                </div>
+            </div>
+            <BriefNewsListTable data={briefNews} />
+        </div>
+    );
+}
+
 const HomeMain = () => {
     const t = useTranslations('Dashboard');
 
@@ -195,6 +263,9 @@ const HomeMain = () => {
 
             {/* Latest News */}
             <LatestPostSection title={t('news')} postType="news" linkUrl="/news" />
+
+            {/* Brief News */}
+            <BriefNewsSection />
         </div>
     );
 };

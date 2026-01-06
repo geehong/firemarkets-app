@@ -7,6 +7,7 @@ import { apiClient } from '@/lib/api'
 import { parseLocalized } from '@/utils/parseLocalized'
 import Pagination from '@/components/tables/Pagination'
 import { NewsCard } from '@/components/widgets/NewsCard'
+import { BriefNewsCard } from '@/components/widgets/BriefNewsCard'
 import { DefaultBlogListCard } from '@/components/widgets/DefaultBlogListCard'
 
 interface Post {
@@ -33,6 +34,7 @@ interface Post {
     }>
     cover_image?: string
     post_type?: string
+    post_info?: any // JSON or string
 }
 
 interface PostListProps {
@@ -40,7 +42,8 @@ interface PostListProps {
     postType?: string;
     title?: string;
     filterStatus?: string;
-    cardType?: 'news' | 'default';
+    cardType?: 'news' | 'default' | 'brief';
+    itemsPerPage?: number;
 }
 
 const PostList: React.FC<PostListProps> = ({
@@ -48,7 +51,8 @@ const PostList: React.FC<PostListProps> = ({
     postType = 'post',
     title: pageTitle,
     filterStatus,
-    cardType = 'news'
+    cardType = 'news',
+    itemsPerPage: initialItemsPerPage = 9
 }) => {
     const router = useRouter()
     const pathname = usePathname()
@@ -60,7 +64,7 @@ const PostList: React.FC<PostListProps> = ({
 
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1)
-    const [itemsPerPage, setItemsPerPage] = useState(9)
+    const [itemsPerPage, setItemsPerPage] = useState(initialItemsPerPage)
     const [totalItems, setTotalItems] = useState(0)
 
     const fetchPosts = useCallback(async () => {
@@ -114,7 +118,7 @@ const PostList: React.FC<PostListProps> = ({
                     <p className="text-gray-500 dark:text-gray-400">No posts found.</p>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div className={`grid grid-cols-1 ${cardType === 'brief' ? 'md:grid-cols-2 lg:grid-cols-2 gap-4' : 'md:grid-cols-3 gap-8'}`}>
                     {posts.map((post) => {
                         const title = parseLocalized(post.title as any, locale)
                         const desc = parseLocalized(post.description as any, locale)
@@ -122,6 +126,34 @@ const PostList: React.FC<PostListProps> = ({
                         // Construct path - default to current path + slug, but cleanup trailing slash
                         const currentPath = pathname ? pathname.replace(/\/$/, '') : '';
                         const href = `${currentPath}/${post.slug}`;
+
+                        if (cardType === 'brief') {
+                            let info: any = {};
+                            try {
+                                if (typeof post.post_info === 'string') {
+                                    info = JSON.parse(post.post_info);
+                                } else if (typeof post.post_info === 'object') {
+                                    info = post.post_info || {};
+                                }
+                            } catch (e) {
+                                console.error('Error parsing post_info', e);
+                            }
+
+                            const sourceName = info.source || post.author?.username || 'News';
+                            const authorName = info.author || post.author?.username;
+
+                            return (
+                                <BriefNewsCard
+                                    key={post.id}
+                                    title={title}
+                                    summary={desc || ""}
+                                    source={sourceName}
+                                    author={authorName}
+                                    slug={post.slug}
+                                    publishedAt={post.created_at}
+                                />
+                            )
+                        }
 
                         if (cardType === 'default') {
                             return (

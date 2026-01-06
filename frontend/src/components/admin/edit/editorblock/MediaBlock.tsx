@@ -28,9 +28,36 @@ export default function MediaBlock({
     // Find source image URL from postInfo
     const sourceImageUrl = postInfo?.image_url || postInfo?.post_info?.image_url
 
-    const handleUseSourceImage = () => {
-        if (sourceImageUrl) {
+    const handleUseSourceImage = async () => {
+        if (!sourceImageUrl) return
+
+        setIsUploading(true)
+        try {
+            const formData = new FormData()
+            formData.append('imageUrl', sourceImageUrl)
+            formData.append('postType', postType)
+            formData.append('slug', slug)
+
+            const response = await fetch('/uploads/image', {
+                method: 'POST',
+                body: formData,
+            })
+
+            if (!response.ok) {
+                throw new Error('Upload failed')
+            }
+
+            const data = await response.json()
+            if (data.success && data.url) {
+                onCoverImageChange(data.url)
+            }
+        } catch (error) {
+            console.error('Failed to save source image:', error)
+            alert('외부 이미지를 저장하는데 실패했습니다.')
+            // Fallback: use external URL directly if saving fails
             onCoverImageChange(sourceImageUrl)
+        } finally {
+            setIsUploading(false)
         }
     }
 
@@ -124,11 +151,12 @@ export default function MediaBlock({
                         <button
                             type="button"
                             onClick={handleUseSourceImage}
-                            className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
-                            title="원본 이미지 사용"
+                            disabled={isUploading}
+                            className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none disabled:opacity-50"
+                            title="원본 이미지 저장 및 사용"
                         >
-                            <LinkIcon className="h-4 w-4 mr-2 text-blue-500" />
-                            원본
+                            <LinkIcon className={`h-4 w-4 mr-2 ${isUploading ? 'text-gray-400' : 'text-blue-500'}`} />
+                            {isUploading ? '처리 중...' : '원본'}
                         </button>
                     )}
                 </div>

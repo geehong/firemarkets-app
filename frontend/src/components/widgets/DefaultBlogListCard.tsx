@@ -2,7 +2,7 @@
 
 import React from 'react'
 import Link from 'next/link'
-import { getFallbackImage } from '@/utils/fallbackImage'
+import { getFallbackImage, optimizeImagePath } from '@/utils/fallbackImage'
 
 interface DefaultBlogListCardProps {
     id: number
@@ -31,7 +31,7 @@ export const DefaultBlogListCard: React.FC<DefaultBlogListCardProps> = ({
 }) => {
     const hasImage = image && image.trim() !== '';
     // Construct a compatible object for getFallbackImage
-    const imageUrl = hasImage ? image!.trim() : getFallbackImage({
+    const imageUrl = hasImage ? optimizeImagePath(image) : getFallbackImage({
         id,
         title,
         category: { name: category }

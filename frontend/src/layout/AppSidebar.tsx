@@ -253,7 +253,7 @@ const AppSidebar: React.FC = () => {
               ]
             },
             {
-              name: "Home Page",
+              name: "FireMarkets Main Page",
               icon: <PageIcon />,
               subItems: [
                 { name: "Live Earth", path: "/design-concepts/home/live-earth", icon: dotIcon },
