@@ -1479,14 +1479,50 @@ class ApiStrategyManager:
 
     
     def _get_fetch_parameters(self, asset_id: int, interval: str) -> Optional[Dict[str, Any]]:
+        from app.core.database import get_postgres_db
+        db_gen = get_postgres_db()
+        db = next(db_gen)
+        try:
+            return self._get_fetch_parameters_impl(db, asset_id, interval)
+        finally:
+            try:
+                next(db_gen)
+            except StopIteration:
+                pass
+            except Exception as e:
+                self.logger.error(f"Error closing DB session in _get_fetch_parameters: {e}")
+
+    def _get_fetch_parameters_impl(self, db, asset_id: int, interval: str) -> Optional[Dict[str, Any]]:
         """
         [ADVANCED LOGIC] Determines optimal fetch parameters based on DB state and settings.
         Prioritizes recency, then progressively deepens historical data.
         """
         from app.models import AppConfiguration, Asset, AssetType
-        from app.core.database import get_postgres_db
+        # db is passed as argument
         
-        db = next(get_postgres_db())
+        # No try block here needed for indentation, relying on original indentation (8 spaces)
+        # But wait, original code had `db = ...` then `try:` (which I added in Step 192).
+        # I need to match the indentation of the following lines.
+        # The following lines start with `try:` (added in Step 192) or `asset_type...` (indented in Step 192).
+        # Wait, I reverted Step 192? No I didn't revert it yet.
+        # So currently lines 1492+ are indented 12 spaces (because of `try:` I added).
+        # I need to FIX that indentation too.
+        # Or I can just keep `try/finally` around the body in `_impl` using `pass` in finally?
+        # No, simpler to just replace the top block.
+        
+        # Current state of file at 1490:
+        # try:
+        #    asset_type ... (12 spaces)
+        
+        # I want:
+        # asset_type ... (8 spaces?)
+        
+        # If I can't reindent easily, I can keep the `try` block in `_impl` but make it a dummy try?
+        # try:
+        #    ...
+        # except: raise
+        
+        # This preserves indentation.
         try:
             # 자산 타입 확인 (캐시 사용)
             asset_type, is_crypto = self._get_asset_type_cached(db, asset_id)
@@ -1571,6 +1607,10 @@ class ApiStrategyManager:
                     if interval in ['1m', '5m']:
                         backfill_days = min(backfill_days, 730)
                         self.logger.debug(f"Interval {interval}: Limiting initial backfill to {backfill_days} days (2 years)")
+                    elif interval == '1d':
+                        # OOM 방지를 위해 1일 간격 초기 백필은 30일로 제한 (안정화 후 늘릴 수 있음)
+                        backfill_days = min(backfill_days, 30)
+                        self.logger.debug(f"Interval {interval}: Limiting initial backfill to {backfill_days} days to prevent OOM")
                     
                     self.logger.info(f"Asset {asset_id}: No data found. Performing initial backfill for {backfill_days} days.")
                     end_date = today

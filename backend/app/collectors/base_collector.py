@@ -117,17 +117,19 @@ class BaseCollector(ABC):
             logger.warning(f"[{self.collector_name}] No event loop available for semaphore, running without concurrency control")
             return await coro
         
-        # 현재 루프에서 semaphore 생성 및 사용
-        # 매번 새로 생성하여 다른 루프와의 충돌 방지
+        # Semaphore 지연 초기화 및 재사용 (Lazy Initialization)
+        if self.semaphore is None:
+            try:
+                self.semaphore = asyncio.Semaphore(self.semaphore_limit)
+                logger.info(f"[{self.collector_name}] Semaphore initialized with limit {self.semaphore_limit}")
+            except Exception as e:
+                 logger.warning(f"[{self.collector_name}] Failed to create semaphore: {e}, running without concurrency control")
+                 return await coro
+
         try:
-            semaphore = asyncio.Semaphore(self.semaphore_limit)
-            async with semaphore:
+            async with self.semaphore:
                 # 코루틴을 현재 루프에서 실행
                 return await coro
-        except RuntimeError as e:
-            # semaphore 생성 실패 시 경고하고 semaphore 없이 실행
-            logger.warning(f"[{self.collector_name}] Failed to create semaphore: {e}, running without concurrency control")
-            return await coro
         except Exception as e:
             # 예상치 못한 오류 발생 시 로깅하고 재발생
             logger.error(f"[{self.collector_name}] Unexpected error in process_with_semaphore: {e}")

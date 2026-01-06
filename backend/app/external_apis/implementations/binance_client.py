@@ -27,13 +27,12 @@ class BinanceClient(CryptoAPIClient):
             'CRO',      # Crypto.com Coin - Binance에서 USDT 페어 없음
             'HNT',      # Helium - Binance에서 거래 중단됨
             'RSR',      # Reserve Rights - USDT 페어 제한적
-            'FTT',      # FTX Token - 상장폐지됨
-            'LUNA',     # Terra Luna Classic - 일부 지역에서 제한
-            'LUNC',     # Terra Luna Classic 
+            # 'FTT',    # FTT - 거래 가능
+            # 'LUNA',   # LUNC로 거래 가능
             'USTC',     # TerraClassicUSD
             'USDT',     # 스테이블코인 - USDT 페어 없음 (자기자신)
             'USDC',     # 스테이블코인
-            'FTM',      # Fantom - Binance에서 상장폐지됨 (Sonic으로 전환)
+            # 'FTM',    # FTM - 거래 가능
             'MSOL',     # Marinade Staked SOL - Binance에서 USDT 페어 없음
         }
         
@@ -82,7 +81,10 @@ class BinanceClient(CryptoAPIClient):
             'AVAX': 'AVAXUSDT',
             'HBAR': 'HBARUSDT',
             'STX': 'STXUSDT',
-            'RNDR': 'RNDRUSDT',
+            'RNDR': 'RENDERUSDT',  # RNDR -> RENDER
+            'FTM': 'FTMUSDT',
+            'FTT': 'FTTUSDT',
+            'LUNA': 'LUNCUSDT',    # LUNA -> LUNC
         }
     
     def _normalize_symbol_for_binance(self, symbol: str) -> str:
@@ -158,6 +160,7 @@ class BinanceClient(CryptoAPIClient):
                 # Always include a limit as a safety cap
                 if limit is not None:
                     query += f"&limit={limit}"
+                
                 url = f"{self.base_url}/klines?{query}"
                 data = await self._fetch_async(client, url, "Binance", normalized_symbol)
                 

@@ -11,8 +11,8 @@ import {
 import Badge from "../ui/badge/Badge";
 import Image from "next/image";
 import Link from "next/link";
-import { useTreemapLive } from "@/hooks/useAssets";
-import { useRealtimePrices } from "@/hooks/useSocket";
+import { useTreemapLive } from "@/hooks/assets/useAssets";
+import { useRealtimePrices } from "@/hooks/data/useSocket";
 import { filterExcludedAssets } from "@/constants/excludedAssets";
 
 interface RealtimePriceTableProps {
@@ -198,30 +198,45 @@ export default function RealtimePriceTable({
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(maxRows || 20);
     const [selectedAssetType, setSelectedAssetType] = useState<string>('all');
+    const [searchQuery, setSearchQuery] = useState('');
+
+    // typeName prop이 변경되면 selectedAssetType 업데이트
+    React.useEffect(() => {
+        if (typeName) {
+            const lowerName = typeName.toLowerCase()
+            let mapped = lowerName;
+            if (mapped === 'etf') mapped = 'etfs';
+            if (mapped === 'fund') mapped = 'funds';
+            setSelectedAssetType(mapped);
+        } else {
+            setSelectedAssetType('all');
+        }
+    }, [typeName]);
 
     // 자산 타입 옵션
     const assetTypeOptions = [
         { value: 'all', label: 'All Assets' },
         { value: 'crypto', label: 'Crypto' },
         { value: 'stocks', label: 'Stocks' },
-        { value: 'etf', label: 'ETFs' },
+        { value: 'etfs', label: 'ETFs' },
         { value: 'commodities', label: 'Commodities' },
-        { value: 'fund', label: 'Funds' },
+        { value: 'funds', label: 'Funds' },
     ];
 
     // 자산 목록 조회
-    const { data: treemapData, isLoading } = useTreemapLive(
-        typeName
-            ? {
-                type_name: typeName,
-                sort_by: "market_cap",
-                sort_order: "desc",
-            }
-            : {
-                sort_by: "market_cap",
-                sort_order: "desc",
-            }
-    );
+    // 1. typeName prop이 있으면 그 타입에 고정 (필터 드롭다운이 있어도 고정된 데이터 내에서만 작동)
+    // 2. typeName prop이 없고 selectedAssetType이 all이 아니면 해당 타입으로 API 호출
+    const apiParams = useMemo(() => {
+        const params: any = { sort_by: "market_cap", sort_order: "desc" };
+        if (typeName) {
+            params.type_name = typeName;
+        } else if (selectedAssetType !== 'all') {
+            params.type_name = selectedAssetType;
+        }
+        return params;
+    }, [typeName, selectedAssetType]);
+
+    const { data: treemapData, isLoading } = useTreemapLive(apiParams);
 
     // 필터링 및 정렬된 자산 목록
     const allAssets = useMemo(() => {
@@ -232,24 +247,27 @@ export default function RealtimePriceTable({
 
         // 자산 타입으로 필터링
         if (selectedAssetType !== 'all') {
+            // ... (existing switch case logic) ...
             filteredAssets = filteredAssets.filter((asset: any) => {
                 const assetType = (asset.asset_type || asset.type_name || '').toLowerCase();
-
                 switch (selectedAssetType) {
-                    case 'crypto':
-                        return assetType.includes('crypto');
-                    case 'stocks':
-                        return assetType.includes('stock') || assetType === 'equity';
-                    case 'etf':
-                        return assetType.includes('etf');
-                    case 'commodities':
-                        return assetType.includes('commodit');
-                    case 'fund':
-                        return assetType.includes('fund');
-                    default:
-                        return true;
+                    case 'crypto': return assetType.includes('crypto');
+                    case 'stocks': return assetType.includes('stock') || assetType === 'equity';
+                    case 'etfs': return assetType.includes('etf');
+                    case 'commodities': return assetType.includes('commodit');
+                    case 'funds': return assetType.includes('fund');
+                    default: return true;
                 }
             });
+        }
+
+        // 검색어로 필터링
+        if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            filteredAssets = filteredAssets.filter((asset: any) =>
+                (asset.ticker || asset.asset_identifier || '').toLowerCase().includes(q) ||
+                (asset.name || '').toLowerCase().includes(q)
+            );
         }
 
         // 시가 총액으로 정렬 (내림차순)
@@ -259,6 +277,7 @@ export default function RealtimePriceTable({
             return marketCapB - marketCapA;
         });
 
+        // ... (mapping logic) ...
         return filteredAssets.map((asset: any) => ({
             assetId: asset.asset_id,
             ticker: asset.ticker || asset.asset_identifier,
@@ -270,7 +289,7 @@ export default function RealtimePriceTable({
             volume: asset.volume || 0,
             marketCap: asset.market_cap || 0,
         }));
-    }, [treemapData, isLoading, selectedAssetType]);
+    }, [treemapData, isLoading, selectedAssetType, searchQuery]);
 
     // 페이지네이션 계산
     const totalPages = Math.ceil(allAssets.length / pageSize);
@@ -344,7 +363,7 @@ export default function RealtimePriceTable({
 
     return (
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
-            {/* 타이틀 + 페이지 사이즈 선택 */}
+            {/* 타이틀 + 페이지 사이즈 선택 (Upper) */}
             {title && (
                 <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 dark:border-white/[0.05]">
                     <h3 className="text-base font-semibold text-gray-900 dark:text-white">{title}</h3>
@@ -355,15 +374,16 @@ export default function RealtimePriceTable({
                     >
                         {[10, 20, 50, 100, 200].map((size) => (
                             <option key={size} value={size}>
-                                {size}개
+                                {size} items
                             </option>
                         ))}
                     </select>
                 </div>
             )}
-            {/* 필터 및 페이지 사이즈 선택 (showFilter 또는 showPagination이 true일 때만) */}
+
+            {/* 필터 및 검색 (Filter Row) */}
             {(showFilter || showPagination) && (
-                <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 dark:border-white/[0.05]">
+                <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 dark:border-white/[0.05] flex-wrap gap-3">
                     <div className="flex items-center gap-4">
                         {/* 자산 타입 필터 드롭다운 */}
                         {showFilter && (
@@ -379,27 +399,27 @@ export default function RealtimePriceTable({
                                 ))}
                             </select>
                         )}
-                        <div className="text-sm text-gray-500 dark:text-gray-400">
-                            Showing {startIndex + 1}-{Math.min(endIndex, allAssets.length)} of {allAssets.length} assets
+                        <div className="text-xs text-gray-500 dark:text-gray-400 hidden sm:block">
+                            Showing {allAssets.length > 0 ? startIndex + 1 : 0}-{Math.min(endIndex, allAssets.length)} of {allAssets.length}
                         </div>
                     </div>
-                    {showPagination && (
-                        <div className="flex items-center gap-2">
-                            <span className="text-sm text-gray-500 dark:text-gray-400">Show:</span>
-                            {[20, 50, 100].map((size) => (
-                                <button
-                                    key={size}
-                                    onClick={() => handlePageSizeChange(size)}
-                                    className={`px-3 py-1 text-sm rounded-md transition-colors ${pageSize === size
-                                        ? 'bg-blue-500 text-white'
-                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
-                                        }`}
-                                >
-                                    {size}
-                                </button>
-                            ))}
-                        </div>
-                    )}
+
+                    {/* Search Input (Replaced Buttons) */}
+                    <div className="relative">
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => {
+                                setSearchQuery(e.target.value);
+                                setCurrentPage(1);
+                            }}
+                            placeholder="Search ticker..."
+                            className="pl-8 pr-3 py-1.5 text-sm rounded-md border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 w-40 sm:w-64"
+                        />
+                        <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                    </div>
                 </div>
             )}
 

@@ -41,18 +41,22 @@ async def get_current_user(
 
     # 2. 실제 사용자 조회
     user_id = payload.get("user_id")
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload"
-        )
+    username = payload.get("sub")
     
-    user = db.query(User).filter(User.id == user_id).first()
+    user = None
+    if user_id:
+        user = db.query(User).filter(User.id == user_id).first()
+    elif username:
+        user = db.query(User).filter(User.username == username).first()
+        
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found"
         )
+    
+    # Ensure user_id is set for session validation
+    user_id = user.id
     
     # 3. 사용자 활성 상태 확인
     if not user.is_active:
@@ -102,12 +106,18 @@ async def get_current_user_optional(
 
         # 2. 실제 사용자 조회
         user_id = payload.get("user_id")
-        if not user_id:
-            return None
+        username = payload.get("sub")
         
-        user = db.query(User).filter(User.id == user_id).first()
+        user = None
+        if user_id:
+            user = db.query(User).filter(User.id == user_id).first()
+        elif username:
+            user = db.query(User).filter(User.username == username).first()
         if not user or not user.is_active:
             return None
+        
+        # Ensure user_id is set for session validation
+        user_id = user.id
         
         # 3. 계정 잠금 확인
         if user.locked_until and user.locked_until > datetime.utcnow():

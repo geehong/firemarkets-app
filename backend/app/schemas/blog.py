@@ -61,6 +61,16 @@ class PostTagResponse(PostTagBase):
         from_attributes = True
 
 
+class PostAuthorResponse(BaseModel):
+    """포스트 작성자 응답 스키마"""
+    id: int
+    username: str
+    email: str
+
+    class Config:
+        from_attributes = True
+
+
 class PostBase(BaseModel):
     """포스트 기본 스키마"""
     title: Union[str, Dict[str, str], Dict[str, Dict[str, str]]] = Field(..., description="포스트 제목")
@@ -91,7 +101,7 @@ class PostBase(BaseModel):
     # SEO
     meta_title: Optional[Union[str, Dict[str, str], Dict[str, Dict[str, str]]]] = Field(None, description="메타 제목")
     meta_description: Optional[Union[str, Dict[str, str], Dict[str, Dict[str, str]]]] = Field(None, description="메타 설명")
-    keywords: Optional[List[str]] = Field(None, description="키워드 목록")
+    keywords: Optional[Union[List[str], Dict[str, List[str]]]] = Field(None, description="키워드 목록")
     canonical_url: Optional[str] = Field(None, description="정규 URL")
     
     # Asset 연결
@@ -106,6 +116,9 @@ class PostBase(BaseModel):
     comment_count: int = Field(0, description="댓글 수")
     post_password: Optional[str] = Field(None, description="포스트 비밀번호")
     ping_status: str = Field("open", description="핑백 상태")
+
+    # 메타 데이터 (JSON)
+    post_info: Optional[Dict[str, Any]] = Field(None, description="추가 메타데이터 (JSON자료형)")
 
 
 class PostCreate(PostBase):
@@ -144,6 +157,7 @@ class PostUpdate(BaseModel):
     comment_count: Optional[int] = None
     post_password: Optional[str] = None
     ping_status: Optional[str] = None
+    post_info: Optional[Dict[str, Any]] = None
 
 
 class PostResponse(PostBase):
@@ -158,14 +172,13 @@ class PostResponse(PostBase):
     last_sync_at: Optional[datetime]
     sync_status: str
     
-    # 관계 데이터는 별도 엔드포인트에서 처리
-    # category: Optional[PostCategoryResponse] = None
-    # tags: List[PostTagResponse] = Field(default_factory=list)
-    # asset: Optional[Any] = None
-    # author: Optional[Any] = None
-    
     class Config:
         from_attributes = True
+
+    # 관계 데이터
+    category: Optional[PostCategoryResponse] = None
+    tags: List[PostTagResponse] = Field(default_factory=list)
+    author: Optional[PostAuthorResponse] = None
 
 
 class PostListResponse(BaseModel):
@@ -281,7 +294,7 @@ class PostStatsResponse(BaseModel):
     draft_posts: int
     total_views: int
     total_comments: int
-    monthly_blogs: int
+    monthly_posts: int
     popular_categories: List[Dict[str, Any]]
     recent_posts: List[PostResponse]
 

@@ -3,11 +3,12 @@ import asyncio
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import auth
+# from app.api import auth  <-- Removed legacy import
 from app.api.v1.endpoints import (
     realtime, scheduler, collectors, assets, world_assets, crypto, 
     onchain, etf, dashboard, configurations, admin, logs, metrics, 
-    open_interest, tickers, navigation, posts, asset_overviews
+    open_interest, tickers, navigation, posts, asset_overviews,
+    auth  # <-- Added V1 auth
 )
 from app.api.v1 import external_apis
 from app.core.database import engine
@@ -15,6 +16,7 @@ from app.models.user import User
 from app.models.session import UserSession, TokenBlacklist, AuditLog
 from app.core.websocket import sio
 from app.core.config import GLOBAL_APP_CONFIGS, load_and_set_global_configs, initialize_bitcoin_asset_id
+from app.core.cache import setup_cache  # Import setup_cache
 from app.services.session_cleanup_scheduler import session_cleanup_scheduler
 from app.utils.db_logger import setup_db_logging
 import socketio
@@ -43,6 +45,11 @@ app = FastAPI(
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json"
 )
+
+# Cache Initialization on Startup
+@app.on_event("startup")
+async def startup_event():
+    await setup_cache()
 
 # CORS 설정
 origins = [

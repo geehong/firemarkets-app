@@ -20,6 +20,55 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+def resolve_asset_id_with_fallback(db, asset_identifier: str) -> int:
+    """
+    Asset ID 또는 Ticker를 asset_id로 변환 (다중 폴백 지원)
+    1차: 정확한 티커 매칭
+    2차: USDT/USD 접미사 제거 후 재시도 (예: SOLUSDT -> SOL)
+    3차: USDT 페어로 폴백 시도 (예: SOL -> SOLUSDT)
+    """
+    from ....models import Asset
+    
+    if asset_identifier.isdigit():
+        return int(asset_identifier)
+    
+    ticker = asset_identifier.upper()
+    
+    # 1차 시도: 정확한 티커 매칭
+    asset = db.query(Asset).filter(Asset.ticker == ticker).first()
+    if asset:
+        return asset.asset_id
+    
+    # 2차 시도: USDT/USD 접미사 제거 후 재시도
+    normalized_ticker = ticker
+    if normalized_ticker.endswith('USDT'):
+        normalized_ticker = normalized_ticker[:-4]  # Remove 'USDT'
+    elif normalized_ticker.endswith('-USD'):
+        normalized_ticker = normalized_ticker[:-4]  # Remove '-USD'
+    elif normalized_ticker.endswith('USD'):
+        normalized_ticker = normalized_ticker[:-3]  # Remove 'USD'
+    
+    if normalized_ticker != ticker:
+        asset = db.query(Asset).filter(Asset.ticker == normalized_ticker).first()
+        if asset:
+            return asset.asset_id
+    
+    # 3차 시도: USDT 페어로 폴백 시도
+    if not ticker.endswith("USDT"):
+        usdt_ticker = f"{ticker}USDT"
+        asset = db.query(Asset).filter(Asset.ticker == usdt_ticker).first()
+        if asset:
+            return asset.asset_id
+    
+    raise HTTPException(status_code=404, detail=f"Asset not found with ticker: {asset_identifier}")
+
+
+
+
 
 # ============================================================================
 # Pydantic Models
@@ -358,12 +407,25 @@ async def get_realtime_quotes_delay_price_postgres(
         if asset_identifier.isdigit():
             asset_id = int(asset_identifier)
         else:
-            # Ticker로 조회 (대소문자 정규화 및 USDT 페어 폴백 지원)
+            # Ticker로 조회 (대소문자 정규화 및 다중 폴백 지원)
             ticker = asset_identifier.upper()
             asset = postgres_db.query(Asset).filter(Asset.ticker == ticker).first()
             
             if not asset:
-                # USDT 페어로 폴백 시도
+                # 2차 시도: USDT/USD 접미사 제거 후 재시도 (예: SOLUSDT -> SOL, SOL-USD -> SOL)
+                normalized_ticker = ticker
+                if normalized_ticker.endswith('USDT'):
+                    normalized_ticker = normalized_ticker[:-4]  # Remove 'USDT'
+                elif normalized_ticker.endswith('-USD'):
+                    normalized_ticker = normalized_ticker[:-4]  # Remove '-USD'
+                elif normalized_ticker.endswith('USD'):
+                    normalized_ticker = normalized_ticker[:-3]  # Remove 'USD'
+                
+                if normalized_ticker != ticker:
+                    asset = postgres_db.query(Asset).filter(Asset.ticker == normalized_ticker).first()
+            
+            if not asset:
+                # 3차 시도: USDT 페어로 폴백 시도
                 if not ticker.endswith("USDT"):
                     usdt_ticker = f"{ticker}USDT"
                     asset = postgres_db.query(Asset).filter(Asset.ticker == usdt_ticker).first()
@@ -372,6 +434,7 @@ async def get_realtime_quotes_delay_price_postgres(
                 raise HTTPException(status_code=404, detail=f"Asset not found with ticker: {asset_identifier}")
             
             asset_id = asset.asset_id
+
         
         # 쿼리 구성
         query = postgres_db.query(RealtimeQuoteTimeDelay)\
@@ -697,16 +760,8 @@ async def get_ohlcv_intraday(
                 detail=f"Unsupported interval: {data_interval}. Supported: {supported_intervals}"
             )
         
-        # asset_identifier가 숫자인지 확인 (Asset ID)
-        if asset_identifier.isdigit():
-            asset_id = int(asset_identifier)
-        else:
-            # Ticker로 조회
-            from ....models import Asset
-            asset = db.query(Asset).filter(Asset.ticker == asset_identifier.upper()).first()
-            if not asset:
-                raise HTTPException(status_code=404, detail=f"Asset not found with ticker: {asset_identifier}")
-            asset_id = asset.asset_id
+        # asset_id 조회 (티커 정규화 폴백 포함)
+        asset_id = resolve_asset_id_with_fallback(db, asset_identifier)
         
         # OHLCV 데이터 조회 (폴백 지원: 15m/30m은 1m/5m 데이터 집계)
         ohlcv_data = await OHLCVService.get_ohlcv_data_with_fallback(
@@ -760,16 +815,9 @@ async def get_intraday_price(
                 detail=f"Unsupported interval: {data_interval}. Supported: {supported_intervals}"
             )
         
-        # asset_identifier가 숫자인지 확인 (Asset ID)
-        if asset_identifier.isdigit():
-            asset_id = int(asset_identifier)
-        else:
-            # Ticker로 조회
-            from ....models import Asset
-            asset = db.query(Asset).filter(Asset.ticker == asset_identifier.upper()).first()
-            if not asset:
-                raise HTTPException(status_code=404, detail=f"Asset not found with ticker: {asset_identifier}")
-            asset_id = asset.asset_id
+        # asset_id 조회 (티커 정규화 폴백 포함)
+        asset_id = resolve_asset_id_with_fallback(db, asset_identifier)
+
         
         # OHLCV 데이터 조회 (폴백 지원: 15m/30m은 1m/5m 데이터 집계)
         ohlcv_data = await OHLCVService.get_ohlcv_data_with_fallback(
@@ -828,14 +876,8 @@ async def get_sparkline_price(
         from ....models import Asset
         from datetime import date as date_type
         
-        # asset_id 조회
-        if asset_identifier.isdigit():
-            asset_id = int(asset_identifier)
-        else:
-            asset = db.query(Asset).filter(Asset.ticker == asset_identifier.upper()).first()
-            if not asset:
-                raise HTTPException(status_code=404, detail=f"Asset not found with ticker: {asset_identifier}")
-            asset_id = asset.asset_id
+        # asset_id 조회 (티커 정규화 폴백 포함)
+        asset_id = resolve_asset_id_with_fallback(db, asset_identifier)
         
         # 지원하는 인터벌 설정 (분 단위)
         interval_minutes_map = {

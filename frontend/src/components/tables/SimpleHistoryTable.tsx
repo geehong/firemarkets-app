@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from 'react'
 import TableBase, { TableColumn } from './TableBase'
-import { useOhlcvData } from '@/hooks/useAssets'
+import { useOhlcvData } from '@/hooks/assets/useAssets'
 
 type OhlcvRow = {
   Date: string
@@ -45,7 +45,7 @@ export default function SimpleHistoryTable({
       const changePercent = item.change_percent !== null && item.change_percent !== undefined
         ? Number(item.change_percent)
         : null
-      
+
       return {
         Date: item.timestamp_utc,
         Price: Number(item.close_price) || 0,
@@ -110,7 +110,7 @@ export default function SimpleHistoryTable({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        {(['1d','1w','1m'] as const).map(iv => (
+        {(['1d', '1w', '1m'] as const).map(iv => (
           <button
             key={iv}
             onClick={() => setInterval(iv)}

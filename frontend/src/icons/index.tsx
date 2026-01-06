@@ -37,7 +37,6 @@ import EyeCloseIcon from "./eye-close.svg";
 import TimeIcon from "./time.svg";
 import CopyIcon from "./copy.svg";
 import ChevronLeftIcon from "./chevron-left.svg";
-import ChevronRightIcon from "./chevron-right.svg";
 import UserCircleIcon from "./user-circle.svg";
 import TaskIcon from "./task-icon.svg";
 import ListIcon from "./list.svg";
@@ -52,7 +51,11 @@ import HorizontaLDots from "./horizontal-dots.svg";
 import ChatIcon from "./chat.svg";
 import MoreDotIcon from "./more-dot.svg";
 import BellIcon from "./bell.svg";
-import BookIcon from "./docs.svg"; // 블로그 아이콘으로 docs 아이콘 재사용
+import MapIcon from "./map-chart.svg";
+import DashboardIcon from "./dashboard-custom.svg";
+import AssetsIcon from "./assets-custom.svg";
+import OnChainIcon from "./onchain-custom.svg";
+import BlogIcon from "./blog-custom.svg";
 
 export {
   DownloadIcon,
@@ -95,7 +98,6 @@ export {
   TimeIcon,
   CopyIcon,
   ChevronLeftIcon,
-  ChevronRightIcon,
   UserCircleIcon,
   ListIcon,
   TableIcon,
@@ -109,5 +111,9 @@ export {
   HorizontaLDots,
   ChevronUpIcon,
   ChatIcon,
-  BookIcon,
+  MapIcon,
+  DashboardIcon,
+  AssetsIcon,
+  OnChainIcon,
+  BlogIcon,
 };

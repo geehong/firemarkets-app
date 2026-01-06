@@ -2,13 +2,13 @@ import React from 'react';
 import MiniPriceChart from './MiniPriceChart';
 
 interface MiniPriceCryptoChartProps {
-  containerId?: string;
-  assetIdentifier?: string;
-  chartType?: string;
-  useWebSocket?: boolean;
-  apiInterval?: string | null;
-  marketHours?: boolean;
-  dataSource?: string;
+    containerId?: string;
+    assetIdentifier?: string;
+    chartType?: string;
+    useWebSocket?: boolean;
+    apiInterval?: number | null;
+    marketHours?: boolean;
+    dataSource?: string;
 }
 
 const MiniPriceCryptoChart: React.FC<MiniPriceCryptoChartProps> = (props) => {

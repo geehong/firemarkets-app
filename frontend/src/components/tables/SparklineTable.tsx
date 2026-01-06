@@ -14,9 +14,9 @@ import Link from "next/link";
 import { LineChart, Line, ResponsiveContainer, YAxis, Tooltip, Area, AreaChart } from "recharts";
 import { useQueries } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api";
-import { useTreemapLive } from "@/hooks/useAssets";
-import { useRealtimePrices } from "@/hooks/useSocket";
-import { useDelayedQuotes } from "@/hooks/useRealtime";
+import { useTreemapLive } from "@/hooks/assets/useAssets";
+import { useRealtimePrices } from "@/hooks/data/useSocket";
+import { useDelayedQuotes } from "@/hooks/data/useRealtime";
 import { filterExcludedAssets } from "@/constants/excludedAssets";
 
 interface SparklineTableProps {
@@ -37,7 +37,7 @@ interface AssetData {
   instrument: string;
   assetType: string;
   timeline: number[];
-  subscriptionStatus?: 'loading' | 'error' | 'subscribed' | 'no-data';
+  subscriptionStatus?: 'loading' | 'error' | 'subscribed' | 'no-data' | string;
 }
 
 // 스파클라인 컴포넌트
@@ -78,7 +78,7 @@ const SparklineChart = ({ data }: { data: number[] }) => {
 
   return (
     <div className="w-full h-10 min-w-[60px] min-h-[40px] relative rounded overflow-hidden">
-      <ResponsiveContainer width="100%" height="100%" minWidth={60} minHeight={40}>
+      <ResponsiveContainer width="100%" height="100%" minWidth={60} minHeight={40} debounce={50}>
         <AreaChart
           data={chartData}
           margin={{ top: 2, right: 2, bottom: 2, left: 2 }}
@@ -273,12 +273,37 @@ const VolumeWidget = ({
 };
 
 // 테이블 행 컴포넌트 - useRealtimePrices를 한 번만 호출하고 위젯들에 전달
+// ... (add hook at top level, maybe before SparklineChart or after imports)
+
+// Hook to check for desktop view
+const useIsDesktop = () => {
+  const [isDesktop, setIsDesktop] = React.useState(false);
+
+  React.useEffect(() => {
+    const mediaQuery = window.matchMedia('(min-width: 768px)');
+    setIsDesktop(mediaQuery.matches);
+
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, []);
+
+  return isDesktop;
+};
+
+// ... SparklineChart (unchanged) ...
+
+// ... PriceWidget, ChangePercentWidget, VolumeWidget (unchanged) ...
+
+// Updated SparklineTableRow
 const SparklineTableRow = ({
   asset,
   treemapData,
+  isDesktop,
 }: {
   asset: AssetData;
   treemapData: any;
+  isDesktop: boolean;
 }) => {
   // useRealtimePrices를 행 단위로 한 번만 호출
   const { latestPrice, isConnected } = useRealtimePrices(asset.ticker);
@@ -301,13 +326,13 @@ const SparklineTableRow = ({
         >
           {/* 로고 - 데스크톱에서만 표시 */}
           {asset.logo_url ? (
-            <div className="w-10 h-10 overflow-hidden rounded-full hidden md:block">
+            <div className="w-10 h-10 relative overflow-hidden rounded-full hidden md:block">
               <Image
-                width={40}
-                height={40}
+                fill
                 src={asset.logo_url}
                 alt={`${asset.ticker} logo`}
-                className="w-full h-full object-cover"
+                className="object-cover"
+                sizes="40px"
               />
             </div>
           ) : (
@@ -361,7 +386,7 @@ const SparklineTableRow = ({
       </TableCell>
       {/* Chart - 데스크톱에서만 표시 */}
       <TableCell className="px-4 py-3 text-start hidden md:table-cell">
-        <SparklineChart data={asset.timeline} />
+        {isDesktop && <SparklineChart data={asset.timeline} />}
       </TableCell>
       {/* Price + Change - 모바일 전용 */}
       <TableCell className="px-4 py-3 text-start text-theme-sm dark:text-gray-400 md:hidden w-[60%]">
@@ -399,7 +424,8 @@ export default function SparklineTable({
   typeName,
   maxRows = 20,
 }: SparklineTableProps) {
-  // 자산 목록 조회
+  const isDesktop = useIsDesktop();
+  // ... (rest of the code)
   const { data: treemapData, isLoading } = useTreemapLive(
     typeName
       ? {
@@ -464,7 +490,8 @@ export default function SparklineTable({
       return {
         queryKey: ['delayed-quotes-sparkline', item.identifier, dataSource, isStocksOrEtf],
         queryFn: async () => {
-          const BACKEND_BASE = process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1';
+          // 로컬 개발 환경 우선
+          const BACKEND_BASE = process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'http://localhost:8001/api/v1';
 
           // 주식/ETF인 경우 sparkline-price 사용, 그 외에는 기존 quotes-delay-price 사용
           const endpoint = isStocksOrEtf ? '/realtime/sparkline-price' : '/realtime/pg/quotes-delay-price';
@@ -610,10 +637,10 @@ export default function SparklineTable({
           change24h: asset.price_change_percentage_24h || 0,
           volume: asset.volume || 0,
           marketCap: asset.market_cap || 0,
-          subscriptionStatus: subscriptionStatus,
-        };
+          subscriptionStatus: subscriptionStatus as AssetData['subscriptionStatus'],
+        } as AssetData;
       })
-      .filter((item): item is AssetData => item !== null);
+      .filter((item) => item !== null);
   }, [treemapData, assetIdentifiers, maxRows, isLoading, delayedQuotesMap, delayedQuotesQueries, filteredAssetIdentifiers]);
 
   if (isLoading) {
@@ -700,6 +727,7 @@ export default function SparklineTable({
                   key={asset.ticker}
                   asset={asset}
                   treemapData={treemapData}
+                  isDesktop={isDesktop}
                 />
               ))}
             </TableBody>

@@ -66,7 +66,6 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
   const [dataSourceStates, setDataSourceStates] = useState<Record<string, string>>({})
   const [isSaving, setIsSaving] = useState(false)
   const [gridApi, setGridApi] = useState<GridApi | null>(null)
-  const gridRef = useRef<AgGridBaseTable>(null)
 
   // 훅을 사용하여 데이터 로드
   const {
@@ -102,9 +101,9 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
   // 자산 타입별로 필터링
   const filteredTickersByType = useMemo(() => {
     if (!tickers) return []
-    
+
     let filtered = tickers
-    
+
     // All이 아닌 경우에만 타입별 필터링
     if (assetType !== 'All') {
       filtered = tickers.filter(ticker => {
@@ -112,22 +111,22 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
         return tickerType === assetType
       })
     }
-    
+
     return filtered
   }, [tickers, assetType])
 
   // 검색어로 필터링 및 ID 낮은 순으로 정렬
   const filteredTickers = useMemo(() => {
     let filtered = filteredTickersByType
-    
+
     // 검색어 필터링
     if (searchTerm) {
       filtered = filteredTickersByType.filter((ticker) => {
         return ticker.ticker.toLowerCase().includes(searchTerm.toLowerCase()) ||
-               ticker.name.toLowerCase().includes(searchTerm.toLowerCase())
+          ticker.name.toLowerCase().includes(searchTerm.toLowerCase())
       })
     }
-    
+
     // ID 낮은 순으로 정렬
     return filtered.sort((a, b) => a.asset_id - b.asset_id)
   }, [filteredTickersByType, searchTerm])
@@ -162,7 +161,7 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
     // JSON 필드에서 확인
     if (ticker.collection_settings) {
       let collectionSettings = ticker.collection_settings
-      
+
       if (typeof collectionSettings === 'string') {
         try {
           collectionSettings = JSON.parse(collectionSettings)
@@ -171,7 +170,7 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
           collectionSettings = {}
         }
       }
-      
+
       if (collectionSettings && collectionSettings[settingKey] !== undefined) {
         const value = collectionSettings[settingKey]
         if (typeof value === 'boolean') return value
@@ -208,12 +207,12 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
   // 현재 표시 값 가져오기 (로컬 상태 포함)
   const getSettingValue = (ticker: TickerData, columnKey: string): boolean => {
     const checkboxKey = `${ticker.asset_id}_${columnKey}`
-    
+
     // 로컬 상태가 있으면 로컬 상태 사용
     if (checkboxStates[checkboxKey] !== undefined) {
       return checkboxStates[checkboxKey]
     }
-    
+
     // 없으면 원래 DB 값 사용
     return getOriginalSettingValue(ticker, columnKey)
   }
@@ -279,23 +278,23 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
       settings: {} as Record<string, Record<string, boolean>>,
       dataSources: {} as Record<string, string>
     }
-    
+
     // 체크박스 변경사항
     Object.keys(checkboxStates).forEach(key => {
       const parts = key.split('_')
-      
+
       if (parts.length >= 2) {
         const assetId = parts[0]
         const columnKey = parts.slice(1).join('_')
-        
+
         const ticker = filteredTickers.find(t => t.asset_id.toString() === assetId)
         if (ticker) {
           const originalValue = getOriginalSettingValue(ticker, columnKey)
           const currentValue = checkboxStates[key]
-          
+
           if (originalValue !== currentValue) {
             const settingKey = getSettingKey(columnKey)
-            
+
             if (settingKey) {
               if (!changes.settings[assetId]) changes.settings[assetId] = {}
               changes.settings[assetId][settingKey] = currentValue
@@ -304,22 +303,22 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
         }
       }
     })
-    
+
     // 데이터 소스 변경사항
     Object.keys(dataSourceStates).forEach(key => {
       const assetId = key.replace('_data_source', '')
-      
+
       const ticker = filteredTickers.find(t => t.asset_id.toString() === assetId)
       if (ticker) {
         const originalValue = ticker.data_source || 'fmp'
         const currentValue = dataSourceStates[key]
-        
+
         if (originalValue !== currentValue) {
           changes.dataSources[assetId] = currentValue
         }
       }
     })
-    
+
     return changes
   }, [checkboxStates, dataSourceStates, filteredTickers])
 
@@ -345,12 +344,12 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
     if (!gridApi || !gridApi.getRenderedNodes) {
       return []
     }
-    
+
     const renderedNodes = gridApi.getRenderedNodes()
     if (!Array.isArray(renderedNodes)) {
       return []
     }
-    
+
     const rows: TickerData[] = []
     for (const node of renderedNodes) {
       if (node && node.data) {
@@ -404,12 +403,12 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
   // 저장 함수
   const handleSaveAll = async () => {
     if (!hasChanges) return
-    
+
     setIsSaving(true)
-    
+
     try {
       const updates: Array<{ assetId: number; settings: Record<string, any> }> = []
-      
+
       // 설정 변경사항 추가
       Object.keys(changeSummary.settings).forEach(assetId => {
         updates.push({
@@ -417,7 +416,7 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
           settings: changeSummary.settings[assetId]
         })
       })
-      
+
       // 데이터 소스 변경사항 추가
       Object.keys(changeSummary.dataSources).forEach(assetId => {
         const existingUpdate = updates.find(u => u.assetId === parseInt(assetId))
@@ -430,13 +429,13 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
           })
         }
       })
-      
+
       await bulkUpdate(updates)
-      
+
       // 로컬 상태 초기화
       setCheckboxStates({})
       setDataSourceStates({})
-      
+
       // 데이터 새로고침
       refetchTickers()
       onBulkSave?.()
@@ -467,7 +466,7 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
         cellRenderer: (params: any) => {
           const ticker = params.data
           const hasChanges = hasLocalChange(ticker, 'any') || hasDataSourceChange(ticker)
-          
+
           return (
             <div className="flex items-center">
               <strong>{params.value}</strong>
@@ -490,7 +489,7 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
           const ticker = params.data
           const currentDataSource = getDataSourceValue(ticker)
           const hasChange = hasDataSourceChange(ticker)
-          
+
           return (
             <div className="flex items-center">
               <select
@@ -552,10 +551,10 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
           const ticker = params.data
           const checkboxKey = `${ticker.asset_id}_${column.key}`
           const initialValue = getSettingValue(ticker, column.key)
-          
+
           const isChecked = checkboxStates[checkboxKey] !== undefined ? checkboxStates[checkboxKey] : initialValue
           const hasChange = hasLocalChange(ticker, column.key)
-          
+
           return (
             <div className="flex justify-center items-center">
               <input
@@ -589,18 +588,18 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
       filter: false,
       cellRenderer: (params: any) => {
         const ticker = params.data
-        
+
         const handleEdit = () => {
           // Assets Editor로 이동하면서 asset ID를 전달
           const url = `/admin/appconfig/assets_editor?assetId=${ticker.asset_id}`
           console.log('🔗 Navigating to:', url)
           console.log('📊 Ticker data:', ticker)
           console.log('🔍 Asset ID:', ticker.asset_id)
-          
+
           // 강제로 URL 이동
           window.location.href = url
         }
-        
+
         return (
           <div className="flex gap-1">
             <button
@@ -643,9 +642,6 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
     },
     pagination: true,
     paginationPageSize: 50,
-    rowSelection: {
-      mode: 'none'
-    },
     animateRows: true,
     suppressRowClickSelection: true,
     suppressCellFocus: true,
@@ -658,7 +654,7 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
           if (params.api && params.api.sizeColumnsToFit) {
             try {
               params.api.sizeColumnsToFit()
-            } catch (error) {}
+            } catch (error) { }
           }
         }, 100)
       }
@@ -672,7 +668,7 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
         try {
           await refetchTickers()
           console.log('🔍 Data refreshed when tab became active')
-          
+
           // 로컬 상태 초기화
           setCheckboxStates({})
           setDataSourceStates({})
@@ -681,9 +677,9 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
           console.error('🔍 Failed to refresh data on tab activation:', error)
         }
       }
-      
+
       refreshData()
-      
+
       const timer = setTimeout(refreshData, 2000)
       return () => clearTimeout(timer)
     }
@@ -737,7 +733,7 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
             )}
           </select>
         </div>
-        
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Search Tickers:</label>
           <div className="relative">
@@ -804,7 +800,7 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
             onClick={async () => {
               try {
                 await refetchTickers()
-              } catch (error) {}
+              } catch (error) { }
             }}
             disabled={tickersLoading}
             className="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50"
@@ -847,23 +843,22 @@ const TickerTableAgGrid: React.FC<TickerTableAgGridProps> = ({
             </div>
           ) : (
             /* AG Grid 테이블 표시 */
-            <div 
+            <div
               className="ag-theme-quartz"
-              style={{ 
-                height: `${height}px`, 
+              style={{
+                height: `${height}px`,
                 width: '100%',
                 '--ag-header-height': '40px',
                 '--ag-row-height': '40px'
               } as React.CSSProperties}
             >
               <AgGridBaseTable
-                ref={gridRef}
                 rows={filteredTickers}
                 columns={columnDefs}
                 height={height}
                 gridOptions={gridOptions}
                 loading={tickersLoading}
-                error={tickersError?.message}
+                error={null}
               />
             </div>
           )

@@ -1,0 +1,632 @@
+# backend/app/services/news_ai_agent.py
+import os
+import google.generativeai as genai
+from groq import Groq, AsyncGroq
+from typing import List, Dict, Optional, Any
+from app.models.blog import Post
+from app.models.asset import AppConfiguration
+from app.core.config import GOOGLE_API_KEY, GROQ_API_KEY
+from app.core.database import SessionLocal
+import logging
+import json
+import asyncio
+import markdown
+
+import logging
+import json
+import asyncio
+import re
+
+logger = logging.getLogger(__name__)
+
+class NewsAIEditorAgent:
+    """Gemini 및 Groq를 이용한 뉴스 분석 및 리포트 생성 에이전트 with Multi-Provider Support"""
+    
+    def __init__(self):
+        # Initialize Gemini
+        self.gemini_available = False
+        # Gemini models for high-quality tasks (rewrite/merge)
+        # Using models confirmed from user's quota dashboard
+        self.gemini_model_list = [
+            'gemini-3-flash-preview',  # Newest & available
+            'gemini-2.5-flash',
+            'gemini-2.0-flash',        # Very fast
+            'gemini-2.5-flash-lite',
+            'gemini-flash-latest',     # General alias
+        ]
+        self.current_model_index = 0
+        
+        # Gemma models for news collection
+        self.gemma_collection_models = [
+            'gemma-3-27b-it',
+            'gemma-3-12b-it',
+            'gemma-3-4b-it',
+            'gemma-3-1b-it',
+        ]
+        self.gemma_collection_index = 0
+        
+        if GOOGLE_API_KEY:
+            try:
+                genai.configure(api_key=GOOGLE_API_KEY)
+                # Init with the first model
+                self.gemini_model = genai.GenerativeModel(self.gemini_model_list[0])
+                self.gemini_available = True
+                logger.info(f"Gemini init with primary model: {self.gemini_model_list[0]}")
+            except Exception as e:
+                logger.error(f"Failed to init Gemini: {e}")
+
+        # Initialize Groq
+        self.groq_available = False
+        if GROQ_API_KEY:
+            try:
+                self.groq_client = AsyncGroq(api_key=GROQ_API_KEY)
+                # Updated to latest supported model
+                self.groq_model = "llama-3.3-70b-versatile" 
+                self.groq_available = True
+            except Exception as e:
+                logger.error(f"Failed to init Groq: {e}")
+        
+        if not self.gemini_available and not self.groq_available:
+            logger.error("No AI providers available (neither Gemini nor Groq keys set)")
+            
+    def _get_provider(self, task_type: str = "general") -> str:
+        """
+        Get provider based on task type.
+        'collection' -> Gemma (parallel processing with 4 models)
+        'merge' -> Groq (fast)
+        'general' / 'rewrite' -> Gemini (high quality)
+        """
+        if task_type == "collection":
+            return "gemma" if self.gemini_available else "groq"
+        elif task_type == "merge":
+            return "groq" if self.groq_available else "gemini"
+        else:  # general, rewrite
+            return "gemini" if self.gemini_available else "groq"
+
+    async def _call_gemini(self, prompt: str, **kwargs) -> str:
+        """Call Gemini API with Model Rotation on Quota Errors"""
+        if not self.gemini_available:
+            raise Exception("Gemini not available")
+
+        # Strip args that are meant for the wrapper but not for the Google API
+        kwargs.pop('max_retries', None)
+        kwargs.pop('base_delay', None)
+        kwargs.pop('utils', None) # Safety
+
+        last_error = None
+        
+        # rotation retry loop
+        # We try until we run out of models in the list
+        start_index = self.current_model_index
+        attempts = 0
+        total_models = len(self.gemini_model_list)
+        
+        while attempts < total_models:
+            current_model_name = self.gemini_model_list[self.current_model_index]
+            
+            try:
+                # Update model instance if needed (though we just hold the object, it's lightweight)
+                # Re-instantiating ensures we use the correct model string
+                self.gemini_model = genai.GenerativeModel(current_model_name)
+                
+                logger.info(f"Calling Gemini Model: {current_model_name}")
+                
+                response = await self.gemini_model.generate_content_async(prompt, **kwargs)
+                return response.text
+                
+            except Exception as e:
+                err_str = str(e).lower()
+                is_quota_error = "429" in err_str or "quota" in err_str or "resource" in err_str or "exhausted" in err_str
+                is_not_found = "404" in err_str or "not found" in err_str or "not supported" in err_str
+                
+                if is_quota_error or is_not_found:
+                    logger.warning(f"Gemini Error ({'Quota' if is_quota_error else 'Not Found'}) for {current_model_name}. Switching model...")
+                    self.current_model_index = (self.current_model_index + 1) % total_models
+                    attempts += 1
+                    last_error = e
+                    continue
+                else:
+                    # Non-quota error, re-raise immediately (e.g. content policy)
+                    raise e
+        
+        # If we exited loop, we tried all models and failed
+        logger.error("All Gemini models exhausted/failed.")
+        raise last_error if last_error else Exception("All Gemini models failed")
+
+    async def _call_groq(self, prompt: str, **kwargs) -> str:
+        """Call Groq API"""
+        if not self.groq_available:
+            raise Exception("Groq not available")
+
+        # Reuse retry logic
+        async def _groq_req():
+            chat_completion = await self.groq_client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    }
+                ],
+                model=self.groq_model,
+                temperature=0.5,
+                max_tokens=4096, # Adjust as needed
+                top_p=1,
+                stop=None,
+                stream=False,
+            )
+            return chat_completion.choices[0].message.content
+
+        return await self._retry_request(_groq_req, **kwargs)
+
+    async def _call_gemma(self, prompt: str, **kwargs) -> str:
+        """Call Gemma API with round-robin model selection for parallel processing"""
+        if not self.gemini_available:
+            raise Exception("Gemma not available (requires Gemini API)")
+
+        # Strip args that are meant for the wrapper
+        kwargs.pop('max_retries', None)
+        kwargs.pop('base_delay', None)
+        kwargs.pop('utils', None)
+
+        # Round-robin model selection
+        model_name = self.gemma_collection_models[self.gemma_collection_index]
+        self.gemma_collection_index = (self.gemma_collection_index + 1) % len(self.gemma_collection_models)
+        
+        logger.info(f"Calling Gemma Model: {model_name} (index: {self.gemma_collection_index})")
+        
+        try:
+            gemma_model = genai.GenerativeModel(model_name)
+            response = await gemma_model.generate_content_async(prompt, **kwargs)
+            return response.text
+        except Exception as e:
+            err_str = str(e).lower()
+            is_quota_error = "429" in err_str or "quota" in err_str
+            is_not_found = "404" in err_str or "not found" in err_str
+            
+            if is_quota_error or is_not_found:
+                # Try next model
+                logger.warning(f"Gemma Error for {model_name}: {e}. Trying next model...")
+                next_model = self.gemma_collection_models[self.gemma_collection_index]
+                self.gemma_collection_index = (self.gemma_collection_index + 1) % len(self.gemma_collection_models)
+                
+                try:
+                    gemma_model = genai.GenerativeModel(next_model)
+                    logger.info(f"Retrying with Gemma Model: {next_model}")
+                    response = await gemma_model.generate_content_async(prompt, **kwargs)
+                    return response.text
+                except Exception as e2:
+                    logger.error(f"Gemma fallback also failed: {e2}")
+                    raise e2
+            else:
+                raise e
+
+    async def _generate_content(self, prompt: str, task_type: str = "general", **kwargs) -> str:
+        """Unified generation interface routing to configured provider with fallback"""
+        provider = self._get_provider(task_type)
+        
+        # Override if selected provider is not available
+        if provider == 'gemini' and not self.gemini_available:
+            provider = 'groq'
+        if provider == 'gemma' and not self.gemini_available:
+            provider = 'groq'
+        if provider == 'groq' and not self.groq_available:
+            provider = 'gemini'
+            
+        logger.info(f"Using AI Provider: {provider.upper()} for task: {task_type}")
+        
+        try:
+            if provider == 'groq':
+                return await self._call_groq(prompt, **kwargs)
+            elif provider == 'gemma':
+                return await self._call_gemma(prompt, **kwargs)
+            else:
+                return await self._call_gemini(prompt, **kwargs)
+        except Exception as e:
+            logger.error(f"Primary provider {provider} failed: {e}")
+            
+            # Simple Fallback Logic
+            if provider in ['gemini', 'gemma'] and self.groq_available:
+                logger.info("Falling back to GROQ...")
+                return await self._call_groq(prompt, **kwargs)
+            elif provider == 'groq' and self.gemini_available:
+                logger.info("Falling back to GEMINI...")
+                return await self._call_gemini(prompt, **kwargs)
+            else:
+                raise e
+
+    def _ensure_html_content(self, result: Dict) -> Dict:
+        """
+        Ensure content fields are HTML, not Markdown.
+        Converts Markdown to HTML if Markdown patterns are detected.
+        """
+        if not result:
+            return result
+            
+        # Markdown patterns to detect
+        md_patterns = ['# ', '## ', '### ', '**', '* ', '- ', '```', '> ']
+        
+        content_fields = ['content_en', 'content_ko']
+        
+        for field in content_fields:
+            content = result.get(field, '')
+            if not content:
+                continue
+                
+            # Check if content appears to be Markdown
+            is_markdown = any(pattern in content for pattern in md_patterns)
+            
+            if is_markdown:
+                logger.info(f"Converting Markdown to HTML for field: {field}")
+                # Convert Markdown to HTML
+                html_content = markdown.markdown(
+                    content, 
+                    extensions=['extra', 'nl2br', 'sane_lists']
+                )
+                result[field] = html_content
+                
+        return result
+
+    
+    async def _retry_request(self, func, *args, max_retries=3, base_delay=5, **kwargs):
+        """Exponential backoff for Rate Limits"""
+        
+        for attempt in range(max_retries + 1):
+            try:
+                return await func(*args, **kwargs)
+            except Exception as e:
+                err_str = str(e).lower()
+                # If it's a DAILY quota limit (FreeTier), retrying won't help today.
+                if "freetier" in err_str and ("quota" in err_str or "limit" in err_str):
+                     logger.error("Gemini Free Tier Quota Exceeded (Daily). Stopping retries.")
+                     raise e
+
+                if "429" in str(e) or "quota" in str(e).lower():
+                    if attempt < max_retries:
+                        delay = base_delay * (2 ** attempt)
+                        logger.warning(f"Rate Limit hit. Retrying in {delay}s...")
+                        import asyncio
+                        await asyncio.sleep(delay)
+                        continue
+                raise e
+
+    async def analyze_cluster(self, cluster: List[Post]) -> Dict:
+        """
+        뉴스 클러스터(관련 기사 묶음)를 분석하여 종합 리포트 생성
+        """
+        if not cluster:
+            return None
+            
+        # 프롬프트 구성
+        articles_text = ""
+        for i, p in enumerate(cluster):
+            title = p.title.get('en') if isinstance(p.title, dict) else str(p.title)
+            source = p.post_info.get('source', 'Unknown')
+            date = p.published_at.strftime('%Y-%m-%d %H:%M') if p.published_at else 'Unknown'
+            articles_text += f"[{i+1}] {title} (Source: {source}, Time: {date})\n"
+            
+        dataset = {
+            "articles": articles_text,
+            "count": len(cluster)
+        }
+        
+        prompt = f"""
+You are an expert financial news editor. Analyze the following group of related news articles and generate a comprehensive report in Korean.
+
+[News Articles]
+{articles_text}
+
+[Instructions]
+[Instructions]
+1. **Title**: Create a catchy, informative title in Korean that summarizes the main event. Also provide an English title.
+2. **Summary**: Provide a 3-bullet point summary of the key facts in Korean. Also provide an English summary.
+3. **Analysis**: Explain the market impact and sentiment (Positive/Negative/Neutral) and why in Korean. Also provide an English analysis.
+4. **Key Entities**: List important companies, coins, or people mentioned.
+5. **Output Format**: Return ONLY a JSON object with the following structure:
+{{
+    "title_ko": "...",
+    "title_en": "...",
+    "summary_ko": ["...", "...", "..."],
+    "summary_en": ["...", "...", "..."],
+    "analysis_ko": "...",
+    "analysis_en": "...",
+    "sentiment": "Positive/Negative/Neutral",
+    "entities": ["..."]
+}}
+"""
+        try:
+            # Gemini API 호출 (비동기 지원 여부 확인 필요, synchronous wrap or async if lib supports)
+            # google-generativeai current lib is mostly sync references usually, but has async generate_content_async?
+            # Let's check or use run_in_executor if needed. assuming sync for simplicity or check docs.
+            # verify_step1 checks import, version 0.8.6 supports async.
+            
+            # Unified Call
+            text_response = await self._generate_content(prompt, task_type="collection")
+            
+            # JSON 파싱
+            # Basic cleanup if markdown backticks are present
+            if "```json" in text_response:
+                text_response = text_response.replace("```json", "").replace("```", "")
+            elif "```" in text_response:
+                text_response = text_response.replace("```", "")
+                
+            result = json.loads(text_response.strip())
+            return result
+            
+        except Exception as e:
+            logger.error(f"AI Analysis failed: {e}")
+            return None
+
+    async def translate_batch(self, items: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        """
+        Batch translate news titles and descriptions to Korean.
+        items: [{"id": "...", "title": "...", "description": "..."}]
+        Returns: Same list with added "title_ko" and "description_ko" keys.
+        """
+        if not items:
+            return items
+
+        # Limit batch size to avoid huge prompts (e.g., 20 items max)
+        # For significantly larger lists, caller should chunk.
+        
+        # Prepare valid JSON-friendly string or simple indexed list
+        prompt_text = ""
+        for item in items:
+            t = item.get("title", "")
+            d = item.get("description", "")
+            prompt_text += f"ID: {item.get('id')}\nTitle: {t}\nDesc: {d}\n---\n"
+
+        prompt = f"""
+You are an expert financial news editor and SEO specialist. Your task is to transform short news snippets into rich, engaging, and simplified news storage optimized for search engines (SEO).
+
+[Input Data]
+{prompt_text}
+
+[Instructions]
+For each news item, generate the following fields in both English and Korean:
+1. **Title**: An engaging, click-worthy, SEO-optimized title (keep it professional).
+2. **Description**: A concise meta-description (1-2 sentences) summarizing the key point.
+3. **Content**: A rich, expanded body text (2-3 paragraphs). 
+   - Supplement the short input with context, definitions of terms, or potential market implications based on your knowledge.
+   - Use clear, professional, yet accessible language (explain difficult terms).
+   - Format with HTML tags (e.g., <strong> for bold, <p> for paragraphs, <h2>/<h3> for headings, <ul>/<li> for lists).
+
+**IMPORTANT**: Do NOT include specific prices, market cap numbers, dates, or any numerical market data. Your training data may be outdated and incorrect. Focus on general information, concepts, and qualitative analysis only.
+
+[Output Format]
+Return ONLY a valid JSON array of objects. Each object must have:
+{{
+    "id": "ID from input",
+    "title_en": "SEO Title (English)",
+    "title_ko": "SEO Title (Korean)",
+    "description_en": "Meta Description (English)",
+    "description_ko": "Meta Description (Korean)",
+    "content_en": "Expanded Body Content (English) - Use HTML formatting",
+    "content_ko": "Expanded Body Content (Korean) - Use HTML formatting"
+}}
+
+RETURN ONLY JSON. NO MARKDOWN WRAPPERS.
+"""
+        try:
+            text_response = await self._generate_content(prompt, task_type="collection")
+            
+            # Clean generic markdown wrappers
+            if "```json" in text_response:
+                text_response = text_response.replace("```json", "").replace("```", "")
+            elif "```" in text_response:
+                text_response = text_response.replace("```", "")
+            
+            translated_list = json.loads(text_response.strip())
+            
+            # Create a map for O(1) lookup
+            trans_map = {str(t['id']): t for t in translated_list}
+            
+            # Merge back - extract ALL fields from AI response
+            results = []
+            for item in items:
+                tid = str(item.get('id'))
+                if tid in trans_map:
+                    t_data = trans_map[tid]
+                    # Title fields
+                    item['title_en'] = t_data.get('title_en', item.get('title', ''))
+                    item['title_ko'] = t_data.get('title_ko', item.get('title', ''))
+                    # Description fields
+                    item['description_en'] = t_data.get('description_en', item.get('description', ''))
+                    item['description_ko'] = t_data.get('description_ko', '')
+                    # Content fields (expanded body text)
+                    item['content_en'] = t_data.get('content_en', '')
+                    item['content_ko'] = t_data.get('content_ko', '')
+                else:
+                    # Fallback - use English as Korean fallback (better than empty)
+                    title = item.get('title', '')
+                    desc = item.get('description', '')
+                    item['title_en'] = title
+                    item['title_ko'] = title
+                    item['description_en'] = desc
+                    item['description_ko'] = desc
+                    item['content_en'] = desc
+                    item['content_ko'] = desc
+                results.append(item)
+                
+            return results
+
+        except Exception as e:
+            logger.error(f"Batch translation failed: {e}")
+            # Fallback for all - use English content as fallback (better than empty)
+            for item in items:
+                title = item.get('title', '')
+                desc = item.get('description', '')
+                item['title_en'] = title
+                item['title_ko'] = title  # English as fallback
+                item['description_en'] = desc
+                item['description_ko'] = desc  # English as fallback
+                item['content_en'] = desc
+                item['content_ko'] = desc  # English as fallback (better than empty)
+            return items
+
+    def _parse_json_response(self, text: str) -> Optional[Dict]:
+        """Robust JSON parsing"""
+        try:
+            text = text.strip()
+            # Remove Markdown code blocks
+            if "```json" in text:
+                # Find first ```json and last ```
+                pattern = r"```json(.*?)```"
+                match = re.search(pattern, text, re.DOTALL)
+                if match:
+                    text = match.group(1).strip()
+            elif "```" in text:
+                pattern = r"```(.*?)```"
+                match = re.search(pattern, text, re.DOTALL)
+                if match:
+                    text = match.group(1).strip()
+            
+            # Find JSON object boundaries (simple heuristic)
+            start = text.find('{')
+            end = text.rfind('}')
+            if start != -1 and end != -1:
+                text = text[start:end+1]
+            else:
+                logger.error(f"Could not find JSON object boundaries in response: {text[:200]}...")
+                return None
+                
+            return json.loads(text, strict=False)
+        except json.JSONDecodeError as je:
+            logger.error(f"JSON Decode Error: {je}")
+            # Attempt to fix common JSON issues from AI
+            try:
+                # Replace unescaped newlines within strings
+                # This is a very rough fix
+                fixed_text = re.sub(r'(?<=: ")(.*?)(?=",)', lambda m: m.group(1).replace('\n', '\\n'), text, flags=re.DOTALL)
+                return json.loads(fixed_text, strict=False)
+            except:
+                logger.error(f"Failed to fix JSON: {text[:500]}...")
+                return None
+        except Exception as e:
+            logger.error(f"JSON Parse Error: {e}")
+            logger.debug(f"Failed Text: {text}")
+            return None
+
+    async def merge_posts(self, posts: List[Post]) -> Dict:
+        """
+        Merge multiple posts into a single comprehensive article.
+        """
+        if not posts:
+            return None
+
+        # Prepare input text
+        articles_text = ""
+        for i, p in enumerate(posts):
+            title = p.title.get('en') if isinstance(p.title, dict) else str(p.title)
+            content = p.content or p.description or ""
+            source = p.post_info.get('source', 'Unknown') if p.post_info else 'Unknown'
+            date = p.published_at.strftime('%Y-%m-%d %H:%M') if p.published_at else 'Unknown'
+            articles_text += f"\n[Article {i+1}] Title: {title}\nSource: {source} (Time: {date})\nContent: {content[:1000]}...\n"
+
+        prompt = f"""
+You are an expert financial news editor. Your task is to synthesize the following group of related news articles into ONE single, high-quality, comprehensive news report.
+
+[Input Articles]
+{articles_text}
+
+[Instructions]
+1. **Synthesis**: Combine facts from all articles. Eliminate duplicates. Create a coherent narrative.
+2. **Structure**:
+   - **Title**: A compelling, professional title (English & Korean).
+   - **Description**: A concise summary (1-2 sentences) (English & Korean).
+   - **Content**: A detailed body text (3-5 paragraphs) using HTML tags (e.g., <h2>, <p>, <strong>, <ul>). Include background context if available.
+3. **Language**: Provide output in both English and Korean.
+
+**IMPORTANT**: Do NOT include specific prices, market cap numbers, dates, or any numerical market data. Your training data may be outdated. Focus on general information and qualitative analysis.
+
+[Output Format]
+Return ONLY a valid JSON object:
+{{
+    "title_en": "...",
+    "title_ko": "...",
+    "description_en": "...",
+    "description_ko": "...",
+    "content_en": "...",
+    "content_ko": "..."
+}}
+"""
+        try:
+            text_response = await self._generate_content(prompt, task_type="merge", max_retries=1, base_delay=3)
+            result = self._parse_json_response(text_response)
+            return self._ensure_html_content(result)
+        except Exception as e:
+            logger.error(f"Merge posts failed: {e}")
+            return None
+
+    async def rewrite_post(self, post_data: Dict) -> Dict:
+        """
+        Rewrite and improve an existing post's content.
+        post_data: {'title': ..., 'content': ...}
+        """
+        title = post_data.get('title', '')
+        content = post_data.get('content', '')
+        
+        if not content:
+            # If no content, try to generate from title alone
+            prompt = f"""
+You are an expert financial blog editor. Write a comprehensive blog post based on the following title.
+
+Title: {title}
+
+[Instructions]
+1. **Content**: detailed, professional, engaging (3-5 paragraphs). Use HTML tags (e.g., <h2>, <p>, <strong>, <ul>/<li>).
+2. **Language**: Provide output in both English and Korean.
+3. **Structure**: 
+    - Title (Refined)
+    - Description (Meta summary)
+    - Content (Body)
+
+[Output Format]
+Return ONLY a valid JSON object:
+{{
+    "title_en": "...",
+    "title_ko": "...",
+    "description_en": "...",
+    "description_ko": "...",
+    "content_en": "...",
+    "content_ko": "..."
+}}
+"""
+        else:
+            # Rewrite existing content
+            prompt = f"""
+You are an expert financial blog editor. Improve and rewrite the following blog post to be more professional, engaging, and SEO-friendly.
+
+[Input Post]
+Title: {title}
+Content: {content[:2000]}
+
+[Instructions]
+1. **Refine**: Fix grammar, improve flow, make it sound authoritative.
+2. **Expand**: Add context or explanations where needed.
+3. **Format**: Use HTML tags (e.g., <h2>, <h3>, <p>, <strong>, <ul>/<li>). Do NOT use Markdown.
+4. **Language**: Provide refined versions in both English and Korean.
+
+**IMPORTANT**: Do NOT include specific prices, market cap numbers, dates, or any numerical market data. Your training data may be outdated. Focus on general information and qualitative analysis.
+
+[Output Format]
+Return ONLY a valid JSON object:
+{{
+    "title_en": "Refined English Title",
+    "title_ko": "Refined Korean Title",
+    "description_en": "Refined English Meta Description",
+    "description_ko": "Refined Korean Meta Description",
+    "content_en": "Refined English Content",
+    "content_ko": "Refined Korean Content"
+}}
+"""
+        try:
+            # Change task_type to 'general' to use Gemini provider logic
+            text_response = await self._generate_content(prompt, task_type="general", max_retries=1, base_delay=3)
+            logger.info(f"Raw AI Response for Rewrite: {text_response[:500]}...") 
+            result = self._parse_json_response(text_response)
+            if not result:
+                logger.error(f"Failed to parse AI response. Raw: {text_response}")
+            return self._ensure_html_content(result)
+        except Exception as e:
+            logger.error(f"Rewrite post failed: {e}")
+            return None

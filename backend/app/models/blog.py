@@ -60,7 +60,7 @@ class Post(Base):
     description = Column(JSON, nullable=False)  # 다국어 지원을 위해 JSON으로 변경
     content = Column(Text, nullable=True)  # 영문 content
     content_ko = Column(Text, nullable=True)  # 한글 content
-    excerpt = Column(Text, nullable=True)
+    excerpt = Column(JSON, nullable=True)
     
     # 동기화 설정
     sync_with_asset = Column(Boolean, default=True)
@@ -81,8 +81,8 @@ class Post(Base):
     cover_image_alt = Column(Text, nullable=True)
     
     # SEO
-    meta_title = Column(String(200), nullable=True)
-    meta_description = Column(String(300), nullable=True)
+    meta_title = Column(JSON, nullable=True)
+    meta_description = Column(JSON, nullable=True)
     keywords = Column(JSON, nullable=True)
     canonical_url = Column(String(500), nullable=True)
     

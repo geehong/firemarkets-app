@@ -199,16 +199,20 @@ class DataProcessor:
                 task_wrapper = None
                 if self.queue_manager:
                     task_wrapper = await self.queue_manager.pop_batch_task(timeout_seconds=0.1)
+                    if task_wrapper:
+                        logger.debug(f"🔍 Popped task from queue_manager: {str(task_wrapper)[:200]}...")
                 elif self.redis_client:
                     result = await self.redis_client.blpop(self.batch_queue, timeout=0.1)
                     if result:
                         _, task_data = result
                         try:
                             task_wrapper = json.loads(task_data)
+                            logger.debug(f"🔍 Popped task from redis_client: {str(task_wrapper)[:200]}...")
                         except json.JSONDecodeError:
                             pass
 
                 if not task_wrapper:
+                    # logger.debug("Queue empty")
                     break
                 
                 # 태스크 처리
@@ -291,3 +295,40 @@ class DataProcessor:
             
     def switch_to_next_source(self):
         self.current_source_index = (self.current_source_index + 1) % len(self.backup_sources)
+
+    async def get_backup_data(self, symbols: List[str]) -> List[Dict[str, Any]]:
+        """백업 데이터 조회 (최신 시세)"""
+        if not symbols:
+            return []
+            
+        try:
+            pg_db = next(get_postgres_db())
+            try:
+                from ..models.asset import RealtimeQuote, Asset
+                
+                # Query latest quotes for symbols
+                results = pg_db.query(RealtimeQuote, Asset.ticker)\
+                    .join(Asset, RealtimeQuote.asset_id == Asset.asset_id)\
+                    .filter(Asset.ticker.in_(symbols))\
+                    .all()
+                    
+                backup_data = []
+                for quote, ticker in results:
+                    backup_data.append({
+                        'asset_id': quote.asset_id,
+                        'ticker': ticker,
+                        'price': float(quote.price) if quote.price else None,
+                        'change_amount': float(quote.change_amount) if quote.change_amount else None,
+                        'change_percent': float(quote.change_percent) if quote.change_percent else None,
+                        'timestamp_utc': quote.timestamp_utc.isoformat() if quote.timestamp_utc else None,
+                        'data_source': quote.data_source
+                    })
+                return backup_data
+            finally:
+                pg_db.close()
+        except Exception as e:
+            logger.error(f"백업 데이터 조회 실패: {e}")
+            return []
+
+# 전역 인스턴스 (Singleton)
+data_processor = DataProcessor()

@@ -40,7 +40,7 @@ interface UseAssetsReturn {
   refetch: () => Promise<void>
 }
 
-export const useAssets = ({ 
+export const useAssets = ({
   type_name,
   has_ohlcv_data = false,
   limit = 1000,
@@ -54,10 +54,10 @@ export const useAssets = ({
 
   const fetchData = useCallback(async () => {
     if (!enabled) return
-    
+
     setLoading(true)
     setError(null)
-    
+
     try {
       // 올바른 API 엔드포인트 사용
       const params = new URLSearchParams({
@@ -65,17 +65,17 @@ export const useAssets = ({
         limit: limit.toString(),
         offset: offset.toString(),
       })
-      
+
       if (type_name) {
         params.append('type_name', type_name)
       }
-      
+
       const response = await fetch(`https://backend.firemarkets.net/api/v1/assets/assets?${params}`)
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
-      
+
       const result = await response.json()
       setData(result.data || [])
       setTotalCount(result.total_count || 0)
@@ -105,7 +105,7 @@ export const useAssetTypes = () => {
         const response = await fetch('https://backend.firemarkets.net/api/v1/assets/assets?has_ohlcv_data=false&limit=1000&offset=0')
         if (response.ok) {
           const result = await response.json()
-          const types = Array.from(new Set(result.data.map((item: TickerData) => item.type_name).filter(Boolean)))
+          const types = Array.from(new Set(result.data.map((item: TickerData) => item.type_name).filter(Boolean))) as string[]
           setAssetTypes(types)
         }
       } catch (e) {
@@ -129,7 +129,7 @@ export const useUpdateTickerSettings = () => {
   const updateSettings = useCallback(async (assetId: number, settings: Record<string, any>) => {
     setUpdating(true)
     setError(null)
-    
+
     try {
       const response = await fetch(`https://backend.firemarkets.net/api/v1/tickers/${assetId}/collection-settings`, {
         method: 'PUT',
@@ -138,11 +138,11 @@ export const useUpdateTickerSettings = () => {
         },
         body: JSON.stringify(settings),
       })
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
-      
+
       return await response.json()
     } catch (e) {
       setError(e instanceof Error ? e : new Error('Unknown error'))
@@ -163,14 +163,14 @@ export const useBulkUpdateTickerSettings = () => {
   const bulkUpdate = useCallback(async (updates: Array<{ assetId: number; settings: Record<string, any> }>) => {
     setUpdating(true)
     setError(null)
-    
+
     try {
       // 백엔드 API 형식에 맞게 데이터 변환
       const requestData = updates.map(({ assetId, settings }) => ({
         asset_id: assetId,
         ...settings
       }))
-      
+
       const response = await fetch(`https://backend.firemarkets.net/api/v1/tickers/bulk-update`, {
         method: 'PUT',
         headers: {
@@ -180,11 +180,11 @@ export const useBulkUpdateTickerSettings = () => {
           updates: requestData
         }),
       })
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
-      
+
       return await response.json()
     } catch (e) {
       setError(e instanceof Error ? e : new Error('Unknown error'))

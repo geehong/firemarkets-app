@@ -65,11 +65,8 @@ export default function BarChartOne() {
       fontFamily: "Outfit",
     },
     yaxis: {
-      labels: {
-        style: {
-          fontSize: "12px",
-          colors: "#6B7280",
-        },
+      title: {
+        text: undefined,
       },
     },
     grid: {

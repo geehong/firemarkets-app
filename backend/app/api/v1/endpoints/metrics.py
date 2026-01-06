@@ -159,7 +159,7 @@ async def get_integrated_metrics(
     metrics: str = Query(..., description="쉼표로 구분된 메트릭 목록 (예: price,mvrvZscore,sopr)"),
     start_date: Optional[date] = Query(None, description="시작 날짜 (YYYY-MM-DD)"),
     end_date: Optional[date] = Query(None, description="종료 날짜 (YYYY-MM-DD)"),
-    limit: int = Query(1000, ge=1, le=10000, description="최대 데이터 포인트 수"),
+    limit: int = Query(1000, ge=1, le=100000, description="최대 데이터 포인트 수"),
     compute: Optional[str] = Query(None, description="분석 옵션 (예: correlation)"),
     db: Session = Depends(get_postgres_db)
 ):

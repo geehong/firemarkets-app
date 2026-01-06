@@ -1,0 +1,38 @@
+{
+    "tickers": {
+        "crypto": [
+            "BTCUSDT",
+            "ETHUSDT",
+            "BNB",
+            "XRPUSDT",
+            "ADAUSDT",
+            "DOGEUSDT",
+            "SOL",
+            "ZEC"
+        ],
+        "stock": [
+            "AAPL",
+            "MSFT",
+            "GOOG",
+            "AMZN",
+            "TSLA",
+            "NVDA",
+            "META"
+        ],
+        "etf": [
+            "SPY",
+            "QQQ",
+            "VOO"
+        ],
+        "commodity": [
+            "GCUSD",
+            "SIUSD"
+        ]
+    },
+    "settings": {
+        "speedDurationSeconds": 120,
+        "fontSizeClass": "text-sm",
+        "heightClass": "h-12",
+        "gapClass": "mx-6"
+    }
+}

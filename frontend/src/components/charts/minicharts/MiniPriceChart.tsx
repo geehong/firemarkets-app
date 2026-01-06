@@ -2,9 +2,9 @@
 "use client"
 
 import React, { useEffect, useMemo, useRef, useState } from "react"
-import { useDelayedQuotes, useSparklinePrice } from "@/hooks/useRealtime"
-import { useRealtimePrices } from "@/hooks/useSocket"
-import { useAssetDetail } from "@/hooks/useAssets"
+import { useDelayedQuotes, useSparklinePrice } from "@/hooks/data/useRealtime"
+import { useRealtimePrices } from "@/hooks/data/useSocket"
+import { useAssetDetail } from "@/hooks/assets/useAssets"
 // CSS는 globals.css에서 글로벌로 로드됨
 
 // 연결 상태 표시 컴포넌트
@@ -12,9 +12,9 @@ const ConnectionStatus: React.FC<{ isConnected: boolean }> = ({ isConnected }) =
   if (isConnected) {
     // ON 상태 (녹색)
     return (
-      <div style={{ 
-        color: '#10B981', 
-        fontWeight: 'bold', 
+      <div style={{
+        color: '#10B981',
+        fontWeight: 'bold',
         fontSize: '12px',
         display: 'flex',
         alignItems: 'center',
@@ -26,9 +26,9 @@ const ConnectionStatus: React.FC<{ isConnected: boolean }> = ({ isConnected }) =
   } else {
     // OFF 상태 (빨간색)
     return (
-      <div style={{ 
-        color: '#dc2626', 
-        fontWeight: 'bold', 
+      <div style={{
+        color: '#dc2626',
+        fontWeight: 'bold',
         fontSize: '12px',
         display: 'flex',
         alignItems: 'center',
@@ -45,7 +45,7 @@ type MiniPriceChartProps = {
   assetIdentifier?: string
   chartType?: string
   useWebSocket?: boolean
-  apiInterval?: string | null
+  apiInterval?: number | null
   marketHours?: boolean
   title?: string
   dataSource?: string
@@ -82,18 +82,31 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
   dataSource,
 }) => {
   const chartRef = useRef<HTMLDivElement | null>(null)
-  const [chart, setChart] = useState<any>(null)
+  const chartInstanceRef = useRef<any>(null)
   const [Highcharts, setHighcharts] = useState<any>(null)
   const [isMobile, setIsMobile] = useState<boolean>(false)
   const [isClient, setIsClient] = useState<boolean>(false)
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(true)
   const [highchartsLoaded, setHighchartsLoaded] = useState(false)
   const hasLoggedApiResponse = useRef<boolean>(false)
   const hasLoggedChartData = useRef<boolean>(false)
   const hasLoggedUpdatedPoint = useRef<boolean>(false)
 
-  // 클라이언트 사이드 렌더링 확인
+  // 클라이언트 사이드 렌더링 확인 및 테마 감지
   useEffect(() => {
     setIsClient(true)
+    // 다크모드 감지
+    const checkDarkMode = () => {
+      const isDark = document.documentElement.classList.contains('dark')
+      setIsDarkMode(isDark)
+    }
+    checkDarkMode()
+
+    // MutationObserver로 테마 변경 감지
+    const observer = new MutationObserver(checkDarkMode)
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+
+    return () => observer.disconnect()
   }, [])
 
   // 화면 크기 감지 (클라이언트에서만, 안전하게)
@@ -106,13 +119,13 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
       const isMobileDevice = width <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
       setIsMobile(isMobileDevice)
     }
-    
+
     // 초기 체크 (약간의 지연을 두어 안정성 확보)
     const timeoutId = setTimeout(checkIsMobile, 100)
-    
+
     // 리사이즈 이벤트 리스너
     window.addEventListener('resize', checkIsMobile)
-    
+
     return () => {
       clearTimeout(timeoutId)
       window.removeEventListener('resize', checkIsMobile)
@@ -121,12 +134,12 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
 
   // 웹소켓 실시간 데이터 수신
   const { latestPrice, priceHistory, isConnected: socketConnected } = useRealtimePrices(assetIdentifier)
-  
+
   // 자산 정보 가져오기 (이름 표시용)
   const { data: assetDetail } = useAssetDetail(assetIdentifier)
   const assetName = assetDetail?.name || assetIdentifier
   const assetTicker = assetIdentifier
-  
+
   // 실제 연결 상태 (시장 개장 시간 고려)
   const actualConnectionStatus = useMemo(() => {
     if (chartType === 'stocks' && marketHours === false) {
@@ -143,7 +156,7 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
           const { default: HighchartsCore } = await import("highcharts/highstock")
 
           setHighcharts(HighchartsCore)
-          ;(window as any).Highcharts = HighchartsCore
+            ; (window as any).Highcharts = HighchartsCore
           setHighchartsLoaded(true)
         } catch (error) {
           console.error("Failed to load Highcharts:", error)
@@ -161,7 +174,7 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
   }, [])
 
   // 주식/ETF인지 확인 (chartType이 'stocks'이거나 asset_type_id가 2(Stocks) 또는 5(ETFs))
-  const isStocksOrEtf = chartType === 'stocks' || 
+  const isStocksOrEtf = chartType === 'stocks' ||
     assetDetail?.asset_type_id === 2 || // Stocks
     assetDetail?.asset_type_id === 5 || // ETFs
     assetDetail?.type_name?.toLowerCase() === 'stocks' ||
@@ -174,7 +187,7 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
     { dataInterval: '15m', days: 1, dataSource },
     { enabled: isStocksOrEtf }
   )
-  
+
   // 주식/ETF인 경우 sparkline-price 결과 사용, 그 외에는 기존 delayed quotes 사용
   const apiResponse = isStocksOrEtf ? sparklineQuery.data : delayedQuotesQuery.data
   const isLoading = isStocksOrEtf ? sparklineQuery.isLoading : delayedQuotesQuery.isLoading
@@ -191,7 +204,7 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
   // 시계열 데이터로 변환 (API 데이터만 사용, 실시간 데이터는 별도 useEffect에서 처리)
   const chartData: [number, number][] = useMemo(() => {
     let baseData: [number, number][] = []
-    
+
     // API 데이터 추가 (quotes-delay-price 응답 구조에 맞게)
     if (apiResponse && Array.isArray(apiResponse)) {
       // apiResponse가 배열인 경우 (여러 자산)
@@ -217,7 +230,7 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
         .filter((p: any): p is [number, number] => p !== null)
         .sort((a: [number, number], b: [number, number]) => a[0] - b[0])
     }
-    
+
     // API 데이터 콘솔 출력 (1번만)
     if (baseData.length > 0 && !hasLoggedChartData.current) {
       console.log('[MiniPriceChart] Chart Data (API only):', {
@@ -228,7 +241,7 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
       })
       hasLoggedChartData.current = true
     }
-    
+
     return baseData.sort((a, b) => a[0] - b[0])
   }, [apiResponse, assetIdentifier])
 
@@ -257,8 +270,8 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
     const span = maxTime - minTime
     const leftPad = span * 0.05
     const rightPad = 8 * 60 * 60 * 1000 // 8시간으로 증가 (y축 라벨이 가려지지 않도록)
-    return { 
-      min: minTime - leftPad, 
+    return {
+      min: minTime - leftPad,
       max: maxTime + rightPad,
       softMin: minTime - leftPad,
       softMax: maxTime + rightPad
@@ -271,13 +284,23 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
   const xAxisSoftMin = xAxisRange.softMin
   const xAxisSoftMax = xAxisRange.softMax
 
-  // 차트 초기 생성 (API 데이터 기반)
+  // 차트 초기 생성 (API 데이터 기반) - 테마 변경 시 재생성
+  const hasData = chartData.length > 0;
   useEffect(() => {
     if (!chartRef.current) return
     if (!Highcharts) return
     if (!highchartsLoaded) return
-    if (isLoading || chartData.length === 0) return
-    if (chart) return // 이미 차트가 있으면 스킵
+    if (isLoading && !hasData) return // 데이터 없으면 대기
+
+    // 테마 변경 또는 다른 조건으로 차트 재생성 필요 시 기존 차트 파괴
+    if (chartInstanceRef.current && chartInstanceRef.current.renderer) {
+      try {
+        chartInstanceRef.current.destroy()
+      } catch (e) {
+        // 이미 파괴된 차트 무시
+      }
+      chartInstanceRef.current = null
+    }
 
     const last = chartData[chartData.length - 1]
     const lastPrice = last ? last[1] : null
@@ -290,26 +313,45 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
     }
     const lineColor = isRising === null ? "#999999" : (isRising ? "#18c58f" : "#ff4d4f")
 
+    // 테마별 색상 설정
+    const themeColors = isDarkMode ? {
+      backgroundColor: '#1a1a1a',
+      gridLineColor: 'rgba(255,255,255,0.06)',
+      lineColor: 'rgba(255,255,255,0.12)',
+      tickColor: 'rgba(255,255,255,0.15)',
+      labelColor: '#cccccc',
+      titleColor: '#ffffff',
+      subtitleColor: '#aaaaaa',
+    } : {
+      backgroundColor: '#ffffff',
+      gridLineColor: 'rgba(0,0,0,0.08)',
+      lineColor: 'rgba(0,0,0,0.12)',
+      tickColor: 'rgba(0,0,0,0.15)',
+      labelColor: '#555555',
+      titleColor: '#1a1a1a',
+      subtitleColor: '#666666',
+    }
+
     const options: any = {
       chart: {
-        height: 192, // 부모 컨테이너 높이와 동일하게 설정
-        backgroundColor: "#1a1a1a", 
+        height: null, // 부모 컨테이너 높이에 자동 맞춤
+        backgroundColor: themeColors.backgroundColor,
         animation: false,
         scrollablePlotArea: { minHeight: 0 },
         zoomType: null,
         panning: { enabled: false },
         panKey: 'shift',
         events: {
-          wheel: function(e: any) {
+          wheel: function (e: any) {
             e.preventDefault();
             e.stopPropagation();
             return false;
           },
-          load: function() {
+          load: function () {
             // 차트 로드 후 휠 이벤트 완전 차단
             const chartAny = this as any;
             const container = chartAny && chartAny.container ? chartAny.container : null;
-            
+
             // 모든 휠 이벤트 차단
             const preventWheel = (e: any) => {
               e.preventDefault();
@@ -317,7 +359,7 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
               e.stopImmediatePropagation();
               return false;
             };
-            
+
             // 다양한 이벤트 타입에 대해 차단
             if (container) {
               ['wheel', 'mousewheel', 'DOMMouseScroll'].forEach(eventType => {
@@ -330,7 +372,7 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
       title: {
         text: title || null, // 차트 내부 타이틀 설정
         style: {
-          color: '#ffffff',
+          color: themeColors.titleColor,
           fontSize: '14px',
           fontWeight: 'bold'
         },
@@ -342,7 +384,7 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
       subtitle: {
         text: `${assetName} (${assetTicker})`, // 중앙에 티커 표시
         style: {
-          color: '#aaaaaa', // 어두운 배경에 맞춘 밝은 회색
+          color: themeColors.subtitleColor,
           fontSize: '16px',
           fontWeight: 'normal'
         },
@@ -358,13 +400,13 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
         softMax: xAxisSoftMax,
         minPadding: 0.05, // 좌측 패딩 5%
         maxPadding: 0.3, // 우측 패딩 30% (y축 라벨 공간 확보)
-        gridLineColor: "rgba(255,255,255,0.06)",
+        gridLineColor: themeColors.gridLineColor,
         gridLineWidth: 0.5,
-        labels: { enabled: true, style: { color: "#cccccc" } },
-        lineColor: "rgba(255,255,255,0.12)",
-        tickColor: "rgba(255,255,255,0.15)",
+        labels: { enabled: true, style: { color: themeColors.labelColor } },
+        lineColor: themeColors.lineColor,
+        tickColor: themeColors.tickColor,
         events: {
-          setExtremes: function(e: any) {
+          setExtremes: function (e: any) {
             // 휠로 인한 자동 범위 변경 방지
             if (e.trigger === 'zoom' || e.trigger === 'pan') {
               return false;
@@ -374,28 +416,28 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
       },
       yAxis: {
         opposite: true,
-        gridLineColor: "rgba(255,255,255,0.06)",
+        gridLineColor: themeColors.gridLineColor,
         gridLineWidth: 0.5,
         labels: {
           enabled: true,
-          style: { color: "#cccccc" },
+          style: { color: themeColors.labelColor },
           align: "left",
           x: 15,
           formatter: function (this: any) {
             return formatCompact(this.value)
           },
         },
-        title: { text: null, style: { color: "#cccccc" } },
+        title: { text: null, style: { color: themeColors.labelColor } },
         plotLines: isFiniteNumber(lastPrice)
           ? [
-              {
-                id: "current-price-line",
-                value: Math.round(lastPrice * 100) / 100,
-                color: lineColor,
-                width: 0.75,
-                zIndex: 10,
-              },
-            ]
+            {
+              id: "current-price-line",
+              value: Math.round(lastPrice * 100) / 100,
+              color: lineColor,
+              width: 0.75,
+              zIndex: 10,
+            },
+          ]
           : [],
       },
       rangeSelector: { enabled: false },
@@ -436,7 +478,7 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
     let newChart: any
     try {
       newChart = Highcharts.stockChart(chartRef.current as any, options)
-      setChart(newChart)
+      chartInstanceRef.current = newChart
 
       // 차트 생성 후 dataLabels 렌더링을 위한 레이아웃 재계산
       requestAnimationFrame(() => {
@@ -473,21 +515,72 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
           return false
         }
 
-        // 모든 휠 관련 이벤트 차단
-        ;['wheel', 'mousewheel', 'DOMMouseScroll'].forEach(eventType => {
-          container.addEventListener(eventType, preventWheel, { passive: false, capture: true })
-        })
+          // 모든 휠 관련 이벤트 차단
+          ;['wheel', 'mousewheel', 'DOMMouseScroll'].forEach(eventType => {
+            container.addEventListener(eventType, preventWheel, { passive: false, capture: true })
+          })
       }
 
       // console.log(`[MiniPriceChart - ${assetIdentifier}] 차트 초기 생성 완료`)
     } catch (e) {
       console.error(`[MiniPriceChart - ${assetIdentifier}] chart init error:`, e)
     }
-  }, [assetIdentifier, isLoading, highchartsLoaded, chart, chartDataLength, lastDataTimestamp, prevClosePrice, assetName, assetTicker, title, xAxisSoftMin, xAxisSoftMax, Highcharts])
+  }, [assetIdentifier, highchartsLoaded, Highcharts, isDarkMode, hasData]) // 데이터 관련 의존성 제거, hasData 추가
+
+  // 데이터 변경 시 차트 업데이트만 수행 (재생성 방지)
+  useEffect(() => {
+    if (!chartInstanceRef.current || chartData.length === 0) return
+
+    // 차트 데이터 업데이트
+    const chart = chartInstanceRef.current;
+
+    // 메인 시리즈 데이터 업데이트
+    if (chart.series[0]) {
+      chart.series[0].setData(chartData, false, false, false);
+    }
+
+    // 마지막 포인트 및 마커 업데이트
+    const last = chartData[chartData.length - 1]
+    const lastPrice = last ? last[1] : null
+    let isRising: boolean | null = null
+    if (isFiniteNumber(lastPrice) && isFiniteNumber(prevClosePrice)) {
+      const diff = lastPrice - prevClosePrice
+      if (diff > 0) isRising = true
+      else if (diff < 0) isRising = false
+      else isRising = null
+    }
+    const lineColor = isRising === null ? "#999999" : (isRising ? "#18c58f" : "#ff4d4f")
+
+    // 마커 시리즈 업데이트
+    if (chart.series[1]) {
+      chart.series[1].update({
+        color: lineColor,
+        dataLabels: { style: { color: lineColor } }
+      }, false);
+      chart.series[1].setData(last ? [[last[0], last[1]]] : [], false, false, false);
+    }
+
+    // yAxis plotLine 업데이트
+    const yAxis = chart.yAxis[0];
+    if (yAxis && isFiniteNumber(lastPrice)) {
+      yAxis.removePlotLine('current-price-line');
+      yAxis.addPlotLine({
+        id: "current-price-line",
+        value: Math.round(lastPrice * 100) / 100,
+        color: lineColor,
+        width: 0.75,
+        zIndex: 10,
+      });
+    }
+
+    chart.redraw(false);
+  }, [chartDataLength, lastDataTimestamp, prevClosePrice]) // 데이터 변경 감지
 
   // 실시간 데이터 업데이트 (마지막 포인트만 움직이는 효과)
   useEffect(() => {
-    if (!chart || !latestPrice) return
+    if (!chartInstanceRef.current || !latestPrice) return
+    // 차트가 파괴된 상태인지 확인
+    if (!chartInstanceRef.current.series || chartInstanceRef.current.series.length === 0) return
 
     const realtimePoint: [number, number] = [
       new Date(latestPrice.timestamp).getTime(),
@@ -506,7 +599,7 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
       const lineColor = isRising === null ? '#999999' : (isRising ? '#18c58f' : '#ff4d4f')
 
       // 메인 라인 시리즈 업데이트: 마지막 포인트와 이어지도록 동작
-      const lineSeries = chart.series[0]
+      const lineSeries = chartInstanceRef.current.series[0]
       if (lineSeries) {
         const lastPointObject = lineSeries.data && lineSeries.data.length > 0 ? lineSeries.data[lineSeries.data.length - 1] : null
         if (!lastPointObject) {
@@ -524,27 +617,27 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
         }
       }
 
-      // x축 우측 패딩 8시간 유지: softMax를 업데이트하여 패딩이 적용되도록 함
-      const xAxis = chart.xAxis[0]
+      // x축 우측 패딩 8시간 유지
+      const xAxis = chartInstanceRef.current.xAxis[0]
       if (xAxis) {
-        const rightPadMs = 8 * 60 * 60 * 1000 // 8시간으로 증가
+        const rightPadMs = 8 * 60 * 60 * 1000
         const newSoftMax = realtimePoint[0] + rightPadMs
-        const extremes = xAxis.getExtremes()
-        
-        // softMax를 업데이트하여 패딩이 적용되도록 함 (min/max 직접 설정 시 패딩 무시됨)
-        if (chart.xAxis && chart.xAxis[0]) {
-          chart.xAxis[0].update({
+
+        // softMax만 업데이트 (redraw: false)
+        if (xAxis.softMax !== newSoftMax) {
+          xAxis.update({
             softMax: newSoftMax,
-            maxPadding: 0.3 // 우측 패딩 30% 유지
+            maxPadding: 0.3
           }, false)
-          // redraw를 호출하여 패딩이 적용된 새로운 범위로 업데이트
-          chart.redraw(false)
         }
       }
 
       // yAxis plotLines 업데이트 (현재가)
-      const yAxis = chart.yAxis[0]
+      const yAxis = chartInstanceRef.current.yAxis[0]
       if (yAxis) {
+        // 기존 라인 제거 대신 업데이트 시도 또는 제거 후 추가 (Highcharts plotLines update is tricky, remove/add is standard)
+        // 하지만 빈번한 dom 조작을 줄이기 위해 기존 라인이 있고 값만 다르면 svg 속성만 바꿀 수도 있으나,
+        // 여기서는 remove/add 방식을 유지하되 redraw false로 배치 처리
         yAxis.removePlotLine('current-price-line')
         yAxis.addPlotLine({
           id: 'current-price-line',
@@ -555,58 +648,38 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
         })
       }
 
-      // 마커 시리즈 업데이트 (색상과 라벨 포함)
-      const markerSeries = chart.series[1]
+      // 마커 시리즈 업데이트
+      const markerSeries = chartInstanceRef.current.series[1]
       if (markerSeries) {
-        markerSeries.update({
-          color: lineColor,
-          dataLabels: {
-            enabled: true,
-            allowOverlap: true, // 겹침 허용하여 레이아웃 계산 문제 방지
-            defer: false, // 즉시 렌더링 (지연 없음)
-            formatter: function (this: any) {
-              const val = Number(this.y)
-              if (!isFinite(val)) return ''
-              if (isFiniteNumber(prevClosePrice) && prevClosePrice !== 0) {
-                const diff = val - prevClosePrice
-                const pct = (diff / prevClosePrice) * 100
-                const sign = diff > 0 ? '+' : diff < 0 ? '-' : ''
-                return `$${val.toFixed(2)} (${sign}${Math.abs(pct).toFixed(2)}%, ${sign}$${Math.abs(diff).toFixed(2)})`
+        // 포인트가 있으면 해당 포인트만 업데이트, 없으면 setData
+        if (markerSeries.points && markerSeries.points.length > 0) {
+          const point = markerSeries.points[0];
+          // 값이나 색상이 다를 때만 업데이트
+          if (point.y !== realtimePoint[1] || point.color !== lineColor) {
+            point.update({
+              x: realtimePoint[0],
+              y: realtimePoint[1],
+              color: lineColor,
+              dataLabels: {
+                style: { color: lineColor }
               }
-              return `$${val.toFixed(2)}`
-            },
-            style: { color: lineColor, fontWeight: '900', fontSize: '12px' }
+            }, false);
           }
-        }, false)
-        markerSeries.setData([realtimePoint], false, false, false)
+        } else {
+          markerSeries.setData([realtimePoint], false);
+        }
+
+        // 시리즈 전체 옵션 업데이트는 색상이 실제로 변경되었을 때만 수행하도록 체크하면 좋지만,
+        // dataLabels formatter가 클로저로 prevClosePrice 등을 잡고 있어서 업데이트가 필요할 수 있음.
+        // 그러나 formatter는 함수이므로 매번 재설정할 필요 없음. style color만 점 업데이트로 처리됨.
+        // 따라서 여기서는 series.update 호출을 제거하고 point.update로 처리.
       }
 
-      // 차트 리드로우 (애니메이션 없이)
-      chart.redraw(false)
-      
-      // dataLabels 렌더링을 위한 레이아웃 재계산
-      // requestAnimationFrame을 사용하여 브라우저 렌더링 사이클에 맞춤
-      requestAnimationFrame(() => {
-        try {
-          // 차트가 완전히 마운트되고 컨테이너가 존재하는지 확인
-          if (chart && chart.renderer && chart.renderer.box && chart.container && chart.container.parentNode) {
-            if (typeof chart.reflow === 'function') {
-              chart.reflow()
-            }
-          }
-          // 추가로 dataLabels를 강제로 업데이트
-          if (markerSeries && markerSeries.points && markerSeries.points.length > 0) {
-            const point = markerSeries.points[0]
-            if (point && point.dataLabel) {
-              point.dataLabel.attr({ opacity: 1 })
-            }
-          }
-        } catch (e) {
-          // reflow 에러는 무시 (차트가 아직 완전히 준비되지 않았을 수 있음)
-          console.warn('[MiniPriceChart] reflow failed:', e)
-        }
-      })
-      
+      // 모든 변경 후 한 번만 리드로우
+      chartInstanceRef.current.redraw(false)
+
+      // requestAnimationFrame 및 reflow 제거 (깜박임 주원인)
+
       // 로그 출력 (1번만)
       if (!hasLoggedUpdatedPoint.current) {
         console.log(`[MiniPriceChart - ${assetIdentifier}] 실시간 데이터 업데이트: $${realtimePoint[1]} (${isRising === true ? '상승' : isRising === false ? '하락' : '보합'})`)
@@ -615,18 +688,22 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
     } catch (e) {
       console.error(`[MiniPriceChart - ${assetIdentifier}] 실시간 업데이트 오류:`, e)
     }
-  }, [chart, latestPrice, assetIdentifier, prevClosePrice])
+  }, [latestPrice, assetIdentifier, prevClosePrice])
 
   // 차트 정리
   useEffect(() => {
     return () => {
-      if (chart) {
-        // console.log(`[MiniPriceChart - ${assetIdentifier}] 차트 정리`)
-        chart.destroy()
-        setChart(null)
+      if (chartInstanceRef.current && chartInstanceRef.current.renderer) {
+        try {
+          // console.log(`[MiniPriceChart - ${assetIdentifier}] 차트 정리`)
+          chartInstanceRef.current.destroy()
+        } catch (e) {
+          // 차트가 이미 파괴된 경우 무시
+        }
+        chartInstanceRef.current = null
       }
     }
-  }, [chart, assetIdentifier])
+  }, [assetIdentifier])
 
   // 웹소켓 연동은 테스트 페이지에서는 사용하지 않음 (store 미존재 환경 호환)
 
@@ -634,9 +711,9 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
   const chartHeight = isClient ? (isMobile ? "200px" : "300px") : "300px"
 
   return (
-    <div 
-      className="mini-price-chart-container" 
-      style={{ 
+    <div
+      className="mini-price-chart-container"
+      style={{
         position: 'relative',
         height: '100%',
         width: '100%',
@@ -647,11 +724,11 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
         ref={chartRef}
         id={containerId}
         className={`mini-price-chart ${isLoading ? "loading" : ""} ${error ? "error" : ""}`}
-        style={{ 
+        style={{
           height: '100%',
           width: '100%',
           minHeight: '192px',
-          maxHeight: '192px'
+          maxHeight: '100%'
         }}
       />
     </div>

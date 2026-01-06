@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigation, MenuItem } from '@/hooks/useNavigation';
+import { useNavigation, MenuItem } from '@/hooks/ui/useNavigation';
 import { ChevronRight, ChevronDown, Plus, Edit, Trash, Folder, File } from 'lucide-react';
 
 // Extended MenuItem interface to include children for the tree view

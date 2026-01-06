@@ -175,6 +175,9 @@ class AssetDetailResponse(BaseModel):
     updated_at: datetime = Field(..., description="Last update timestamp")
     type_name: str = Field(..., description="Asset type name")
     collection_settings: Dict[str, Any] = Field(..., description="Collection settings")
+    post_id: Optional[int] = Field(None, description="Associated post ID")
+    post_slug: Optional[str] = Field(None, description="Associated post slug")
+
 
 
 class OHLCVDataPoint(BaseModel):

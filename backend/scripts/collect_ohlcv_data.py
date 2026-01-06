@@ -411,43 +411,43 @@ class OHLCVDataCollector:
                 }
                 converted_data.append(data_dict)
             
-                if self.direct_save:
-                    # 큐 우회하여 직접 저장 (PostgreSQL UPSERT)
-                    from app.models.asset import OHLCVData
-                    from sqlalchemy.dialects.postgresql import insert as pg_insert
-                    db = self.session_factory()
-                    try:
-                        rows = []
-                        for d in converted_data:
-                            rows.append({
-                                'asset_id': d['asset_id'],
-                                'timestamp_utc': datetime.fromisoformat(d['date']) if d['date'] else datetime.utcnow(),
-                                'data_interval': '1day',
-                                'open_price': d['open'],
-                                'high_price': d['high'],
-                                'low_price': d['low'],
-                                'close_price': d['close'],
-                                'volume': d['volume'],
-                            })
+            if self.direct_save:
+                # 큐 우회하여 직접 저장 (PostgreSQL UPSERT)
+                from app.models.asset import OHLCVData
+                from sqlalchemy.dialects.postgresql import insert as pg_insert
+                db = self.session_factory()
+                try:
+                    rows = []
+                    for d in converted_data:
+                        rows.append({
+                            'asset_id': d['asset_id'],
+                            'timestamp_utc': datetime.fromisoformat(d['date']) if d['date'] else datetime.utcnow(),
+                            'data_interval': '1d',
+                            'open_price': d['open'],
+                            'high_price': d['high'],
+                            'low_price': d['low'],
+                            'close_price': d['close'],
+                            'volume': d['volume'],
+                        })
 
-                        # 청크 단위 UPSERT
-                        chunk = 1000
-                        total_saved = 0
-                        for i in range(0, len(rows), chunk):
-                            chunk_rows = rows[i:i+chunk]
-                            stmt = pg_insert(OHLCVData.__table__).values(chunk_rows)
-                            stmt = stmt.on_conflict_do_nothing(index_elements=['asset_id', 'timestamp_utc', 'data_interval'])
-                            db.execute(stmt)
-                            db.commit()
-                            total_saved += len(chunk_rows)
-                        print(f"💾 {asset['ticker']} - DB에 {total_saved}개 직접 저장 완료(UPSERT)")
-                        return True
-                    except Exception as e:
-                        db.rollback()
-                        self.logging_helper.logger.error(f"직접 저장 중 오류: {e}")
-                        return False
-                    finally:
-                        db.close()
+                    # 청크 단위 UPSERT
+                    chunk = 1000
+                    total_saved = 0
+                    for i in range(0, len(rows), chunk):
+                        chunk_rows = rows[i:i+chunk]
+                        stmt = pg_insert(OHLCVData.__table__).values(chunk_rows)
+                        stmt = stmt.on_conflict_do_nothing(index_elements=['asset_id', 'timestamp_utc'])
+                        db.execute(stmt)
+                        db.commit()
+                        total_saved += len(chunk_rows)
+                    print(f"💾 {asset['ticker']} - DB에 {total_saved}개 직접 저장 완료(UPSERT)")
+                    return True
+                except Exception as e:
+                    db.rollback()
+                    self.logging_helper.logger.error(f"직접 저장 중 오류: {e}")
+                    return False
+                finally:
+                    db.close()
             else:
                 # 큐에 전송
                 payload = {

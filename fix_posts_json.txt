@@ -1,0 +1,34 @@
+-- Fix malformed JSON data in posts table
+-- Converts {"ko": {"ko": "Value"}} to {"en": "Value"} for relevant columns
+
+BEGIN;
+
+-- Update title
+UPDATE posts 
+SET title = jsonb_build_object('en', title->'ko'->>'ko')
+WHERE title->'ko'->>'ko' IS NOT NULL;
+
+-- Update description
+UPDATE posts 
+SET description = jsonb_build_object('en', description->'ko'->>'ko')
+WHERE description->'ko'->>'ko' IS NOT NULL;
+
+-- Update excerpt
+UPDATE posts 
+SET excerpt = jsonb_build_object('en', excerpt->'ko'->>'ko')
+WHERE excerpt->'ko'->>'ko' IS NOT NULL;
+
+-- Update meta_title
+UPDATE posts 
+SET meta_title = jsonb_build_object('en', meta_title->'ko'->>'ko')
+WHERE meta_title->'ko'->>'ko' IS NOT NULL;
+
+-- Update meta_description
+UPDATE posts 
+SET meta_description = jsonb_build_object('en', meta_description->'ko'->>'ko')
+WHERE meta_description->'ko'->>'ko' IS NOT NULL;
+
+COMMIT;
+
+-- Verification
+SELECT id, title, description FROM posts ORDER BY id LIMIT 5;

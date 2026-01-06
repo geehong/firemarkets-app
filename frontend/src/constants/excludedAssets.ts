@@ -6,13 +6,11 @@ export const EXCLUDED_ASSETS = {
   // Ticker로 제외
   tickers: [
     '2222.SR', // Saudi Aramco - 데이터 수집 불가
-    'USDC',
-    'USDT',
     'PLAT',
     'PALLAD',
     // 추가 제외할 ticker를 여기에 추가
   ] as string[],
-  
+
   // Asset ID로 제외
   assetIds: [
     // 12, // 2222.SR의 asset_id (필요시 사용)

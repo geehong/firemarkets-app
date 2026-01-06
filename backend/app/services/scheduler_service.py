@@ -29,6 +29,11 @@ from app.collectors.world_assets_collector import WorldAssetsCollector
 # from app.collectors.index_collector import IndexCollector  # Temporarily disabled
 from app.collectors.macrotrends_financials_collector import MacrotrendsFinancialsCollector
 from app.collectors.commodity_ohlcv_aggregator_collector import CommodityOHLCVAggregatorCollector
+from app.collectors.news_collector import NewsCollector
+from app.collectors.rss_collector import RSSCollector
+from app.services.news_clustering_service import NewsClusteringService
+from app.services.news_ai_agent import NewsAIEditorAgent
+from app.models.blog import Post
 
 
 class SchedulerService:
@@ -45,6 +50,8 @@ class SchedulerService:
         "WorldAssets": {"class": WorldAssetsCollector, "config_key": "is_world_assets_collection_enabled"},
         "StockFinancialsMacrotrends": {"class": MacrotrendsFinancialsCollector, "config_key": "is_stock_collection_enabled"},
         "CommodityOHLCVAggregator": {"class": CommodityOHLCVAggregatorCollector, "config_key": "is_ohlcv_collection_enabled"},
+        "News": {"class": NewsCollector, "config_key": "is_news_collection_enabled"},
+        "RSS": {"class": RSSCollector, "config_key": "is_rss_collection_enabled"},
     }
     
     # Maps temp.json collector keys to actual job configurations
@@ -120,6 +127,14 @@ class SchedulerService:
         "commodity_ohlcv_aggregator_daily": {
             "job_key": "CommodityOHLCVAggregator",
             "config": {"intervals": ["1d"]}
+        },
+        "news_collector_job": {
+            "job_key": "News",
+            "config": {}
+        },
+        "rss_collector_job": {
+            "job_key": "RSS",
+            "config": {}
         }
     }
 
@@ -265,6 +280,151 @@ class SchedulerService:
                 loop.close()
 
         return run_collection_sync
+
+    def _create_news_pipeline_function(self):
+        """
+        Creates a sync wrapper for the News AI Pipeline (Cluster -> Analyze -> Save).
+        """
+        def run_pipeline_sync():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            db: Session = SessionLocal()
+            job_name = "NewsAIPipeline"
+            
+            try:
+                self.logger.info(f"[{job_name}] Started")
+                
+                # Dependencies
+                clustering_service = NewsClusteringService()
+                ai_agent = None
+                try:
+                    ai_agent = NewsAIEditorAgent()
+                except Exception as e:
+                    self.logger.warning(f"[{job_name}] AI Agent init failed: {e}. Skipping AI analysis.")
+
+                async def _pipeline_logic():
+                    # 1. Fetch pending raw_news
+                    raw_posts = db.query(Post).filter(Post.post_type == 'raw_news', Post.status == 'draft').all()
+                    
+                    if not raw_posts:
+                        self.logger.info(f"[{job_name}] No pending news to process.")
+                        return 0
+
+                    self.logger.info(f"[{job_name}] Processing {len(raw_posts)} raw articles.")
+
+                    # 2. Cluster
+                    clusters = clustering_service.cluster_posts(raw_posts)
+                    processed_count = 0
+                    
+                    for cluster in clusters:
+                        if not cluster:
+                            continue
+                            
+                        # Mark raw posts as processed
+                        for p in cluster:
+                            p.status = 'archived'
+                        
+                        # 3. Analyze
+                        if ai_agent and len(cluster) >= 1: # Analyze even single items if significant, or stick to >=2
+                            try:
+                                analysis = await ai_agent.analyze_cluster(cluster)
+                                if analysis:
+                                    # 4. Save Insight (HTML Format)
+                                    # Ensure analysis dict has keys, handle potential missing keys safely
+                                    title_ko = analysis.get('title_ko', 'No Title')
+                                    title_en = analysis.get('title_en', 'No Title')
+                                    
+                                    summary_list_ko = analysis.get('summary_ko', [])
+                                    summary_text_ko = "\n".join([f"- {s}" for s in summary_list_ko])
+                                    summary_html_ko = "<ul>" + "".join([f"<li>{s}</li>" for s in summary_list_ko]) + "</ul>"
+                                    analysis_text_ko = analysis.get('analysis_ko', '').replace('\n', '<br>')
+                                    
+                                    summary_list_en = analysis.get('summary_en', [])
+                                    summary_text_en = "\n".join([f"- {s}" for s in summary_list_en])
+                                    summary_html_en = "<ul>" + "".join([f"<li>{s}</li>" for s in summary_list_en]) + "</ul>"
+                                    analysis_text_en = analysis.get('analysis_en', '').replace('\n', '<br>')
+                                    
+                                    # HTML Content Construction
+                                    content_html_ko = f"<h2>{title_ko}</h2><h3>요약</h3>{summary_html_ko}<h3>분석</h3><p>{analysis_text_ko}</p>"
+                                    content_html_en = f"<h2>{title_en}</h2><h3>Summary</h3>{summary_html_en}<h3>Analysis</h3><p>{analysis_text_en}</p>"
+                                    
+                                    # Aggregate Metadata from Cluster
+                                    all_tickers = set()
+                                    primary_post = cluster[0]
+                                    primary_info = primary_post.post_info or {}
+                                    
+                                    for p in cluster:
+                                        if p.post_info and isinstance(p.post_info, dict):
+                                            tickers = p.post_info.get('tickers')
+                                            if tickers:
+                                                if isinstance(tickers, list):
+                                                    all_tickers.update(tickers)
+                                                else:
+                                                    all_tickers.add(str(tickers))
+
+                                    slug = f"ai-insight-{int(datetime.utcnow().timestamp())}-{processed_count}"
+                                    insight_post = Post(
+                                        title={"en": title_en, "ko": title_ko},
+                                        slug=slug,
+                                        description={"ko": summary_text_ko, "en": summary_text_en}, # Description keeps text summary
+                                        content=content_html_en, 
+                                        content_ko=content_html_ko,
+                                        post_type="ai_draft_news", 
+                                        status="draft",
+                                        post_info={
+                                            "url": primary_info.get('url'),
+                                            "author": primary_info.get('author'),
+                                            "source": primary_info.get('source'),
+                                            "tickers": list(all_tickers),
+                                            "image_url": primary_info.get('image_url'),
+                                            "analysis": analysis,
+                                            "source_articles": [p.slug for p in cluster]
+                                        },
+                                        published_at=datetime.utcnow()
+                                    )
+                                    db.add(insight_post)
+                                    processed_count += 1
+                            except Exception as e:
+                                self.logger.error(f"[{job_name}] AI analysis failed for cluster: {e}")
+                    
+                    db.commit()
+                    return processed_count
+
+                processed = loop.run_until_complete(_pipeline_logic())
+                self.logger.info(f"[{job_name}] Completed. Generated {processed} AI insights.")
+                
+            except Exception as e:
+                self.logger.error(f"[{job_name}] Failed: {e}", exc_info=True)
+                db.rollback()
+            finally:
+                db.close()
+                loop.close()
+        
+        return run_pipeline_sync
+
+    def _create_cleanup_function(self):
+        """
+        Creates a sync wrapper for the daily cleanup job.
+        """
+        def run_cleanup_sync():
+            from app.services.cleanup_service import CleanupService
+            
+            db: Session = SessionLocal()
+            try:
+                self.logger.info("[CleanupJob] Starting daily cleanup...")
+                count = CleanupService.cleanup_old_raw_news(db)
+                self.logger.info(f"[CleanupJob] Raw news deleted: {count}")
+                
+                ai_count = CleanupService.cleanup_old_ai_news(db, retention_days=2)
+                self.logger.info(f"[CleanupJob] AI news deleted: {ai_count}")
+                
+                self.logger.info(f"[CleanupJob] Completed. Total items deleted: {count + ai_count}")
+            except Exception as e:
+                self.logger.error(f"[CleanupJob] Failed: {e}", exc_info=True)
+            finally:
+                db.close()
+        
+        return run_cleanup_sync
 
     def setup_jobs(self, test_mode: bool = False):
         """
@@ -467,6 +627,30 @@ class SchedulerService:
                 # Always add heartbeat
                 self.scheduler.add_job(self._update_heartbeat, 'interval', minutes=1, id='scheduler_heartbeat', replace_existing=True)
                 self.logger.info("✅ Scheduled job: 'scheduler_heartbeat'")
+                
+                # --- News Pipeline Job ---
+                if self.config_manager.is_news_collection_enabled():
+                    self.scheduler.add_job(
+                        self._create_news_pipeline_function(),
+                        'interval',
+                        minutes=15, 
+                        id='news_ai_pipeline',
+                        replace_existing=True
+                    )
+                    self.logger.info("✅ Scheduled job: 'news_ai_pipeline' (15m)")
+
+                # --- Daily Cleanup Job ---
+                # Default to 00:30 (midnight) in the scheduler's timezone
+                self.scheduler.add_job(
+                    self._create_cleanup_function(),
+                    'cron',
+                    hour=0,
+                    minute=30,
+                    id='daily_raw_news_cleanup',
+                    replace_existing=True
+                )
+                self.logger.info(f"✅ Scheduled job: 'daily_raw_news_cleanup' (Daily at 00:30 {self.scheduler.timezone})")
+
                 return
 
         # --- Legacy interval-based path ---
@@ -515,6 +699,31 @@ class SchedulerService:
         self.scheduler.add_job(self._update_heartbeat, 'interval', minutes=1, id='scheduler_heartbeat')
         self.logger.info("✅ Scheduled job: 'scheduler_heartbeat'")
 
+        # --- News Pipeline Job ---
+        # --- News Pipeline Job ---
+        if self.config_manager.is_news_collection_enabled():
+            self.scheduler.add_job(
+                self._create_news_pipeline_function(),
+                'interval',
+                minutes=15, 
+                id='news_ai_pipeline',
+                replace_existing=True
+            )
+            self.logger.info("✅ Scheduled job: 'news_ai_pipeline' (15m)")
+
+        # --- Daily Cleanup Job ---
+        # Run at 00:30 KST. If scheduler is UTC, this is 15:30 UTC previous day.
+        # But here we use 'cron' with scheduler's timezone.
+        self.scheduler.add_job(
+            self._create_cleanup_function(),
+            'cron',
+            hour=0,
+            minute=30,
+            id='daily_raw_news_cleanup',
+            replace_existing=True
+        )
+        self.logger.info(f"✅ Scheduled job: 'daily_raw_news_cleanup' (Daily at 00:30 {self.scheduler.timezone})")
+
     def _update_heartbeat(self):
         """Writes a heartbeat to the DB every minute to show the scheduler is alive."""
         db = SessionLocal()
@@ -559,6 +768,12 @@ class SchedulerService:
                     hour_str = ",".join(str(h) for h in hour)
                 else:
                     hour_str = str(hour) if hour is not None else "*"
+
+                # Convert minute list to comma-separated string for CronTrigger
+                if isinstance(minute, list):
+                    minute_str = ",".join(str(m) for m in minute)
+                else:
+                    minute_str = str(minute) if minute is not None else "0"
                 
                 for collector_key in collectors:
                     # Map temp.json key to actual job configuration
@@ -584,11 +799,12 @@ class SchedulerService:
                     job_id = f"{collector_key}_{hour_id}_{minute}"
                     
                     # Schedule the job
+                    # Schedule the job
                     self.scheduler.add_job(
                         job_func,
                         trigger=CronTrigger(
                             hour=hour_str,
-                            minute=minute,
+                            minute=minute_str,
                             day_of_week=day_of_week,
                             timezone=timezone
                         ),
@@ -598,13 +814,35 @@ class SchedulerService:
                     )
                     
                     self.logger.info(
-                        f"✅ Scheduled {collector_key} ({job_key}) at {hour}:{minute:02d} "
+                        f"✅ Scheduled {collector_key} ({job_key}) at {hour_str}:{minute_str} "
                         f"({day_of_week}) with filters: {collector_config}"
                     )
             
             # Always add heartbeat job
             self.scheduler.add_job(self._update_heartbeat, 'interval', minutes=1, id='scheduler_heartbeat', replace_existing=True)
             self.logger.info("✅ Scheduled job: 'scheduler_heartbeat'")
+            
+            # --- News Pipeline Job ---
+            if self.config_manager.is_news_collection_enabled():
+                self.scheduler.add_job(
+                    self._create_news_pipeline_function(),
+                    'interval',
+                    minutes=15, 
+                    id='news_ai_pipeline',
+                    replace_existing=True
+                )
+                self.logger.info("✅ Scheduled job: 'news_ai_pipeline' (15m)")
+
+            # --- Daily Cleanup Job ---
+            self.scheduler.add_job(
+                self._create_cleanup_function(),
+                'cron',
+                hour=0,
+                minute=30,
+                id='daily_raw_news_cleanup',
+                replace_existing=True
+            )
+            self.logger.info(f"✅ Scheduled job: 'daily_raw_news_cleanup' (Daily at 00:30 {timezone})")
             
             self.logger.info(f"✅ Scheduled {len(self.scheduler.get_jobs())} jobs from temp.json config")
             

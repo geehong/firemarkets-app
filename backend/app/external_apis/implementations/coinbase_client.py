@@ -23,6 +23,13 @@ class CoinbaseClient(CryptoAPIClient):
     
     def _convert_symbol_for_coinbase(self, symbol: str) -> Optional[str]:
         """Coinbase API용 심볼 변환 (BTCUSDT -> BTC-USD)"""
+        if not symbol:
+            return None
+            
+        # 이미 변환된 형식인 경우 그대로 반환
+        if symbol.endswith('-USD'):
+            return symbol
+
         # Coinbase에서 지원하는 심볼 매핑
         coinbase_symbols = {
             'BTC': 'BTC-USD',
@@ -65,7 +72,7 @@ class CoinbaseClient(CryptoAPIClient):
             'JASMY': 'JASMY-USD',
             'HBAR': 'HBAR-USD',
             'STX': 'STX-USD',
-            'RNDR': 'RNDR-USD',
+            'RNDR': 'RENDER-USD',  # RNDR -> RENDER
             'HNT': 'HNT-USD',      # Helium - Coinbase에서 지원
             'RSR': 'RSR-USD',      # Reserve Rights
             # Coinbase에서 지원하지 않는 심볼들

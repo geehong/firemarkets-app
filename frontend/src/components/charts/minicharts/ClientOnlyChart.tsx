@@ -58,7 +58,7 @@ interface ClientOnlyChartProps {
   assetIdentifier: string
   chartType?: string
   useWebSocket?: boolean
-  apiInterval?: string | null
+  apiInterval?: number | null
   marketHours?: boolean
   dataSource?: string
 }
@@ -83,7 +83,7 @@ export default function ClientOnlyChart({
     const timer = setTimeout(() => {
       setIsMounted(true)
     }, 100)
-    
+
     return () => clearTimeout(timer)
   }, [])
 

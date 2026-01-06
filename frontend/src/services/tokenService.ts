@@ -8,7 +8,9 @@ interface TokenData {
   user: {
     id: number
     username: string
+    email?: string
     role: string
+    avatar_url?: string
     permissions: Record<string, boolean>
   }
 }
@@ -28,50 +30,56 @@ class TokenService {
   private readonly SESSION_ID_KEY = 'session_id'
 
   // 토큰 저장
-  saveTokens(tokenData: TokenData): void {
-    // 클라이언트 사이드에서만 실행
+  saveTokens(tokenData: TokenData, remember: boolean = true): void {
     if (typeof window === 'undefined') return
 
+    const storage = remember ? localStorage : sessionStorage
+
+    // 다른 스토리지 클리어 (이중 저장 방지)
+    if (remember) {
+      sessionStorage.removeItem(this.ACCESS_TOKEN_KEY)
+      sessionStorage.removeItem(this.REFRESH_TOKEN_KEY)
+      sessionStorage.removeItem(this.USER_KEY)
+      sessionStorage.removeItem(this.EXPIRES_AT_KEY)
+      sessionStorage.removeItem(this.SESSION_ID_KEY)
+    } else {
+      localStorage.removeItem(this.ACCESS_TOKEN_KEY)
+      localStorage.removeItem(this.REFRESH_TOKEN_KEY)
+      localStorage.removeItem(this.USER_KEY)
+      localStorage.removeItem(this.EXPIRES_AT_KEY)
+      localStorage.removeItem(this.SESSION_ID_KEY)
+    }
+
     try {
-      localStorage.setItem(this.ACCESS_TOKEN_KEY, tokenData.accessToken)
-      localStorage.setItem(this.REFRESH_TOKEN_KEY, tokenData.refreshToken)
-      localStorage.setItem(this.USER_KEY, JSON.stringify(tokenData.user))
-      localStorage.setItem(this.EXPIRES_AT_KEY, tokenData.expiresAt.toString())
+      storage.setItem(this.ACCESS_TOKEN_KEY, tokenData.accessToken)
+      storage.setItem(this.REFRESH_TOKEN_KEY, tokenData.refreshToken)
+      storage.setItem(this.USER_KEY, JSON.stringify(tokenData.user))
+      storage.setItem(this.EXPIRES_AT_KEY, tokenData.expiresAt.toString())
     } catch (error) {
       console.error('Failed to save tokens:', error)
     }
   }
 
+  // Helper to get item from either storage
+  private getItem(key: string): string | null {
+    if (typeof window === 'undefined') return null
+    return localStorage.getItem(key) || sessionStorage.getItem(key)
+  }
+
   // Access Token 조회
   getAccessToken(): string | null {
-    if (typeof window === 'undefined') return null
-    
-    try {
-      return localStorage.getItem(this.ACCESS_TOKEN_KEY)
-    } catch (error) {
-      console.error('Failed to get access token:', error)
-      return null
-    }
+    return this.getItem(this.ACCESS_TOKEN_KEY)
   }
 
   // Refresh Token 조회
   getRefreshToken(): string | null {
-    if (typeof window === 'undefined') return null
-    
-    try {
-      return localStorage.getItem(this.REFRESH_TOKEN_KEY)
-    } catch (error) {
-      console.error('Failed to get refresh token:', error)
-      return null
-    }
+    return this.getItem(this.REFRESH_TOKEN_KEY)
   }
 
   // 사용자 정보 조회
   getUser(): TokenData['user'] | null {
-    if (typeof window === 'undefined') return null
-    
     try {
-      const userStr = localStorage.getItem(this.USER_KEY)
+      const userStr = this.getItem(this.USER_KEY)
       return userStr ? JSON.parse(userStr) : null
     } catch (error) {
       console.error('Failed to get user:', error)
@@ -81,10 +89,8 @@ class TokenService {
 
   // 토큰 만료 시간 조회
   getExpiresAt(): number | null {
-    if (typeof window === 'undefined') return null
-    
     try {
-      const expiresAt = localStorage.getItem(this.EXPIRES_AT_KEY)
+      const expiresAt = this.getItem(this.EXPIRES_AT_KEY)
       return expiresAt ? parseInt(expiresAt, 10) : null
     } catch (error) {
       console.error('Failed to get expires at:', error)
@@ -94,22 +100,18 @@ class TokenService {
 
   // 세션 ID 조회
   getSessionId(): string | null {
-    if (typeof window === 'undefined') return null
-    
-    try {
-      return localStorage.getItem(this.SESSION_ID_KEY)
-    } catch (error) {
-      console.error('Failed to get session id:', error)
-      return null
-    }
+    return this.getItem(this.SESSION_ID_KEY)
   }
 
-  // 세션 ID 저장
+  // 세션 ID 저장 (현재 활성화된 스토리지에 저장)
   setSessionId(sessionId: string): void {
     if (typeof window === 'undefined') return
-    
+
+    // AccessToken이 있는 스토리지에 맞춤
+    const storage = localStorage.getItem(this.ACCESS_TOKEN_KEY) ? localStorage : sessionStorage
+
     try {
-      localStorage.setItem(this.SESSION_ID_KEY, sessionId)
+      storage.setItem(this.SESSION_ID_KEY, sessionId)
     } catch (error) {
       console.error('Failed to save session id:', error)
     }
@@ -153,18 +155,22 @@ class TokenService {
     }
   }
 
-  // 토큰 갱신 후 저장
+  // 토큰 갱신 후 저장 (기존 스토리지 유지)
   updateTokens(refreshResponse: RefreshTokenResponse): void {
     if (typeof window === 'undefined') return
-    
+
+    // 현재 사용 중인 스토리지 확인
+    const isLocalStorage = !!localStorage.getItem(this.ACCESS_TOKEN_KEY)
+    const storage = isLocalStorage ? localStorage : sessionStorage
+
     try {
       const expiresAt = new Date(refreshResponse.expires_at).getTime()
-      
-      localStorage.setItem(this.ACCESS_TOKEN_KEY, refreshResponse.access_token)
-      localStorage.setItem(this.EXPIRES_AT_KEY, expiresAt.toString())
-      
+
+      storage.setItem(this.ACCESS_TOKEN_KEY, refreshResponse.access_token)
+      storage.setItem(this.EXPIRES_AT_KEY, expiresAt.toString())
+
       if (refreshResponse.session_id) {
-        this.setSessionId(refreshResponse.session_id)
+        storage.setItem(this.SESSION_ID_KEY, refreshResponse.session_id)
       }
     } catch (error) {
       console.error('Failed to update tokens:', error)
@@ -174,13 +180,20 @@ class TokenService {
   // 모든 토큰 삭제
   clearTokens(): void {
     if (typeof window === 'undefined') return
-    
+
     try {
+      // Clear BOTH
       localStorage.removeItem(this.ACCESS_TOKEN_KEY)
       localStorage.removeItem(this.REFRESH_TOKEN_KEY)
       localStorage.removeItem(this.USER_KEY)
       localStorage.removeItem(this.EXPIRES_AT_KEY)
       localStorage.removeItem(this.SESSION_ID_KEY)
+
+      sessionStorage.removeItem(this.ACCESS_TOKEN_KEY)
+      sessionStorage.removeItem(this.REFRESH_TOKEN_KEY)
+      sessionStorage.removeItem(this.USER_KEY)
+      sessionStorage.removeItem(this.EXPIRES_AT_KEY)
+      sessionStorage.removeItem(this.SESSION_ID_KEY)
     } catch (error) {
       console.error('Failed to clear tokens:', error)
     }

@@ -1,5 +1,6 @@
 // frontend/src/services/navigationService.ts
-import axios from 'axios';
+// NOTE: Do NOT use axios here - it causes SSR "location is not defined" error
+// axios evaluates browser-only code at import time
 
 // API 기본 URL 설정 (클라이언트 사이드에서만)
 const getAPIBaseURL = () => {
@@ -8,11 +9,8 @@ const getAPIBaseURL = () => {
     return '';
   }
 
-  // 브라우저 환경에서 현재 호스트 기반으로 API URL 결정 (현재는 사용하지 않음)
-  // const hostname = window.location.hostname;
-
-  // 모든 환경에서 프로덕션 API 사용
-  return 'https://backend.firemarkets.net';
+  // 로컬 개발 환경 우선
+  return 'http://localhost:8001';
 };
 
 class NavigationService {
@@ -27,117 +25,77 @@ class NavigationService {
   /**
    * API 요청 헤더를 생성합니다
    */
-  private getAuthHeaders() {
+  private getAuthHeaders(): Record<string, string> {
     const token = this.getAuthToken();
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
 
   /**
+   * Native fetch wrapper with timeout
+   */
+  private async fetchWithTimeout(
+    url: string,
+    options: RequestInit & { timeout?: number } = {}
+  ): Promise<Response> {
+    const { timeout = 15000, ...fetchOptions } = options;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    try {
+      const response = await fetch(url, {
+        ...fetchOptions,
+        signal: controller.signal,
+      });
+      return response;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  /**
+   * 메뉴 구조를 가져옵니다
+   */
+  /**
    * 메뉴 구조를 가져옵니다
    */
   async getMenuStructure(language: string = 'ko') {
-    // 서버 사이드에서는 빈 배열 반환
-    if (typeof window === 'undefined') {
-      console.log('navigationService - Server side, returning empty array');
-      return [];
-    }
-
-    // 로컬 개발 환경에서도 동적 메뉴 사용 (권한 필터링을 위해)
-    // if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    //   console.log('navigationService - Local development, returning static menu');
-    //   return this.getStaticMenu();
-    // }
-
-    try {
-      const currentAPIURL = getAPIBaseURL();
-
-      // API URL이 없으면 정적 메뉴 반환
-      if (!currentAPIURL) {
-        return this.getStaticMenu();
-      }
-
-      // 인증 헤더 가져오기
-      const token = this.getAuthToken();
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
-      const BACKEND_BASE = process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'https://backend.firemarkets.net/api/v1'
-      const url = `${BACKEND_BASE}/navigation/menu?lang=${language}`;
-      console.log('🔍 [navigationService] Fetching menu from:', url);
-      console.log('🔍 [navigationService] Headers:', headers);
-
-      const response = await axios.get(url, {
-        headers,
-        timeout: 15000, // 15초 타임아웃 (모바일 네트워크 고려)
-        // withCredentials: true, // 리버스 프록시 CORS 문제로 임시 비활성화
-        validateStatus: function (status) {
-          return status >= 200 && status < 300; // 기본값
-        }
-      });
-
-      console.log('🔍 [navigationService] Response status:', response.status);
-      console.log('🔍 [navigationService] Response data:', response.data);
-      return response.data;
-    } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-      console.error('navigationService - Failed to fetch menu structure:', error);
-      console.error('navigationService - Error details:', {
-        message: error.message,
-        code: error.code,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        url: error.config?.url,
-        hostname: window.location.hostname
-      });
-
-      // 네트워크 에러 처리
-      if (error.code === 'NETWORK_ERROR' || error.code === 'ECONNREFUSED' || error.message.includes('Network Error')) {
-        throw new Error('서버에 연결할 수 없습니다. 네트워크를 확인해주세요.');
-      } else if (error.code === 'TIMEOUT' || error.message.includes('timeout')) {
-        throw new Error('요청 시간이 초과되었습니다. 다시 시도해주세요.');
-      }
-
-      // 권한 관련 에러 처리
-      if (error.response?.status === 401) {
-        console.log('navigationService - 401 error, returning static menu');
-        return this.getStaticMenu();
-      } else if (error.response?.status === 403) {
-        console.log('navigationService - 403 error, returning static menu');
-        return this.getStaticMenu();
-      } else if (error.response?.status === 404) {
-        console.log('navigationService - 404 error, returning static menu');
-        return this.getStaticMenu();
-      } else if (error.response?.status >= 500) {
-        console.log('navigationService - 5xx error, returning static menu');
-        return this.getStaticMenu();
-      }
-
-      // 기타 에러의 경우에도 정적 메뉴 반환
-      console.log('navigationService - Other error, returning static menu');
-      return this.getStaticMenu();
-    }
+    // 로컬 정적 메뉴 사용
+    return this.getStaticMenu();
   }
 
   /**
    * 동적 메뉴를 새로고침합니다
    */
   async refreshDynamicMenus() {
+    if (typeof window === 'undefined') {
+      throw new Error('Server-side execution not supported');
+    }
+
     try {
       const headers = this.getAuthHeaders();
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const currentAPIURL = getAPIBaseURL();
-      const response = await axios.post('/api/v1/navigation/menu/refresh', {}, {
-        headers
+      const response = await this.fetchWithTimeout('/api/v1/navigation/menu/refresh', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...headers,
+        },
       });
-      return response.data;
-    } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-      console.error('Failed to refresh dynamic menus:', error);
 
-      if (error.response?.status === 401) {
-        throw new Error('인증이 필요합니다. 로그인해주세요.');
-      } else if (error.response?.status === 403) {
-        throw new Error('관리자 권한이 필요합니다.');
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('인증이 필요합니다. 로그인해주세요.');
+        } else if (response.status === 403) {
+          throw new Error('관리자 권한이 필요합니다.');
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      throw new Error('동적 메뉴 새로고침에 실패했습니다.');
+      return response.json();
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error('Failed to refresh dynamic menus:', err);
+      throw new Error(err.message || '동적 메뉴 새로고침에 실패했습니다.');
     }
   }
 
@@ -145,24 +103,34 @@ class NavigationService {
    * 메뉴 시스템 상태를 확인합니다
    */
   async getMenuStatus() {
+    if (typeof window === 'undefined') {
+      throw new Error('Server-side execution not supported');
+    }
+
     try {
       const headers = this.getAuthHeaders();
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const currentAPIURL = getAPIBaseURL();
-      const response = await axios.get('/api/v1/navigation/menu/status', {
-        headers
+      const response = await this.fetchWithTimeout('/api/v1/navigation/menu/status', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...headers,
+        },
       });
-      return response.data;
-    } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-      console.error('Failed to get menu status:', error);
 
-      if (error.response?.status === 401) {
-        throw new Error('인증이 필요합니다. 로그인해주세요.');
-      } else if (error.response?.status === 403) {
-        throw new Error('관리자 권한이 필요합니다.');
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('인증이 필요합니다. 로그인해주세요.');
+        } else if (response.status === 403) {
+          throw new Error('관리자 권한이 필요합니다.');
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      throw new Error('메뉴 상태를 가져오는데 실패했습니다.');
+      return response.json();
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error('Failed to get menu status:', err);
+      throw new Error(err.message || '메뉴 상태를 가져오는데 실패했습니다.');
     }
   }
 
@@ -302,6 +270,26 @@ class NavigationService {
             children: []
           }
         ]
+      },
+      {
+        id: 9,
+        name: "Charts",
+        path: "/admin/chart",
+        icon: "cilChartLine",
+        order: 9,
+        is_active: true,
+        source_type: "static",
+        children: []
+      },
+      {
+        id: 10,
+        name: "Tables",
+        path: "/admin/tables",
+        icon: "cilList",
+        order: 10,
+        is_active: true,
+        source_type: "static",
+        children: []
       }
     ];
   }

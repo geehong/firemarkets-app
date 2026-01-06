@@ -28,10 +28,27 @@ def resolve_asset_identifier(db: Session, asset_identifier: str) -> int:
     if asset_identifier.isdigit():
         return int(asset_identifier)
     
+    # 1차 시도: 정확한 티커 매칭
     asset = db.query(Asset).filter(Asset.ticker == asset_identifier).first()
-    if not asset:
-        raise HTTPException(status_code=404, detail=f"Asset not found: {asset_identifier}")
-    return asset.asset_id
+    if asset:
+        return asset.asset_id
+    
+    # 2차 시도: USDT/USD 접미사 제거 후 재시도 (예: SOLUSDT -> SOL, SOL-USD -> SOL)
+    normalized_ticker = asset_identifier
+    if normalized_ticker.endswith('USDT'):
+        normalized_ticker = normalized_ticker[:-4]  # Remove 'USDT'
+    elif normalized_ticker.endswith('-USD'):
+        normalized_ticker = normalized_ticker[:-4]  # Remove '-USD'
+    elif normalized_ticker.endswith('USD'):
+        normalized_ticker = normalized_ticker[:-3]  # Remove 'USD'
+    
+    if normalized_ticker != asset_identifier:
+        asset = db.query(Asset).filter(Asset.ticker == normalized_ticker).first()
+        if asset:
+            return asset.asset_id
+    
+    raise HTTPException(status_code=404, detail=f"Asset not found: {asset_identifier}")
+
 
 
 # ============================================================================
@@ -50,6 +67,8 @@ class AssetInfoResponse(BaseModel):
     day_50_moving_avg: Optional[float] = Field(None, description="50일 이동평균")
     day_200_moving_avg: Optional[float] = Field(None, description="200일 이동평균")
     last_updated: Optional[datetime] = Field(None, description="마지막 업데이트 시간")
+    post_id: Optional[int] = Field(None, description="Associated post ID")
+
 
 
 class StockInfoResponse(BaseModel):
@@ -168,6 +187,16 @@ def calculate_asset_info(db: Session, asset_id: int) -> AssetInfoResponse:
         except Exception as e:
             logger.warning(f"Failed to get market cap for asset_id {asset_id}: {e}")
         
+        # 6. Post ID 조회 (Edit 링크용)
+        post_id = None
+        try:
+            from ....models import Post
+            post = db.query(Post).filter(Post.asset_id == asset_id).first()
+            if post:
+                post_id = post.id
+        except Exception as e:
+            logger.warning(f"Failed to get post_id for asset_id {asset_id}: {e}")
+
         return AssetInfoResponse(
             asset_id=asset_id,
             prev_close=prev_close,
@@ -178,8 +207,10 @@ def calculate_asset_info(db: Session, asset_id: int) -> AssetInfoResponse:
             market_cap=market_cap,
             day_50_moving_avg=day_50_moving_avg,
             day_200_moving_avg=day_200_moving_avg,
-            last_updated=last_updated
+            last_updated=last_updated,
+            post_id=post_id
         )
+
         
     except Exception as e:
         logger.error(f"Error calculating asset info for asset_id {asset_id}: {e}")

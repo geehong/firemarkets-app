@@ -436,6 +436,36 @@ class FinnhubClient(TradFiAPIClient):
             logger.error(f"Error fetching financial statements for {symbol}: {e}")
             return []
     
+    async def get_news(
+        self, 
+        category: str = "general",
+        min_id: int = 0,
+        limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        """
+        Get market news from Finnhub.
+        """
+        try:
+            params = {"category": category}
+            if min_id > 0:
+                params["minId"] = min_id
+                
+            data = await self._make_request("news", params)
+            
+            if not data or not isinstance(data, list):
+                if data: # If data is dict (error) or empty list
+                     logger.warning(f"Finnhub news returned invalid format: {type(data)}")
+                return []
+            
+            # Apply limit locally since API might not support it
+            if limit > 0:
+                return data[:limit]
+            return data
+            
+        except Exception as e:
+            logger.error(f"Finnhub news fetch failed: {e}")
+            return []
+
     async def close(self):
         """Close the aiohttp session"""
         if self.session and not self.session.closed:

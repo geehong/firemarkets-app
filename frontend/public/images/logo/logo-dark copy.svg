@@ -1,0 +1,196 @@
+<svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Vibrant gradients -->
+    <linearGradient id="fireGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#FF0844;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#FF6B35;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FFD93D;stop-opacity:1" />
+    </linearGradient>
+    
+    <linearGradient id="bullGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#11998e;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#38ef7d;stop-opacity:1" />
+    </linearGradient>
+    
+    <linearGradient id="bearGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#834d9b;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#d04ed6;stop-opacity:1" />
+    </linearGradient>
+    
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFD700;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FFA500;stop-opacity:1" />
+    </linearGradient>
+    
+    <radialGradient id="glowBull" cx="50%" cy="50%">
+      <stop offset="0%" style="stop-color:#38ef7d;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#11998e;stop-opacity:0" />
+    </radialGradient>
+    
+    <radialGradient id="glowBear" cx="50%" cy="50%">
+      <stop offset="0%" style="stop-color:#d04ed6;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#834d9b;stop-opacity:0" />
+    </radialGradient>
+    
+    <!-- Powerful glow -->
+    <filter id="strongGlow">
+      <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    
+    <filter id="neonGlow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Fire Icon with elliptical orbit animation -->
+  <g>
+    <!-- Outer flame burst -->
+    <g filter="url(#strongGlow)">
+      <path d="M 0,-40 L 8,-20 L 20,-25 L 12,-10 L 25,-8 L 10,0 L 25,8 L 12,10 L 20,25 L 8,20 L 0,40 L -8,20 L -20,25 L -12,10 L -25,8 L -10,0 L -25,-8 L -12,-10 L -20,-25 L -8,-20 Z" 
+            fill="url(#fireGrad)" 
+            opacity="0.9">
+        <animateTransform attributeName="transform" type="rotate" from="0 0 0" to="360 0 0" dur="20s" repeatCount="indefinite"/>
+      </path>
+      
+      <!-- Inner flame -->
+      <path d="M 0,-25 L 5,-12 L 12,-15 L 8,-5 L 15,-3 L 6,0 L 15,3 L 8,5 L 12,15 L 5,12 L 0,25 L -5,12 L -12,15 L -8,5 L -15,3 L -6,0 L -15,-3 L -8,-5 L -12,-15 L -5,-12 Z" 
+            fill="url(#goldGrad)">
+        <animateTransform attributeName="transform" type="rotate" from="0 0 0" to="-360 0 0" dur="15s" repeatCount="indefinite"/>
+      </path>
+      
+      <!-- Core glow -->
+      <circle cx="0" cy="0" r="15" fill="#FFF" opacity="0.8">
+        <animate attributeName="r" values="15;18;15" dur="2s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.8;0.5;0.8" dur="2s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+    
+    <!-- Orbiting chart elements -->
+    <g>
+      <circle cx="0" cy="-35" r="3" fill="#00D9FF">
+        <animateTransform attributeName="transform" type="rotate" from="0 0 0" to="360 0 0" dur="4s" repeatCount="indefinite"/>
+        <animate attributeName="r" values="3;5;3" dur="1s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="35" cy="0" r="3" fill="#00D9FF">
+        <animateTransform attributeName="transform" type="rotate" from="90 0 0" to="450 0 0" dur="4s" repeatCount="indefinite"/>
+        <animate attributeName="r" values="3;5;3" dur="1.2s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="0" cy="35" r="3" fill="#00D9FF">
+        <animateTransform attributeName="transform" type="rotate" from="180 0 0" to="540 0 0" dur="4s" repeatCount="indefinite"/>
+        <animate attributeName="r" values="3;5;3" dur="1.4s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="-35" cy="0" r="3" fill="#00D9FF">
+        <animateTransform attributeName="transform" type="rotate" from="270 0 0" to="630 0 0" dur="4s" repeatCount="indefinite"/>
+        <animate attributeName="r" values="3;5;3" dur="1.6s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+    
+    <!-- Elliptical orbit animation: bottom-left -> top-right -> back to bottom-left -->
+    <animateMotion dur="8s" repeatCount="indefinite">
+      <mpath href="#ellipsePath"/>
+    </animateMotion>
+    
+    <!-- Scale animation for depth effect (smaller when far, bigger when near) -->
+    <animateTransform attributeName="transform" type="scale" 
+                      values="0.7;1.2;1.3;1.2;0.7" 
+                      dur="8s" 
+                      repeatCount="indefinite"
+                      additive="sum"/>
+    
+    <!-- Opacity animation for depth (fade when going back) -->
+    <animate attributeName="opacity" 
+             values="0.5;1;1;1;0.5" 
+             dur="8s" 
+             repeatCount="indefinite"/>
+  </g>
+  
+  <!-- Define elliptical path -->
+  <defs>
+    <path id="ellipsePath" 
+          d="M 240,130 Q 350,100 450,60 Q 500,40 520,50 Q 500,60 450,80 Q 350,110 240,130 Z" 
+          fill="none"/>
+  </defs>
+  
+  <!-- FireMarkets Text -->
+  <g transform="translate(220, 85)">
+    <!-- Fire text -->
+    <text x="0" y="0" 
+          font-family="'Arial Black', sans-serif" 
+          font-size="46" 
+          font-weight="900" 
+          fill="url(#fireGrad)"
+          filter="url(#neonGlow)"
+          letter-spacing="-1">FIRE</text>
+    
+    <!-- Markets text - White for dark mode -->
+    <text x="115" y="0" 
+          font-family="'Arial Black', sans-serif" 
+          font-size="46" 
+          font-weight="900" 
+          fill="#F8FAFC"
+          letter-spacing="-1">MARKETS</text>
+    
+    <!-- Decorative line -->
+    <rect x="0" y="10" width="320" height="2" fill="url(#fireGrad)" opacity="0.5">
+      <animate attributeName="opacity" values="0.3;0.7;0.3" dur="2s" repeatCount="indefinite"/>
+    </rect>
+    
+    <!-- Tagline -->
+    <text x="160" y="30" 
+          font-family="Arial, sans-serif" 
+          font-size="12" 
+          font-weight="600"
+          fill="#94A3B8" 
+          text-anchor="middle"
+          letter-spacing="3">⚡ REAL-TIME FINANCIAL DATA PLATFORM ⚡</text>
+    
+    <!-- Live stats -->
+    <g transform="translate(40, 45)">
+      <circle cx="0" cy="0" r="3" fill="#10B981">
+        <animate attributeName="opacity" values="1;0.3;1" dur="1.5s" repeatCount="indefinite"/>
+      </circle>
+      <text x="8" y="4" 
+            font-family="monospace" 
+            font-size="10" 
+            fill="#10B981"
+            font-weight="700">LIVE</text>
+      
+      <text x="45" y="4" 
+            font-family="monospace" 
+            font-size="9" 
+            fill="#64748B">
+        <tspan fill="#3B82F6">📊</tspan> Stocks
+        <tspan dx="5" fill="#F59E0B">₿</tspan> Crypto
+        <tspan dx="5" fill="#8B5CF6">📈</tspan> ETFs
+        <tspan dx="5" fill="#EC4899">💎</tspan> Commodities
+      </text>
+    </g>
+  </g>
+  
+  <!-- Floating particles -->
+  <circle cx="180" cy="60" r="2" fill="#FFD700" opacity="0.7">
+    <animate attributeName="cy" values="60;50;60" dur="3s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.7;0.3;0.7" dur="3s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="600" cy="80" r="2" fill="#38ef7d" opacity="0.7">
+    <animate attributeName="cy" values="80;70;80" dur="2.5s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.7;0.3;0.7" dur="2.5s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="350" cy="50" r="1.5" fill="#d04ed6" opacity="0.6">
+    <animate attributeName="cy" values="50;40;50" dur="2.8s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.6;0.2;0.6" dur="2.8s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="500" cy="65" r="1.5" fill="#00D9FF" opacity="0.6">
+    <animate attributeName="cy" values="65;55;65" dur="3.2s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.6;0.2;0.6" dur="3.2s" repeatCount="indefinite"/>
+  </circle>
+</svg>

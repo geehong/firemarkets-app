@@ -10,21 +10,6 @@ import Image from "next/image";
 
 export default function UserMetaCard() {
   const { isOpen, openModal, closeModal } = useModal();
-  
-  // 하드코딩된 사용자 메타 데이터 (users 테이블에서 가져온 정보)
-  const userMetaData = {
-    full_name: "GEEHONG KIM",
-    bio: "Super Admin - FireMarkets Platform",
-    location: "Pohang-si, Gyeongsangbuk-do, Republic of Korea",
-    avatar_url: "/images/user/adminavatar.png",
-    social_links: {
-      facebook: "https://www.facebook.com/geehong",
-      twitter: "https://x.com/geehong",
-      linkedin: "https://www.linkedin.com/in/geehong",
-      instagram: "https://instagram.com/geehong"
-    }
-  };
-
   const handleSave = () => {
     // Handle save logic here
     console.log("Saving changes...");
@@ -39,28 +24,28 @@ export default function UserMetaCard() {
               <Image
                 width={80}
                 height={80}
-                src={userMetaData.avatar_url}
+                src="/images/user/owner.jpg"
                 alt="user"
               />
             </div>
             <div className="order-3 xl:order-2">
               <h4 className="mb-2 text-lg font-semibold text-center text-gray-800 dark:text-white/90 xl:text-left">
-                {userMetaData.full_name}
+                Musharof Chowdhury
               </h4>
               <div className="flex flex-col items-center gap-1 text-center xl:flex-row xl:gap-3 xl:text-left">
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {userMetaData.bio}
+                  Team Manager
                 </p>
                 <div className="hidden h-3.5 w-px bg-gray-300 dark:bg-gray-700 xl:block"></div>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {userMetaData.location}
+                  Arizona, United States
                 </p>
               </div>
             </div>
             <div className="flex items-center order-2 gap-2 grow xl:order-3 xl:justify-end">
               <a        
         target="_blank"
-        rel="noreferrer" href={userMetaData.social_links.facebook} className="flex h-11 w-11 items-center justify-center gap-2 rounded-full border border-gray-300 bg-white text-sm font-medium text-gray-700 shadow-theme-xs hover:bg-gray-50 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] dark:hover:text-gray-200">
+        rel="noreferrer" href='https://www.facebook.com/PimjoHQ' className="flex h-11 w-11 items-center justify-center gap-2 rounded-full border border-gray-300 bg-white text-sm font-medium text-gray-700 shadow-theme-xs hover:bg-gray-50 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] dark:hover:text-gray-200">
                 <svg
                   className="fill-current"
                   width="20"
@@ -76,7 +61,7 @@ export default function UserMetaCard() {
                 </svg>
               </a>
 
-              <a href={userMetaData.social_links.twitter} target="_blank"
+              <a href='https://x.com/PimjoHQ' target="_blank"
         rel="noreferrer"  className="flex h-11 w-11 items-center justify-center gap-2 rounded-full border border-gray-300 bg-white text-sm font-medium text-gray-700 shadow-theme-xs hover:bg-gray-50 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] dark:hover:text-gray-200">
                 <svg
                   className="fill-current"
@@ -93,7 +78,7 @@ export default function UserMetaCard() {
                 </svg>
               </a>
 
-              <a href={userMetaData.social_links.linkedin} target="_blank"
+              <a href="https://www.linkedin.com/company/pimjo" target="_blank"
         rel="noreferrer" className="flex h-11 w-11 items-center justify-center gap-2 rounded-full border border-gray-300 bg-white text-sm font-medium text-gray-700 shadow-theme-xs hover:bg-gray-50 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] dark:hover:text-gray-200">
                 <svg
                   className="fill-current"
@@ -110,7 +95,7 @@ export default function UserMetaCard() {
                 </svg>
               </a>
 
-              <a href={userMetaData.social_links.instagram} target="_blank"
+              <a href='https://instagram.com/PimjoHQ' target="_blank"
         rel="noreferrer" className="flex h-11 w-11 items-center justify-center gap-2 rounded-full border border-gray-300 bg-white text-sm font-medium text-gray-700 shadow-theme-xs hover:bg-gray-50 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] dark:hover:text-gray-200">
                 <svg
                   className="fill-current"
@@ -173,20 +158,20 @@ export default function UserMetaCard() {
                     <Label>Facebook</Label>
                     <Input
                       type="text"
-                      defaultValue={userMetaData.social_links.facebook}
+                      defaultValue="https://www.facebook.com/PimjoHQ"
                     />
                   </div>
 
                   <div>
                     <Label>X.com</Label>
-                    <Input type="text" defaultValue={userMetaData.social_links.twitter} />
+                    <Input type="text" defaultValue="https://x.com/PimjoHQ" />
                   </div>
 
                   <div>
                     <Label>Linkedin</Label>
                     <Input
                       type="text"
-                      defaultValue={userMetaData.social_links.linkedin}
+                      defaultValue="https://www.linkedin.com/company/pimjo"
                     />
                   </div>
 
@@ -194,7 +179,7 @@ export default function UserMetaCard() {
                     <Label>Instagram</Label>
                     <Input
                       type="text"
-                      defaultValue={userMetaData.social_links.instagram}
+                      defaultValue="https://instagram.com/PimjoHQ"
                     />
                   </div>
                 </div>
@@ -207,27 +192,27 @@ export default function UserMetaCard() {
                 <div className="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
                   <div className="col-span-2 lg:col-span-1">
                     <Label>First Name</Label>
-                    <Input type="text" defaultValue="GEEHONG" />
+                    <Input type="text" defaultValue="Musharof" />
                   </div>
 
                   <div className="col-span-2 lg:col-span-1">
                     <Label>Last Name</Label>
-                    <Input type="text" defaultValue="KIM" />
+                    <Input type="text" defaultValue="Chowdhury" />
                   </div>
 
                   <div className="col-span-2 lg:col-span-1">
                     <Label>Email Address</Label>
-                    <Input type="text" defaultValue="geecgpi1@gmail.com" />
+                    <Input type="text" defaultValue="randomuser@pimjo.com" />
                   </div>
 
                   <div className="col-span-2 lg:col-span-1">
                     <Label>Phone</Label>
-                    <Input type="text" defaultValue="+82 10-1234-5678" />
+                    <Input type="text" defaultValue="+09 363 398 46" />
                   </div>
 
                   <div className="col-span-2">
                     <Label>Bio</Label>
-                    <Input type="text" defaultValue="Super Admin - FireMarkets Platform" />
+                    <Input type="text" defaultValue="Team Manager" />
                   </div>
                 </div>
               </div>

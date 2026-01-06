@@ -211,6 +211,9 @@ class ConfigManager:
     def is_ohlcv_collection_enabled(self) -> bool:
         return self._get_config("ENABLE_OHLCV_COLLECTION", True, _str_to_bool)
         
+    def is_news_collection_enabled(self) -> bool:
+        return self._get_config("ENABLE_NEWS_COLLECTION", True, _str_to_bool)
+        
     def is_world_assets_collection_enabled(self) -> bool:
         return self._get_config("ENABLE_WORLD_ASSETS_COLLECTION", True, _str_to_bool)
 

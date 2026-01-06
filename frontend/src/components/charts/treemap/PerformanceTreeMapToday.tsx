@@ -3,8 +3,8 @@
 import React, { useEffect, useRef, useMemo, useState } from 'react'
 import Highcharts from 'highcharts'
 import HighchartsReact from 'highcharts-react-official'
-import { useTreemapLiveData } from '@/hooks/useAssets'
-import { useSocket } from '@/hooks/useSocket'
+import { useTreemapLiveData } from '@/hooks/assets/useAssets'
+import { useSocket } from '@/hooks/data/useSocket'
 
 // Highcharts 모듈들을 최소한으로 로드
 import 'highcharts/modules/treemap'
@@ -13,7 +13,7 @@ import 'highcharts/modules/coloraxis'
 // 모듈 초기화 확인
 if (typeof Highcharts !== 'undefined') {
   // TreeMap 모듈이 제대로 로드되었는지 확인
-  if (!Highcharts.seriesTypes.treemap) {
+  if (!(Highcharts as any).seriesTypes.treemap) {
     console.warn('Highcharts treemap module not loaded properly')
   }
 }
@@ -52,17 +52,17 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
 
   // TreeMap 데이터 훅 사용
   const treemapDataResult = useTreemapLiveData()
-  const { data, isLoading, error } = treemapDataResult
+  const { data, loading: isLoading, error } = treemapDataResult
   const refetch = treemapDataResult.refetch || (() => {
     console.warn('[PerformanceTreeMap] refetch function not available')
   })
-  
+
   // refetch 참조를 안정적으로 유지하기 위한 ref
   const refetchRef = React.useRef(refetch)
   refetchRef.current = refetch
-  
+
   // WebSocket 연결 상태 구독
-  const { connected } = useSocket()
+  const { isConnected: connected } = useSocket()
 
   // TreeMap 데이터 구조 생성
   const createTreeMapData = (assets: any[]) => {
@@ -72,7 +72,7 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
     const categories: { [key: string]: any } = {}
     let filteredAssets = 0
     let bondAssets = 0
-    
+
     assets.forEach((asset) => {
       // 본드 데이터 제외
       if (asset.is_bond || asset.bond_type) {
@@ -80,7 +80,7 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
         return
       }
       filteredAssets++
-      
+
       const category = asset.asset_type || 'Other'
       if (!categories[category]) {
         categories[category] = {
@@ -91,17 +91,17 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
         }
       }
       let categoryValue = asset.market_cap || 1
-      
+
       // 자산 유형별 크기 조정 (카테고리 그룹화용)
       if (category.toLowerCase().includes('commodit') || category.toLowerCase().includes('metal')) {
         categoryValue = categoryValue * 0.7
       } else if (category.toLowerCase().includes('crypto') || category.toLowerCase().includes('cryptocurrency')) {
         categoryValue = categoryValue * 1.3
       }
-      
+
       categories[category].value += categoryValue
     })
-    
+
     // 카테고리를 데이터에 추가
     Object.values(categories).forEach((category) => {
       treemapData.push({
@@ -121,13 +121,13 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
         return
       }
       assetsAdded++
-      
+
       const category = asset.asset_type || 'Other'
       const isEtfOrFund = (category.toLowerCase().includes('etf') || category.toLowerCase().includes('fund'))
       const displayName = isEtfOrFund ? (asset.ticker || asset.name) : asset.name
-      
+
       let value = asset.market_cap || 1
-      
+
       // 자산 유형별 크기 조정
       if (category.toLowerCase().includes('commodit') || category.toLowerCase().includes('metal')) {
         // 커머디티: 70% 크기로 조정
@@ -136,7 +136,7 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
         // 크립토: 130% 크기로 조정
         value = value * 1.3
       }
-      
+
       // 성과 데이터: price_change_percentage_24h 사용
       const colorValue = asset.price_change_percentage_24h || 0
 
@@ -266,7 +266,7 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
               }
 
               if (point.dlOptions) {
-                point.dlOptions.backgroundColor = this.colorAxis.toColor(weightedPerformance)
+                point.dlOptions.backgroundColor = (this as any).colorAxis.toColor(weightedPerformance)
                 point.dlOptions.style = {
                   fontSize: '17px',
                   fontWeight: 'bold',
@@ -401,37 +401,37 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
         },
         useHTML: true,
         events: {
-          click: function() {
+          click: function () {
             // 제목 클릭 시 자동 새로고침 토글
             toggleAutoRefresh()
           },
-          mouseOver: function() {
+          mouseOver: function () {
             // 툴팁 표시 (서브타이틀 내용 포함)
-            this.renderer.label(
+            (this as any).renderer.label(
               `<div style="background: rgba(37, 41, 49, 0.95); border: 1px solid #00d4ff; border-radius: 5px; padding: 10px; color: white; font-size: 12px; max-width: 350px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
                 <div style="font-weight: bold; color: #00d4ff; margin-bottom: 8px;">Chart Information</div>
                 <div style="margin-bottom: 6px;"><b>Color shows daily change:</b> Red (loss) → Gray (neutral) → Green (gain)</div>
                 <div style="margin-bottom: 6px;"><b>Data source:</b> /api/v1/assets/treemap/live (treemap_live_view)</div>
-                <div style="margin-bottom: 6px;"><b>Real-time updates:</b> ${isAutoRefresh ? 'Enabled' : 'Disabled'} (${refreshInterval/1000}s interval)</div>
+                <div style="margin-bottom: 6px;"><b>Real-time updates:</b> ${isAutoRefresh ? 'Enabled' : 'Disabled'} (${refreshInterval / 1000}s interval)</div>
                 <div style="margin-bottom: 6px;"><b>WebSocket:</b> ${connected ? 'Connected' : 'Disconnected'}</div>
                 <div style="margin-bottom: 6px;"><b>Interaction:</b> Click to drill down</div>
                 <div style="margin-bottom: 6px;"><b>Size adjustment:</b> Commodities (70%), Crypto (130%)</div>
                 <div style="margin-bottom: 6px;"><b>Assets:</b> Stocks, ETFs, Cryptocurrencies</div>
                 <div style="margin-bottom: 6px;"><b>Click title:</b> Toggle auto-refresh</div>
               </div>`,
-              this.chart.plotLeft + 10,
-              this.chart.plotTop + 10,
+              (this as any).chart.plotLeft + 10,
+              (this as any).chart.plotTop + 10,
               'callout',
-              this.chart.plotLeft + 10,
-              this.chart.plotTop + 10,
+              (this as any).chart.plotLeft + 10,
+              (this as any).chart.plotTop + 10,
               true
             ).attr({
               zIndex: 1000
             }).add();
           },
-          mouseOut: function() {
+          mouseOut: function () {
             // 툴팁 제거
-            this.chart.renderer.labelElements.forEach((label: any) => {
+            (this as any).chart.renderer.labelElements.forEach((label: any) => {
               if (label.element && label.element.innerHTML && label.element.innerHTML.includes('Chart Information')) {
                 label.destroy();
               }
@@ -442,17 +442,17 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
       tooltip: {
         followPointer: true,
         outside: true,
-        formatter: function() {
-          const point = this.point as any;
+        formatter: function () {
+          const point = (this as any).point as any;
           const colorValue = point.colorValue || 0;
           let changeColor = '#a0a0a0'; // 기본 회색
-          
+
           if (colorValue > 0) {
             changeColor = '#2ecc59'; // 초록색
           } else if (colorValue < 0) {
             changeColor = '#f73539'; // 빨간색
           }
-          
+
           let tooltipContent = '<div style="padding: 5px;">';
           const cat = (point.custom.category || point.custom.type_name || 'Other').toLowerCase();
           const isEtfOrFund = cat.includes('etf') || cat.includes('fund');
@@ -472,34 +472,34 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
           } else if (category.toLowerCase().includes('crypto') || category.toLowerCase().includes('cryptocurrency')) {
             originalMarketCap = point.value / 1.3; // 130%로 조정된 것을 원복
           }
-          
+
           tooltipContent += '<b style="color: #ffffff;">Market Cap:</b> <span style="color: #00d4ff;">USD ' + (originalMarketCap / 1000000000).toFixed(1) + ' BIN</span><br/>';
-          
+
           if (point.custom.performance) {
             tooltipContent += '<b style="color: #ffffff;">Daily Change:</b> <span style="color: ' + changeColor + ';">' + point.custom.performance + '</span><br/>';
           }
-          
+
           if (point.custom.price) {
             tooltipContent += '<b style="color: #ffffff;">Price:</b> <span style="color: #00d4ff;">$' + point.custom.price + '</span><br/>';
           }
-          
+
           // ETF/펀드는 Ticker 라인 생략
           if (point.custom.ticker && !isEtfOrFund) {
             tooltipContent += '<b style="color: #ffffff;">Ticker:</b> <span style="color: #a0a0a0;">' + point.custom.ticker + '</span><br/>';
           }
-          
+
           if (point.custom.country) {
             tooltipContent += '<b style="color: #ffffff;">Country:</b> <span style="color: #a0a0a0;">' + point.custom.country + '</span><br/>';
           }
-          
+
           if (point.custom.rank) {
             tooltipContent += '<b style="color: #ffffff;">Rank:</b> <span style="color: #a0a0a0;">#' + point.custom.rank + '</span><br/>';
           }
-          
+
           if (point.custom.volume) {
             tooltipContent += '<b style="color: #ffffff;">Volume:</b> <span style="color: #a0a0a0;">' + (point.custom.volume / 1000000).toFixed(1) + 'M</span><br/>';
           }
-          
+
           tooltipContent += '</div>';
           return tooltipContent;
         },
@@ -543,12 +543,12 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
   if (isLoading) {
     return (
       <div
-        style={{ 
-          height: `${height}px`, 
+        style={{
+          height: `${height}px`,
           minHeight: `${height}px`,
           maxHeight: `${height}px`,
-          display: 'flex', 
-          alignItems: 'center', 
+          display: 'flex',
+          alignItems: 'center',
           justifyContent: 'center',
           backgroundColor: '#252931'
         }}
@@ -556,7 +556,7 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
         <div className="text-white">
           <div>Loading today's asset performance data...</div>
           <div style={{ fontSize: '12px', marginTop: '10px', opacity: 0.7 }}>
-            {isAutoRefresh ? '🔄 Auto-refresh enabled' : '⏸️ Auto-refresh disabled'} | 
+            {isAutoRefresh ? '🔄 Auto-refresh enabled' : '⏸️ Auto-refresh disabled'} |
             {connected ? ' 🔗 WebSocket connected' : ' 🔌 WebSocket disconnected'}
           </div>
         </div>
@@ -567,12 +567,12 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
   if (error) {
     return (
       <div
-        style={{ 
-          height: `${height}px`, 
+        style={{
+          height: `${height}px`,
           minHeight: `${height}px`,
           maxHeight: `${height}px`,
-          display: 'flex', 
-          alignItems: 'center', 
+          display: 'flex',
+          alignItems: 'center',
           justifyContent: 'center',
           backgroundColor: '#252931'
         }}
@@ -580,17 +580,17 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
         <div className="text-red-500">
           <div>Error loading today's market caps data: {error.message}</div>
           <div style={{ fontSize: '12px', marginTop: '10px', opacity: 0.7 }}>
-            {isAutoRefresh ? '🔄 Auto-refresh enabled' : '⏸️ Auto-refresh disabled'} | 
+            {isAutoRefresh ? '🔄 Auto-refresh enabled' : '⏸️ Auto-refresh disabled'} |
             {connected ? ' 🔗 WebSocket connected' : ' 🔌 WebSocket disconnected'}
           </div>
-          <button 
+          <button
             onClick={handleManualRefresh}
-            style={{ 
-              marginTop: '10px', 
-              padding: '5px 10px', 
-              backgroundColor: '#00d4ff', 
-              color: 'white', 
-              border: 'none', 
+            style={{
+              marginTop: '10px',
+              padding: '5px 10px',
+              backgroundColor: '#00d4ff',
+              color: 'white',
+              border: 'none',
               borderRadius: '3px',
               cursor: 'pointer'
             }}
@@ -605,12 +605,12 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
   if (!isLoading && !error && (!data || !data.data || data.data.length === 0)) {
     return (
       <div
-        style={{ 
-          height: `${height}px`, 
+        style={{
+          height: `${height}px`,
           minHeight: `${height}px`,
           maxHeight: `${height}px`,
-          display: 'flex', 
-          alignItems: 'center', 
+          display: 'flex',
+          alignItems: 'center',
           justifyContent: 'center',
           backgroundColor: '#252931'
         }}
@@ -621,17 +621,17 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
           <p>Transform data length: {treemapData?.length || 0}</p>
           <p>Using today's data from /api/v1/assets/treemap/live (treemap_live_view)</p>
           <div style={{ fontSize: '12px', marginTop: '10px', opacity: 0.7 }}>
-            {isAutoRefresh ? '🔄 Auto-refresh enabled' : '⏸️ Auto-refresh disabled'} | 
+            {isAutoRefresh ? '🔄 Auto-refresh enabled' : '⏸️ Auto-refresh disabled'} |
             {connected ? ' 🔗 WebSocket connected' : ' 🔌 WebSocket disconnected'}
           </div>
-          <button 
+          <button
             onClick={handleManualRefresh}
-            style={{ 
-              marginTop: '10px', 
-              padding: '5px 10px', 
-              backgroundColor: '#00d4ff', 
-              color: 'white', 
-              border: 'none', 
+            style={{
+              marginTop: '10px',
+              padding: '5px 10px',
+              backgroundColor: '#00d4ff',
+              color: 'white',
+              border: 'none',
               borderRadius: '3px',
               cursor: 'pointer'
             }}
@@ -644,8 +644,8 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
   }
 
   return (
-    <div style={{ 
-      height: `${height}px`, 
+    <div style={{
+      height: `${height}px`,
       minHeight: `${height}px`,
       maxHeight: `${height}px`,
       backgroundColor: '#252931',
@@ -660,9 +660,9 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
           }
         `}
       </style>
-      <HighchartsReact 
-        highcharts={Highcharts} 
-        options={chartOptions} 
+      <HighchartsReact
+        highcharts={Highcharts}
+        options={chartOptions}
         ref={chartRef}
         containerProps={{ style: { height: `${height}px`, minHeight: `${height}px` } }}
       />

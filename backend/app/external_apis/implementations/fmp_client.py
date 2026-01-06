@@ -28,7 +28,7 @@ class FMPClient(TradFiAPIClient):
     
     def __init__(self):
         super().__init__()
-        self.base_url = "https://financialmodelingprep.com/api/v3"
+        self.base_url = "https://financialmodelingprep.com/stable"
         # 환경 변수에서 직접 API 키 가져오기
         import os
         self.api_key = os.getenv("FMP_API_KEY", FMP_API_KEY)
@@ -43,7 +43,7 @@ class FMPClient(TradFiAPIClient):
         
         try:
             async with httpx.AsyncClient() as client:
-                url = f"{self.base_url}/quote/AAPL?apikey={self.api_key}"
+                url = f"{self.base_url}/quote?symbol=AAPL&apikey={self.api_key}"
                 data = await self._fetch_async(client, url, "FMP", "AAPL")
                 return isinstance(data, list) and len(data) > 0
         except Exception as e:
@@ -96,15 +96,15 @@ class FMPClient(TradFiAPIClient):
                 # interval에 따라 다른 엔드포인트 사용
                 if interval in ["4h", "1h", "30m", "15m", "5m", "1m"]:
                     # 인트라데이 데이터용 엔드포인트
-                    base = f"{self.base_url}/historical-chart/{interval}/{fmp_symbol}?apikey={self.api_key}"
+                    base = f"{self.base_url}/historical-chart/{interval}?symbol={fmp_symbol}&apikey={self.api_key}"
                 else:
                     # 일봉 데이터용 엔드포인트 (기본값)
-                    base = f"{self.base_url}/historical-price-full/{fmp_symbol}?apikey={self.api_key}"
+                    base = f"{self.base_url}/historical-price-eod/full?symbol={fmp_symbol}&apikey={self.api_key}"
                 
                 if start_date and end_date:
                     url = f"{base}&from={start_date}&to={end_date}"
                 else:
-                    url = f"{base}&limit={limit or 1000}"
+                    url = base if "limit=" in base else f"{base}&limit={limit or 1000}"
                 
                 logger.info(f"[{symbol} -> {fmp_symbol}] FMP API 호출 시도: {url}")
                 
@@ -160,7 +160,7 @@ class FMPClient(TradFiAPIClient):
         
         try:
             async with httpx.AsyncClient() as client:
-                url = f"{self.base_url}/profile/{symbol}?apikey={self.api_key}"
+                url = f"{self.base_url}/profile?symbol={symbol}&apikey={self.api_key}"
                 
                 try:
                     data = await self._fetch_async(client, url, "FMP Profile", symbol)
@@ -232,7 +232,7 @@ class FMPClient(TradFiAPIClient):
         
         try:
             async with httpx.AsyncClient() as client:
-                url = f"{self.base_url}/quote/{symbol}?apikey={self.api_key}"
+                url = f"{self.base_url}/quote?symbol={symbol}&apikey={self.api_key}"
                 data = await self._fetch_async(client, url, "FMP Quote", symbol)
                 
                 if isinstance(data, list) and len(data) > 0:
@@ -263,7 +263,9 @@ class FMPClient(TradFiAPIClient):
         
         try:
             async with httpx.AsyncClient() as client:
-                url = f"{self.base_url}/technical-indicators/{symbol}?apikey={self.api_key}"
+                # stable API에서는 기술 지표를 개별적으로 가져와야 함 (EMA 200 기본값 시도)
+                url = f"{self.base_url}/technical-indicators/ema?symbol={symbol}&period=200&apikey={self.api_key}"
+
                 
                 try:
                     data = await self._fetch_async(client, url, "FMP Technical Indicators", symbol)
@@ -305,7 +307,7 @@ class FMPClient(TradFiAPIClient):
         try:
             async with httpx.AsyncClient() as client:
                 # Profile API에서 기본 재무 데이터 가져오기
-                profile_url = f"{self.base_url}/profile/{symbol}?apikey={self.api_key}"
+                profile_url = f"{self.base_url}/profile?symbol={symbol}&apikey={self.api_key}"
                 
                 try:
                     profile_data = await self._fetch_async(client, profile_url, "FMP Profile", symbol)
@@ -323,7 +325,7 @@ class FMPClient(TradFiAPIClient):
                     return None
 
                 # Quote API에서 52주 고저점과 이동평균 데이터 가져오기
-                quote_url = f"{self.base_url}/quote/{symbol}?apikey={self.api_key}"
+                quote_url = f"{self.base_url}/quote?symbol={symbol}&apikey={self.api_key}"
                 quote_data = await self._fetch_async(client, quote_url, "FMP Quote", symbol)
                 
                 quote_raw = {}

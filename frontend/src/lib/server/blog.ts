@@ -1,7 +1,7 @@
 import { headers } from 'next/headers'
 
-function getOrigin() {
-  const hdrs = headers()
+async function getOrigin() {
+  const hdrs = await headers()
   const envOrigin = process.env.NEXT_PUBLIC_SITE_ORIGIN && process.env.NEXT_PUBLIC_SITE_ORIGIN.trim() !== ''
     ? process.env.NEXT_PUBLIC_SITE_ORIGIN.replace(/\/$/, '')
     : null
@@ -12,14 +12,14 @@ function getOrigin() {
 }
 
 export async function getBlogSSR(slug: string) {
-  const origin = getOrigin()
+  const origin = await getOrigin()
   const res = await fetch(`${origin}/api/v1/posts/slug/${encodeURIComponent(slug)}`, { cache: 'no-store' })
   if (!res.ok) throw new Error(`Failed to fetch blog: ${res.status}`)
   return res.json()
 }
 
 export async function getBlogsSSR(params?: Record<string, string | number | undefined>) {
-  const origin = getOrigin()
+  const origin = await getOrigin()
   const search = new URLSearchParams()
   if (params) {
     Object.entries(params).forEach(([k, v]) => {
@@ -31,5 +31,3 @@ export async function getBlogsSSR(params?: Record<string, string | number | unde
   if (!res.ok) throw new Error(`Failed to fetch blogs: ${res.status}`)
   return res.json()
 }
-
-

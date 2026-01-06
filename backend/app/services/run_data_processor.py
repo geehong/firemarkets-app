@@ -7,7 +7,17 @@ import sys
 from app.services.data_processor import DataProcessor
 from app.core.config_manager import ConfigManager
 from app.utils.redis_queue_manager import RedisQueueManager
-from app.utils.logger import logger
+# from app.utils.logger import logger # Original logger import commented out or removed
+
+# Initialize logging
+import logging
+# logging.basicConfig(level=logging.INFO)
+# Force DEBUG for data processor troubleshooting
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("app.services.data_processor")
+logger.setLevel(logging.DEBUG)
+logging.getLogger("app.services.processor.repository").setLevel(logging.DEBUG)
+
 
 async def main():
     """메인 실행 함수"""

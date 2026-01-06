@@ -3,7 +3,7 @@
 import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community'
-import { useOhlcvData } from '@/hooks/useAssets'
+import { useOhlcvData } from '@/hooks/assets/useAssets'
 import DateRangePicker from '@/components/inputs/DateRangePicker'
 
 ModuleRegistry.registerModules([AllCommunityModule])
@@ -51,7 +51,7 @@ export default function AgGridHistoryTable({ assetIdentifier = 'BTCUSDT', dataIn
       const changePercent = item.change_percent !== null && item.change_percent !== undefined
         ? Number(item.change_percent)
         : null
-      
+
       return {
         Date: item.timestamp_utc,
         Price: Number(item.close_price) || 0,
@@ -101,7 +101,7 @@ export default function AgGridHistoryTable({ assetIdentifier = 'BTCUSDT', dataIn
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 px-2">
-        {(['1d','1w','1m'] as const).map(iv => (
+        {(['1d', '1w', '1m'] as const).map(iv => (
           <button
             key={iv}
             onClick={() => {

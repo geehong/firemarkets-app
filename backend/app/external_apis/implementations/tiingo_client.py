@@ -360,6 +360,32 @@ class TiingoClient(TradFiAPIClient):
         """Get ETF sector exposure from Tiingo (Not supported)"""
         raise NotImplementedError(f"Tiingo API는 ETF 섹터 노출 데이터를 제공하지 않습니다. {symbol}의 섹터 정보는 다른 API(FMP, Alpha Vantage)를 사용하세요.")
 
+    async def get_news(
+        self, 
+        tickers: Optional[str] = None, 
+        limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        """
+        Get news from Tiingo.
+        https://api.tiingo.com/documentation/news
+        """
+        try:
+            params = {"limit": limit}
+            if tickers:
+                params["tickers"] = tickers
+                
+            data = await self._request("/tiingo/news", params)
+            
+            if not data or not isinstance(data, list):
+                logger.warning("Tiingo news returned empty data.")
+                return []
+                
+            return data
+            
+        except Exception as e:
+            logger.error(f"Tiingo news fetch failed: {e}")
+            return []
+
     def _calculate_change_percent(self, close: float, open_price: float) -> Optional[float]:
         """Calculate percentage change"""
         if close is None or open_price is None or open_price == 0:

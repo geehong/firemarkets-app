@@ -34,6 +34,11 @@ def _create_engine_with_retry(url: str, attempts: int = 12, delay_seconds: int =
                 "connect_timeout": 10,
             }
             
+            # JSON Serializer: 한글 등 유니코드 문자 그대로 저장 (ensure_ascii=False)
+            import json
+            def _json_serializer(obj):
+                return json.dumps(obj, ensure_ascii=False)
+
             eng = create_engine(
                 url,
                 pool_pre_ping=True,
@@ -45,6 +50,7 @@ def _create_engine_with_retry(url: str, attempts: int = 12, delay_seconds: int =
                 pool_reset_on_return='commit',
                 pool_use_lifo=True,
                 connect_args=connect_args,
+                json_serializer=_json_serializer,
             )
             # probe
             with eng.connect() as conn:

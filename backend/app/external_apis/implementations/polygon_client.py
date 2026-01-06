@@ -403,6 +403,42 @@ class PolygonClient(TradFiAPIClient):
             logger.error(f"Error fetching financial statements for {symbol}: {e}")
             return []
 
+    async def get_news(
+        self, 
+        limit: int = 20, 
+        order: str = "desc", 
+        sort: str = "published_utc",
+        ticker: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get news from Polygon.io.
+        Matches user's request: /v2/reference/news
+        """
+        try:
+            params = {
+                "limit": limit,
+                "order": order,
+                "sort": sort
+            }
+            if ticker:
+                params["ticker"] = ticker
+            
+            # The endpoint is /v2/reference/news
+            data = await self._request("/v2/reference/news", params)
+            
+            if not data:
+                return []
+                
+            # Polygon returns {"results": [...], "status": "OK", ...}
+            if isinstance(data, dict):
+                return data.get("results", [])
+            
+            return []
+            
+        except Exception as e:
+            logger.error(f"Polygon news fetch failed: {e}")
+            return []
+
     def _calculate_change_percent(self, close: float, open_price: float) -> Optional[float]:
         """Calculate percentage change"""
         if close is None or open_price is None or open_price == 0:

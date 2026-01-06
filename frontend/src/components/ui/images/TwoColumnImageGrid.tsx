@@ -11,7 +11,6 @@ export default function TwoColumnImageGrid() {
           className="w-full border border-gray-200 rounded-xl dark:border-gray-800"
           width={517}
           height={295}
-          style={{ width: "auto", height: "auto" }}
         />
       </div>
 
@@ -22,7 +21,6 @@ export default function TwoColumnImageGrid() {
           className="w-full border border-gray-200 rounded-xl dark:border-gray-800"
           width={517}
           height={295}
-          style={{ width: "auto", height: "auto" }}
         />
       </div>
     </div>

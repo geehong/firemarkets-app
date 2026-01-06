@@ -1,212 +1,136 @@
-"use client"
+'use client'
 
-import React, { useMemo, useState } from 'react'
+import React, { useMemo } from 'react'
 import Link from 'next/link'
-import AgGridBaseTable from './AgGridBaseTable'
-import { ColDef } from 'ag-grid-community'
-import { useTreemapLive } from '@/hooks/useAssets'
-import { filterExcludedAssets } from '@/constants/excludedAssets'
-
-type AssetRow = {
-  ticker: string
-  name: string
-  asset_type: string
-  market_cap: number | null
-  current_price: number | null
-  price_change_percentage_24h: number | null
-  logo_url?: string | null
-}
+import AgGridBaseTable from '@/components/tables/AgGridBaseTable'
+import { ColDef, ICellRendererParams, ValueFormatterParams, CellStyle } from 'ag-grid-community'
 
 interface AssetsListTableProps {
-  typeName?: string | null
+    rows: any[]
+    loading: boolean
+    error: string | null
 }
 
-export default function AssetsListTable({ typeName }: AssetsListTableProps) {
-  // Always use treemap live, optionally filtered by type_name with market cap sorting
-  const { data, isLoading, error } = useTreemapLive(
-    typeName 
-      ? { 
-          type_name: typeName,
-          sort_by: 'market_cap',
-          sort_order: 'desc'
-        } 
-      : {
-          sort_by: 'market_cap',
-          sort_order: 'desc'
-        }
-  )
-  const [query, setQuery] = useState('')
+export default function AssetsListTable({ rows, loading, error }: AssetsListTableProps) {
+    const columns = useMemo<ColDef<any>[]>(() => [
+        { field: 'asset_id', headerName: 'ID', width: 70, minWidth: 60 },
+        {
+            field: 'logo_url', headerName: 'Symbol', width: 80, minWidth: 70, cellRenderer: (params: ICellRendererParams) => {
+                const url = params.value
+                const ticker = params.data.ticker
+                const assetId = params.data.asset_id
+                const fallback = '🔹'
+                return (
+                    <Link href={`/assets/${ticker || assetId}`} className="inline-block">
+                        {url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                                src={url}
+                                alt="logo"
+                                style={{ width: 20, height: 20, borderRadius: 2 }}
+                                className="hover:opacity-80 transition-opacity cursor-pointer"
+                            />
+                        ) : (
+                            <span className="hover:opacity-80 transition-opacity cursor-pointer">{fallback}</span>
+                        )}
+                    </Link>
+                )
+            }
+        },
+        {
+            field: 'ticker',
+            headerName: 'Ticker',
+            width: 100,
+            minWidth: 90,
+            cellRenderer: (params: ICellRendererParams) => {
+                const ticker = params.value
+                const assetId = params.data.asset_id
+                return (
+                    <Link
+                        href={`/assets/${ticker || assetId}`}
+                        className="text-blue-600 hover:text-blue-800 hover:underline font-medium dark:text-blue-400 dark:hover:text-blue-300"
+                    >
+                        {ticker}
+                    </Link>
+                )
+            }
+        },
+        {
+            field: 'name',
+            headerName: 'Name',
+            flex: 1,
+            minWidth: 200,
+            cellRenderer: (params: ICellRendererParams) => {
+                const name = params.value
+                const ticker = params.data.ticker
+                const assetId = params.data.asset_id
+                return (
+                    <Link
+                        href={`/assets/${ticker || assetId}`}
+                        className="text-blue-600 hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
+                    >
+                        {name}
+                    </Link>
+                )
+            }
+        },
+        {
+            field: 'current_price',
+            headerName: 'Price',
+            width: 120,
+            minWidth: 110,
+            valueFormatter: (p: ValueFormatterParams) => p.value != null ? `$${Number(p.value).toFixed(2)}` : '',
+            cellStyle: (p: any): CellStyle | undefined => {
+                const v = p.data?.daily_change_percent ?? 0
+                return { color: v >= 0 ? '#007c32' : '#d91400', fontWeight: 700, fontSize: '.875rem' }
+            }
+        },
+        {
+            field: 'daily_change_percent',
+            headerName: 'Change(%)',
+            width: 110,
+            minWidth: 100,
+            valueFormatter: (p: ValueFormatterParams) => {
+                const v = p.value ?? 0
+                return `${v >= 0 ? '+' : ''}${Number(v).toFixed(2)}%`
+            },
+            cellStyle: (p: any): CellStyle | undefined => {
+                const v = p.value ?? 0
+                const base = { fontWeight: 700, fontSize: '.875rem' } as const
+                if (v > 0) return { ...base, color: '#007c32' }
+                if (v < 0) return { ...base, color: '#d91400' }
+                return { ...base, color: '#a0a0a0' }
+            }
+        },
+        {
+            field: 'market_cap',
+            headerName: 'Market Cap(BIN)',
+            width: 150,
+            minWidth: 120,
+            valueFormatter: (p: ValueFormatterParams) => p.value != null ? `${(Number(p.value) / 1e9).toFixed(1)} B` : ''
+        },
+        {
+            field: 'type_name',
+            headerName: 'Type',
+            width: 90,
+            minWidth: 80
+        },
+    ], [])
 
-  const rows = useMemo(() => {
-    const sourceItems = ((data as any)?.data) ?? []
-    const items = Array.isArray(sourceItems) ? sourceItems : []
-    
-    // 제외 목록 필터링
-    const filteredItems = filterExcludedAssets(items)
-    
-    const mapped = filteredItems.map((it: any) => ({
-      asset_id: it.asset_id,
-      ticker: it.ticker,
-      name: it.name,
-      type_name: it.type_name || it.asset_type,
-      market_cap: it.market_cap ?? null,
-      current_price: it.current_price ?? null,
-      daily_change_percent: it.price_change_percentage_24h ?? it.daily_change_percent ?? null,
-      logo_url: it.logo_url ?? null,
-      category: it.category,
-    }))
-    
-    // 시총으로 정렬 (내림차순)
-    const sorted = mapped.sort((a: any, b: any) => {
-      const marketCapA = parseFloat(a.market_cap) || 0
-      const marketCapB = parseFloat(b.market_cap) || 0
-      return marketCapB - marketCapA
-    })
-    
-    if (!query) return sorted
-    const q = query.toLowerCase()
-    return sorted.filter((r: any) =>
-      (r.ticker || '').toLowerCase().includes(q) ||
-      (r.name || '').toLowerCase().includes(q) ||
-      (r.type_name || '').toLowerCase().includes(q)
+    return (
+        <div className="space-y-4">
+            <AgGridBaseTable
+                rows={rows}
+                columns={columns}
+                loading={loading}
+                error={error}
+                height={600}
+                gridOptions={{
+                    domLayout: 'autoHeight',
+                    rowHeight: 45, // Slightly taller for better touch targets
+                    headerHeight: 40,
+                }}
+            />
+        </div>
     )
-  }, [data, typeName, query])
-
-  const columns = useMemo<ColDef<any>[]>(() => [
-    { field: 'asset_id', headerName: 'ID', width: 70, minWidth: 60 },
-    {
-      field: 'logo_url', headerName: 'Symbol', width: 80, minWidth: 70, cellRenderer: (params: any) => {
-        const url = params.value
-        const ticker = params.data.ticker
-        const assetId = params.data.asset_id
-        const fallback = '🔹'
-        return (
-          <Link href={`/assets/${ticker || assetId}`} className="inline-block">
-            {url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img 
-                src={url} 
-                alt="logo" 
-                style={{ width: 20, height: 20, borderRadius: 2 }} 
-                className="hover:opacity-80 transition-opacity cursor-pointer"
-              />
-            ) : (
-              <span className="hover:opacity-80 transition-opacity cursor-pointer">{fallback}</span>
-            )}
-          </Link>
-        )
-      }
-    },
-    { 
-      field: 'ticker', 
-      headerName: 'Ticker', 
-      width: 100, 
-      minWidth: 90,
-      cellRenderer: (params: any) => {
-        const ticker = params.value
-        const assetId = params.data.asset_id
-        return (
-          <Link 
-            href={`/assets/${ticker || assetId}`}
-            className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
-          >
-            {ticker}
-          </Link>
-        )
-      }
-    },
-    { 
-      field: 'name', 
-      headerName: 'Name', 
-      flex: 1,
-      minWidth: 200,
-      cellRenderer: (params: any) => {
-        const name = params.value
-        const ticker = params.data.ticker
-        const assetId = params.data.asset_id
-        return (
-          <Link 
-            href={`/assets/${ticker || assetId}`}
-            className="text-blue-600 hover:text-blue-800 hover:underline"
-          >
-            {name}
-          </Link>
-        )
-      }
-    },
-    { 
-      field: 'current_price', 
-      headerName: 'Price', 
-      width: 120, 
-      minWidth: 110,
-      valueFormatter: (p: any) => p.value != null ? `$${Number(p.value).toFixed(2)}` : '', 
-      cellStyle: (p: any) => {
-        const v = p.data?.daily_change_percent ?? 0
-        return { color: v >= 0 ? '#007c32' : '#d91400', fontWeight: 700, fontSize: '.875rem' }
-      }
-    },
-    { 
-      field: 'daily_change_percent', 
-      headerName: 'Change(%)', 
-      width: 110, 
-      minWidth: 100,
-      valueFormatter: (p: any) => {
-        const v = p.value ?? 0
-        return `${v >= 0 ? '+' : ''}${Number(v).toFixed(2)}%`
-      }, 
-      cellStyle: (p: any) => {
-        const v = p.value ?? 0
-        const base = { fontWeight: 700, fontSize: '.875rem' } as const
-        if (v > 0) return { ...base, color: '#007c32' }
-        if (v < 0) return { ...base, color: '#d91400' }
-        return { ...base, color: '#a0a0a0' }
-      }
-    },
-    { 
-      field: 'market_cap', 
-      headerName: 'Market Cap(BIN)', 
-      width: 130, 
-      minWidth: 120,
-      valueFormatter: (p: any) => p.value != null ? `${(Number(p.value)/1e9).toFixed(1)} BIN` : '' 
-    },
-    { 
-      field: 'type_name', 
-      headerName: 'Type', 
-      width: 90, 
-      minWidth: 80 
-    },
-  ], [])
-
-  const loading = isLoading
-  const err = error ? String((error as any).message || error) : null
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by ticker, name, type"
-          className="border rounded px-3 py-1 text-sm"
-        />
-        {query && (
-          <button className="text-sm px-2 py-1 border rounded" onClick={() => setQuery('')}>Clear</button>
-        )}
-      </div>
-      <AgGridBaseTable
-        rows={rows}
-        columns={columns}
-        loading={loading}
-        error={err}
-        height={600}
-        gridOptions={{
-          domLayout: 'autoHeight',
-          rowHeight: 35,
-          headerHeight: 40,
-        }}
-      />
-    </div>
-  )
 }
-
-

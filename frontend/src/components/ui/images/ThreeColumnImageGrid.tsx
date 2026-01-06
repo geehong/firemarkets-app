@@ -11,7 +11,6 @@ export default function ThreeColumnImageGrid() {
           className="w-full border border-gray-200 rounded-xl dark:border-gray-800"
           width={338}
           height={192}
-          style={{ width: "auto", height: "auto" }}
         />
       </div>
 
@@ -22,7 +21,6 @@ export default function ThreeColumnImageGrid() {
           className="w-full border border-gray-200 rounded-xl dark:border-gray-800"
           width={338}
           height={192}
-          style={{ width: "auto", height: "auto" }}
         />
       </div>
 
@@ -33,7 +31,6 @@ export default function ThreeColumnImageGrid() {
           className="w-full border border-gray-200 rounded-xl dark:border-gray-800"
           width={338}
           height={192}
-          style={{ width: "auto", height: "auto" }}
         />
       </div>
     </div>

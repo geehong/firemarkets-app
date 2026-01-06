@@ -77,7 +77,7 @@ const OnChainSettings: React.FC = () => {
   }
 
   const toggleMetric = (metric: string) => {
-    setMetrics(prev => ({ ...prev, [metric]: !prev[metric] }))
+    setMetrics(prev => ({ ...prev, [metric]: !prev[metric as keyof typeof prev] }))
   }
 
   return (
@@ -85,7 +85,7 @@ const OnChainSettings: React.FC = () => {
       {/* API Settings */}
       <div className="bg-white border border-gray-200 rounded-lg p-6">
         <h4 className="text-lg font-medium text-gray-900 mb-4">API Settings</h4>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -153,7 +153,7 @@ const OnChainSettings: React.FC = () => {
       {/* Metrics Toggles */}
       <div className="bg-white border border-gray-200 rounded-lg p-6">
         <h4 className="text-lg font-medium text-gray-900 mb-4">On-chain Metrics Collection</h4>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {Object.entries(metrics).map(([key, enabled]) => (
             <div key={key} className="flex items-center">
@@ -175,7 +175,7 @@ const OnChainSettings: React.FC = () => {
       {/* Actions */}
       <div className="bg-white border border-gray-200 rounded-lg p-6">
         <h4 className="text-lg font-medium text-gray-900 mb-4">Actions</h4>
-        
+
         <div className="flex space-x-4">
           <button
             onClick={handleSave}
@@ -190,7 +190,7 @@ const OnChainSettings: React.FC = () => {
             ) : (
               <>
                 <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/>
+                  <path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z" />
                 </svg>
                 Save Settings
               </>
@@ -203,7 +203,7 @@ const OnChainSettings: React.FC = () => {
             className="inline-flex items-center px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+              <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
             </svg>
             Reset to Default
           </button>

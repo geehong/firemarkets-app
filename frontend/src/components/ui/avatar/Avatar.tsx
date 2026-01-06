@@ -42,13 +42,12 @@ const Avatar: React.FC<AvatarProps> = ({
     <div className={`relative  rounded-full ${sizeClasses[size]}`}>
       {/* Avatar Image */}
       <Image
-        width={100}
-        height={100}
+        width="0"
+        height="0"
         sizes="100vw"
         src={src}
         alt={alt}
-        className="object-cover w-full h-full rounded-full"
-        style={{ width: "auto", height: "auto" }}
+        className="object-cover w-full rounded-full"
       />
 
       {/* Status Indicator */}

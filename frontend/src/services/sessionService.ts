@@ -14,7 +14,7 @@ interface SessionState {
 
 interface SessionEvent {
   type: 'login' | 'logout' | 'token_refresh' | 'session_expired' | 'error'
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   data?: any
   timestamp: number
 }
@@ -243,7 +243,7 @@ class SessionService {
   }
 
   // 로그인
-  async login(credentials: { username: string; password: string }): Promise<{ success: boolean; error?: string }> {
+  async login(credentials: { username: string; password: string; remember?: boolean }): Promise<{ success: boolean; error?: string }> {
     try {
       this.setState({ isLoading: true, error: null })
 
@@ -257,7 +257,7 @@ class SessionService {
           user: loginResult.data.user
         }
 
-        tokenService.saveTokens(tokenData)
+        tokenService.saveTokens(tokenData, credentials.remember)
         tokenService.setSessionId(loginResult.data.session_id)
 
         this.setState({

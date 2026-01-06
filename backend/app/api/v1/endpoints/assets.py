@@ -569,7 +569,7 @@ def get_asset_detail(
                 logger.warning(f"[get_asset_overview] treemap_live_view MISSING row for asset_id={asset_id}")
         except Exception as e:
             logger.error(f"[get_asset_overview] treemap_live_view probe failed for asset_id={asset_id}: {e}")
-        from ....models import Asset, AssetType, OHLCVData
+        from ....models import Asset, AssetType, OHLCVData, Post
         asset_with_type = db.query(Asset, AssetType.type_name) \
                             .join(AssetType, Asset.asset_type_id == AssetType.asset_type_id) \
                             .filter(Asset.asset_id == asset_id) \
@@ -579,8 +579,18 @@ def get_asset_detail(
             raise HTTPException(status_code=404, detail="Asset not found")
 
         asset, type_name = asset_with_type
-        asset_dict = asset.__dict__
+        asset_dict = asset.__dict__.copy() # Use copy to avoid modifying the instance __dict__ directly
         asset_dict['type_name'] = type_name
+
+        # 연관된 포스트 정보 조회 (Edit 링크용)
+        post = db.query(Post).filter(Post.asset_id == asset_id).first()
+        if post:
+            asset_dict['post_id'] = post.id
+            asset_dict['post_slug'] = post.slug
+        else:
+            asset_dict['post_id'] = None
+            asset_dict['post_slug'] = None
+
 
         # 최신 OHLCV 데이터로 실시간 가격 정보 추가
         latest_ohlcv = get_latest_ohlcv(db, asset_id)
@@ -926,8 +936,8 @@ def get_ohlcv_data(
         # 원래 순서(내림차순)로 복원 - 최신 데이터가 먼저 오도록
         ohlcv_data_points = sorted(ohlcv_data_points, key=lambda x: x['timestamp_utc'], reverse=True)
         
-        # Asset 정보 가져오기
-        asset = get_asset_by_ticker(db, asset_identifier) if not asset_identifier.isdigit() else db.query(Asset).filter(Asset.asset_id == int(asset_identifier)).first()
+        # Asset 정보 가져오기 (이미 resolve된 asset_id 사용)
+        asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
         
         return {
             "asset_id": asset.asset_id,
@@ -1004,11 +1014,12 @@ def get_price_data(
         data = query.order_by(OHLCVData.timestamp_utc.desc()).limit(limit).all()
         logger.info(f"Found {len(data)} price records for asset_id: {asset_id}")
 
-        # Asset 정보 가져오기
-        asset = get_asset_by_ticker(db, asset_identifier) if not asset_identifier.isdigit() else db.query(Asset).filter(Asset.asset_id == int(asset_identifier)).first()
+        # Asset 정보 가져오기 (이미 resolve된 asset_id 사용)
+        asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
         
         if not asset:
             raise HTTPException(status_code=404, detail=f"Asset not found: {asset_identifier}")
+
 
         # change_percent가 null인 경우 자동 계산 (시간순으로 정렬하여 계산)
         data_sorted = sorted(data, key=lambda x: x.timestamp_utc)
@@ -1499,7 +1510,10 @@ def get_stock_profile(db: Session, asset_id: int):
 # Treemap Live View Endpoint
 # ============================================================================
 
+from fastapi_cache.decorator import cache
+
 @router.get("/treemap/live", response_model=TreemapLiveResponse)
+@cache(expire=300)
 def get_treemap_live(
     db: Session = Depends(get_postgres_db),
     asset_type_id: Optional[int] = Query(None, description="Filter by asset_type_id"),
@@ -1749,9 +1763,27 @@ def resolve_asset_identifier(db: Session, asset_identifier: str) -> int:
         # 정수가 아니면 Ticker로 처리
         from ....models import Asset
         asset = get_asset_by_ticker(db, asset_identifier)
-        if not asset:
-            raise HTTPException(status_code=404, detail=f"Asset not found with ticker: {asset_identifier}")
-        return asset.asset_id
+        
+        # 1차 시도: 정확한 티커 매칭
+        if asset:
+            return asset.asset_id
+        
+        # 2차 시도: USDT/USD 접미사 제거 후 재시도 (예: SOLUSDT -> SOL, SOL-USD -> SOL)
+        normalized_ticker = asset_identifier
+        if normalized_ticker.endswith('USDT'):
+            normalized_ticker = normalized_ticker[:-4]  # Remove 'USDT'
+        elif normalized_ticker.endswith('-USD'):
+            normalized_ticker = normalized_ticker[:-4]  # Remove '-USD'
+        elif normalized_ticker.endswith('USD'):
+            normalized_ticker = normalized_ticker[:-3]  # Remove 'USD'
+        
+        if normalized_ticker != asset_identifier:
+            asset = get_asset_by_ticker(db, normalized_ticker)
+            if asset:
+                return asset.asset_id
+        
+        raise HTTPException(status_code=404, detail=f"Asset not found with ticker: {asset_identifier}")
+
 
 def get_asset_by_ticker(db: Session, ticker: str):
     """Ticker로 자산 조회"""

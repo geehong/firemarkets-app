@@ -28,10 +28,15 @@ export default function DefaultModal() {
             Modal Heading
           </h4>
           <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
-            This page is under construction or is a test page.
+            Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+            Pellentesque euismod est quis mauris lacinia pharetra. Sed a ligula
+            ac odio condimentum aliquet a nec nulla. Aliquam bibendum ex sit
+            amet ipsum rutrum feugiat ultrices enim quam.
           </p>
           <p className="mt-5 text-sm leading-6 text-gray-500 dark:text-gray-400">
-            This page is under construction or is a test page.
+            Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+            Pellentesque euismod est quis mauris lacinia pharetra. Sed a ligula
+            ac odio.
           </p>
           <div className="flex items-center justify-end w-full gap-3 mt-8">
             <Button size="sm" variant="outline" onClick={closeModal}>

@@ -319,7 +319,7 @@ async def get_metric_data(
     ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"),
     start_date: Optional[date] = Query(None, description="시작 날짜 (YYYY-MM-DD)"),
     end_date: Optional[date] = Query(None, description="종료 날짜 (YYYY-MM-DD)"),
-    limit: int = Query(1000, ge=1, le=10000, description="데이터 개수 제한"),
+    limit: int = Query(1000, ge=1, le=100000, description="데이터 개수 제한"),
     format: str = Query("json", regex="^(json|csv)$", description="응답 형식"),
     db: Session = Depends(get_postgres_db)
 ):
