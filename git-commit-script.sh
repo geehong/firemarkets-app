@@ -40,13 +40,13 @@ COMMIT_TIME=$(date +"%Y-%m-%d %H:%M:%S")
 COMMIT_MESSAGE="Auto commit: $COMMIT_TIME - FireMarkets App daily update"
 
 log_message "2. 변경사항 스테이징 중..."
-if ! git add .; then
+if ! git add . >> "$LOG_FILE" 2>&1; then
     log_message "✗ Git 스테이징 실패"
     exit 1
 fi
 
 log_message "3. 커밋 중..."
-if ! git commit -m "$COMMIT_MESSAGE"; then
+if ! git commit -m "$COMMIT_MESSAGE" >> "$LOG_FILE" 2>&1; then
     log_message "✗ Git 커밋 실패"
     exit 1
 fi
@@ -56,10 +56,12 @@ log_message "4. 원격 저장소에 푸시 중..."
 CURRENT_BRANCH=$(git branch --show-current)
 log_message "현재 브랜치: $CURRENT_BRANCH"
 
-if git push origin $CURRENT_BRANCH; then
+if git push origin $CURRENT_BRANCH >> "$LOG_FILE" 2>&1; then
     log_message "✓ Git 커밋 및 푸시 완료: $COMMIT_MESSAGE (브랜치: $CURRENT_BRANCH)"
 else
-    log_message "✗ Git 푸시 실패"
+    log_message "✗ Git 푸시 실패 (로그 파일 확인 필요)"
+    # 푸시 실패 시 마지막 몇 줄의 에러 메시지를 로그에 직접 기록
+    tail -n 10 "$LOG_FILE" | grep -i "error" >> "$LOG_FILE"
     exit 1
 fi
 
