@@ -2,15 +2,18 @@
 import React from 'react';
 import { useAuth } from '@/hooks/auth/useAuthNew';
 
+import { useLocale } from 'next-intl';
+import AdminConfigTemplateView from '@/components/template/admin/AdminConfigTemplateView';
+
 export default function UserConfigPage() {
+    const locale = useLocale();
     const { isAdmin, loading } = useAuth();
 
     if (loading) return <div>Loading...</div>;
     if (!isAdmin) return <div className="p-6 text-red-600">Access Denied</div>;
 
     return (
-        <div className="container mx-auto p-6">
-            <h1 className="text-2xl font-bold mb-6">User Management</h1>
+        <AdminConfigTemplateView locale={locale} subtitle="Manage users, roles, and permissions.">
 
             <div className="bg-white rounded-lg shadow p-8 text-center">
                 <h2 className="text-xl font-semibold mb-2">Coming Soon</h2>
@@ -46,6 +49,6 @@ export default function UserConfigPage() {
                     </table>
                 </div>
             </div>
-        </div>
+        </AdminConfigTemplateView>
     );
 }

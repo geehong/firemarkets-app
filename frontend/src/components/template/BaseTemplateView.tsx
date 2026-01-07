@@ -19,7 +19,7 @@ export interface BaseTemplateViewProps {
     /**
      * Header configuration
      */
-    header: {
+    header?: {
         title: React.ReactNode | string; // Can be complex node or string
         category?: {
             name: string;
@@ -68,99 +68,102 @@ const BaseTemplateView: React.FC<BaseTemplateViewProps> = ({
     return (
         <div className="space-y-6">
             {/* 1. Semantic Header Section */}
-            <header className="space-y-4">
-                {/* Breadcrumbs (Optional) */}
-                {header.breadcrumbs && (
-                    <nav className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                        <ol className="list-none p-0 inline-flex">
-                            {header.breadcrumbs.map((crumb, index) => (
-                                <li key={index} className="flex items-center">
-                                    {index > 0 && <span className="mx-2">/</span>}
-                                    <Link href={crumb.href} className="hover:text-blue-600">
-                                        {crumb.label}
-                                    </Link>
-                                </li>
-                            ))}
-                        </ol>
-                    </nav>
-                )}
+            {/* 1. Semantic Header Section */}
+            {header && (
+                <header className="space-y-4">
+                    {/* Breadcrumbs (Optional) */}
+                    {header.breadcrumbs && header.breadcrumbs.length > 0 && (
+                        <nav className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                            <ol className="list-none p-0 inline-flex">
+                                {header.breadcrumbs.map((crumb, index) => (
+                                    <li key={index} className="flex items-center">
+                                        {index > 0 && <span className="mx-2">/</span>}
+                                        <Link href={crumb.href} className="hover:text-blue-600">
+                                            {crumb.label}
+                                        </Link>
+                                    </li>
+                                ))}
+                            </ol>
+                        </nav>
+                    )}
 
-                <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03] p-6">
-                    <div className="flex flex-col gap-6">
-                        {/* Cover Image */}
-                        {header.coverImage && (
-                            <div className="w-full h-48 md:h-64 lg:h-80 overflow-hidden rounded-lg relative">
-                                <img
-                                    src={header.coverImage}
-                                    alt={seo.title} // SEO: Use title as alt text
-                                    className="w-full h-full object-cover"
-                                />
-                            </div>
-                        )}
-
-                        <div className="space-y-4">
-                            {/* Meta Row: Category | Status | Date */}
-                            <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
-                                {header.category && (
-                                    <span className="font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded">
-                                        {header.category.name}
-                                    </span>
-                                )}
-
-                                {header.publishedAt && (
-                                    <>
-                                        <span>•</span>
-                                        <time dateTime={header.publishedAt}>
-                                            {new Date(header.publishedAt).toLocaleDateString(locale, {
-                                                year: 'numeric',
-                                                month: 'long',
-                                                day: 'numeric'
-                                            })}
-                                        </time>
-                                    </>
-                                )}
-
-                                {header.status && (
-                                    <>
-                                        <span>•</span>
-                                        <Badge color={header.status.color || 'info'}>
-                                            {header.status.label}
-                                        </Badge>
-                                    </>
-                                )}
-                            </div>
-
-                            {/* H1 Title */}
-                            <div className="flex justify-between items-start gap-4">
-                                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white leading-tight">
-                                    {header.title}
-                                </h1>
-                                {header.actions && (
-                                    <div className="flex-shrink-0">
-                                        {header.actions}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Author Row */}
-                            {header.author && (
-                                <div className="flex items-center gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
-                                    <span className="text-sm text-gray-600 dark:text-gray-400">
-                                        By <span className="font-medium text-gray-900 dark:text-white">{header.author.name}</span>
-                                    </span>
+                    <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03] p-6">
+                        <div className="flex flex-col gap-6">
+                            {/* Cover Image */}
+                            {header.coverImage && (
+                                <div className="w-full h-48 md:h-64 lg:h-80 overflow-hidden rounded-lg relative">
+                                    <img
+                                        src={header.coverImage}
+                                        alt={seo.title} // SEO: Use title as alt text
+                                        className="w-full h-full object-cover"
+                                    />
                                 </div>
                             )}
 
-                            {/* Lead Description (Optional SEO content visible on page) */}
-                            {seo.description && (
-                                <p className="text-gray-600 dark:text-gray-300 text-lg leading-relaxed mt-2">
-                                    {seo.description}
-                                </p>
-                            )}
+                            <div className="space-y-4">
+                                {/* Meta Row: Category | Status | Date */}
+                                <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
+                                    {header.category && (
+                                        <span className="font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded">
+                                            {header.category.name}
+                                        </span>
+                                    )}
+
+                                    {header.publishedAt && (
+                                        <>
+                                            <span>•</span>
+                                            <time dateTime={header.publishedAt}>
+                                                {new Date(header.publishedAt).toLocaleDateString(locale, {
+                                                    year: 'numeric',
+                                                    month: 'long',
+                                                    day: 'numeric'
+                                                })}
+                                            </time>
+                                        </>
+                                    )}
+
+                                    {header.status && (
+                                        <>
+                                            <span>•</span>
+                                            <Badge color={header.status.color || 'info'}>
+                                                {header.status.label}
+                                            </Badge>
+                                        </>
+                                    )}
+                                </div>
+
+                                {/* H1 Title */}
+                                <div className="flex justify-between items-start gap-4">
+                                    <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white leading-tight">
+                                        {header.title}
+                                    </h1>
+                                    {header.actions && (
+                                        <div className="flex-shrink-0">
+                                            {header.actions}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Author Row */}
+                                {header.author && (
+                                    <div className="flex items-center gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                                            By <span className="font-medium text-gray-900 dark:text-white">{header.author.name}</span>
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* Lead Description (Optional SEO content visible on page) */}
+                                {seo.description && (
+                                    <p className="text-gray-600 dark:text-gray-300 text-lg leading-relaxed mt-2">
+                                        {seo.description}
+                                    </p>
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
-            </header>
+                </header>
+            )}
 
             {/* 2. Tab Navigation */}
             {tabs.length > 0 && (

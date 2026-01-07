@@ -2,6 +2,16 @@
     "Index": {
         "title": "대시보드"
     },
+    "Admin": {
+        "pageTitle": "페이지 관리",
+        "dashboard": "대시보드",
+        "dashboardSubtitle": "관리자 대시보드에 오신 것을 환영합니다.",
+        "posts": "포스트",
+        "postsSubtitle": "블로그 포스트를 관리하세요.",
+        "pages": "페이지",
+        "pagesSubtitle": "정적 페이지를 관리하세요.",
+        "configuration": "설정"
+    },
     "Sidebar": {
         "dashboard": "대시보드",
         "onChain": "온체인",
@@ -42,6 +52,9 @@
         "analytics": "분석",
         "customers": "고객",
         "settings": "설정",
+        "adminControl": "관리자 제어",
+        "market": "시장",
+        "overview": "개요",
         "logout": "로그아웃"
     },
     "Dashboard": {
@@ -54,10 +67,6 @@
         "marketMovers": "시장 주도 종목",
         "top3": "Top 3",
         "viewAllAssets": "전체 자산 보기",
-        "noSummary": "요약 없음",
-        "clickToReadMore": "클릭하여 더 읽기",
-        "latestUpdate": "최신 업데이트",
-        "moreNews": "더 많은 뉴스",
         "loadingFeed": "실시간 시장 피드 로딩 중...",
         "aiInsight": "AI 인사이트",
         "basedOnSources": "{count}개의 출처 기반",
@@ -71,7 +80,29 @@
         "market": "시장 개요",
         "blog": "최신 블로그",
         "news": "최신 뉴스",
-        "viewAll": "전체 보기"
+        "briefNews": "단신 뉴스",
+        "viewAll": "전체 보기",
+        "homeTitle": "가장 앞선 금융 지능의 미래",
+        "homeDesc": "현대 투자자를 위한 전문가급 시장 데이터, 온체인 분석, 그리고 AI 기반 인사이트.",
+        "prismTitle": "프리즘 허브 대시보드",
+        "prismDesc": "글로벌 금융 시장의 종합적인 실시간 데이터 개요.",
+        "feedTitle": "개인화된 시장 피드",
+        "feedDesc": "당신을 위해 선별된 시장 업데이트와 AI 기반 분석.",
+        "welcome": "FIREMARKETS에 오신 것을 환영합니다",
+        "launchDashboard": "대시보드 실행",
+        "exploreAssets": "자산 살펴보기",
+        "feature1Title": "실시간 분석",
+        "feature1Desc": "WebSocket을 통한 서브 세컨드 지연율의 암호화폐 및 전통 자산 실시간 데이터 스트리밍.",
+        "feature2Title": "온체인 인사이트",
+        "feature2Desc": "블록체인 지표, 고래의 움직임, 네트워크 건전성 지표에 대한 심층 분석.",
+        "feature3Title": "글로벌 자산",
+        "feature3Desc": "전 세계 주요 자산 및 암호화폐의 실시간 시세와 상세 데이터를 확인하세요.",
+        "noSummary": "요약 정보가 없습니다.",
+        "clickToReadMore": "클릭하여 자세히 보기",
+        "latestUpdate": "최신 업데이트",
+        "moreNews": "더 많은 뉴스",
+        "overview": "개요",
+        "dashboard": "대시보드"
     },
     "Common": {
         "underConstruction": "준비중입니다.",

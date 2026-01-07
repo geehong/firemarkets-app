@@ -9,6 +9,7 @@ export interface OnchainMetric {
     description: string
     title?: string
     loadingText?: string
+    data_count?: number
 }
 
 export interface OnchainDataPoint {
@@ -44,7 +45,6 @@ export const useOnchain = (metric?: string, timeRange: string = '1y', ticker: st
 
         try {
             console.log('🔍 useOnchain: Fetching onchain data for metric:', metric, 'timeRange:', timeRange, 'ticker:', ticker)
-            // Use getOnchainMetricsData to get merged price and metric data
             const response = await apiClient.getOnchainMetricsData(ticker, metric, { time_range: timeRange })
             console.log('✅ useOnchain: API response:', response)
             setData(response)
@@ -105,6 +105,43 @@ export const useOnchainMetrics = (options: { initialData?: OnchainMetric[] | nul
         loading,
         error,
         refetch: fetchMetrics
+    }
+}
+
+/**
+ * 온체인 대시보드 훅
+ */
+export const useOnchainDashboard = (ticker: string = 'BTCUSDT') => {
+    const [data, setData] = useState<any>(null)
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<Error | null>(null)
+
+    const fetchDashboard = useCallback(async () => {
+        setLoading(true)
+        setError(null)
+
+        try {
+            console.log('🔍 useOnchainDashboard: Fetching dashboard summary')
+            const response = await apiClient.getOnchainDashboard(ticker)
+            console.log('✅ useOnchainDashboard: API response:', response)
+            setData(response)
+        } catch (err) {
+            console.error('❌ useOnchainDashboard: API error:', err)
+            setError(err instanceof Error ? err : new Error('Failed to fetch onchain dashboard'))
+        } finally {
+            setLoading(false)
+        }
+    }, [ticker])
+
+    useEffect(() => {
+        fetchDashboard()
+    }, [fetchDashboard])
+
+    return {
+        data,
+        loading,
+        error,
+        refetch: fetchDashboard
     }
 }
 

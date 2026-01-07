@@ -88,6 +88,25 @@ def get_grouped_configuration(
                     is_sensitive=value_info.get('is_sensitive', False),
                     is_active=value_info.get('is_active', True)
                 )
+            else:
+                # Fallback for raw JSON key-value pairs
+                inferred_type = 'string'
+                if isinstance(value_info, bool):
+                    inferred_type = 'boolean'
+                elif isinstance(value_info, int):
+                    inferred_type = 'int'
+                elif isinstance(value_info, float):
+                    inferred_type = 'float'
+                elif isinstance(value_info, (dict, list)):
+                    inferred_type = 'json'
+                
+                grouped_items[key] = GroupedConfigurationItem(
+                    value=value_info,
+                    type=inferred_type,
+                    description=None,
+                    is_sensitive=False,
+                    is_active=True
+                )
         
         return GroupedConfigurationResponse(
             config_id=config.config_id,
@@ -184,6 +203,26 @@ def get_all_grouped_configurations(db: Session = Depends(get_postgres_db)):
                         description=value_info.get('description'),
                         is_sensitive=value_info.get('is_sensitive', False),
                         is_active=value_info.get('is_active', True)
+                    )
+                else:
+                    # Fallback for raw JSON key-value pairs
+                    # Infer type from value
+                    inferred_type = 'string'
+                    if isinstance(value_info, bool):
+                        inferred_type = 'boolean'
+                    elif isinstance(value_info, int):
+                        inferred_type = 'int'
+                    elif isinstance(value_info, float):
+                        inferred_type = 'float'
+                    elif isinstance(value_info, (dict, list)):
+                        inferred_type = 'json'
+                    
+                    grouped_items[key] = GroupedConfigurationItem(
+                        value=value_info,
+                        type=inferred_type,
+                        description=None,
+                        is_sensitive=False,
+                        is_active=True
                     )
             
             result.append(GroupedConfigurationResponse(

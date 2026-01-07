@@ -2,7 +2,7 @@
 import { apiClient } from '@/lib/api'
 import { notFound } from 'next/navigation'
 import { Metadata } from 'next'
-import HomeMain from '@/components/home/HomeMain';
+import DashBoardHomeMainView from '@/components/dashboard/DashBoardHomeMainView';
 
 interface PageProps {
     params: Promise<{
@@ -132,7 +132,7 @@ export default async function HomePage({ params }: PageProps) {
                 {title || 'FireMarkets - Realtime Crypto & Financial Data Platform'}
             </h1>
 
-            <HomeMain />
+            <DashBoardHomeMainView />
         </div>
     )
 }

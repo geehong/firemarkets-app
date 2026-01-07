@@ -290,6 +290,8 @@ class PostSyncResponse(BaseModel):
 class PostStatsResponse(BaseModel):
     """포스트 통계 응답 스키마"""
     total_posts: int
+    post_count: int      # post_type='post'
+    page_count: int      # post_type='page'
     published_posts: int
     draft_posts: int
     total_views: int

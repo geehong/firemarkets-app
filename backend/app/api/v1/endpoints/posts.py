@@ -1,7 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
 from sqlalchemy.orm import Session
-from sqlalchemy import text, cast, String
+from sqlalchemy import text, cast, String, func
 from app.core.database import get_postgres_db
 from app.crud.blog import post, post_category, post_tag, post_comment, post_product, post_chart
 from app.schemas.blog import (
@@ -19,6 +19,7 @@ from app.services.news_ai_agent import NewsAIEditorAgent
 from fastapi import Body
 import logging
 import time
+import json
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -56,7 +57,11 @@ async def get_posts(
         
         # 필터 적용
         if post_type:
-            query = query.filter(Post.post_type == post_type)
+            if "," in post_type:
+                types = [t.strip() for t in post_type.split(",")]
+                query = query.filter(Post.post_type.in_(types))
+            else:
+                query = query.filter(Post.post_type == post_type)
         
         if status:
             query = query.filter(Post.status == status)
@@ -295,36 +300,68 @@ async def get_post_stats(
     db: Session = Depends(get_postgres_db)
 ):
     """포스트 통계 조회"""
-    total_posts = db.query(Post).count()
-    published_posts = db.query(Post).filter(Post.status == "published").count()
-    draft_posts = db.query(Post).filter(Post.status == "draft").count()
-    total_views = db.query(Post).with_entities(Post.view_count).all()
-    total_views = sum(view[0] for view in total_views)
-    total_comments = db.query(PostComment).count()
+    try:
+        total_posts = db.query(Post).count()
+        # Count by specific types
+        # page_count includes 'page' and 'assets'
+        page_count = db.query(Post).filter(Post.post_type.in_(['page', 'assets'])).count()
+        # Treat everything else as a post
+        post_count = total_posts - page_count
+        
+        published_posts = db.query(Post).filter(Post.status == "published").count()
+        draft_posts = db.query(Post).filter(Post.status == "draft").count()
+        
+        # Use SQL sum for efficiency and null safety
+        # Only sum views for "Posts" (excluding pages and assets), matching post_count logic
+        total_views = db.query(func.sum(Post.view_count)).filter(Post.post_type.notin_(['page', 'assets'])).scalar() or 0
+        
+        total_comments = db.query(PostComment).count()
 
-    # 이번 달 포스트 수
-    from datetime import datetime
-    this_month = datetime.now().replace(day=1)
-    monthly_posts = db.query(Post).filter(
-        Post.created_at >= this_month
-    ).count()
+        # 이번 달 포스트 수
+        this_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        monthly_posts = db.query(Post).filter(
+            Post.created_at >= this_month
+        ).count()
 
-    # 인기 카테고리
-    popular_categories = post_category.get_categories_with_post_count(db=db)
+        # 인기 카테고리 (Convert Row to dict)
+        popular_categories_rows = post_category.get_categories_with_post_count(db=db)
+        popular_categories = []
+        for row in popular_categories_rows:
+            # SQLAlchemy Row to dict
+            cat_dict = {
+                "id": row.id,
+                "name": row.name,
+                "slug": row.slug,
+                "description": row.description,
+                "icon": row.icon,
+                "post_count": row.post_count
+            }
+            popular_categories.append(cat_dict)
 
-    # 최근 포스트
-    recent_posts_list = post.get_recent_posts(db=db, limit=5)
+        # 최근 포스트 (Fix keywords if necessary)
+        recent_posts_list = post.get_recent_posts(db=db, limit=5)
+        for p in recent_posts_list:
+            if p.keywords and isinstance(p.keywords, str):
+                try:
+                    p.keywords = json.loads(p.keywords)
+                except:
+                    p.keywords = []
 
-    return PostStatsResponse(
-        total_posts=total_posts,
-        published_posts=published_posts,
-        draft_posts=draft_posts,
-        total_views=total_views,
-        total_comments=total_comments,
-        monthly_posts=monthly_posts,
-        popular_categories=popular_categories,
-        recent_posts=recent_posts_list
-    )
+        return PostStatsResponse(
+            total_posts=total_posts,
+            post_count=post_count,
+            page_count=page_count,
+            published_posts=published_posts,
+            draft_posts=draft_posts,
+            total_views=total_views,
+            total_comments=total_comments,
+            monthly_posts=monthly_posts,
+            popular_categories=popular_categories,
+            recent_posts=recent_posts_list
+        )
+    except Exception as e:
+        logger.error(f"Error fetching post stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{post_id}")

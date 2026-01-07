@@ -493,8 +493,19 @@ export class ApiClient {
   }
 
   // Onchain Metrics List
-  getOnchainMetrics() {
-    return this.request('/onchain/metrics');
+  getOnchainMetrics(ticker?: string) {
+    const search = new URLSearchParams();
+    if (ticker) search.append('ticker', ticker);
+    const qs = search.toString();
+    return this.request(`/onchain/metrics${qs ? `?${qs}` : ''}`);
+  }
+
+  // Onchain Dashboard Summary
+  getOnchainDashboard(ticker?: string) {
+    const search = new URLSearchParams();
+    if (ticker) search.append('ticker', ticker);
+    const qs = search.toString();
+    return this.request(`/onchain/metrics/dashboard${qs ? `?${qs}` : ''}`);
   }
 
   // Onchain Metric Data

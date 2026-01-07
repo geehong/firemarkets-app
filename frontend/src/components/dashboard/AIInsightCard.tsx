@@ -5,7 +5,7 @@ interface AIInsightCardProps {
     post: any;
 }
 
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 import Link from 'next/link';
 
 // ... existing imports ...
@@ -15,15 +15,14 @@ import Link from 'next/link';
 
 const AIInsightCard = ({ post }: AIInsightCardProps) => {
     const t = useTranslations('Dashboard');
+    const locale = useLocale() as 'en' | 'ko';
     const { title, post_info, published_at, slug } = post;
     const info = post_info || {};
     const analysis = info.analysis || {};
 
-    // Title handling (ko preferred if available)
-    // Actually, we should respect locale. For now, logic prefers KO as per original code,
-    // but ideally should match current locale.
-    // Let's assume content is what it is for now, just translate UI labels.
-    const displayTitle = typeof title === 'object' ? (title.ko || title.en) : title;
+    const displayTitle = typeof title === 'object' ? (title[locale] || title.ko || title.en) : title;
+    const summary = locale === 'ko' ? analysis.summary_ko : (analysis.summary_en || analysis.summary_ko);
+    const analysisContent = locale === 'ko' ? analysis.analysis_ko : (analysis.analysis_en || analysis.analysis_ko);
 
     // Custom time ago with translation
     const formatTimeAgo = (dateString: string) => {
@@ -56,9 +55,9 @@ const AIInsightCard = ({ post }: AIInsightCardProps) => {
 
             <div className="p-5 space-y-4">
                 {/* Summary */}
-                {analysis.summary_ko && (
+                {summary && (
                     <div className="space-y-2">
-                        {analysis.summary_ko.map((item: string, idx: number) => (
+                        {summary.map((item: string, idx: number) => (
                             <div key={idx} className="flex gap-2 text-sm text-gray-600 dark:text-gray-300">
                                 <span className="text-blue-500 font-bold">•</span>
                                 <span>{item}</span>
@@ -68,9 +67,9 @@ const AIInsightCard = ({ post }: AIInsightCardProps) => {
                 )}
 
                 {/* Analysis Snippet (Limit line count) */}
-                {analysis.analysis_ko && (
+                {analysisContent && (
                     <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3 text-xs text-gray-500 dark:text-gray-400 italic">
-                        " {analysis.analysis_ko.substring(0, 150)}... "
+                        " {analysisContent.substring(0, 150)}... "
                     </div>
                 )}
 

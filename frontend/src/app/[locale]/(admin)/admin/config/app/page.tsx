@@ -7,8 +7,17 @@ import SchedulerSettings from '@/components/admin/config/ui/SchedulerSettings';
 import TickerTableAgGrid from '@/components/admin/ticker/TickerTableAgGrid';
 import LogsTable from '@/components/admin/logs/LogsTable';
 import RealTimeLogs from '@/components/admin/logs/RealTimeLogs';
+import RealtimeWebSocketSettings from '@/components/admin/config/ui/RealtimeWebSocketSettings';
+import OnChainSettings from '@/components/admin/onchain/OnChainSettings';
+import ConfigReadMe from '@/components/admin/common/ConfigReadMe';
+
+import { useLocale } from 'next-intl';
+import AdminConfigTemplateView from '@/components/template/admin/AdminConfigTemplateView';
+
+import AdvancedConfigList from '@/components/admin/config/ui/AdvancedConfigList';
 
 export default function AppConfigPage() {
+    const locale = useLocale();
     const { isAdmin, loading } = useAuth();
     const [activeTab, setActiveTab] = useState('scheduler');
     const [schedulerPeriod, setSchedulerPeriod] = useState('day');
@@ -28,20 +37,19 @@ export default function AppConfigPage() {
     const handleSchedulerTrigger = async () => { /* ... */ refetchScheduler(); };
 
     return (
-        <div className="container mx-auto p-6">
-            <h1 className="text-2xl font-bold mb-6">App Configuration</h1>
-
-            {/* Tabs */}
-            <div className="flex space-x-4 mb-6 border-b overflow-x-auto">
-                {['scheduler', 'ticker', 'logs', 'optimization'].map(tab => (
-                    <button
-                        key={tab}
-                        onClick={() => setActiveTab(tab)}
-                        className={`pb-2 px-4 whitespace-nowrap ${activeTab === tab ? 'border-b-2 border-blue-600 font-bold text-blue-600' : 'text-gray-600'}`}
-                    >
-                        {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                    </button>
-                ))}
+        <AdminConfigTemplateView locale={locale} subtitle="Application schedules, tickers, logs, and system configurations.">
+            <div className="bg-white rounded-lg shadow p-6 mb-6">
+                <div className="flex flex-wrap gap-2">
+                    {['scheduler', 'ticker', 'logs', 'advanced', 'onchain', 'realtime', 'guide'].map(tab => (
+                        <button
+                            key={tab}
+                            onClick={() => setActiveTab(tab)}
+                            className={`pb-2 px-4 whitespace-nowrap text-sm font-medium transition-colors ${activeTab === tab ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                        </button>
+                    ))}
+                </div>
             </div>
 
             {/* Content */}
@@ -104,13 +112,37 @@ export default function AppConfigPage() {
                     </div>
                 )}
 
-                {activeTab === 'optimization' && (
+                {activeTab === 'advanced' && (
                     <div>
-                        <h2 className="text-xl font-semibold mb-4">Database Optimization</h2>
-                        <p className="text-gray-500">Coming soon through admin.py endpoints.</p>
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-xl font-semibold">System Configurations</h2>
+                            <span className="text-sm text-gray-500">Manage all JSON-based system settings directly.</span>
+                        </div>
+                        <AdvancedConfigList />
+                    </div>
+                )}
+
+                {activeTab === 'onchain' && (
+                    <div>
+                        <h2 className="text-xl font-semibold mb-4">OnChain Settings</h2>
+                        <OnChainSettings />
+                    </div>
+                )}
+
+                {activeTab === 'realtime' && (
+                    <div>
+                        <h2 className="text-xl font-semibold mb-4">Realtime & WebSocket Layout</h2>
+                        <RealtimeWebSocketSettings />
+                    </div>
+                )}
+
+                {activeTab === 'guide' && (
+                    <div>
+                        <h2 className="text-xl font-semibold mb-4">Configuration Guide</h2>
+                        <ConfigReadMe />
                     </div>
                 )}
             </div>
-        </div>
+        </AdminConfigTemplateView>
     );
 }

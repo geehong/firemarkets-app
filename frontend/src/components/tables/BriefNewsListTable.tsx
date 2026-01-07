@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { useLocale } from 'next-intl';
 
 // --- CONFIGURATION START ---
 // Control spacing, border, and visual density of the table rows
@@ -30,9 +31,7 @@ interface BriefNews {
     slug: string;
     created_at: string;
     post_info?: any;
-    author?: {
-        username: string;
-    };
+    author?: any;
 }
 
 interface BriefNewsListTableProps {
@@ -40,12 +39,14 @@ interface BriefNewsListTableProps {
 }
 
 export const BriefNewsListTable: React.FC<BriefNewsListTableProps> = ({ data }) => {
+    const locale = useLocale() as 'en' | 'ko';
+
     return (
         <div className="overflow-x-auto">
             <table className={`min-w-full ${TABLE_STYLE.TABLE.DIVIDE}`}>
                 <tbody className={`${TABLE_STYLE.TABLE.BG} ${TABLE_STYLE.TABLE.DIVIDE}`}>
                     {data.map((item) => {
-                        const title = typeof item.title === 'string' ? item.title : item.title?.ko || item.title?.en || '';
+                        const title = typeof item.title === 'string' ? item.title : (item.title?.[locale] || item.title?.ko || item.title?.en || '');
 
                         // Parse post_info specifically for brief news source
                         let source = 'News';

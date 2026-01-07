@@ -258,6 +258,7 @@ def get_bitcoin_asset(db: Session, ticker: Optional[str] = None) -> Optional[Ass
 async def get_onchain_metrics(ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"), db: Session = Depends(get_postgres_db)):
     """모든 온체인 메트릭 정보를 조회합니다."""
     try:
+        clean_ticker = ticker.strip() if ticker else None
         # 데이터베이스에서 메트릭 정보 조회
         metrics = db.query(OnchainMetricsInfo).filter(
             OnchainMetricsInfo.status == 'active'
@@ -265,7 +266,7 @@ async def get_onchain_metrics(ticker: Optional[str] = Query(None, description="B
         
         metrics_info = []
         for metric in metrics:
-            data_range = get_metric_data_range(metric, db, ticker)
+            data_range = get_metric_data_range(metric, db, clean_ticker)
             is_enabled = metric.is_enabled
             
             # 데이터 범위 문자열 생성
@@ -276,12 +277,12 @@ async def get_onchain_metrics(ticker: Optional[str] = Query(None, description="B
             metrics_info.append(OnchainMetricInfo(
                 id=metric.metric_id,
                 name=metric.name,
-                description=metric.description,
+                description=metric.description or "",
                 category=metric.category,
                 current_range=current_range,
                 last_update=data_range.max_date if data_range and data_range.max_date else None,
                 status='active' if is_enabled else 'inactive',
-                collect_interval='24h',  # 기본값
+                collect_interval='24h',
                 data_count=data_range.count if data_range else 0,
                 is_enabled=is_enabled
             ))
@@ -295,8 +296,9 @@ async def get_onchain_metrics(ticker: Optional[str] = Query(None, description="B
 @router.get("/metrics/{metric_id}/data-range", response_model=MetricDataRange)
 async def get_metric_data_range_endpoint(metric_id: str, ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"), db: Session = Depends(get_postgres_db)):
     """특정 메트릭의 데이터 범위를 조회합니다."""
+    clean_ticker = ticker.strip() if ticker else None
     metric_def = get_metric_definition(metric_id, db)
-    data_range = get_metric_data_range(metric_def, db, ticker)
+    data_range = get_metric_data_range(metric_def, db, clean_ticker)
     
     return MetricDataRange(
         metric_id=metric_id,
@@ -326,8 +328,9 @@ async def get_metric_data(
     """특정 메트릭의 데이터를 조회합니다."""
     metric_def = get_metric_definition(metric_id, db)
     
+    clean_ticker = ticker.strip() if ticker else None
     # 비트코인 자산 ID 조회 (BTC 또는 BTCUSDT 지원)
-    bitcoin_asset = get_bitcoin_asset(db, ticker)
+    bitcoin_asset = get_bitcoin_asset(db, clean_ticker)
     if not bitcoin_asset:
         raise HTTPException(status_code=404, detail="Bitcoin asset not found (BTC or BTCUSDT)")
     
@@ -406,10 +409,11 @@ async def get_metric_stats(
     db: Session = Depends(get_postgres_db)
 ):
     """메트릭의 통계 정보를 조회합니다."""
+    clean_ticker = ticker.strip() if ticker else None
     start_date, end_date = get_period_dates(period)
     
     # 데이터 조회
-    data_response = await get_metric_data(metric_id, ticker, start_date, end_date, 10000, "json", db)
+    data_response = await get_metric_data(metric_id, clean_ticker, start_date, end_date, 10000, "json", db)
     values = [point.value for point in data_response.data if point.value is not None]
     
     if not values:
@@ -438,37 +442,77 @@ async def get_metric_stats(
 async def get_dashboard_summary(
     include: str = Query("latest,stats,trends", description="포함할 정보"),
     ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"),
-    refresh: Optional[int] = Query(None, ge=1, description="자동 새로고침 간격 (초)"),
     db: Session = Depends(get_postgres_db)
 ):
-    """대시보드 요약 정보를 조회합니다."""
-    # 활성 메트릭 수
-    active_metrics = sum(1 for metric in OnchainMetricsInfo.query.filter(OnchainMetricsInfo.status == 'active').all() if is_metric_enabled(metric.metric_id, db))
-    
-    # 최신 업데이트
-    latest_updates = []
-    for metric in OnchainMetricsInfo.query.filter(OnchainMetricsInfo.status == 'active').all()[:5]:  # 상위 5개만
-        try:
-            latest_data = await get_latest_metric_data(metric.metric_id, ticker, 1, db)
-            if latest_data.data:
+    """대시보드 요약 정보를 조회합니다. 전체 메트릭스 수, 메트릭스별 데이터 개수 및 최신값을 포함합니다."""
+    try:
+        clean_ticker = ticker.strip() if ticker else None
+        bitcoin_asset = get_bitcoin_asset(db, clean_ticker)
+        if not bitcoin_asset:
+            raise HTTPException(status_code=404, detail="Bitcoin asset not found")
+        
+        # 1. 메트릭 정보 조회
+        all_metrics = db.query(OnchainMetricsInfo).all()
+        active_metrics_list = [m for m in all_metrics if m.status == 'active' and m.is_enabled]
+        
+        # 2. 메트릭별 데이터 현황 집계
+        latest_updates = []
+        
+        # 데이터베이스 필드명 매핑
+        db_field_map = {
+            'mvrv_z_score': 'mvrv_z_score', 'sopr': 'sopr', 'nupl': 'nupl',
+            'realized_price': 'realized_price', 'hashrate': 'hashrate',
+            'difficulty': 'difficulty', 'miner_reserves': 'miner_reserves',
+            'etf_btc_total': 'etf_btc_total', 'etf_btc_flow': 'etf_btc_flow',
+            'open_interest_futures': 'open_interest_futures', 'realized_cap': 'realized_cap',
+            'cdd_90dma': 'cdd_90dma', 'true_market_mean': 'true_market_mean',
+            'nrpl_btc': 'nrpl_btc', 'thermo_cap': 'thermo_cap',
+            'hodl_waves_supply': 'hodl_waves_supply', 'aviv': 'aviv'
+        }
+        
+        for metric in active_metrics_list:
+            db_field = db_field_map.get(metric.metric_id)
+            if not db_field:
+                continue
+                
+            data_range = get_metric_data_range(metric, db, clean_ticker)
+            if data_range and data_range.count > 0:
+                # 최신 값 가져오기
+                latest_record = db.query(getattr(CryptoMetric, db_field)).filter(
+                    CryptoMetric.asset_id == bitcoin_asset.asset_id,
+                    getattr(CryptoMetric, db_field).isnot(None)
+                ).order_by(desc(CryptoMetric.timestamp_utc)).first()
+                
+                latest_value = None
+                if latest_record and latest_record[0] is not None:
+                    try:
+                        # JSON 필드(dict) 등 float 변환 불가능한 경우 예외 처리
+                        if isinstance(latest_record[0], (int, float, str)):
+                            latest_value = float(latest_record[0])
+                        else:
+                            # dict나 list인 경우 (예: open_interest_futures)
+                            latest_value = None 
+                    except (ValueError, TypeError):
+                        latest_value = None
+                
                 latest_updates.append({
                     "metric_id": metric.metric_id,
                     "metric_name": metric.name,
-                    "latest_value": latest_data.data[0].value,
-                    "latest_date": latest_data.data[0].date.isoformat()
+                    "data_count": data_range.count,
+                    "latest_date": data_range.max_date.isoformat() if data_range.max_date else None,
+                    "start_date": data_range.min_date.isoformat() if data_range.min_date else None,
+                    "latest_value": latest_value
                 })
-        except:
-            continue
-    
-    # 알림 (간단한 예시)
-    alerts = []
-    
-    return DashboardSummary(
-        total_metrics=len(OnchainMetricsInfo.query.all()),
-        active_metrics=active_metrics,
-        latest_updates=latest_updates,
-        alerts=alerts
-    )
+        
+        return DashboardSummary(
+            total_metrics=len(all_metrics),
+            active_metrics=len(active_metrics_list),
+            latest_updates=latest_updates,
+            alerts=[]
+        )
+    except Exception as e:
+        logger.error(f"Error getting dashboard summary: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get dashboard summary: {str(e)}")
 
 # --- 메트릭 제어 API들 ---
 
@@ -510,7 +554,7 @@ async def run_all_metrics(
 ):
     """모든 활성 메트릭을 실행합니다."""
     try:
-        enabled_metrics = [metric for metric in OnchainMetricsInfo.query.filter(OnchainMetricsInfo.status == 'active').all() if is_metric_enabled(metric.metric_id, db)]
+        enabled_metrics = [metric for metric in db.query(OnchainMetricsInfo).filter(OnchainMetricsInfo.status == 'active').all() if is_metric_enabled(metric.metric_id, db)]
         
         if not enabled_metrics:
             return {
