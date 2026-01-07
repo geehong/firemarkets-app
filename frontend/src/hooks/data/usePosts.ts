@@ -55,7 +55,7 @@ export interface Post {
   slug: string
   status: 'draft' | 'published' | 'private' | 'scheduled'
   featured: boolean
-  post_type: 'post' | 'page' | 'tutorial' | 'news' | 'assets' | 'onchain' | 'raw_news' | 'ai_draft_news'
+  post_type: 'post' | 'page' | 'tutorial' | 'news' | 'assets' | 'onchain' | 'raw_news' | 'ai_draft_news' | 'brief_news'
   view_count: number
   created_at: string
   updated_at: string
@@ -116,7 +116,7 @@ export interface PostCreateData {
   slug: string
   status: 'draft' | 'published' | 'private' | 'scheduled'
   featured: boolean
-  post_type: 'post' | 'page' | 'tutorial' | 'news' | 'assets' | 'onchain'
+  post_type: 'post' | 'page' | 'tutorial' | 'news' | 'assets' | 'onchain' | 'brief_news' | 'raw_news' | 'ai_draft_news'
   author_id: number | null
   category_id: number | null
   cover_image: string | null

@@ -15,8 +15,10 @@ async function getNewsData(slug: string) {
     }
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
-    const { slug } = await params
+export async function generateMetadata({ params }: { params: Promise<{ slug: string; locale: string }> }): Promise<Metadata> {
+    const resolvedParams = await params
+    const slug = resolvedParams.slug
+    const locale = resolvedParams.locale || 'ko'
     const news = await getNewsData(slug)
 
     if (!news) {
@@ -26,8 +28,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
         }
     }
 
-    const title = typeof news.title === 'string' ? news.title : (news.title?.en || news.title?.ko || slug)
-    const desc = typeof news.description === 'string' ? news.description : (news.description?.en || news.description?.ko || '')
+    const title = typeof news.title === 'string' ? news.title : (news.title?.[locale] || news.title?.en || news.title?.ko || slug)
+    const desc = typeof news.description === 'string' ? news.description : (news.description?.[locale] || news.description?.en || news.description?.ko || '')
 
     return {
         title: `${title} | FireMarkets News`,

@@ -18,8 +18,10 @@ async function getBlogData(slug: string) {
     }
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
-    const { slug } = await params
+export async function generateMetadata({ params }: { params: Promise<{ slug: string; locale: string }> }): Promise<Metadata> {
+    const resolvedParams = await params
+    const slug = resolvedParams.slug
+    const locale = resolvedParams.locale || 'ko'
     const blog = await getBlogData(slug)
 
     if (!blog) {
@@ -30,8 +32,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     }
 
     // Assuming title is object or string
-    const title = typeof blog.title === 'string' ? blog.title : (blog.title?.en || blog.title?.ko || slug)
-    const desc = typeof blog.description === 'string' ? blog.description : (blog.description?.en || blog.description?.ko || '')
+    const title = typeof blog.title === 'string' ? blog.title : (blog.title?.[locale] || blog.title?.en || blog.title?.ko || slug)
+    const desc = typeof blog.description === 'string' ? blog.description : (blog.description?.[locale] || blog.description?.en || blog.description?.ko || '')
 
     return {
         title: `${title} | FireMarkets Blog`,

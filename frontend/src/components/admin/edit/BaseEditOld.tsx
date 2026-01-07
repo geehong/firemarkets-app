@@ -18,7 +18,7 @@ export type PostFormState = {
   slug: string
   status: 'draft' | 'published' | 'private' | 'scheduled'
   featured: boolean
-  post_type: 'post' | 'page' | 'tutorial' | 'news' | 'assets' | 'onchain'
+  post_type: 'post' | 'page' | 'tutorial' | 'news' | 'assets' | 'onchain' | 'brief_news' | 'raw_news' | 'ai_draft_news'
   view_count: number
   created_at?: string
   updated_at?: string

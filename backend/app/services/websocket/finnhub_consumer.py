@@ -227,7 +227,7 @@ class FinnhubWSConsumer(BaseWSConsumer):
                 logger.debug(f"➡️  {self.client_name} send subscribe payload: {subscribe_msg}")
                 await self.websocket.send(json.dumps(subscribe_msg))
                 self.subscribed_tickers.append(norm)  # List로 순서 보장
-                logger.info(f"📋 {self.client_name} subscribed to {norm}")
+                logger.debug(f"📋 {self.client_name} subscribed to {norm}")
                 sent_count += 1
             
             logger.info(f"✅ {self.client_name} subscribe done: sent={sent_count}, unique_now={len(set(self.subscribed_tickers))}")

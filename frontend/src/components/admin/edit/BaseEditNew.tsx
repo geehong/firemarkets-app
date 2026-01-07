@@ -15,7 +15,7 @@ export type PostFormState = {
   slug: string
   status: 'draft' | 'published' | 'private' | 'scheduled'
   featured: boolean
-  post_type: 'post' | 'page' | 'tutorial' | 'news' | 'assets' | 'onchain'
+  post_type: 'post' | 'page' | 'tutorial' | 'news' | 'assets' | 'onchain' | 'brief_news' | 'raw_news' | 'ai_draft_news'
   view_count: number
   created_at?: string
   updated_at?: string
@@ -115,10 +115,16 @@ export default function BaseEdit({
       isUpdatingFromEditor.current = true
       editorContentRef.current = value
 
-      setFormData(prev => ({
-        ...prev,
-        [activeLanguage === 'ko' ? 'content_ko' : 'content']: value
-      }))
+      setFormData(prev => {
+        const generatedExcerpt = extractHeadings(value)
+        const currentExcerpt = prev.excerpt as any || { ko: '', en: '' }
+
+        return {
+          ...prev,
+          [activeLanguage === 'ko' ? 'content_ko' : 'content']: value,
+          excerpt: { ...currentExcerpt, [activeLanguage]: generatedExcerpt }
+        }
+      })
 
       // 다음 렌더링 사이클에서 플래그 리셋
       setTimeout(() => {
@@ -228,13 +234,37 @@ export default function BaseEdit({
 
   // 다국어 필드 업데이트
   const updateMultilingualField = (field: keyof Pick<PostFormState, 'title' | 'description' | 'excerpt' | 'meta_title' | 'meta_description'>, value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: {
-        ...prev[field],
-        [activeLanguage]: value
+    setFormData(prev => {
+      const current = prev[field] as any || { ko: '', en: '' }
+      const updatedMultilingualValue = { ...current, [activeLanguage]: value };
+
+      const newState = {
+        ...prev,
+        [field]: updatedMultilingualValue
       }
-    }))
+
+      // 설명(description)이 변경될 때, 메타 설명(meta_description)도 동기화 (SEO)
+      if (field === 'description') {
+        newState.meta_description = {
+          ...(newState.meta_description as any || { ko: '', en: '' }),
+          [activeLanguage]: value
+        }
+      }
+
+      return newState
+    })
+  }
+
+  // Helper to extract headings for excerpt
+  const extractHeadings = (html: string) => {
+    if (typeof window === 'undefined') return '';
+    const temp = document.createElement('div');
+    temp.innerHTML = html;
+    const headings = temp.querySelectorAll('h2, h3');
+    return Array.from(headings)
+      .map(h => h.textContent?.trim())
+      .filter(Boolean)
+      .join(' / ');
   }
 
   // 슬러그 자동 생성
@@ -430,14 +460,17 @@ export default function BaseEdit({
                 </div>
               </div>
 
-              {/* 요약 */}
+              {/* 설명 (Description) */}
               <div className="p-6 border-b">
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  설명 (Description) - {activeLanguage === 'ko' ? '한국어' : 'English'}
+                </label>
                 <textarea
-                  value={formData.excerpt[activeLanguage]}
-                  onChange={(e) => updateMultilingualField('excerpt', e.target.value)}
+                  value={formData.description[activeLanguage]}
+                  onChange={(e) => updateMultilingualField('description', e.target.value)}
                   rows={3}
-                  className="w-full border-none outline-none resize-none"
-                  placeholder="요약을 입력하세요..."
+                  className="w-full border-none outline-none resize-none text-gray-700 bg-gray-50 p-2 rounded"
+                  placeholder="포스트 설명을 입력하세요..."
                 />
               </div>
 

@@ -4,12 +4,89 @@
 # 실행: 6시간마다
 
 # 환경변수 로드
-source /home/geehong/firemarkets-app/.env
+if [ -f /home/geehong/firemarkets-app/.env ]; then
+    # .env 파일 로드 시 발생하는 일부 쉘 에러 무시
+    set -a
+    source /home/geehong/firemarkets-app/.env 2>/dev/null
+    set +a
+fi
 
 # 현재 시간을 포맷팅 (날짜별로 폴더 생성)
 BACKUP_DATE=$(date +"%Y_%m_%d")
 BACKUP_TIME=$(date +"%Y_%m_%d_%H_%M")
-BACKUP_DIR="/home/geehong/backup/${BACKUP_DATE}"
+
+# USB 드라이브 설정
+USB_DEV="/dev/sda1"
+MOUNT_POINT="/mnt/usb_backup"
+
+# 0. USB 포맷 (FORMAT_USB=true 일 때만 실행)
+# 주의: 이 옵션은 USB의 모든 데이터를 삭제합니다.
+if [ "$FORMAT_USB" = "true" ]; then
+    echo "!!! 경고: $USB_DEV 를 포맷합니다. 5초 뒤 시작..."
+    sleep 5
+    
+    # 마운트 해제 시도 (모든 마운트 포인트 확인)
+    echo "USB 마운트 해제 중..."
+    # findmnt 결과를 한 줄씩 읽어 공백이 포함된 경로 처리
+    findmnt -n -o TARGET -S "$USB_DEV" | while read -r path; do
+        if [ -n "$path" ]; then
+            echo "Unmounting $path..."
+            # 일반 언마운트 시도 후 실패 시 lazy 언마운트 시도
+            sudo umount "$path" 2>/dev/null || sudo umount -l "$path"
+        fi
+    done
+    
+    # 강제 언마운트 및 지연
+    sudo umount -f "$USB_DEV" 2>/dev/null || true
+    sleep 3
+    
+    # 마지막 확인: 아직 마운트되어 있는지 체크
+    if findmnt -S "$USB_DEV" >/dev/null; then
+        echo "✗ 장치가 아직 사용 중입니다. 다른 프로그램이 사용 중인지 확인해주세요."
+        exit 1
+    fi
+    
+    # 포맷 실행
+    echo "포맷 시작 ($USB_DEV)..."
+    if sudo mkfs.ext4 -F "$USB_DEV"; then
+        echo "✓ USB 포맷 완료"
+    else
+        echo "✗ USB 포맷 실패. 장치가 사용 중이거나 권한이 없습니다."
+        exit 1
+    fi
+fi
+
+# 마운트 확인 및 수행
+# 기존에 마운트된 곳이 있는지 확인 (공백 처리 포함)
+findmnt -n -o TARGET -S "$USB_DEV" | while read -r path; do
+    if [ -n "$path" ] && [ "$path" != "$MOUNT_POINT" ]; then
+        echo "USB가 다른 경로에 마운트되어 있습니다: $path"
+        echo "해당 경로를 언마운트합니다."
+        sudo umount "$path"
+    fi
+done
+
+if ! mountpoint -q "$MOUNT_POINT"; then
+    echo "USB 마운트 시도: $USB_DEV -> $MOUNT_POINT"
+    sudo mkdir -p "$MOUNT_POINT"
+    
+    # 마운트 실행
+    if sudo mount "$USB_DEV" "$MOUNT_POINT"; then
+        echo "✓ USB 마운트 성공"
+    else
+        echo "✗ USB 마운트 실패. 장치를 확인해주세요."
+        exit 1
+    fi
+    
+    # 권한 설정 (현재 사용자가 쓰기 가능하도록)
+    echo "권한 설정 중..."
+    sudo chown -R $(whoami):$(whoami) "$MOUNT_POINT"
+    sudo chmod 755 "$MOUNT_POINT"
+fi
+
+# 백업 경로 설정 (/backup/firemarkets)
+BACKUP_ROOT="${MOUNT_POINT}/backup/firemarkets"
+BACKUP_DIR="${BACKUP_ROOT}/${BACKUP_DATE}"
 
 # 백업 디렉토리 생성 및 확인
 echo "백업 디렉토리 생성 중: $BACKUP_DIR"
@@ -91,7 +168,7 @@ fi
 
 # 5. 오래된 백업 정리 (30일 이상 된 백업 삭제)
 echo "5. 오래된 백업 정리 중..."
-find /home/geehong/backup -name "2025_*" -type d -mtime +30 -exec rm -rf {} \;
+find "$BACKUP_ROOT" -name "20*_*" -type d -mtime +30 -exec rm -rf {} \;
 echo "✓ 30일 이상 된 백업 정리 완료"
 
 echo "=== 백업 스크립트 종료 ===" 

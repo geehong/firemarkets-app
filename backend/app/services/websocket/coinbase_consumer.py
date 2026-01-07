@@ -381,7 +381,7 @@ class CoinbaseWSConsumer(BaseWSConsumer):
                     'type': 'ticker'
                 })
                 
-                logger.info(f"📈 {self.client_name} {product_id}: ${price} (Vol24h: {volume})")
+                logger.debug(f"📈 {self.client_name} {product_id}: ${price} (Vol24h: {volume})")
                 
         except Exception as e:
             logger.error(f"❌ {self.client_name} ticker processing error: {e}")
@@ -406,7 +406,7 @@ class CoinbaseWSConsumer(BaseWSConsumer):
                     'type': 'trade'
                 })
                 
-                logger.info(f"📈 {self.client_name} {product_id}: ${price} (Size: {size})")
+                logger.debug(f"📈 {self.client_name} {product_id}: ${price} (Size: {size})")
                 
         except Exception as e:
             logger.error(f"❌ {self.client_name} match processing error: {e}")

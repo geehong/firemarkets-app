@@ -22,11 +22,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
             }
         }
 
-        // 다국어 제목/설명 처리 (JSON 파싱 가정 또는 객체 접근)
-        // API 응답이 이미 객체라면 post.title.ko 등으로 접근, 문자열이면 파싱 필요
-        // 여기서는 간단히 처리 (API 응답 구조에 따라 조정 필요)
-        let title = typeof post.title === 'string' ? post.title : (post.title?.ko || post.title?.en || 'Untitled')
-        let description = typeof post.description === 'string' ? post.description : (post.description?.ko || post.description?.en || '')
+        // 다국어 제목/설명 처리
+        const locale = resolvedParams.locale || 'ko'
+        let title = typeof post.title === 'string' ? post.title : (post.title?.[locale] || post.title?.ko || post.title?.en || 'Untitled')
+        let description = typeof post.description === 'string' ? post.description : (post.description?.[locale] || post.description?.ko || post.description?.en || '')
 
         return {
             title: title,

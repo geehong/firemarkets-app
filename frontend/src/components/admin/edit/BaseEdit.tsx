@@ -273,19 +273,50 @@ export default function BaseEdit({
   // --- 3. Handlers ---
 
   const handleUpdate = useCallback((field: keyof PostFormState, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
-    if (onUpdateFormData) onUpdateFormData(field, value)
+    setFormData(prev => {
+      const newState = { ...prev, [field]: value };
+      // Sync description to meta_description if updated as a whole object (rare)
+      if (field === 'description' && value && typeof value === 'object') {
+        newState.meta_description = { ...(newState.meta_description as any || {}), ...value };
+      }
+      return newState;
+    });
+    if (onUpdateFormData) onUpdateFormData(field, value);
   }, [onUpdateFormData])
 
   // Specialized updaters for complex fields
   const updateMultilingual = (field: 'title' | 'description' | 'excerpt' | 'meta_title' | 'meta_description', value: string) => {
     setFormData(prev => {
-      const current = prev[field] as any || {}
-      return {
+      const current = prev[field] as any || { ko: '', en: '' }
+      const updatedMultilingualValue = { ...current, [activeLanguage]: value };
+
+      const newState = {
         ...prev,
-        [field]: { ...current, [activeLanguage]: value }
+        [field]: updatedMultilingualValue
       }
+
+      // Sync description to meta_description (SEO)
+      if (field === 'description') {
+        newState.meta_description = {
+          ...(newState.meta_description as any || { ko: '', en: '' }),
+          [activeLanguage]: value
+        };
+      }
+
+      return newState
     })
+  }
+
+  // Helper to extract headings for excerpt
+  const extractHeadings = (html: string) => {
+    if (typeof window === 'undefined') return '';
+    const temp = document.createElement('div');
+    temp.innerHTML = html;
+    const headings = temp.querySelectorAll('h2, h3');
+    return Array.from(headings)
+      .map(h => h.textContent?.trim())
+      .filter(Boolean)
+      .join(' / ');
   }
 
   const generateSlug = () => {
@@ -370,10 +401,24 @@ export default function BaseEdit({
             slug={formData.slug}
             onSlugChange={(val) => handleUpdate('slug', val)}
             onGenerateSlug={generateSlug}
-            excerpt={formData.excerpt}
-            onExcerptChange={(val) => updateMultilingual('excerpt', val)}
+            description={formData.description}
+            onDescriptionChange={(val) => updateMultilingual('description', val)}
             content={activeLanguage === 'ko' ? formData.content_ko : formData.content}
-            onContentChange={(val) => handleUpdate(activeLanguage === 'ko' ? 'content_ko' : 'content', val)}
+            onContentChange={(val) => {
+              const field = activeLanguage === 'ko' ? 'content_ko' : 'content'
+              const excerptField = 'excerpt'
+              const generatedExcerpt = extractHeadings(val)
+
+              setFormData(prev => {
+                const currentExcerpt = prev.excerpt as any || { ko: '', en: '' }
+                return {
+                  ...prev,
+                  [field]: val,
+                  [excerptField]: { ...currentExcerpt, [activeLanguage]: generatedExcerpt }
+                }
+              })
+              if (onUpdateFormData) onUpdateFormData(field, val)
+            }}
             activeLanguage={activeLanguage}
             editorType={editorType}
             toastUiPreviewStyle={toastUiPreviewStyle}

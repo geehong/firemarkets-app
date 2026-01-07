@@ -255,12 +255,11 @@ class BinanceWSConsumer(BaseWSConsumer):
                             continue
                         logger.info(f"⏳ {self.client_name} subscription request sent, waiting for confirmation in message loop...")
                     else:
-                        logger.info(f"✅ {self.client_name} already subscribed, skipping subscription")
+                        logger.debug(f"✅ {self.client_name} already subscribed, skipping subscription")
                     
                     # 연결 및 구독 성공
                     reconnect_attempts = 0
                     logger.info(f"✅ [BINANCE] 연결 및 구독 완료: {len(self.subscribed_tickers)}개 티커")
-                    logger.info(f"📋 [BINANCE] 구독 중인 티커 목록: {self.subscribed_tickers}")
                     
                     # 메시지 수신 루프
                     logger.info(f"🔄 [BINANCE] 메시지 수신 루프 시작")
@@ -272,7 +271,7 @@ class BinanceWSConsumer(BaseWSConsumer):
                         
                         try:
                             message_count += 1
-                            if message_count % 100 == 0:
+                            if message_count % 1000 == 0:
                                 logger.info(f"📊 [BINANCE] {message_count}개 메시지 처리됨")
                             
                             data = json.loads(message)
@@ -283,21 +282,29 @@ class BinanceWSConsumer(BaseWSConsumer):
                             logger.error(f"❌ [BINANCE] message handling error: {e}")
                             import traceback
                             logger.error(f"❌ [BINANCE] 오류 상세: {traceback.format_exc()}")
-                            
+                    
+                    # 메시지 루프가 종료되면 연결 상태 초기화
+                    logger.warning(f"⚠️ [BINANCE] 메시지 수신 루프 종료됨 (연결 끊김 가능성)")
+                    self.is_connected = False
+                    self._is_subscribed = False
+                    
                 except websockets.exceptions.ConnectionClosed:
                     logger.warning(f"⚠️ {self.client_name} connection closed")
                     self.is_connected = False
-                    self._is_subscribed = False  # 연결 종료 시 구독 상태 초기화
-                    self._pending_subscription_id = None  # 대기 중인 구독 ID 초기화
+                    self._is_subscribed = False
+                    self._pending_subscription_id = None
                     reconnect_attempts += 1
                     await asyncio.sleep(reconnect_delay)
                 except Exception as e:
                     logger.error(f"❌ {self.client_name} run error: {e}")
                     self.is_connected = False
-                    self._is_subscribed = False  # 에러 발생 시 구독 상태 초기화
-                    self._pending_subscription_id = None  # 대기 중인 구독 ID 초기화
+                    self._is_subscribed = False
+                    self._pending_subscription_id = None
                     reconnect_attempts += 1
                     await asyncio.sleep(reconnect_delay)
+                
+                # 타이트 루프 방지를 위한 짧은 휴식
+                await asyncio.sleep(1)
             
             if reconnect_attempts >= max_reconnect_attempts:
                 logger.error(f"❌ {self.client_name} max reconnection attempts reached")
@@ -374,7 +381,7 @@ class BinanceWSConsumer(BaseWSConsumer):
             logger.debug(f"🔍 [BINANCE] trade 데이터 수신: symbol={symbol}, price={price}, qty={quantity}")
             
             if symbol and price:
-                logger.info(f"📈 [BINANCE→PROCESS] {symbol}: ${price} (Vol: {quantity})")
+                logger.debug(f"📈 [BINANCE→PROCESS] {symbol}: ${price} (Vol: {quantity})")
                 # Redis에 데이터 저장
                 await self._store_to_redis({
                     'symbol': symbol,
@@ -384,7 +391,7 @@ class BinanceWSConsumer(BaseWSConsumer):
                     'provider': self.client_name
                 })
                 
-                logger.info(f"✅ [BINANCE→PROCESS] 처리 완료: {symbol}: ${price}")
+                logger.debug(f"✅ [BINANCE→PROCESS] 처리 완료: {symbol}: ${price}")
             else:
                 logger.warning(f"⚠️ [BINANCE→PROCESS] 데이터 누락: symbol={symbol}, price={price}")
                 
@@ -404,7 +411,7 @@ class BinanceWSConsumer(BaseWSConsumer):
             logger.debug(f"🔍 [BINANCE] ticker 데이터 수신: symbol={symbol}, price={last_price}, vol={volume}")
             
             if symbol and last_price:
-                logger.info(f"📈 [BINANCE→PROCESS] {symbol}: ${last_price} (Vol24h: {volume})")
+                logger.debug(f"📈 [BINANCE→PROCESS] {symbol}: ${last_price} (Vol24h: {volume})")
                 # Redis에 데이터 저장
                 await self._store_to_redis({
                     'symbol': symbol,
@@ -415,7 +422,7 @@ class BinanceWSConsumer(BaseWSConsumer):
                     'type': 'ticker'
                 })
                 
-                logger.info(f"✅ [BINANCE→PROCESS] 처리 완료: {symbol}: ${last_price}")
+                logger.debug(f"✅ [BINANCE→PROCESS] 처리 완료: {symbol}: ${last_price}")
             else:
                 logger.warning(f"⚠️ [BINANCE→PROCESS] 데이터 누락: symbol={symbol}, price={last_price}")
                 
@@ -459,9 +466,9 @@ class BinanceWSConsumer(BaseWSConsumer):
                 'provider': 'binance',
                 'type': str(data.get('type', 'trade'))
             }
-            logger.info(f"💾 [BINANCE→REDIS] 저장 시도: {symbol} = ${price} (stream: {stream_key})")
+            logger.debug(f"💾 [BINANCE→REDIS] 저장 시도: {symbol} = ${price} (stream: {stream_key})")
             await r.xadd(stream_key, entry, maxlen=100000, approximate=True)
-            logger.info(f"✅ [BINANCE→REDIS] 저장 완료: {symbol} = ${price}")
+            logger.debug(f"✅ [BINANCE→REDIS] 저장 완료: {symbol} = ${price}")
         except Exception as e:
             logger.error(f"❌ {self.client_name} redis store error: {e}")
             import traceback

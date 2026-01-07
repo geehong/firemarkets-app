@@ -16,8 +16,8 @@ interface MainContentBlockProps {
     slug: string
     onSlugChange: (value: string) => void
     onGenerateSlug: () => void
-    excerpt: { ko: string; en: string } | string
-    onExcerptChange: (value: string) => void
+    description: { ko: string; en: string } | string
+    onDescriptionChange: (value: string) => void
     content: string
     onContentChange: (value: string) => void
     activeLanguage: 'ko' | 'en'
@@ -32,8 +32,8 @@ export default function MainContentBlock({
     slug,
     onSlugChange,
     onGenerateSlug,
-    excerpt,
-    onExcerptChange,
+    description,
+    onDescriptionChange,
     content,
     onContentChange,
     activeLanguage,
@@ -51,7 +51,7 @@ export default function MainContentBlock({
     }
 
     const currentTitle = getValue(title)
-    const currentExcerpt = getValue(excerpt)
+    const currentDescription = getValue(description)
 
     return (
         <div>
@@ -87,17 +87,17 @@ export default function MainContentBlock({
                 </div>
             </div>
 
-            {/* Excerpt */}
+            {/* Description */}
             <div className="p-6 border-b">
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    요약 (Description) - {activeLanguage === 'ko' ? '한국어' : 'English'}
+                    설명 (Description) - {activeLanguage === 'ko' ? '한국어' : 'English'}
                 </label>
                 <textarea
-                    value={currentExcerpt}
-                    onChange={(e) => onExcerptChange(e.target.value)}
+                    value={currentDescription}
+                    onChange={(e) => onDescriptionChange(e.target.value)}
                     rows={3}
                     className="w-full border-none outline-none resize-none text-gray-700 bg-gray-50 p-2 rounded"
-                    placeholder="포스트 요약을 입력하세요..."
+                    placeholder="포스트 설명을 입력하세요..."
                 />
             </div>
 

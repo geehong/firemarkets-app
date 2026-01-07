@@ -23,11 +23,12 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
   const typeList = postType.split(',').map(t => t.trim());
 
   // Initialize state from URL params or defaults
-  const [currentPostType, setCurrentPostType] = useState(searchParams.get('post_type') || typeList[0]);
+  const [currentPostType, setCurrentPostType] = useState(searchParams.get('post_type') || (typeList.includes('all') ? 'all' : typeList[0]));
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || defaultStatus);
   const [currentPage, setCurrentPage] = useState(Number(searchParams.get('page')) || 1);
   const [pageSize, setPageSize] = useState(Number(searchParams.get('page_size')) || 10);
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
+  const [localSearchInput, setLocalSearchInput] = useState(searchTerm);
   const [sortBy, setSortBy] = useState(searchParams.get('sort_by') || 'created_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>((searchParams.get('order') as 'asc' | 'desc') || 'desc');
 
@@ -59,7 +60,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
 
   // Sync state when URL params change (e.g. back button)
   useEffect(() => {
-    const pType = searchParams.get('post_type') || (typeList.includes(currentPostType) ? currentPostType : typeList[0]);
+    const pType = searchParams.get('post_type') || (typeList.includes('all') ? 'all' : (typeList.includes(currentPostType) ? currentPostType : typeList[0]));
     const status = searchParams.get('status') || defaultStatus;
 
     // Page: Default to 1 if not present
@@ -75,11 +76,24 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
     if (status !== statusFilter) setStatusFilter(status);
     if (page !== currentPage) setCurrentPage(page);
     if (pSize !== pageSize) setPageSize(pSize);
-    if (search !== searchTerm) setSearchTerm(search);
+    if (search !== searchTerm) {
+      setSearchTerm(search);
+      setLocalSearchInput(search);
+    }
     if (sort !== sortBy) setSortBy(sort);
     if (order !== sortOrder) setSortOrder(order);
   }, [searchParams, typeList, defaultStatus, currentPostType, statusFilter, currentPage, pageSize, searchTerm, sortBy, sortOrder]);
 
+  // Debounce search update
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (localSearchInput !== searchTerm) {
+        updateURL({ search: localSearchInput, page: 1 });
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [localSearchInput, searchTerm, updateURL]);
 
   // Hooks
   const { data, isLoading, isError, error, refetch } = usePosts({
@@ -258,7 +272,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
 
   const handleEditPost = (postId: number) => {
     const routePrefix = (typeList.includes('page') || currentPostType === 'page') ? 'page' : 'post';
-    router.push(`/admin/${routePrefix}/edit/${postId}`);
+    window.open(`/admin/${routePrefix}/edit/${postId}`, '_blank');
   };
 
   const handleDeletePost = async (postId: number) => {
@@ -323,11 +337,12 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
           <div className="flex items-center gap-2 ml-auto">
             <input
               type="text"
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                // Debounce URL update could be better, but for now simple
-                updateURL({ search: e.target.value, page: 1 });
+              value={localSearchInput}
+              onChange={(e) => setLocalSearchInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  updateURL({ search: localSearchInput, page: 1 });
+                }
               }}
               className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md text-sm dark:bg-gray-800 dark:text-white w-64"
               placeholder="제목 검색..."
