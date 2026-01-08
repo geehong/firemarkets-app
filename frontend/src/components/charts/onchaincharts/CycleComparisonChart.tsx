@@ -10,10 +10,11 @@ import { apiClient } from '@/lib/api';
 
 interface CycleComparisonChartProps {
     title?: string;
-    height: number;
+    height?: number;
     showRangeSelector?: boolean;
     showExporting?: boolean;
 }
+
 
 // ERA 정의
 const ERA_DATES = {
@@ -25,10 +26,11 @@ const ERA_DATES = {
 
 const CycleComparisonChart: React.FC<CycleComparisonChartProps> = ({
     title = 'Bitcoin Cycle Comparison',
-    height,
+    height = 600,
     showRangeSelector = false,
     showExporting = true
 }) => {
+
     const [chartType, setChartType] = useState('line');
     const [useLogScale, setUseLogScale] = useState(true);
     const [isAreaMode, setIsAreaMode] = useState(false);

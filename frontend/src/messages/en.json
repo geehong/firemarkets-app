@@ -55,7 +55,12 @@
         "adminControl": "Admin Control",
         "market": "Market",
         "overview": "Overview",
-        "logout": "Logout"
+        "logout": "Logout",
+        "news": "News",
+        "widgets": "Widgets",
+        "map": "Map",
+        "privacyPolicy": "Privacy Policy",
+        "termsOfService": "Terms of Service"
     },
     "Dashboard": {
         "live": "LIVE",
@@ -107,5 +112,98 @@
     "Common": {
         "underConstruction": "This page is currently under construction.",
         "loading": "Loading..."
+    },
+    "legal": {
+        "privacyPolicy": {
+            "title": "Privacy Policy",
+            "metaDescription": "FireMarkets Privacy Policy",
+            "lastUpdated": "Last Updated",
+            "sections": {
+                "overview": {
+                    "title": "1. Overview",
+                    "content": "FireMarkets ('we', 'our', or 'the Company') values your privacy and complies with applicable data protection laws. This Privacy Policy explains how we collect, use, and protect your personal information when you use our services."
+                },
+                "dataCollection": {
+                    "title": "2. Information We Collect",
+                    "content": "We may collect the following types of information to provide our services:",
+                    "items": {
+                        "cookies": "Cookies and access logs: Usage records, IP addresses, browser types",
+                        "analytics": "Usage statistics: Page views, session duration, click patterns (via Google Analytics, etc.)",
+                        "account": "Account information: Email address, password (when you sign up)"
+                    }
+                },
+                "dataUsage": {
+                    "title": "3. How We Use Your Information",
+                    "items": {
+                        "service": "To provide and operate our services",
+                        "improvement": "To improve our services and develop new features",
+                        "communication": "To send important notices and respond to inquiries"
+                    }
+                },
+                "dataSecurity": {
+                    "title": "4. Data Security",
+                    "content": "We implement technical and organizational measures to protect your personal information, including encryption, access controls, and security software."
+                },
+                "thirdParty": {
+                    "title": "5. Third-Party Disclosure",
+                    "content": "We do not sell or share your personal information with third parties, except as required by law or with your explicit consent."
+                },
+                "userRights": {
+                    "title": "6. Your Rights",
+                    "content": "You have the right to access, correct, delete, or restrict the processing of your personal information at any time. Please contact us using the information below to exercise these rights."
+                },
+                "contact": {
+                    "title": "7. Contact Us",
+                    "content": "For any questions regarding this Privacy Policy, please contact us at contact@firemarkets.net."
+                }
+            }
+        },
+        "termsOfService": {
+            "title": "Terms of Service",
+            "metaDescription": "FireMarkets Terms of Service",
+            "lastUpdated": "Last Updated",
+            "sections": {
+                "agreement": {
+                    "title": "1. Agreement to Terms",
+                    "content": "By accessing or using our services, you agree to be bound by these Terms of Service. If you do not agree to these terms, please discontinue use of our services."
+                },
+                "serviceDescription": {
+                    "title": "2. Service Description",
+                    "content": "FireMarkets provides market data, on-chain analytics, news, and information related to cryptocurrency and financial assets. Our services are provided for informational purposes only and do not constitute investment advice."
+                },
+                "userResponsibilities": {
+                    "title": "3. User Responsibilities",
+                    "items": {
+                        "accuracy": "Provide accurate information: You must provide accurate information when registering.",
+                        "security": "Account security: You are responsible for maintaining the security of your account credentials.",
+                        "compliance": "Legal compliance: You must comply with applicable laws when using our services."
+                    }
+                },
+                "intellectualProperty": {
+                    "title": "4. Intellectual Property",
+                    "content": "All content, designs, logos, and software on this service are protected intellectual property of the Company. Unauthorized reproduction, distribution, or modification is prohibited."
+                },
+                "disclaimer": {
+                    "title": "5. Disclaimer",
+                    "content": "We do not guarantee the accuracy, completeness, or timeliness of information provided through our services. We are not liable for any damages resulting from the use of our services."
+                },
+                "investmentRisk": {
+                    "title": "6. Investment Risk Disclosure",
+                    "content": "⚠️ Investing in cryptocurrency and financial assets involves significant risks, including the potential loss of principal. Information provided on this service does not constitute investment advice. All investment decisions are solely your responsibility. Please consult with a qualified financial advisor before making any investment decisions."
+                },
+                "serviceChanges": {
+                    "title": "7. Service Changes and Termination",
+                    "content": "We reserve the right to modify, suspend, or terminate all or part of our services at any time without prior notice. We are not liable for any damages resulting from such changes."
+                },
+                "governingLaw": {
+                    "title": "8. Governing Law",
+                    "content": "These Terms shall be governed by and construed in accordance with the laws of the Republic of Korea. Any disputes arising from the use of our services shall be subject to the jurisdiction of the courts of the Republic of Korea."
+                },
+                "contact": {
+                    "title": "9. Contact Us",
+                    "content": "For any questions regarding these Terms of Service, please contact us at contact@firemarkets.net."
+                }
+            }
+        }
     }
 }

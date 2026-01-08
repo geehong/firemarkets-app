@@ -494,7 +494,10 @@ class ScrapingLogs(Base):
 
 class CryptoMetric(Base):
     __tablename__ = 'crypto_metrics'
-    __table_args__ = {'extend_existing': True}
+    __table_args__ = (
+        UniqueConstraint('asset_id', 'timestamp_utc', name='ux_crypto_metrics_asset_ts'),
+        {'extend_existing': True}
+    )
     
     metric_id = Column(BigInteger, primary_key=True)  # DB 스키마와 일치
     asset_id = Column(Integer, ForeignKey('assets.asset_id'), nullable=False, index=True)

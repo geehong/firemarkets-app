@@ -1,17 +1,29 @@
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 
 export default function AppFooter() {
     const currentYear = new Date().getFullYear();
+    const t = useTranslations('Sidebar');
 
     return (
         <footer className="w-full bg-white border-t border-gray-200 dark:bg-gray-900 dark:border-gray-800 mt-auto">
             <div className="max-w-[1920px] mx-auto px-4 md:px-6 py-6 lg:py-8">
                 <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                     <div className="flex flex-col items-center md:items-start gap-2">
+                        <div className="flex items-center gap-4 mb-1">
+                            <Link href="/privacy-policy" className="text-sm text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
+                                {t('privacyPolicy')}
+                            </Link>
+                            <span className="text-gray-300 dark:text-gray-700">|</span>
+                            <Link href="/terms-of-service" className="text-sm text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
+                                {t('termsOfService')}
+                            </Link>
+                        </div>
                         <span className="text-sm text-gray-500 dark:text-gray-400">
                             © {currentYear} FireMarkets. All rights reserved.
                         </span>
                     </div>
+
 
                     <div className="flex items-center gap-6">
                         <Link

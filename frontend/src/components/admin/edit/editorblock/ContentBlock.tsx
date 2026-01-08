@@ -4,8 +4,9 @@ import React from 'react'
 import { useCategories } from '@/hooks/data/usePosts'
 
 interface ContentBlockProps {
-  postType: 'post' | 'page' | 'tutorial' | 'news' | 'assets' | 'onchain' | 'raw_news' | 'ai_draft_news'
-  onPostTypeChange: (postType: 'post' | 'page' | 'tutorial' | 'news' | 'assets' | 'onchain' | 'raw_news' | 'ai_draft_news') => void
+  postType: 'post' | 'page' | 'tutorial' | 'news' | 'assets' | 'onchain' | 'raw_news' | 'ai_draft_news' | 'brief_news'
+  onPostTypeChange: (postType: 'post' | 'page' | 'tutorial' | 'news' | 'assets' | 'onchain' | 'raw_news' | 'ai_draft_news' | 'brief_news') => void
+
   authorId: number | null
   authorUsername?: string | null
   categoryId: number | null

@@ -283,6 +283,12 @@ cd /home/geehong/firemarkets-app && docker-compose logs data_processor --since 3
 cd /home/geehong/firemarkets-app && docker-compose logs data_processor --since 1h 2>&1 | grep -E "ohlcv_day_data.*저장 완료|ohlcv_day_data.*upserted|daily=True" | tail -30
 cd /home/geehong/firemarkets-app && docker-compose logs data_processor --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | grep -i "ohlcv" | tail -20
 cd /home/geehong/firemarkets-app && docker-compose logs data_processor --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | tail -20
+docker-compose logs backend --tail 50 -f | grep -Ei "(실패|오류|error|success)"
+docker-compose logs data_processor --tail 50 -f | grep -Ei "(onchain|Onchain|collection|job|ERROR|WARNING|Exception|Traceback)"
+
+
+docker ps --filter name=fire_markets_scheduler && docker logs fire_markets_scheduler 2>&1 | grep -i "onchain"
+
 
 cd /home/geehong/firemarkets-app && echo "🔍 실시간 로그 감시 시작 (16:37, 16:38 대기 중...)" && echo "" && docker logs -f --tail=20 fire_markets_scheduler 2>&1 | grep --line-buffered -E "(16:37|16:38|OHLCVCollector|Asset type filter|Interval filter|Found.*assets|Starting OHLCV|Collection job completed|processed_assets)"
 # 자산 매칭 및 DB 저장 로그

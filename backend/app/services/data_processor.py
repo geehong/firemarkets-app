@@ -274,6 +274,15 @@ class DataProcessor:
                 return await self.repository.save_world_assets_ranking(items, task.get("meta", {}))
             elif task_type == "macrotrends_financials":
                 return await self.repository.save_macrotrends_financials(items)
+            elif task_type == "onchain_metric":
+                # Payload wrapper handling: extract 'data' list if present
+                onchain_items = []
+                for it in items:
+                    if isinstance(it, dict) and "data" in it and isinstance(it["data"], list):
+                        onchain_items.extend(it["data"])
+                    else:
+                        onchain_items.append(it)
+                return await self.repository.save_onchain_metrics(onchain_items)
             else:
                 logger.warning(f"알 수 없는 태스크 타입: {task_type}")
                 return False

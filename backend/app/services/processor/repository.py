@@ -9,7 +9,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from ...core.database import get_postgres_db
 from ...models.asset import (
     RealtimeQuote, RealtimeQuoteTimeDelay, StockProfile, ETFInfo, 
-    CryptoData, StockFinancial, StockAnalystEstimate, WorldAssetsRanking
+    CryptoData, StockFinancial, StockAnalystEstimate, WorldAssetsRanking,
+    CryptoMetric
 )
 
 logger = logging.getLogger(__name__)
@@ -641,6 +642,84 @@ class DataRepository:
         except Exception as e:
             pg_db.rollback()
             logger.error(f"Macrotrends 재무 데이터 저장 실패: {e}")
+            return False
+        finally:
+            pg_db.close()
+
+    async def save_onchain_metrics(self, items: List[Dict[str, Any]]) -> bool:
+        """온체인 메트릭 데이터 저장"""
+        if not items:
+            return True
+        
+        pg_db = next(get_postgres_db())
+        try:
+            saved_count = 0
+            for item in items:
+                try:
+                    asset_id = item.get('asset_id')
+                    ts = item.get('timestamp_utc')
+                    
+                    if not asset_id or not ts:
+                        continue
+                        
+                    pg_data = {
+                        'asset_id': asset_id,
+                        'timestamp_utc': ts,
+                        # Dynamic mapping for all possible metric fields
+                        'mvrv_z_score': self._sanitize_number(item.get('mvrv_z_score')),
+                        'nupl': self._sanitize_number(item.get('nupl')),
+                        'sopr': self._sanitize_number(item.get('sopr')),
+                        'hashrate': self._sanitize_number(item.get('hashrate')),
+                        'difficulty': self._sanitize_number(item.get('difficulty')),
+                        'realized_price': self._sanitize_number(item.get('realized_price')),
+                        'thermo_cap': self._sanitize_number(item.get('thermo_cap')),
+                        'true_market_mean': self._sanitize_number(item.get('true_market_mean')),
+                        'aviv': self._sanitize_number(item.get('aviv')),
+                        'nrpl_btc': self._sanitize_number(item.get('nrpl_btc')),
+                        'etf_btc_flow': self._sanitize_number(item.get('etf_btc_flow')),
+                        'etf_btc_total': self._sanitize_number(item.get('etf_btc_total')),
+                        'hodl_waves_supply': self._sanitize_number(item.get('hodl_waves_supply')),
+                        'cdd_90dma': self._sanitize_number(item.get('cdd_90dma')),
+                        # JSON fields
+                        'hodl_age_distribution': item.get('hodl_age_distribution'),
+                        'open_interest_futures': item.get('open_interest_futures'),
+                    }
+                    pg_data = {k: v for k, v in pg_data.items() if v is not None}
+                    
+                    stmt = pg_insert(CryptoMetric).values(**pg_data)
+                    
+                    # Update all fields except PK/Key and created_at
+                    update_dict = {k: getattr(stmt.excluded, k) for k in pg_data.keys() 
+                                   if k not in ['asset_id', 'timestamp_utc']}
+                    
+                    if not update_dict:
+                        stmt = stmt.on_conflict_do_nothing(
+                            index_elements=['asset_id', 'timestamp_utc']
+                        )
+                    else:
+                        update_dict['updated_at'] = func.now()
+                        stmt = stmt.on_conflict_do_update(
+                            index_elements=['asset_id', 'timestamp_utc'],
+                            set_=update_dict
+                        )
+                    
+                    # Use nested transaction to prevent 'InFailedSqlTransaction' on one item failure
+                    with pg_db.begin_nested():
+                        pg_db.execute(stmt)
+                        
+                    saved_count += 1
+                except Exception as e:
+                    # Log but continue to next item
+                    logger.warning(f"온체인 메트릭 저장 실패 (asset_id={item.get('asset_id')}, ts={item.get('timestamp_utc')}): {e}")
+                    continue
+            
+            pg_db.commit()
+            if saved_count > 0:
+                logger.info(f"✅ 온체인 메트릭 저장 완료: {saved_count}건")
+            return saved_count > 0
+        except Exception as e:
+            pg_db.rollback()
+            logger.error(f"온체인 메트릭 배치 저장 실패: {e}")
             return False
         finally:
             pg_db.close()

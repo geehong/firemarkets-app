@@ -1433,7 +1433,8 @@ class ApiStrategyManager:
             try:
                 self.logger.info(f"Attempting to fetch onchain metric {metric_name} using {client.__class__.__name__} (attempt {i+1}/{len(self.onchain_clients)}) with {days} days")
                 if hasattr(client, 'get_metric'):
-                    data = await client.get_metric(metric_name, days=days)
+                    data = await client.get_metric(metric_name, days=days, asset_id=asset_id)
+
                 elif hasattr(client, 'get_onchain_metric'):
                     data = await client.get_onchain_metric(metric_name, days=days)
                 else:

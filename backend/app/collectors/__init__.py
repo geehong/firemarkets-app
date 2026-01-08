@@ -4,7 +4,7 @@ Data collectors for fetching and storing various types of financial data.
 
 from .base_collector import BaseCollector
 from .ohlcv_collector import OHLCVCollector
-# from .onchain_collector import OnchainCollector  # Temporarily disabled until schema/methods are finalized
+from .onchain_collector import OnchainCollector
 from .stock_collector import StockCollector
 from .etf_collector import ETFCollector
 # from .technical_collector import TechnicalCollector  # Deferred: will be added later
@@ -16,7 +16,7 @@ from .financials_collector import FinancialsCollector
 __all__ = [
     'BaseCollector',
     'OHLCVCollector',
-    # 'OnchainCollector', 
+    'OnchainCollector', 
     'StockCollector',
     'ETFCollector',
     # 'TechnicalCollector',

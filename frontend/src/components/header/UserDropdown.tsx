@@ -2,6 +2,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { useAuth } from "@/hooks/auth/useAuthNew";
@@ -9,6 +10,7 @@ import { useAuth } from "@/hooks/auth/useAuthNew";
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const { user, logout } = useAuth();
+  const router = useRouter();
 
   function toggleDropdown(e: React.MouseEvent<HTMLButtonElement, MouseEvent>) {
     e.stopPropagation();
@@ -23,7 +25,9 @@ export default function UserDropdown() {
     e.preventDefault();
     await logout();
     closeDropdown();
+    router.push('/ko/signin');
   }
+
 
   return (
     <div className="relative">

@@ -43,11 +43,12 @@ interface CycleComparisonChartProps {
 
 interface HistoryTableProps {
     assetIdentifier?: string;
-    initialInterval?: string;
+    initialInterval?: '1d' | '1m' | '1w';
     showVolume?: boolean;
     showChangePercent?: boolean;
     height?: number;
 }
+
 
 const OnChainChart = dynamic<OnChainChartProps>(() => import('@/components/charts/onchaincharts/OnChainChart'), { ssr: false })
 const HalvingChart = dynamic<HalvingChartProps>(() => import('@/components/charts/onchaincharts/HalvingChart'), { ssr: false })

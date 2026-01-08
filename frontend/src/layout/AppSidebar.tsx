@@ -67,17 +67,31 @@ const AppSidebar: React.FC = () => {
 
   // Navigation Data
   const navItems: NavItem[] = [
+    // 1. Dashboard
     {
       icon: <DashboardIcon />,
       name: t('dashboard'),
       path: "/dashboard",
-      //subItems: [{ name: "Ecommerce", path: "/", pro: false }],
     },
+    // 2. News
+    {
+      name: t('news'),
+      icon: <PageIcon />,
+      path: "/news"
+    },
+    // 3. Blog
+    {
+      name: t('blog'),
+      icon: <BlogIcon />,
+      path: "/blog",
+    },
+    // 4. Map
     {
       icon: <MapIcon />,
-      name: "Map",
+      name: t('map'),
       path: "/map",
     },
+    // 5. OnChain
     {
       icon: <OnChainIcon />,
       name: t('onChain'),
@@ -138,8 +152,9 @@ const AppSidebar: React.FC = () => {
         },
       ],
     },
+    // 6. Assets
     {
-      name: t('assets'), // "Assets"
+      name: t('assets'),
       icon: <AssetsIcon />,
       subItems: [
         { name: "All List", path: "/assets", icon: <GridIcon /> },
@@ -150,33 +165,11 @@ const AppSidebar: React.FC = () => {
         { name: "Crypto", path: "/assets?type_name=Crypto", icon: <BoltIcon /> },
       ],
     },
+
     {
-      name: t('blog'), // "Blog"
-      icon: <BlogIcon />,
-      path: "/blog",
-    },
-    {
-      name: "News",
-      icon: <PageIcon />, // Using PageIcon until dedicated NewsIcon
-      path: "/news"
-    },
-    {
-      icon: <PieChartIcon />,
-      name: t('charts'),
-      path: "/chart",
-    },
-    {
-      name: t('tables'),
-      icon: <TableIcon />,
-      path: "/tables",
-    },
-    {
-      name: "Widgets",
-      icon: <GridIcon />,
-      path: "/widgets",
-    },
-    {
-      name: "Admin", // Translation key needed later
+
+
+      name: "Admin",
       icon: <UserCircleIcon />, // Using UserCircleIcon until a specific Admin icon is available
       roles: ['admin', 'super_admin'],
       subItems: [
@@ -217,10 +210,26 @@ const AppSidebar: React.FC = () => {
 
   const othersItems: NavItem[] = [
     {
+      icon: <PieChartIcon />,
+      name: t('charts'),
+      path: "/chart",
+    },
+    {
+      name: t('tables'),
+      icon: <TableIcon />,
+      path: "/tables",
+    },
+    {
+      name: t('widgets'),
+      icon: <GridIcon />,
+      path: "/widgets",
+    },
+    {
       icon: <UserCircleIcon />,
-      name: t('profile'), // Previously in navItems
+      name: t('profile'),
       path: "/profile",
     },
+
     {
       icon: <CalenderIcon />,
       name: t('calendar'), // Previously in navItems
@@ -482,34 +491,38 @@ const AppSidebar: React.FC = () => {
             </Menu>
           </div>
 
-          <div className="px-4">
-            {(!isExpanded && !isHovered && !isMobileOpen) ? (
-              <div className="flex justify-center mb-4"><HorizontaLDots /></div>
-            ) : (
-              <h2 className="mb-4 text-xs font-semibold text-gray-400 uppercase">Others</h2>
-            )}
-            <Menu
-              menuItemStyles={{
-                button: ({ level, active, disabled }) => {
-                  return {
-                    color: disabled ? '#9ca3af' : active ? '#3b82f6' : 'inherit',
-                    backgroundColor: active ? 'rgba(59, 130, 246, 0.08)' : undefined,
-                    '&:hover': {
-                      backgroundColor: 'rgba(59, 130, 246, 0.08)',
-                      color: '#3b82f6',
-                    },
-                    borderRadius: '8px',
-                    marginBottom: '4px',
-                    paddingLeft: level === 0 ? '12px' : '20px',
-                    transition: 'all 0.3s ease',
-                  };
-                },
-              }}
-            >
-              {renderMenuItems(filterMenuByRole(othersItems, userRole))}
-            </Menu>
-          </div>
+          {/* OTHERS section - only for admin/super_admin */}
+          {(userRole === 'admin' || userRole === 'super_admin') && (
+            <div className="px-4">
+              {(!isExpanded && !isHovered && !isMobileOpen) ? (
+                <div className="flex justify-center mb-4"><HorizontaLDots /></div>
+              ) : (
+                <h2 className="mb-4 text-xs font-semibold text-gray-400 uppercase">Others</h2>
+              )}
+              <Menu
+                menuItemStyles={{
+                  button: ({ level, active, disabled }) => {
+                    return {
+                      color: disabled ? '#9ca3af' : active ? '#3b82f6' : 'inherit',
+                      backgroundColor: active ? 'rgba(59, 130, 246, 0.08)' : undefined,
+                      '&:hover': {
+                        backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                        color: '#3b82f6',
+                      },
+                      borderRadius: '8px',
+                      marginBottom: '4px',
+                      paddingLeft: level === 0 ? '12px' : '20px',
+                      transition: 'all 0.3s ease',
+                    };
+                  },
+                }}
+              >
+                {renderMenuItems(filterMenuByRole(othersItems, userRole))}
+              </Menu>
+            </div>
+          )}
         </div>
+
         {isExpanded || isHovered || isMobileOpen ? <SidebarWidget /> : null}
       </Sidebar>
     </aside>

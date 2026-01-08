@@ -109,9 +109,9 @@ echo "백업 디렉토리: $BACKUP_DIR"
 
 # 1. 데이터베이스 백업
 echo "1. PostgreSQL 데이터베이스 백업 중..."
-PGPASSWORD=${DB_PASSWORD_PG} docker exec fire_markets_db_postgres pg_dump -U geehong -d markets > "markets_postgres_backup_${BACKUP_TIME}.sql"
+PGPASSWORD=${DB_PASSWORD_PG} docker exec fire_markets_db_postgres pg_dump -U geehong -d markets | gzip > "markets_postgres_backup_${BACKUP_TIME}.sql.gz"
 if [ $? -eq 0 ]; then
-    echo "✓ PostgreSQL 데이터베이스 백업 완료: markets_postgres_backup_${BACKUP_TIME}.sql"
+    echo "✓ PostgreSQL 데이터베이스 백업 완료: markets_postgres_backup_${BACKUP_TIME}.sql.gz"
 else
     echo "✗ PostgreSQL 데이터베이스 백업 실패"
 fi

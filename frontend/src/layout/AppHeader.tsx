@@ -7,13 +7,29 @@ import DynamicBreadcrumb from "@/components/common/DynamicBreadcrumb";
 import { useAuth } from "@/hooks/auth/useAuthNew";
 import { useSidebar } from "@/context/SidebarContext";
 import Image from "next/image";
-import Link from "next/link";
+import { Link } from "@/i18n/navigation";
 import React, { useState, useEffect, useRef } from "react";
+import { useTranslations } from "next-intl";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/header/DropdownMenu";
+import {
+  GridIcon,
+  PageIcon,
+  BlogIcon,
+  MapIcon,
+  OnChainIcon,
+  AssetsIcon
+} from "@/icons";
 
 const AppHeader: React.FC = () => {
   const [isApplicationMenuOpen, setApplicationMenuOpen] = useState(false);
   const { isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
   const { isAuthenticated, user } = useAuth();
+  const t = useTranslations('Sidebar');
 
   useEffect(() => {
     // console.log("Current Auth State:", { isAuthenticated, user });
@@ -128,7 +144,7 @@ const AppHeader: React.FC = () => {
               </svg>
             </button>
 
-            <div className="hidden lg:block">
+            <div className="hidden lg:flex items-center gap-3">
               <form>
                 <div className="relative">
                   <span className="absolute -translate-y-1/2 left-4 top-1/2 pointer-events-none">
@@ -161,6 +177,62 @@ const AppHeader: React.FC = () => {
                   </button>
                 </div>
               </form>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex items-center gap-2 px-3 py-2 text-gray-700 dark:text-gray-400 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group">
+                    <GridIcon className="w-5 h-5 lg:w-6 lg:h-6" />
+                    <svg
+                      className="stroke-gray-500 dark:stroke-gray-400 transition-transform duration-200 group-data-[state=open]:rotate-180"
+                      width="18"
+                      height="20"
+                      viewBox="0 0 18 20"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        d="M4.3125 8.65625L9 13.3437L13.6875 8.65625"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-[260px]">
+                  <DropdownMenuItem asChild>
+                    <Link href="/news" className="flex w-full items-center gap-3">
+                      <PageIcon className="w-5 h-5" />
+                      {t('news')}
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/blog" className="flex w-full items-center gap-3">
+                      <BlogIcon className="w-5 h-5" />
+                      {t('blog')}
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/map" className="flex w-full items-center gap-3">
+                      <MapIcon className="w-5 h-5" />
+                      {t('map')}
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/onchain/halving/cycle-comparison" className="flex w-full items-center gap-3">
+                      <OnChainIcon className="w-5 h-5" />
+                      {t('onChain')}
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/assets" className="flex w-full items-center gap-3">
+                      <AssetsIcon className="w-5 h-5" />
+                      {t('assets')}
+                    </Link>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
           <div
@@ -168,10 +240,7 @@ const AppHeader: React.FC = () => {
               } items-center justify-between w-full gap-4 px-5 py-4 lg:flex shadow-theme-md lg:justify-end lg:px-0 lg:shadow-none`}
           >
             <div className="flex items-center gap-2 2xsm:gap-3">
-              {/* <!-- Dark Mode Toggler --> */}
               <ThemeToggleButton />
-              {/* <!-- Dark Mode Toggler --> */}
-
               <LanguageSwitcher />
               <NotificationDropdown />
               {/* <!-- Notification Menu Area --> */}
