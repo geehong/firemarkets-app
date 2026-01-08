@@ -142,9 +142,9 @@ const TableRowComponent = ({
                             />
                         </div>
                     ) : (
-                        <div className="w-4 h-4 flex items-center justify-center bg-gray-200 dark:bg-gray-700 rounded-full flex-shrink-0">
-                            <span className="text-[8px] font-bold text-gray-600 dark:text-gray-300">
-                                {asset.ticker.substring(0, 1)}
+                        <div className="w-4 h-4 flex items-center justify-center bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-full flex-shrink-0">
+                            <span className="text-[10px] font-bold text-gray-600 dark:text-white/70 leading-none">
+                                {asset.ticker.charAt(0).toUpperCase()}
                             </span>
                         </div>
                     )}

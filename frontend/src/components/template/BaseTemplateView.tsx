@@ -91,7 +91,7 @@ const BaseTemplateView: React.FC<BaseTemplateViewProps> = ({
                         <div className="flex flex-col gap-6">
                             {/* Cover Image */}
                             {header.coverImage && (
-                                <div className="w-full h-48 md:h-64 lg:h-80 overflow-hidden rounded-lg relative">
+                                <div className="w-full aspect-[16/10] overflow-hidden rounded-lg relative">
                                     <img
                                         src={header.coverImage}
                                         alt={seo.title} // SEO: Use title as alt text

@@ -45,7 +45,7 @@ export function useAuthGuard() {
           loading: false,
           error: data.message,
         })
-        router.push('/admin/signin')
+        router.push('/signin')
       }
     } catch (error) {
       setAuthState({
@@ -62,14 +62,14 @@ export function useAuthGuard() {
       const response = await fetch('/api/auth/logout', {
         method: 'POST',
       })
-      
+
       if (response.ok) {
         setAuthState({
           user: null,
           loading: false,
           error: null,
         })
-        router.push('/admin/signin')
+        router.push('/signin')
         router.refresh()
       }
     } catch (error) {
@@ -78,7 +78,7 @@ export function useAuthGuard() {
   }
 
   const isAdmin = authState.user?.role === 'admin' || authState.user?.role === 'super_admin'
-  
+
   const hasPermission = (permission: string): boolean => {
     return authState.user?.permissions?.[permission] || false
   }

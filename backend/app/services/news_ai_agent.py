@@ -310,25 +310,29 @@ class NewsAIEditorAgent:
         }
         
         prompt = f"""
-You are an expert financial news editor. Analyze the following group of related news articles and generate a comprehensive report in Korean.
+You are a top-tier financial columnist and lead investigative journalist. Your mission is to transform the provided raw news articles into a single, high-quality, professional journalistic essay.
 
 [News Articles]
 {articles_text}
 
 [Instructions]
-[Instructions]
-1. **Title**: Create a catchy, informative title in Korean that summarizes the main event. Also provide an English title.
-2. **Summary**: Provide a 3-bullet point summary of the key facts in Korean. Also provide an English summary.
-3. **Analysis**: Explain the market impact and sentiment (Positive/Negative/Neutral) and why in Korean. Also provide an English analysis.
-4. **Key Entities**: List important companies, coins, or people mentioned.
-5. **Output Format**: Return ONLY a JSON object with the following structure:
+1. **Writing Style**: Use a sophisticated, literary, and deeply analytical narrative style (완전한 문장 형태의 문어체 서술형). 
+2. **Strict Prohibition**: NEVER use bullet points, numbered lists, or the '-' character for summarizing. Do not use a dry "Reporting" format.
+3. **Structure**: 
+   - **Title**: Create a thought-provoking, high-impact headline.
+   - **Lead (Summary)**: Write a compelling introductory paragraph that seamlessly blends key facts with a hook. This must be a single cohesive paragraph of flowing prose.
+   - **Analysis**: Provide a deep-dive analysis of market sentiment and future implications as a continuation of the narrative. Use clear, connected sentences.
+4. **Tone**: Authoritative, insightful, and professional. The output should read like a featured article in a prestigious financial magazine (e.g., Bloomberg, The Economist).
+
+[Output Format]
+Return ONLY a JSON object with the following structure:
 {{
     "title_ko": "...",
     "title_en": "...",
-    "summary_ko": ["...", "...", "..."],
-    "summary_en": ["...", "...", "..."],
-    "analysis_ko": "...",
-    "analysis_en": "...",
+    "summary_ko": "Full narrative introductory paragraph in Korean",
+    "summary_en": "Full narrative introductory paragraph in English",
+    "analysis_ko": "Detailed narrative essay analysis in Korean",
+    "analysis_en": "Detailed narrative essay analysis in English",
     "sentiment": "Positive/Negative/Neutral",
     "entities": ["..."]
 }}
@@ -523,20 +527,22 @@ RETURN ONLY JSON. NO MARKDOWN WRAPPERS.
             articles_text += f"\n[Article {i+1}] Title: {title}\nSource: {source} (Time: {date})\nContent: {content[:1000]}...\n"
 
         prompt = f"""
-You are an expert financial news editor. Your task is to synthesize the following group of related news articles into ONE single, high-quality, comprehensive news report.
+You are a top-tier financial columnist and lead investigative journalist. Your task is to synthesize the following group of related news articles into ONE single, high-quality, professional journalistic essay.
 
 [Input Articles]
 {articles_text}
 
 [Instructions]
-1. **Synthesis**: Combine facts from all articles. Eliminate duplicates. Create a coherent narrative.
-2. **Structure**:
-   - **Title**: A compelling, professional title (English & Korean).
-   - **Description**: A concise summary (1-2 sentences) (English & Korean).
-   - **Content**: A detailed body text (3-5 paragraphs) using HTML tags (e.g., <h2>, <p>, <strong>, <ul>). Include background context if available.
-3. **Language**: Provide output in both English and Korean.
+1. **Writing Style**: Use a sophisticated, literary, and deeply analytical narrative style (완전한 문장 형태의 문어체 서술형). 
+2. **Strict Prohibition**: NEVER use bullet points, numbered lists, or the '-' character. Every section must be composed of flowing, connected sentences.
+3. **Synthesis**: Blend the facts from all sources into a single, cohesive story that reads like a featured magazine piece.
+4. **Structure**: 
+   - **Title**: A thought-provoking, high-impact headline (English & Korean).
+   - **Description**: A compelling, narrative-style lead paragraph (English & Korean).
+   - **Content**: A detailed body text (3-5 paragraphs) using HTML tags (e.g., <h2>, <p>, <strong>). Prioritize flowing prose.
+5. **Language**: Provide output in both English and Korean.
 
-**IMPORTANT**: Do NOT include specific prices, market cap numbers, dates, or any numerical market data. Your training data may be outdated. Focus on general information and qualitative analysis.
+**IMPORTANT**: Do NOT include specific current prices or precise numerical market data unless absolutely certain from sources. Focus on qualitative depth and trend analysis.
 
 [Output Format]
 Return ONLY a valid JSON object:
@@ -568,17 +574,19 @@ Return ONLY a valid JSON object:
         if not content:
             # If no content, try to generate from title alone
             prompt = f"""
-You are an expert financial blog editor. Write a comprehensive blog post based on the following title.
+You are a top-tier financial columnist and lead investigative journalist. Write a comprehensive and cohesive journalistic essay based on the following title.
 
 Title: {title}
 
 [Instructions]
-1. **Content**: detailed, professional, engaging (3-5 paragraphs). Use HTML tags (e.g., <h2>, <p>, <strong>, <ul>/<li>).
-2. **Language**: Provide output in both English and Korean.
-3. **Structure**: 
+1. **Writing Style**: Use a sophisticated, literary, and deeply analytical narrative style (완전한 문장 형태의 문어체 서술형). 
+2. **Strict Prohibition**: NEVER use bullet points, numbered lists, or the '-' character for list-making. The entire piece must be flowing prose.
+3. **Format**: Use HTML tags (e.g., <h2>, <p>, <strong>). Do NOT use Markdown.
+4. **Language**: Provide output in both English and Korean.
+5. **Structure**: 
     - Title (Refined)
-    - Description (Meta summary)
-    - Content (Body)
+    - Description (Narrative Meta summary)
+    - Content (Narrative Body)
 
 [Output Format]
 Return ONLY a valid JSON object:
@@ -594,29 +602,30 @@ Return ONLY a valid JSON object:
         else:
             # Rewrite existing content
             prompt = f"""
-You are an expert financial blog editor. Improve and rewrite the following blog post to be more professional, engaging, and SEO-friendly.
+You are a top-tier financial columnist and lead investigative journalist. Rewrite the following post into a sophisticated, cohesive, and high-quality journalistic essay.
 
 [Input Post]
 Title: {title}
 Content: {content[:2000]}
 
 [Instructions]
-1. **Refine**: Fix grammar, improve flow, make it sound authoritative.
-2. **Expand**: Add context or explanations where needed.
-3. **Format**: Use HTML tags (e.g., <h2>, <h3>, <p>, <strong>, <ul>/<li>). Do NOT use Markdown.
-4. **Language**: Provide refined versions in both English and Korean.
+1. **Writing Style**: Use an authoritative, literary, and descriptive narrative style (완전한 문장 형태의 문어체 서술형).
+2. **Strict Prohibition**: NEVER use bullet points, numbered lists, or the '-' character for list-making. The entire piece must be flowing prose.
+3. **Synthesis & Expansion**: Connect ideas logically to create a single coherent narrative arc. Add context and depth where appropriate.
+4. **Format**: Use HTML tags (e.g., <h2>, <p>, <strong>). Do NOT use Markdown.
+5. **Language**: Provide refined narrative versions in both English and Korean.
 
-**IMPORTANT**: Do NOT include specific prices, market cap numbers, dates, or any numerical market data. Your training data may be outdated. Focus on general information and qualitative analysis.
+**IMPORTANT**: Focus on qualitative analysis and long-term implications. Avoid dry market reporting.
 
 [Output Format]
 Return ONLY a valid JSON object:
 {{
-    "title_en": "Refined English Title",
-    "title_ko": "Refined Korean Title",
-    "description_en": "Refined English Meta Description",
-    "description_ko": "Refined Korean Meta Description",
-    "content_en": "Refined English Content",
-    "content_ko": "Refined Korean Content"
+    "title_en": "...",
+    "title_ko": "...",
+    "description_en": "...",
+    "description_ko": "...",
+    "content_en": "...",
+    "content_ko": "..."
 }}
 """
         try:

@@ -344,6 +344,8 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000" # 개발 모드에서는 표준 포트 사용
+    env_file:
+      - .env
     environment:
       NODE_ENV: development
       TZ: Asia/Seoul

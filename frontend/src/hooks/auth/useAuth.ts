@@ -36,7 +36,7 @@ export function useAuth() {
     try {
       const token = localStorage.getItem('accessToken')
       const savedUser = localStorage.getItem('user')
-      
+
       if (token && savedUser) {
         // 토큰 검증을 위해 백엔드 API 호출
         const response = await fetch(`${API_BASE_URL}/auth/verify`, {
@@ -44,7 +44,7 @@ export function useAuth() {
             'Authorization': `Bearer ${token}`,
           },
         })
-        
+
         if (response.ok) {
           const userData = await response.json()
           setAuthState({
@@ -97,7 +97,7 @@ export function useAuth() {
         // 로그인 성공 시 세션 정보를 localStorage에 저장
         localStorage.setItem('accessToken', data.access_token)
         localStorage.setItem('user', JSON.stringify(data.user))
-        
+
         setAuthState({
           user: data.user,
           loading: false,
@@ -131,7 +131,7 @@ export function useAuth() {
       // localStorage에서 토큰과 사용자 정보 제거
       localStorage.removeItem('accessToken')
       localStorage.removeItem('user')
-      
+
       // 백엔드 로그아웃 API 호출 (선택적)
       try {
         await fetch(`${API_BASE_URL}/auth/admin/logout`, {
@@ -140,14 +140,14 @@ export function useAuth() {
       } catch (error) {
         console.error('Backend logout error:', error)
       }
-      
+
       setAuthState({
         user: null,
         loading: false,
         error: null,
       })
-      
-      router.push('/admin/signin')
+
+      router.push('/signin')
       router.refresh()
     } catch (error) {
       console.error('Logout error:', error)

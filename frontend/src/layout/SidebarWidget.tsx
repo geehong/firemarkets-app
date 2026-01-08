@@ -13,12 +13,10 @@ export default function SidebarWidget() {
         Get access to detailed analytics and premium reports.
       </p>
       <a
-        href="#"
-        target="_blank"
-        rel="nofollow"
+        href="mailto:geecgpia@gmail.com"
         className="flex items-center justify-center p-3 font-medium text-white rounded-lg bg-brand-500 text-theme-sm hover:bg-brand-600"
       >
-        Upgrade Plan
+        Contact Support
       </a>
     </div>
   );

@@ -89,7 +89,7 @@ export default function BaseEdit({
   }
 
   const [activeLanguage, setActiveLanguage] = useState<'ko' | 'en'>('ko')
-  const [editorType, setEditorType] = useState<string>('tiptap')
+  const [editorType, setEditorType] = useState<string>('tinymce')
   const [toastUiPreviewStyle, setToastUiPreviewStyle] = useState<'vertical' | 'tab' | 'vertical-stack'>('vertical')
   const [loading, setLoading] = useState(mode === 'edit')
   const [saving, setSaving] = useState(false)

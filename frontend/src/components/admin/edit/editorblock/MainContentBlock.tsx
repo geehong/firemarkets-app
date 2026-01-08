@@ -9,6 +9,7 @@ const SimpleQuillEditor = dynamic(() => import('../SimpleQuillEditor'), { ssr: f
 const SimpleEditorJS = dynamic(() => import('../SimpleEditorJS'), { ssr: false })
 const SimpleSummernote = dynamic(() => import('../SimpleSummernote'), { ssr: false })
 const SimpleToastUiEditor = dynamic(() => import('../SimpleToastUiEditor'), { ssr: false })
+const SimpleTinyMceEditor = dynamic(() => import('../SimpleTinyMceEditor'), { ssr: false })
 
 interface MainContentBlockProps {
     title: { ko: string; en: string } | string
@@ -149,6 +150,14 @@ export default function MainContentBlock({
                         onChange={onContentChange}
                         height="500px"
                         previewStyle={toastUiPreviewStyle}
+                    />
+                )}
+                {editorType === 'tinymce' && (
+                    <SimpleTinyMceEditor
+                        key={activeLanguage}
+                        value={content}
+                        onChange={onContentChange}
+                        height={500}
                     />
                 )}
             </div>

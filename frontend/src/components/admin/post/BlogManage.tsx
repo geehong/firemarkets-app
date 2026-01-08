@@ -54,7 +54,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
   // Auth check
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
-      router.push('/admin/signin');
+      router.push('/signin');
     }
   }, [isAuthenticated, authLoading, router]);
 
@@ -242,6 +242,9 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
 
             if (!newSlug || newSlug.length < 5) {
               newSlug = `brief-${nanoid(10)}`;
+            } else {
+              // 슬러그 중복을 방지하기 위해 짧은 고유 ID 추가
+              newSlug = `${newSlug.substring(0, 80)}-${nanoid(6)}`;
             }
 
             return updatePostMutation.mutateAsync({
@@ -422,6 +425,9 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
               <option value={20}>20개</option>
               <option value={50}>50개</option>
               <option value={100}>100개</option>
+              <option value={250}>250개</option>
+              <option value={500}>500개</option>
+              <option value={1000}>1000개</option>
             </select>
             <div className="h-4 w-px bg-gray-300 dark:bg-gray-600 mx-2"></div>
             <button

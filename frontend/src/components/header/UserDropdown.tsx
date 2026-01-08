@@ -25,7 +25,7 @@ export default function UserDropdown() {
     e.preventDefault();
     await logout();
     closeDropdown();
-    router.push('/ko/signin');
+    router.push('/signin');
   }
 
 

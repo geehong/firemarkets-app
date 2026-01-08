@@ -122,6 +122,7 @@ docker-compose logs frontend --tail 50 -f
 docker-compose logs websocket_broadcaster --tail 50 -f
         
 ```
+docker-compose exec backend python scripts/delete_empty_news.py
 
 ---
 

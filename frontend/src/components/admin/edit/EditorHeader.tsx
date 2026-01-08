@@ -59,6 +59,7 @@ export default function EditorHeader({
     }, [])
 
     const editors = [
+        { id: 'tinymce', name: 'TinyMCE' },
         { id: 'tiptap', name: 'Tiptap' },
         { id: 'quill', name: 'Quill' },
         { id: 'summernote', name: 'Summernote' },

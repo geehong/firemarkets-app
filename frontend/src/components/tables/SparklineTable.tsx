@@ -336,9 +336,9 @@ const SparklineTableRow = ({
               />
             </div>
           ) : (
-            <div className="w-10 h-10 flex items-center justify-center bg-gray-200 dark:bg-gray-700 rounded-full hidden md:block">
-              <span className="text-xs font-bold text-gray-600 dark:text-gray-300">
-                {asset.ticker.substring(0, 1)}
+            <div className="w-10 h-10 flex items-center justify-center bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-full hidden md:flex shrink-0">
+              <span className="text-base font-bold text-gray-600 dark:text-white/70 leading-none">
+                {asset.ticker.charAt(0).toUpperCase()}
               </span>
             </div>
           )}

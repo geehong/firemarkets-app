@@ -36,7 +36,7 @@ async def test_posts():
 @router.get("/")
 async def get_posts(
     page: int = Query(1, ge=1, description="페이지 번호"),
-    page_size: int = Query(20, ge=1, le=100, description="페이지당 항목 수"),
+    page_size: int = Query(20, ge=1, le=1000, description="페이지당 항목 수"),
     post_type: Optional[str] = Query(None, description="포스트 타입 필터"),
     status: Optional[str] = Query(None, description="상태 필터"),
     search: Optional[str] = Query(None, description="검색어"),
@@ -594,6 +594,19 @@ async def merge_posts(
         
         target_post_type = "ai_draft_news" if is_news else "ai_draft_blog"
 
+        # Extract metadata from source posts
+        all_tickers = set()
+        primary_info = source_posts[0].post_info or {} if source_posts else {}
+        
+        for p in source_posts:
+            if p.post_info and isinstance(p.post_info, dict):
+                tickers = p.post_info.get('tickers')
+                if tickers:
+                    if isinstance(tickers, list):
+                        all_tickers.update(tickers)
+                    else:
+                        all_tickers.add(str(tickers))
+        
         # 새 포스트 생성 (Draft)
         new_post_data = PostCreate(
             title={
@@ -613,7 +626,12 @@ async def merge_posts(
             post_info={
                 "source_post_ids": post_ids,
                 "merge_type": "ai_auto",
-                "merged_at": str(datetime.now())
+                "merged_at": str(datetime.now()),
+                "tickers": list(all_tickers),
+                "url": primary_info.get('url'),
+                "source": primary_info.get('source'),
+                "image_url": primary_info.get('image_url') or merged_data.get('image_url'),
+                "author": primary_info.get('author')
             }
         )
         
@@ -738,7 +756,7 @@ async def update_post(
     # 슬러그 중복 확인 (다른 포스트와 중복되지 않는지)
     if post_data.slug and post_data.slug != post_obj.slug:
         existing_post = post.get_by_slug(db=db, slug=post_data.slug)
-        if existing_post:
+        if existing_post and existing_post.id != post_id:
             raise HTTPException(status_code=400, detail="Slug already exists")
 
     # AI Merge 후 발행 시 원본 포스트 삭제 로직

@@ -1,6 +1,7 @@
 
 import sys
 import os
+import re
 from sqlalchemy import or_
 
 # Add backend directory to sys.path
@@ -16,23 +17,52 @@ load_dotenv(env_path)
 from app.core.database import SessionLocal
 from app.models.blog import Post
 
-def delete_empty_raw_news():
+def is_mostly_english(text):
+    """
+    Heuristic to check if text in a Korean field is actually mostly English.
+    Returns True if the proportion of Korean characters is too low.
+    """
+    if not text:
+        return False
+        
+    # Strip HTML tags
+    clean_text = re.sub('<[^<]+?>', '', text)
+    clean_text = clean_text.strip()
+    
+    if not clean_text:
+        return False
+        
+    # Count Korean characters (Syllables)
+    ko_chars = len(re.findall('[가-힣]', clean_text))
+    # Count English alphabet characters
+    en_chars = len(re.findall('[a-zA-Z]', clean_text))
+    
+    # Heuristic: If English characters are dominant (e.g. > 100) and Korean characters 
+    # make up less than 20% of the total alpha count, it's likely a failed translation.
+    total_alpha = ko_chars + en_chars
+    if total_alpha > 50:
+        ratio = ko_chars / total_alpha
+        if ratio < 0.25: # Less than 25% Korean
+            return True
+            
+    return False
+
+def delete_bad_news():
     db = SessionLocal()
     try:
-        print("Scanning for 'raw_news' records with ONLY title (empty content and description)...")
+        print("Scanning for 'raw_news' and 'brief_news' with empty content or broken translations...")
         
-        # Fetch generic candidates (empty content)
-        # Note: We filter mostly in Python for JSON description complexity
-        query = db.query(Post).filter(
-            Post.post_type == 'raw_news',
-            or_(Post.content == None, Post.content == '')
-        )
-        
-        candidates = query.all()
+        # 1. Fetch candidates (raw_news and brief_news)
+        posts = db.query(Post).filter(
+            Post.post_type.in_(['raw_news', 'brief_news'])
+        ).all()
         
         to_delete_ids = []
         
-        for p in candidates:
+        for p in posts:
+            # Check 1: Empty Content/Description (Original logic)
+            content_empty = not p.content or not p.content.strip()
+            
             # Check description emptiness
             desc = p.description
             is_desc_empty = False
@@ -40,8 +70,6 @@ def delete_empty_raw_news():
             if desc is None:
                 is_desc_empty = True
             elif isinstance(desc, dict):
-                # Check if dictionary is empty OR all values are empty strings
-                # e.g. {} or {"en": ""} or {"en": None}
                 has_text = False
                 for val in desc.values():
                     if val and str(val).strip():
@@ -53,19 +81,27 @@ def delete_empty_raw_news():
                  if not desc.strip():
                      is_desc_empty = True
             else:
-                # Other types (list?), assume empty if falsy
                 if not desc:
                     is_desc_empty = True
 
-            if is_desc_empty:
+            # If both are empty, mark for deletion
+            if content_empty and is_desc_empty:
                 to_delete_ids.append(p.id)
-        
+                continue
+
+            # Check 2: Mixed English/Korean content in content_ko (New logic)
+            # This is specifically for failed AI translations where content_ko is mostly English.
+            if hasattr(p, 'content_ko') and p.content_ko:
+                if is_mostly_english(p.content_ko):
+                    print(f"Post {p.id} ({p.post_type}): Korean content is mostly English. Marking for deletion.")
+                    to_delete_ids.append(p.id)
+                    continue
+
         count = len(to_delete_ids)
-        print(f"Found {count} records matches criteria.")
+        print(f"Found {count} records matching deletion criteria.")
         
         if count > 0:
             # Bulk delete
-            # Process in chunks to avoid huge SQL statements if many
             chunk_size = 1000
             deleted_total = 0
             
@@ -78,7 +114,7 @@ def delete_empty_raw_news():
             db.commit()
             print(f"Successfully deleted {deleted_total} records.")
         else:
-            print("No records found to delete.")
+            print("No bad records found to delete.")
 
     except Exception as e:
         print(f"Error occurred: {e}")
@@ -87,4 +123,4 @@ def delete_empty_raw_news():
         db.close()
 
 if __name__ == "__main__":
-    delete_empty_raw_news()
+    delete_bad_news()

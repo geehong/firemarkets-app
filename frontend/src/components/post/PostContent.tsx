@@ -8,10 +8,17 @@ interface PostContentProps {
 
 const PostContent: React.FC<PostContentProps> = ({ content }) => {
     return (
-        <article
-            className="prose dark:prose-invert max-w-none"
-            dangerouslySetInnerHTML={{ __html: content }}
-        />
+        <>
+            <style jsx global>{`
+                .prose strong, .prose em, .prose b, .prose i {
+                    color: inherit !important;
+                }
+            `}</style>
+            <article
+                className="prose dark:prose-invert max-w-none"
+                dangerouslySetInnerHTML={{ __html: content }}
+            />
+        </>
     )
 }
 

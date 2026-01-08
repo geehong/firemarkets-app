@@ -69,6 +69,8 @@ export default function OrganizationBlock({
                 >
                     <option value="post">일반 포스트 (Post)</option>
                     <option value="news">뉴스 (News)</option>
+                    <option value="brief_news">단신 뉴스 (Brief News)</option>
+                    <option value="ai_draft_news">AI 분석 뉴스 (AI News)</option>
                     <option value="raw_news">원시 뉴스 (Raw News)</option>
                     <option value="page">페이지 (Page)</option>
                     <option value="tutorial">튜토리얼 (Tutorial)</option>
