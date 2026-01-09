@@ -45,7 +45,14 @@ export default function AiAnalysisBlock({
     useEffect(() => {
         // Initialize tickers from postInfo
         // Check both root level tickers and analysis.tickers just in case
-        const initialTickers = postInfo?.tickers || postInfo?.analysis?.tickers || []
+        let initialTickers = postInfo?.tickers || postInfo?.analysis?.tickers || []
+        if (!Array.isArray(initialTickers)) {
+            if (typeof initialTickers === 'string') {
+                initialTickers = (initialTickers as string).split(',').map(s => s.trim()).filter(Boolean)
+            } else {
+                initialTickers = []
+            }
+        }
         setLocalTickers(initialTickers)
     }, [postInfo])
 
@@ -172,7 +179,7 @@ export default function AiAnalysisBlock({
             </div>
 
             {/* 2. Summary */}
-            {(summaries && summaries.length > 0) && (
+            {Array.isArray(summaries) && summaries.length > 0 && (
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                         AI 요약 (Summary - {activeLanguage.toUpperCase()})
@@ -198,7 +205,7 @@ export default function AiAnalysisBlock({
             )}
 
             {/* 4. Source Articles */}
-            {postInfo?.source_articles && postInfo.source_articles.length > 0 && (
+            {Array.isArray(postInfo?.source_articles) && postInfo.source_articles.length > 0 && (
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                         참조 기사 (Source Articles)

@@ -9,6 +9,7 @@ import Badge from '@/components/ui/badge/Badge'
 import PostContent from '../post/PostContent'
 import { parseLocalized } from '@/utils/parseLocalized'
 import BaseTemplateView from './BaseTemplateView'
+import PostComments from '@/components/post/PostComments'
 
 interface PostDetailedViewProps {
     post: any
@@ -157,6 +158,9 @@ const PostDetailedView: React.FC<PostDetailedViewProps> = ({ post, locale }) => 
                         <PostContent content={content} />
                     </div>
                     <PostInfoCard post={post} locale={locale} />
+
+                    {/* Comments Section */}
+                    <PostComments postId={post.id} locale={locale} />
                 </div>
             )
         },

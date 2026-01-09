@@ -50,11 +50,11 @@ def is_mostly_english(text):
 def delete_bad_news():
     db = SessionLocal()
     try:
-        print("Scanning for 'raw_news' and 'brief_news' with empty content or broken translations...")
+        print("Scanning for 'raw_news', 'brief_news', and 'ai_draft_news' with empty content, short content, or broken translations...")
         
         # 1. Fetch candidates (raw_news and brief_news)
         posts = db.query(Post).filter(
-            Post.post_type.in_(['raw_news', 'brief_news'])
+            Post.post_type.in_(['raw_news', 'brief_news', 'ai_draft_news'])
         ).all()
         
         to_delete_ids = []
@@ -89,7 +89,17 @@ def delete_bad_news():
                 to_delete_ids.append(p.id)
                 continue
 
-            # Check 2: Mixed English/Korean content in content_ko (New logic)
+            # Check 2: Short length for raw_news and ai_draft_news (New logic)
+            if p.post_type in ['raw_news', 'ai_draft_news']:
+                c_len = len(p.content.strip()) if p.content else 0
+                ck_len = len(p.content_ko.strip()) if hasattr(p, 'content_ko') and p.content_ko else 0
+                # If neither the English nor Korean content exceeds 256 characters
+                if max(c_len, ck_len) <= 256:
+                    print(f"Post {p.id} ({p.post_type}): Content body is too short ({c_len}/{ck_len}). Marking for deletion.")
+                    to_delete_ids.append(p.id)
+                    continue
+
+            # Check 3: Mixed English/Korean content in content_ko (Existing logic)
             # This is specifically for failed AI translations where content_ko is mostly English.
             if hasattr(p, 'content_ko') and p.content_ko:
                 if is_mostly_english(p.content_ko):

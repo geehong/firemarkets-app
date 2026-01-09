@@ -690,6 +690,19 @@ export class ApiClient {
   }
 
 
+  // Comments
+  getPostComments(postId: number) {
+    return this.request(`/posts/${postId}/comments`)
+  }
+
+  createPostComment(postId: number, data: { content: string; parent_id?: number }) {
+    return this.request(`/posts/${postId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    })
+  }
+
+
   // Auth & Session Management
   setAccessToken(token: string) {
     this.accessToken = token

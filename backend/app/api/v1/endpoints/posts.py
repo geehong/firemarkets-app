@@ -907,15 +907,27 @@ async def get_post_comments(
 @router.post("/{post_id}/comments", response_model=PostCommentResponse)
 async def create_comment(
     post_id: int = Path(..., description="포스트 ID"),
-    comment_data: PostCommentCreate = None,
+    comment_data: PostCommentCreate = Body(...),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_postgres_db)
 ):
-    """댓글 생성"""
+    """댓글 생성 (인증 필요)"""
     # 포스트 존재 확인
     post_obj = post.get(db=db, id=post_id)
     if not post_obj:
         raise HTTPException(status_code=404, detail="Post not found")
 
+    # 사용자 정보 자동 입력
     comment_data.post_id = post_id
+    comment_data.user_id = current_user.id
+    if not comment_data.author_name:
+        comment_data.author_name = current_user.username
+    if not comment_data.author_email:
+        comment_data.author_email = current_user.email
+    
+    # 댓글은 기본적으로 pending 상태로 생성 (설정에 따라 변경 가능)
+    # 관리자가 아니면 pending, 관리자면 approved 로 할 수도 있음.
+    # 여기서는 모델 기본값(pending)을 따르되, 필요시 로직 추가.
+    
     comment = post_comment.create(db=db, obj_in=comment_data)
     return comment
