@@ -278,23 +278,6 @@ const CycleComparisonChart: React.FC<CycleComparisonChartProps> = ({
                                 ]
                             }
                         }),
-                        tooltip: {
-                            valueDecimals: 2,
-                            formatter: function (this: any) {
-                                const era4StartDate = new Date('2022-11-21T00:00:00.000Z');
-                                const currentDate = new Date(era4StartDate.getTime() + this.x * 24 * 60 * 60 * 1000);
-                                const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
-
-                                let priceStr;
-                                if (this.y >= 1000000) priceStr = `$${(this.y / 1000000).toFixed(1)}M`;
-                                else if (this.y >= 1000) priceStr = `$${(this.y / 1000).toFixed(0)}k`;
-                                else priceStr = `$${this.y.toFixed(0)}`;
-
-                                return `<b>${this.series.name}</b><br/>
-                        <b>Day ${String(this.x).padStart(3, '0')}[${dateStr}(ERA4기준)]</b><br/>
-                        <b>${priceStr}</b>`;
-                            }
-                        }
                     });
                 }
             });
@@ -330,15 +313,6 @@ const CycleComparisonChart: React.FC<CycleComparisonChartProps> = ({
                             data: maSeries,
                             color: Highcharts.color(eraColors[era as keyof typeof eraColors]).setOpacity(0.6).get('rgba'),
                             line: { dash: 'dot', width: maWidth },
-                            tooltip: {
-                                valueDecimals: 2,
-                                formatter: function (this: any) {
-                                    const era4StartDate = new Date('2022-11-21T00:00:00.000Z');
-                                    const currentDate = new Date(era4StartDate.getTime() + this.x * 24 * 60 * 60 * 1000);
-                                    const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
-                                    return `<b>${this.series.name}</b><br/><b>Day ${String(this.x).padStart(3, '0')}[${dateStr}]</b><br/><b>$${this.y.toFixed(0)}</b>`;
-                                }
-                            }
                         });
                     }
                 });
@@ -398,7 +372,21 @@ const CycleComparisonChart: React.FC<CycleComparisonChartProps> = ({
             },
             tooltip: {
                 split: true,
-                valueDecimals: 2
+                valueDecimals: 2,
+                formatter: function (this: any): string[] {
+                    const points = this.points;
+                    const days = this.x;
+                    const era4StartDate = new Date('2022-11-21T00:00:00.000Z');
+                    const currentDate = new Date(era4StartDate.getTime() + days * 24 * 60 * 60 * 1000);
+                    const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
+
+                    let tooltip = [`Day ${days} <span style="font-weight: bold; color: blue;">[${dateStr}]</span>`];
+                    points.forEach((point: any) => {
+                        tooltip.push(`<span style="color:${point.series.color}">\u25CF ${point.series.name}</span>: <b>$${Highcharts.numberFormat(point.y, 2)}</b>`);
+                    });
+                    return tooltip;
+                },
+                style: { fontSize: '12px' }
             },
             series: getChartSeriesWithMA(),
             plotOptions: {
@@ -406,14 +394,38 @@ const CycleComparisonChart: React.FC<CycleComparisonChartProps> = ({
             },
             credits: { enabled: false },
             exporting: { enabled: showExporting },
-            navigator: { enabled: !isMobile },
+            navigator: {
+                enabled: !isMobile,
+                xAxis: {
+                    labels: {
+                        formatter: function (this: any): string {
+                            const era4StartDate = new Date('2022-11-21T00:00:00.000Z');
+                            const currentDate = new Date(era4StartDate.getTime() + this.value * 24 * 60 * 60 * 1000);
+                            const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
+                            return dateStr;
+                        }
+                    }
+                }
+            },
             responsive: {
                 rules: [{
                     condition: { maxWidth: 768 },
                     chartOptions: {
                         chart: { height: Math.min(height, 800) },
                         rangeSelector: { enabled: false },
-                        navigator: { enabled: true }
+                        navigator: {
+                            enabled: true,
+                            xAxis: {
+                                labels: {
+                                    formatter: function (this: any): string {
+                                        const era4StartDate = new Date('2022-11-21T00:00:00.000Z');
+                                        const currentDate = new Date(era4StartDate.getTime() + this.value * 24 * 60 * 60 * 1000);
+                                        const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
+                                        return dateStr;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }]
             }

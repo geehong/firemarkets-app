@@ -1,19 +1,20 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import text, cast, String, func
 from app.core.database import get_postgres_db
 from app.crud.blog import post, post_category, post_tag, post_comment, post_product, post_chart
 from app.schemas.blog import (
     PostCreate, PostUpdate, PostResponse, PostListResponse,
     PostCategoryCreate, PostCategoryUpdate, PostCategoryResponse,
-    PostTagResponse, PostCommentCreate, PostCommentResponse,
+    PostTagCreate, PostTagUpdate, PostTagResponse, PostTagListResponse, PostCommentCreate, PostCommentResponse, PostCommentListResponse,
     PostProductCreate, PostProductResponse, PostChartCreate, PostChartResponse,
-    PostSyncRequest, PostSyncResponse, PostStatsResponse
+    PostProductCreate, PostProductResponse, PostChartCreate, PostChartResponse,
+    PostAuthorResponse, PostSyncRequest, PostSyncResponse, PostStatsResponse
 )
 from app.models.blog import Post, PostCategory, PostTag, PostComment
 from app.models.asset import User
-from app.dependencies.auth_deps import get_current_user, get_current_user_optional
+from app.dependencies.auth_deps import get_current_user, get_current_user_optional, get_current_active_superuser
 from app.services.posts_service import posts_service
 from app.services.news_ai_agent import NewsAIEditorAgent
 from fastapi import Body
@@ -89,8 +90,24 @@ async def get_posts(
                 query = query.join(PostCategory).filter(PostCategory.name.ilike(f"%{category}%"))
         
         if tag:
-            # 태그 필터링 (추후 구현)
-            pass
+            # 태그 필터링 - tag slug 또는 tag name으로 검색
+            # post_tag_associations 테이블을 통해 조인
+            tag_subquery = db.query(PostTag.id).filter(
+                (PostTag.slug == tag) | (PostTag.name.ilike(f"%{tag}%"))
+            ).subquery()
+            
+            # PostTagAssociation을 통해 해당 태그가 있는 포스트만 필터링
+            from sqlalchemy import exists, select
+            from app.models.blog import PostTagAssociation
+            
+            query = query.filter(
+                exists(
+                    select(PostTagAssociation.post_id).where(
+                        (PostTagAssociation.post_id == Post.id) &
+                        (PostTagAssociation.tag_id.in_(select(tag_subquery)))
+                    )
+                )
+            )
 
         # 정렬 적용
         if hasattr(Post, sort_by):
@@ -128,9 +145,9 @@ async def get_posts(
                 # Raw SQL로 태그 조회
                 tag_result = db.execute(
                     text("SELECT pt.id, pt.name, pt.slug FROM post_tags pt "
-                         "JOIN blog_post_tags bpt ON pt.id = bpt.tag_id "
-                         "WHERE bpt.blog_id = :blog_id"),
-                    {"blog_id": post_obj.id}
+                         "JOIN post_tag_associations pta ON pt.id = pta.tag_id "
+                         "WHERE pta.post_id = :post_id"),
+                    {"post_id": post_obj.id}
                 )
                 tags = [{"id": row[0], "name": row[1], "slug": row[2]} for row in tag_result.fetchall()]
             
@@ -214,9 +231,9 @@ async def get_home_post(
     if post_obj.id:
         tag_result = db.execute(
             text("SELECT pt.id, pt.name, pt.slug FROM post_tags pt "
-                 "JOIN blog_post_tags bpt ON pt.id = bpt.tag_id "
-                 "WHERE bpt.blog_id = :blog_id"),
-            {"blog_id": post_obj.id}
+                 "JOIN post_tag_associations pta ON pt.id = pta.tag_id "
+                 "WHERE pta.post_id = :post_id"),
+            {"post_id": post_obj.id}
         )
         tags = [{"id": row[0], "name": row[1], "slug": row[2]} for row in tag_result.fetchall()]
 
@@ -394,9 +411,9 @@ async def get_post(
         # Raw SQL로 태그 조회
         tag_result = db.execute(
             text("SELECT pt.id, pt.name, pt.slug FROM post_tags pt "
-                 "JOIN blog_post_tags bpt ON pt.id = bpt.tag_id "
-                 "WHERE bpt.blog_id = :blog_id"),
-            {"blog_id": post_obj.id}
+                 "JOIN post_tag_associations pta ON pt.id = pta.tag_id "
+                 "WHERE pta.post_id = :post_id"),
+            {"post_id": post_obj.id}
         )
         tags = [{"id": row[0], "name": row[1], "slug": row[2]} for row in tag_result.fetchall()]
 
@@ -482,9 +499,9 @@ async def get_post_by_slug(
         # Raw SQL로 태그 조회
         tag_result = db.execute(
             text("SELECT pt.id, pt.name, pt.slug FROM post_tags pt "
-                 "JOIN blog_post_tags bpt ON pt.id = bpt.tag_id "
-                 "WHERE bpt.blog_id = :blog_id"),
-            {"blog_id": post_obj.id}
+                 "JOIN post_tag_associations pta ON pt.id = pta.tag_id "
+                 "WHERE pta.post_id = :post_id"),
+            {"post_id": post_obj.id}
         )
         tags = [{"id": row[0], "name": row[1], "slug": row[2]} for row in tag_result.fetchall()]
 
@@ -893,7 +910,168 @@ async def search_tags(
     return tags
 
 
+@router.get("/tags/admin", response_model=PostTagListResponse)
+async def get_admin_tags(
+    page: int = Query(1, ge=1, description="페이지 번호"),
+    limit: int = Query(20, ge=1, le=100, description="페이지당 항목 수"),
+    search: Optional[str] = Query(None, description="검색어"),
+    sort_by: Optional[str] = Query('usage_count', description="정렬 기준"),
+    order: Optional[str] = Query('desc', description="정렬 순서"),
+    current_user: User = Depends(get_current_active_superuser),
+    db: Session = Depends(get_postgres_db)
+):
+    """(Admin) 태그 목록 조회"""
+    skip = (page - 1) * limit
+    
+    query = db.query(PostTag)
+    
+    if search:
+        query = query.filter(PostTag.name.ilike(f"%{search}%"))
+    
+    total = query.count()
+    
+    if sort_by and hasattr(PostTag, sort_by):
+        attr = getattr(PostTag, sort_by)
+        if order == 'asc':
+            query = query.order_by(attr.asc())
+        else:
+            query = query.order_by(attr.desc())
+    else:
+        query = query.order_by(PostTag.usage_count.desc())
+        
+    tags = query.offset(skip).limit(limit).all()
+    total_pages = (total + limit - 1) // limit
+    
+    return {
+        "tags": tags,
+        "total": total,
+        "page": page,
+        "page_size": limit,
+        "total_pages": total_pages
+    }
+
+
+@router.post("/tags/", response_model=PostTagResponse)
+async def create_tag(
+    tag_data: PostTagCreate,
+    current_user: User = Depends(get_current_active_superuser),
+    db: Session = Depends(get_postgres_db)
+):
+    """태그 생성"""
+    existing = post_tag.get_by_slug(db, slug=tag_data.slug)
+    if existing:
+        raise HTTPException(status_code=400, detail="Tag with this slug already exists")
+    
+    tag = post_tag.create(db=db, obj_in=tag_data)
+    return tag
+
+
+@router.put("/tags/{tag_id}", response_model=PostTagResponse)
+async def update_tag(
+    tag_id: int,
+    tag_data: PostTagUpdate,
+    current_user: User = Depends(get_current_active_superuser),
+    db: Session = Depends(get_postgres_db)
+):
+    """태그 수정"""
+    tag = post_tag.get(db, id=tag_id)
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+        
+    tag = post_tag.update(db=db, db_obj=tag, obj_in=tag_data)
+    return tag
+
+
+@router.delete("/tags/{tag_id}")
+async def delete_tag(
+    tag_id: int,
+    current_user: User = Depends(get_current_active_superuser),
+    db: Session = Depends(get_postgres_db)
+):
+    """태그 삭제"""
+    tag = post_tag.get(db, id=tag_id)
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+        
+    post_tag.remove(db=db, id=tag_id)
+    return {"message": "Tag deleted successfully"}
+
+
 # 댓글 관련 엔드포인트
+@router.get("/admin/comments", response_model=PostCommentListResponse)
+async def get_all_comments(
+    page: int = Query(1, ge=1, description="페이지 번호"),
+    limit: int = Query(20, ge=1, le=100, description="페이지 당 항목 수"),
+    status: Optional[str] = Query(None, description="상태 필터 (all, pending, approved, spam, trash)"),
+    search: Optional[str] = Query(None, description="검색어 (내용, 작성자)"),
+    current_user: User = Depends(get_current_active_superuser),
+    db: Session = Depends(get_postgres_db)
+):
+    """(Admin) 전체 댓글 목록 조회"""
+    try:
+        skip = (page - 1) * limit
+        comments, total = post_comment.get_multi_with_filters(
+            db, skip=skip, limit=limit, status=status, search=search
+        )
+        
+        # Serialize expressly to catch Pydantic/LazyLoading errors within this block
+        # and to ensure DB session is still open
+        comment_schemas = []
+        for c in comments:
+            try:
+                # We do this to ensure all required fields (inc lazy loaded ones) are fetched
+                comment_schemas.append(PostCommentResponse.model_validate(c))
+            except Exception as se:
+                logging.error(f"Serialization failed for comment {c.id}: {se}")
+                # We might want to skip this one or error out. 
+                # For now let's raise to see the trace.
+                raise se
+
+        total_pages = (total + limit - 1) // limit
+        
+        return {
+            "comments": comment_schemas,
+            "total": total,
+            "page": page,
+            "page_size": limit,
+            "total_pages": total_pages
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        logging.error(f"Error in get_all_comments: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/comments/{comment_id}/status", response_model=PostCommentResponse)
+async def update_comment_status(
+    comment_id: int = Path(..., description="댓글 ID"),
+    status: str = Body(..., embed=True, description="변경할 상태 (pending, approved, spam, trash)"),
+    current_user: User = Depends(get_current_active_superuser),
+    db: Session = Depends(get_postgres_db)
+):
+    """(Admin) 댓글 상태 변경"""
+    # Eager load relationships to prevent serialization errors
+    comment = db.query(PostComment).options(
+        joinedload(PostComment.post),
+        joinedload(PostComment.user)
+    ).filter(PostComment.id == comment_id).first()
+    
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+        
+    comment = post_comment.update(db=db, db_obj=comment, obj_in={"status": status})
+    
+    # Re-fetch to ensure eager loading and avoid any refresh weirdness or lazy load issues
+    comment = db.query(PostComment).options(
+        joinedload(PostComment.post),
+        joinedload(PostComment.user)
+    ).filter(PostComment.id == comment_id).first()
+    
+    return comment
+
+
+
 @router.get("/{post_id}/comments", response_model=List[PostCommentResponse])
 async def get_post_comments(
     post_id: int = Path(..., description="포스트 ID"),
@@ -918,16 +1096,43 @@ async def create_comment(
         raise HTTPException(status_code=404, detail="Post not found")
 
     # 사용자 정보 자동 입력
-    comment_data.post_id = post_id
-    comment_data.user_id = current_user.id
-    if not comment_data.author_name:
-        comment_data.author_name = current_user.username
-    if not comment_data.author_email:
-        comment_data.author_email = current_user.email
+    # 사용자 정보 자동 입력
+    if hasattr(comment_data, 'model_dump'):
+        comment_in = comment_data.model_dump()
+    else:
+        comment_in = comment_data.dict()
+        
+    comment_in['post_id'] = post_id
+    comment_in['user_id'] = current_user.id
     
-    # 댓글은 기본적으로 pending 상태로 생성 (설정에 따라 변경 가능)
-    # 관리자가 아니면 pending, 관리자면 approved 로 할 수도 있음.
-    # 여기서는 모델 기본값(pending)을 따르되, 필요시 로직 추가.
+    if not comment_in.get('author_name'):
+        comment_in['author_name'] = current_user.username
+    if not comment_in.get('author_email'):
+        comment_in['author_email'] = current_user.email
+        
+    # 기본적으로 pending 상태로 생성 (관리자 승인 필요)
+    comment_in['status'] = 'pending'
     
-    comment = post_comment.create(db=db, obj_in=comment_data)
+    comment = post_comment.create(db=db, obj_in=comment_in)
+    return comment
+
+@router.delete("/comments/{comment_id}", response_model=PostCommentResponse)
+async def delete_comment(
+    comment_id: int = Path(..., description="댓글 ID"),
+    current_user: User = Depends(get_current_active_superuser),
+    db: Session = Depends(get_postgres_db)
+):
+    """(Admin) 댓글 영구 삭제"""
+    # Eager load to ensure we can return the full object response
+    comment = db.query(PostComment).options(
+        joinedload(PostComment.post),
+        joinedload(PostComment.user)
+    ).filter(PostComment.id == comment_id).first()
+    
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+        
+    # We use db.delete directly since we already queried the object
+    db.delete(comment)
+    db.commit()
     return comment

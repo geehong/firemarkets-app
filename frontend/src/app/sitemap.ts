@@ -20,6 +20,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         console.error('Sitemap: Failed to fetch posts', e);
     }
 
+    // Fetch tags
+    let tags: any[] = [];
+    try {
+        const tagData: any = await apiClient.getBlogTags();
+        if (tagData && Array.isArray(tagData)) {
+            tags = tagData;
+        }
+    } catch (e) {
+        console.error('Sitemap: Failed to fetch tags', e);
+    }
+
     // Static Routes
     const staticRoutes = [
         '',
@@ -54,14 +65,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         const type = post.post_type;
 
         // Determine path prefix based on type
-        // This mapping must match the Next.js routing structure
         let pathPrefixes: string[] = [];
 
         if (type === 'news') {
             // News are under /news/[slug]
             pathPrefixes = ['/en/news', '/ko/news'];
-        } else if (type === 'post' || type === 'brief_news' || type === 'raw_news' || type === 'ai_draft_news') {
-            // General posts and brief news are under /blog/[slug]
+        } else if (type === 'brief_news') {
+            // Brief news are under /briefnews/[slug]
+            pathPrefixes = ['/en/briefnews', '/ko/briefnews'];
+        } else if (type === 'post' || type === 'raw_news' || type === 'ai_draft_news') {
+            // General posts are under /blog/[slug]
             pathPrefixes = ['/en/blog', '/ko/blog'];
         } else if (type === 'page') {
             // Pages are likely at root /[locale]/[slug]
@@ -80,5 +93,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         }
     });
 
-    return [...staticEntries, ...postEntries];
+    // Tag Entries
+    const tagEntries: MetadataRoute.Sitemap = [];
+    tags.forEach(tag => {
+        if (tag.slug && tag.usage_count > 0) {
+            ['en', 'ko'].forEach(locale => {
+                tagEntries.push({
+                    url: `${baseUrl}/${locale}/tag/${tag.slug}`,
+                    lastModified: new Date(),
+                    changeFrequency: 'weekly',
+                    priority: 0.5
+                });
+            });
+        }
+    });
+
+    return [...staticEntries, ...postEntries, ...tagEntries];
 }

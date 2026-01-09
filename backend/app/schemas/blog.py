@@ -51,14 +51,30 @@ class PostTagCreate(PostTagBase):
     pass
 
 
+class PostTagUpdate(BaseModel):
+    """포스트 태그 업데이트 스키마"""
+    name: Optional[str] = None
+    slug: Optional[str] = None
+
+
 class PostTagResponse(PostTagBase):
     """포스트 태그 응답 스키마"""
     id: int
     usage_count: int
     created_at: datetime
     
+
     class Config:
         from_attributes = True
+
+
+class PostTagListResponse(BaseModel):
+    """태그 목록 응답 (Admin용)"""
+    tags: List[PostTagResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class PostAuthorResponse(BaseModel):
@@ -123,7 +139,7 @@ class PostBase(BaseModel):
 
 class PostCreate(PostBase):
     """포스트 생성 스키마"""
-    pass
+    tags: Optional[List[str]] = None
 
 
 class PostUpdate(BaseModel):
@@ -157,7 +173,9 @@ class PostUpdate(BaseModel):
     comment_count: Optional[int] = None
     post_password: Optional[str] = None
     ping_status: Optional[str] = None
+    ping_status: Optional[str] = None
     post_info: Optional[Dict[str, Any]] = None
+    tags: Optional[List[str]] = None
 
 
 class PostResponse(PostBase):
@@ -203,6 +221,15 @@ class PostCommentCreate(PostCommentBase):
     pass
 
 
+class PostLinkResponseV2(BaseModel):
+    """포스트 링크 응답 스키마 (최소 정보)"""
+    id: int
+    title: Any
+    slug: str
+
+    class Config:
+        from_attributes = True
+
 class PostCommentResponse(PostCommentBase):
     """포스트 댓글 응답 스키마"""
     id: int
@@ -215,9 +242,19 @@ class PostCommentResponse(PostCommentBase):
     
     # 관계 데이터
     replies: List['PostCommentResponse'] = []
+    post: Optional[PostLinkResponseV2] = None
     
     class Config:
         from_attributes = True
+
+
+class PostCommentListResponse(BaseModel):
+    """댓글 목록 응답 (Admin용)"""
+    comments: List[PostCommentResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class PostProductBase(BaseModel):

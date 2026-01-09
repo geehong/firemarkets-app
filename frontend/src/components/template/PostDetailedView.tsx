@@ -211,11 +211,11 @@ const PostDetailedView: React.FC<PostDetailedViewProps> = ({ post, locale }) => 
                 publishedAt: post.published_at,
                 author: { name: authorName },
                 coverImage: post.cover_image,
-                breadcrumbs: [
-                    { label: 'Admin', href: `/${locale}/admin` },
-                    { label: 'News', href: `/${locale}/admin/news` }, // Assuming news for now context
-                    { label: title, href: '#' }
-                ]
+                // breadcrumbs: [
+                //     { label: 'Admin', href: `/${locale}/admin` },
+                //     { label: 'News', href: `/${locale}/admin/news` },
+                //     { label: title, href: '#' }
+                // ]
             }}
             tabs={tabs}
         />

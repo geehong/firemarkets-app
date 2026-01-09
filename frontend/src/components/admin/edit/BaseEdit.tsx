@@ -340,7 +340,8 @@ export default function BaseEdit({
       const postPayload: any = {
         ...formData,
         status,
-        published_at: status === 'published' ? new Date().toISOString() : formData.published_at
+        published_at: status === 'published' ? new Date().toISOString() : formData.published_at,
+        tags: formData.tags?.map((t: any) => typeof t === 'string' ? t : t.name) || []
       }
 
       let result

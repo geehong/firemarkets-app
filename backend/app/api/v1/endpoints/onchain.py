@@ -486,13 +486,11 @@ async def get_dashboard_summary(
                 latest_value = None
                 if latest_record and latest_record[0] is not None:
                     try:
-                        # JSON 필드(dict) 등 float 변환 불가능한 경우 예외 처리
-                        if isinstance(latest_record[0], (int, float, str)):
-                            latest_value = float(latest_record[0])
-                        else:
-                            # dict나 list인 경우 (예: open_interest_futures)
-                            latest_value = None 
+                        # Convert to float for JSON response. 
+                        # Handles int, float, str, and Decimal types returned by DB.
+                        latest_value = float(latest_record[0])
                     except (ValueError, TypeError):
+                        # For complex types like dict/list (JSON columns), keep as None
                         latest_value = None
                 
                 latest_updates.append({

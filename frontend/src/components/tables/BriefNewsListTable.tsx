@@ -72,7 +72,7 @@ export const BriefNewsListTable: React.FC<BriefNewsListTableProps> = ({ data }) 
                             <tr key={item.id} className={`${TABLE_STYLE.ROW.HOVER} ${TABLE_STYLE.ROW.BORDER} transition-colors`}>
                                 {/* Title Column */}
                                 <td className={`${TABLE_STYLE.ROW.PADDING} whitespace-nowrap ${TABLE_STYLE.TYPOGRAPHY.TITLE_SIZE} font-medium text-gray-900 dark:text-white max-w-md truncate`}>
-                                    <Link href={`/blog/${item.slug}`} className="hover:text-blue-600 dark:hover:text-blue-400 block w-full">
+                                    <Link href={`/briefnews/${item.slug}`} className="hover:text-blue-600 dark:hover:text-blue-400 block w-full">
                                         {title}
                                     </Link>
                                 </td>

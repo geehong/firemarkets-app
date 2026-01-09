@@ -1416,18 +1416,53 @@ class ApiStrategyManager:
         # days가 None이면 동적으로 계산
         if days is None:
             # DB 설정에서 historical_days 가져오기
-            from app.models import AppConfiguration
+            from app.models import AppConfiguration, CryptoMetric
             from app.core.database import get_postgres_db
+            from sqlalchemy import desc
             
             db = next(get_postgres_db())
             try:
                 historical_days_config = db.query(AppConfiguration).filter(
                     AppConfiguration.config_key == "HISTORICAL_DATA_DAYS_PER_RUN"
                 ).first()
-                days = int(historical_days_config.config_value) if historical_days_config else 165
-                self.logger.info(f"Using dynamic limit for onchain metric {metric_name}: {days} days")
+                max_days = int(historical_days_config.config_value) if historical_days_config else 165
+                
+                # asset_id가 있으면 DB 상태를 확인하여 최적 파라미터 결정
+                if asset_id:
+                    # 해당 메트릭의 최신 데이터 확인
+                    latest_record = None
+                    try:
+                        # CryptoMetric 테이블에서 해당 asset_id와 metric_name이 NULL이 아닌 가장 최근 기록 조회
+                        if hasattr(CryptoMetric, metric_name):
+                            latest_record = (
+                                db.query(CryptoMetric.timestamp_utc)
+                                .filter(
+                                    CryptoMetric.asset_id == asset_id,
+                                    getattr(CryptoMetric, metric_name).isnot(None)
+                                )
+                                .order_by(desc(CryptoMetric.timestamp_utc))
+                                .first()
+                            )
+                    except Exception as e:
+                        self.logger.warning(f"Failed to query latest onchain record for {metric_name}: {e}")
+
+                    if latest_record:
+                        last_ts = latest_record[0]
+                        # date 객체인 경우 datetime으로 변환하지 않아도 날짜 계산 가능
+                        today = datetime.now().date()
+                        delta = today - last_ts
+                        # 여유 있게 2일치 추가 (최소 2일, 최대 max_days)
+                        days = min(max_days, max(2, delta.days + 2))
+                        self.logger.info(f"Optimized limit for onchain metric {metric_name}: {days} days (Last: {last_ts})")
+                    else:
+                        days = max_days
+                        self.logger.info(f"No previous data for {metric_name}. Using default: {days} days")
+                else:
+                    days = max_days
+                    self.logger.info(f"Using dynamic limit for onchain metric {metric_name}: {days} days")
             finally:
                 db.close()
+
         
         for i, client in enumerate(self.onchain_clients):
             try:

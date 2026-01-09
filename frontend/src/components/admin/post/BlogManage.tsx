@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, ArrowUpDown, Bot } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, ArrowUpDown, Bot, Eye } from 'lucide-react';
 import { useAuth } from '@/hooks/auth/useAuthNew';
 import { nanoid } from 'nanoid';
 import { parseLocalized } from '@/utils/parseLocalized';
@@ -587,10 +587,19 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
                         <button
                           onClick={() => handleEditPost(blog.id)}
                           className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-100 dark:text-blue-400 dark:hover:text-blue-300 dark:hover:bg-blue-900 rounded"
-                          title="수정"
+                          title="에디터"
                         >
                           <Pencil className="w-4 h-4" />
                         </button>
+                        <a
+                          href={blog.post_type === 'news' ? `/news/${blog.slug}` : blog.post_type === 'brief_news' ? `/briefnews/${blog.slug}` : `/blog/${blog.slug}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1 text-green-600 hover:text-green-800 hover:bg-green-100 dark:text-green-400 dark:hover:text-green-300 dark:hover:bg-green-900 rounded"
+                          title="보기"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </a>
                         <button
                           onClick={() => handleDeletePost(blog.id)}
                           className="p-1 text-red-600 hover:text-red-800 hover:bg-red-100 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900 rounded"

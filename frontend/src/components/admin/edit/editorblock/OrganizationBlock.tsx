@@ -84,14 +84,50 @@ export default function OrganizationBlock({
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                     태그 (Tags)
                 </label>
-                <div className="flex flex-wrap gap-1 mb-2">
-                    {tags.map((tag: any, idx: number) => (
-                        <span key={tag.id || idx} className="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
-                            {tag.name || tag}
-                            {/* Tag removal not fully implemented without tag detach logic */}
-                        </span>
-                    ))}
-                    {tags.length === 0 && <span className="text-xs text-gray-400">태그 없음</span>}
+                <div className="flex flex-wrap gap-2 mb-2">
+                    {tags.map((tag: any, idx: number) => {
+                        const tagName = typeof tag === 'string' ? tag : tag.name;
+                        return (
+                            <span key={idx} className="inline-flex items-center px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs gap-1">
+                                {tagName}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const newTags = [...tags];
+                                        newTags.splice(idx, 1);
+                                        onTagsChange(newTags);
+                                    }}
+                                    className="text-blue-500 hover:text-blue-900 focus:outline-none"
+                                >
+                                    &times;
+                                </button>
+                            </span>
+                        );
+                    })}
+                </div>
+                <div className="flex gap-2">
+                    <input
+                        type="text"
+                        placeholder="태그 입력 후 Enter..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const val = (e.currentTarget as HTMLInputElement).value.trim();
+                                if (val) {
+                                    // 중복 확인
+                                    const exists = tags.some((t: any) => {
+                                        const name = typeof t === 'string' ? t : t.name;
+                                        return name.toLowerCase() === val.toLowerCase();
+                                    });
+                                    if (!exists) {
+                                        onTagsChange([...tags, val]);
+                                    }
+                                    (e.currentTarget as HTMLInputElement).value = '';
+                                }
+                            }
+                        }}
+                    />
                 </div>
             </div>
 

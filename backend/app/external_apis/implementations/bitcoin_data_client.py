@@ -171,20 +171,20 @@ class BitcoinDataClient(OnChainAPIClient):
             # Map metric_name to API endpoint and response field
             metric_map = {
                 'mvrv_z_score': {'endpoint': 'mvrv', 'field': ['mvrv', 'mvrvZscore', 'mvrv_z_score']},
-                # 'nupl': {'endpoint': 'nupl', 'field': ['nupl']},
-                # 'sopr': {'endpoint': 'sopr', 'field': ['sopr']},
-                # 'hashrate': {'endpoint': 'hashrate', 'field': ['hashrate']},
-                # 'difficulty': {'endpoint': 'difficulty-btc', 'field': ['difficultyBtc', 'difficulty']},
-                # 'realized_price': {'endpoint': 'realized-price', 'field': ['realizedPrice', 'realized_price']},
-                # 'thermo_cap': {'endpoint': 'thermo-cap', 'field': ['thermoCap', 'thermo_cap']},
-                # 'true_market_mean': {'endpoint': 'true-market-mean', 'field': ['trueMarketMean', 'true_market_mean']},
-                # 'aviv': {'endpoint': 'aviv', 'field': ['aviv']},
-                # 'nrpl_btc': {'endpoint': 'nrpl-btc', 'field': ['nrplBtc', 'nrpl_btc']},
-                # 'etf_btc_flow': {'endpoint': 'etf-btc-flow', 'field': ['etfFlow', 'etfBtcFlow', 'etf_btc_flow']},
-                # 'etf_btc_total': {'endpoint': 'etf-btc-total', 'field': ['etfBtcTotal', 'etf_btc_total']},
-                # 'hodl_waves_supply': {'endpoint': 'hodl-waves-supply', 'field': ['hodlWavesSupply', 'hodl_waves_supply']},
-                # 'open_interest_futures': {'endpoint': 'open-interest-futures', 'field': ['openInterestFutures', 'open_interest_futures']},
-                # 'cdd_90dma': {'endpoint': 'cdd-90dma', 'field': ['cdd90dma', 'cdd_90dma']}
+                'nupl': {'endpoint': 'nupl', 'field': ['nupl']},
+                'sopr': {'endpoint': 'sopr', 'field': ['sopr']},
+                'hashrate': {'endpoint': 'hashrate', 'field': ['hashrate']},
+                'difficulty': {'endpoint': 'difficulty-btc', 'field': ['difficultyBtc', 'difficulty']},
+                'realized_price': {'endpoint': 'realized-price', 'field': ['realizedPrice', 'realized_price']},
+                'thermo_cap': {'endpoint': 'thermo-cap', 'field': ['thermoCap', 'thermo_cap']},
+                'true_market_mean': {'endpoint': 'true-market-mean', 'field': ['trueMarketMean', 'true_market_mean']},
+                'aviv': {'endpoint': 'aviv', 'field': ['aviv']},
+                'nrpl_btc': {'endpoint': 'nrpl-btc', 'field': ['nrplBtc', 'nrpl_btc']},
+                'etf_btc_flow': {'endpoint': 'etf-btc-flow', 'field': ['etfFlow', 'etfBtcFlow', 'etf_btc_flow']},
+                'etf_btc_total': {'endpoint': 'etf-btc-total', 'field': ['etfBtcTotal', 'etf_btc_total']},
+                'hodl_waves_supply': {'endpoint': 'hodl-waves-supply', 'field': ['hodlWavesSupply', 'hodl_waves_supply']},
+                'open_interest_futures': {'endpoint': 'open-interest-futures', 'field': ['openInterestFutures', 'open_interest_futures']},
+                'cdd_90dma': {'endpoint': 'cdd-90dma', 'field': ['cdd90dma', 'cdd_90dma']}
             }
             
             if metric_name not in metric_map:

@@ -137,5 +137,17 @@ async def get_current_user_optional(
         return None
 
 
+async def get_current_active_superuser(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """현재 사용자가 슈퍼유저인지 확인"""
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="The user doesn't have enough privileges"
+        )
+    return current_user
+
+
 # export 함수들
-__all__ = ["get_current_user", "get_current_user_optional"]
+__all__ = ["get_current_user", "get_current_user_optional", "get_current_active_superuser"]

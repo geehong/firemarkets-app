@@ -47,7 +47,7 @@ export const BriefNewsCard: React.FC<BriefNewsCardProps> = ({
 }) => {
     return (
         <article className="flex flex-col bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all duration-200 h-full">
-            <Link href={`/blog/${slug}`} className="group block mb-3">
+            <Link href={`/briefnews/${slug}`} className="group block mb-3">
                 <h3 className={`${CONFIG.TITLE.SIZE} ${CONFIG.TITLE.FONT_WEIGHT} ${CONFIG.TITLE.COLOR} ${CONFIG.TITLE.HOVER_COLOR} leading-snug transition-colors`}>
                     {title}
                 </h3>

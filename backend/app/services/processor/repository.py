@@ -647,79 +647,101 @@ class DataRepository:
             pg_db.close()
 
     async def save_onchain_metrics(self, items: List[Dict[str, Any]]) -> bool:
-        """온체인 메트릭 데이터 저장"""
+        """온체인 메트릭 데이터 저장 (Bulk UPSERT 최적화 버전)"""
         if not items:
             return True
         
         pg_db = next(get_postgres_db())
         try:
-            saved_count = 0
+            # 1. 수집 가능한 모든 필드 정의
+            all_metric_fields = [
+                'mvrv_z_score', 'nupl', 'sopr', 'hashrate', 'difficulty',
+                'realized_price', 'thermo_cap', 'true_market_mean', 'aviv',
+                'nrpl_btc', 'etf_btc_flow', 'etf_btc_total', 'hodl_waves_supply',
+                'cdd_90dma', 'hodl_age_distribution', 'open_interest_futures'
+            ]
+            
+            # 2. 데이터 유효성 검사 및 정제
+            valid_pg_data_list = []
             for item in items:
-                try:
-                    asset_id = item.get('asset_id')
-                    ts = item.get('timestamp_utc')
-                    
-                    if not asset_id or not ts:
-                        continue
-                        
-                    pg_data = {
-                        'asset_id': asset_id,
-                        'timestamp_utc': ts,
-                        # Dynamic mapping for all possible metric fields
-                        'mvrv_z_score': self._sanitize_number(item.get('mvrv_z_score')),
-                        'nupl': self._sanitize_number(item.get('nupl')),
-                        'sopr': self._sanitize_number(item.get('sopr')),
-                        'hashrate': self._sanitize_number(item.get('hashrate')),
-                        'difficulty': self._sanitize_number(item.get('difficulty')),
-                        'realized_price': self._sanitize_number(item.get('realized_price')),
-                        'thermo_cap': self._sanitize_number(item.get('thermo_cap')),
-                        'true_market_mean': self._sanitize_number(item.get('true_market_mean')),
-                        'aviv': self._sanitize_number(item.get('aviv')),
-                        'nrpl_btc': self._sanitize_number(item.get('nrpl_btc')),
-                        'etf_btc_flow': self._sanitize_number(item.get('etf_btc_flow')),
-                        'etf_btc_total': self._sanitize_number(item.get('etf_btc_total')),
-                        'hodl_waves_supply': self._sanitize_number(item.get('hodl_waves_supply')),
-                        'cdd_90dma': self._sanitize_number(item.get('cdd_90dma')),
-                        # JSON fields
-                        'hodl_age_distribution': item.get('hodl_age_distribution'),
-                        'open_interest_futures': item.get('open_interest_futures'),
-                    }
-                    pg_data = {k: v for k, v in pg_data.items() if v is not None}
-                    
-                    stmt = pg_insert(CryptoMetric).values(**pg_data)
-                    
-                    # Update all fields except PK/Key and created_at
-                    update_dict = {k: getattr(stmt.excluded, k) for k in pg_data.keys() 
-                                   if k not in ['asset_id', 'timestamp_utc']}
-                    
-                    if not update_dict:
-                        stmt = stmt.on_conflict_do_nothing(
-                            index_elements=['asset_id', 'timestamp_utc']
-                        )
-                    else:
-                        update_dict['updated_at'] = func.now()
-                        stmt = stmt.on_conflict_do_update(
-                            index_elements=['asset_id', 'timestamp_utc'],
-                            set_=update_dict
-                        )
-                    
-                    # Use nested transaction to prevent 'InFailedSqlTransaction' on one item failure
-                    with pg_db.begin_nested():
-                        pg_db.execute(stmt)
-                        
-                    saved_count += 1
-                except Exception as e:
-                    # Log but continue to next item
-                    logger.warning(f"온체인 메트릭 저장 실패 (asset_id={item.get('asset_id')}, ts={item.get('timestamp_utc')}): {e}")
+                asset_id = item.get('asset_id')
+                ts = item.get('timestamp_utc')
+                
+                if not asset_id or not ts:
                     continue
+                
+                pg_data = {
+                    'asset_id': asset_id,
+                    'timestamp_utc': ts,
+                    'updated_at': func.now()
+                }
+                
+                # 메트릭 필드 채우기 (값이 있는 것만)
+                has_value = False
+                for field in all_metric_fields:
+                    val = item.get(field)
+                    if val is not None:
+                        if field in ('hodl_age_distribution', 'open_interest_futures'):
+                            pg_data[field] = val  # JSON 필드
+                        else:
+                            pg_data[field] = self._sanitize_number(val)
+                        has_value = True
+                
+                if has_value:
+                    valid_pg_data_list = [pg_data] # 아래에서 배치별로 처리하기 위해 초기화, 하지만 여기서는 전체를 모읍니다
+                    # 실제로는 list에 계속 append해야 함
+            
+            # 위 로직 교정: valid_pg_data_list에 누적
+            valid_pg_data_list = []
+            for item in items:
+                asset_id = item.get('asset_id')
+                ts = item.get('timestamp_utc')
+                if not asset_id or not ts: continue
+                
+                pg_data = {'asset_id': asset_id, 'timestamp_utc': ts}
+                has_metric = False
+                for field in all_metric_fields:
+                    val = item.get(field)
+                    if val is not None:
+                        pg_data[field] = val if field in ('hodl_age_distribution', 'open_interest_futures') else self._sanitize_number(val)
+                        has_metric = True
+                if has_metric:
+                    valid_pg_data_list.append(pg_data)
+
+            if not valid_pg_data_list:
+                return True
+
+            # 3. 배치 처리 (대량 데이터인 경우 1000개씩 끊어서 처리)
+            batch_size = 1000
+            for i in range(0, len(valid_pg_data_list), batch_size):
+                batch = valid_pg_data_list[i : i + batch_size]
+                
+                stmt = pg_insert(CryptoMetric).values(batch)
+                
+                # 업데이트할 필드 결정 (배치 내에 존재하는 모든 메트릭 필드)
+                update_fields = set()
+                for d in batch:
+                    for k in d.keys():
+                        if k not in ('asset_id', 'timestamp_utc'):
+                            update_fields.add(k)
+                
+                update_dict = {k: getattr(stmt.excluded, k) for k in update_fields}
+                update_dict['updated_at'] = func.now()
+                
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=['asset_id', 'timestamp_utc'],
+                    set_=update_dict
+                )
+                
+                pg_db.execute(stmt)
             
             pg_db.commit()
-            if saved_count > 0:
-                logger.info(f"✅ 온체인 메트릭 저장 완료: {saved_count}건")
-            return saved_count > 0
+            logger.info(f"✅ 온체인 메트릭 저장 완료: {len(valid_pg_data_list)}건 (Bulk UPSERT)")
+            return True
+            
         except Exception as e:
             pg_db.rollback()
-            logger.error(f"온체인 메트릭 배치 저장 실패: {e}")
+            logger.error(f"온체인 메트릭 배치 저장 실패: {e}", exc_info=True)
             return False
         finally:
             pg_db.close()

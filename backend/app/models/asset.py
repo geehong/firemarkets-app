@@ -741,6 +741,10 @@ class User(Base):
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
     deleted_at = Column(TIMESTAMP, nullable=True)
     
+    @property
+    def is_superuser(self):
+        return self.role in ['admin', 'super_admin']
+
     def __repr__(self):
         return f"<User(id={self.id}, username='{self.username}', role='{self.role}')>"
 

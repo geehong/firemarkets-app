@@ -287,27 +287,24 @@ class ConfigManager:
     
     def get_enabled_onchain_metrics(self) -> List[str]:
         """Returns a list of enabled on-chain metrics for collection."""
-        # API 제한 고려: 시간당 3개, 일일 40개
-        # 우선순위별 메트릭 그룹 (하루 2-3회 수집 가능)
-        priority_metrics = {
-            "high": ["mvrv_z_score", "nupl", "sopr"],  # 핵심 메트릭 (3개)
-            "medium": ["realized_price", "hashrate", "difficulty"],  # 네트워크 메트릭 (3개)
-            "low": ["etf_btc_total", "etf_btc_flow", "open_interest_futures"]  # 시장 메트릭 (3개)
-        }
-        
-        # 기본적으로 high 우선순위만 활성화 (시간당 3개 제한 고려)
-        default_metrics = priority_metrics["high"]
+        # BitcoinDataClient에서 지원하는 모든 메트릭 정의
+        all_metrics = [
+            "mvrv_z_score", "nupl", "sopr", "hashrate", "difficulty",
+            "realized_price", "thermo_cap", "true_market_mean", "aviv",
+            "nrpl_btc", "etf_btc_flow", "etf_btc_total", "hodl_waves_supply",
+            "open_interest_futures", "cdd_90dma"
+        ]
         
         # 설정에서 활성화된 메트릭들을 확인
         enabled_metrics = []
-        for metric in default_metrics:
+        for metric in all_metrics:
             if self.is_onchain_metric_enabled(metric):
                 enabled_metrics.append(metric)
         
-        # 활성화된 메트릭이 없으면 기본값 반환
+        # 활성화된 메트릭이 없으면 전체 기본값 반환
         if not enabled_metrics:
-            logger.warning("No onchain metrics enabled, using default high priority metrics")
-            return default_metrics
+            logger.warning("No onchain metrics enabled in DB, using all supported metrics by default")
+            return all_metrics
         
         return enabled_metrics
 

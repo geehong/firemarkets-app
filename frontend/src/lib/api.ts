@@ -116,7 +116,7 @@ export class ApiClient {
   }
 
 
-  private async request<T = any>(endpoint: string, init?: RequestInit & { silentStatusCodes?: number[] }): Promise<T> {
+  public async request<T = any>(endpoint: string, init?: RequestInit & { silentStatusCodes?: number[] }): Promise<T> {
     const url = `${this.getBaseURL()}${endpoint}`
 
     const defaultHeaders: Record<string, string> = {
@@ -690,6 +690,39 @@ export class ApiClient {
   }
 
 
+
+  // Tags
+  getAdminTags(params: { page?: number; limit?: number; search?: string; sort_by?: string; order?: 'asc' | 'desc' }) {
+    const query = new URLSearchParams()
+    if (params.page) query.append('page', params.page.toString())
+    if (params.limit) query.append('limit', params.limit.toString())
+    if (params.search) query.append('search', params.search)
+    if (params.sort_by) query.append('sort_by', params.sort_by)
+    if (params.order) query.append('order', params.order)
+
+    return this.request(`/posts/tags/admin?${query.toString()}`)
+  }
+
+  createTag(data: { name: string; slug: string }) {
+    return this.request(`/posts/tags/`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    })
+  }
+
+  updateTag(tagId: number, data: { name?: string; slug?: string }) {
+    return this.request(`/posts/tags/${tagId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    })
+  }
+
+  deleteTag(tagId: number) {
+    return this.request(`/posts/tags/${tagId}`, {
+      method: 'DELETE'
+    })
+  }
+
   // Comments
   getPostComments(postId: number) {
     return this.request(`/posts/${postId}/comments`)
@@ -699,6 +732,29 @@ export class ApiClient {
     return this.request(`/posts/${postId}/comments`, {
       method: 'POST',
       body: JSON.stringify(data)
+    })
+  }
+
+  getAdminComments(params: { page?: number; limit?: number; status?: string; search?: string }) {
+    const query = new URLSearchParams()
+    if (params.page) query.append('page', params.page.toString())
+    if (params.limit) query.append('limit', params.limit.toString())
+    if (params.status && params.status !== 'all') query.append('status', params.status)
+    if (params.search) query.append('search', params.search)
+
+    return this.request(`/posts/admin/comments?${query.toString()}`)
+  }
+
+  updateCommentStatus(commentId: number, status: string) {
+    return this.request(`/posts/comments/${commentId}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status })
+    })
+  }
+
+  deletePostComment(commentId: number) {
+    return this.request(`/posts/comments/${commentId}`, {
+      method: 'DELETE'
     })
   }
 
