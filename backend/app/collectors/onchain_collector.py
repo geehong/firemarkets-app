@@ -53,14 +53,42 @@ class OnchainCollector(BaseCollector):
             self.logging_helper.log_warning("No onchain metrics are enabled for collection in configuration.")
             return {"processed_assets": 0, "total_added_records": 0}
 
-        self.logging_helper.log_info(f"Starting onchain collection for {len(enabled_metrics)} metrics for asset_id {self.bitcoin_asset_id}.")
+        from datetime import datetime
+        day_of_month = datetime.now().day
+        is_even_day = (day_of_month % 2 == 0)
+        
+        # Group A (Odd days): 15 metrics
+        group_a = [
+            'mvrv_z_score', 'mvrv', 'nupl', 'sopr', 'realized_price', 
+            'sth_realized_price', 'lth_mvrv', 'sth_mvrv', 'lth_nupl', 
+            'sth_nupl', 'aviv', 'true_market_mean', 'terminal_price', 
+            'delta_price_usd', 'market_cap'
+        ]
+        
+        # Group B (Even days): 15 metrics
+        group_b = [
+            'hashrate', 'difficulty', 'thermo_cap', 'puell_multiple', 
+            'reserve_risk', 'rhodl_ratio', 'nvts', 'nrpl_usd', 
+            'utxos_in_profit_pct', 'utxos_in_loss_pct', 'realized_cap', 
+            'etf_btc_flow', 'etf_btc_total', 'hodl_waves_supply', 'cdd_90dma'
+        ]
+        
+        current_group = group_b if is_even_day else group_a
+        
+        # 필터링: 현재 그룹에 속하고 설정에서 활성화된 메트릭만 선택
+        metrics_to_collect = [m for m in enabled_metrics if m in current_group]
+        
+        self.logging_helper.log_info(
+            f"Starting onchain collection (Day: {day_of_month}, Group: {'B' if is_even_day else 'A'}). "
+            f"Collecting {len(metrics_to_collect)} metrics for asset_id {self.bitcoin_asset_id}."
+        )
 
         # 3. 데이터 수집 실행 및 결과 집계
         tasks = [
             self.process_with_semaphore(
                 self._fetch_and_enqueue_for_metric(metric_name)
             )
-            for metric_name in enabled_metrics
+            for metric_name in metrics_to_collect
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
@@ -254,9 +282,11 @@ class OnchainCollector(BaseCollector):
                     "trueMarketMean": "true_market_mean",
                     "true_market_mean": "true_market_mean"
                 },
-                "nrpl_btc": {
-                    "nrplBtc": "nrpl_btc",
-                    "nrpl_btc": "nrpl_btc"
+                "nrpl_usd": {
+                    "nrplUsd": "nrpl_usd"
+                },
+                "sth_realized_price": {
+                    "sthRealizedPrice": "sth_realized_price"
                 },
                 "cdd_90dma": {
                     "cdd90dma": "cdd_90dma",
@@ -277,6 +307,64 @@ class OnchainCollector(BaseCollector):
                 "cap_real_usd": {
                     "capRealUSD": "cap_real_usd",
                     "cap_real_usd": "cap_real_usd"
+                },
+                "mvrv": {
+                    "mvrv": "mvrv"
+                },
+                "lth_mvrv": {
+                    "mvrvLth": "lth_mvrv",
+                    "mvrv_lth": "lth_mvrv"
+                },
+                "sth_mvrv": {
+                    "mvrvSth": "sth_mvrv",
+                    "mvrv_sth": "sth_mvrv"
+                },
+                "puell_multiple": {
+                    "puellMultiple": "puell_multiple",
+                    "puell_multiple": "puell_multiple"
+                },
+                "reserve_risk": {
+                    "reserveRisk": "reserve_risk",
+                    "reserve_risk": "reserve_risk"
+                },
+                "rhodl_ratio": {
+                    "rhodlRatio": "rhodl_ratio",
+                    "rhodl_ratio": "rhodl_ratio"
+                },
+                "terminal_price": {
+                    "terminalPrice": "terminal_price",
+                    "terminal_price": "terminal_price"
+                },
+                "delta_price_usd": {
+                    "deltaPriceUsd": "delta_price_usd",
+                    "delta_price_usd": "delta_price_usd"
+                },
+                "lth_nupl": {
+                    "nuplLth": "lth_nupl",
+                    "nupl_lth": "lth_nupl"
+                },
+                "sth_nupl": {
+                    "nuplSth": "sth_nupl",
+                    "nupl_sth": "sth_nupl"
+                },
+                "utxos_in_profit_pct": {
+                    "utxosInProfitPct": "utxos_in_profit_pct",
+                    "utxos_in_profit_pct": "utxos_in_profit_pct"
+                },
+                "utxos_in_loss_pct": {
+                    "utxosInLossPct": "utxos_in_loss_pct",
+                    "utxos_in_loss_pct": "utxos_in_loss_pct"
+                },
+                "nvts": {
+                    "nvts": "nvts"
+                },
+                "market_cap": {
+                    "marketCap": "market_cap",
+                    "market_cap": "market_cap"
+                },
+                "realized_cap": {
+                    "realizedCap": "realized_cap",
+                    "realized_cap": "realized_cap"
                 }
             }
             
@@ -324,33 +412,7 @@ class OnchainCollector(BaseCollector):
             if hodl_age_distribution:
                 converted["hodl_age_distribution"] = hodl_age_distribution
             
-            # Open Interest Futures 처리 (개별 거래소 필드들을 JSON으로 변환)
-            open_interest_futures = {}
-            exchange_mapping = {
-                'binance': 'binance',
-                'bybit': 'bybit',
-                'okx': 'okx',
-                'bitget': 'bitget',
-                'deribit': 'deribit',
-                'bitmex': 'bitmex',
-                'huobi': 'huobi',
-                'bitfinex': 'bitfinex',
-                'gateIo': 'gate_io',
-                'kucoin': 'kucoin',
-                'kraken': 'kraken',
-                'cryptoCom': 'crypto_com',
-                'dydx': 'dydx',
-                'deltaExchange': 'delta_exchange',
-                'openInterestFutures': 'total'
-            }
-            
-            for api_key, json_key in exchange_mapping.items():
-                if api_key in item and item[api_key] is not None:
-                    open_interest_futures[json_key] = float(item[api_key])
-            
-            if open_interest_futures:
-                converted["open_interest_futures"] = open_interest_futures
-            
+
             return converted
             
         except Exception as e:

@@ -114,23 +114,20 @@ def get_metric_data_range(metric_def: OnchainMetricsInfo, db: Session, ticker: O
     
     # 데이터베이스 필드명 매핑 (실제 데이터베이스의 metric_id에 맞춤)
     db_field_map = {
-        'mvrv_z_score': 'mvrv_z_score',
-        'sopr': 'sopr',
-        'nupl': 'nupl',
-        'realized_price': 'realized_price',
-        'hashrate': 'hashrate',
-        'difficulty': 'difficulty',
-        'miner_reserves': 'miner_reserves',
-        'etf_btc_total': 'etf_btc_total',
-        'etf_btc_flow': 'etf_btc_flow',
-        'open_interest_futures': 'open_interest_futures',
-        'realized_cap': 'realized_cap',
-        'cdd_90dma': 'cdd_90dma',
-        'true_market_mean': 'true_market_mean',
-        'nrpl_btc': 'nrpl_btc',
-        'thermo_cap': 'thermo_cap',
-        'hodl_waves_supply': 'hodl_waves_supply',
-        'aviv': 'aviv'
+        'mvrv_z_score': 'mvrv_z_score', 'sopr': 'sopr', 'nupl': 'nupl',
+        'realized_price': 'realized_price', 'hashrate': 'hashrate',
+        'difficulty': 'difficulty', 'etf_btc_total': 'etf_btc_total',
+        'etf_btc_flow': 'etf_btc_flow', 'realized_cap': 'realized_cap',
+        'cdd_90dma': 'cdd_90dma', 'true_market_mean': 'true_market_mean',
+        'sth_realized_price': 'sth_realized_price', 'thermo_cap': 'thermo_cap',
+        'hodl_waves_supply': 'hodl_waves_supply', 'aviv': 'aviv',
+        'mvrv': 'mvrv', 'lth_mvrv': 'lth_mvrv', 'sth_mvrv': 'sth_mvrv',
+        'puell_multiple': 'puell_multiple', 'reserve_risk': 'reserve_risk',
+        'rhodl_ratio': 'rhodl_ratio', 'terminal_price': 'terminal_price',
+        'delta_price_usd': 'delta_price_usd', 'lth_nupl': 'lth_nupl',
+        'sth_nupl': 'sth_nupl', 'utxos_in_profit_pct': 'utxos_in_profit_pct',
+        'utxos_in_loss_pct': 'utxos_in_loss_pct', 'nvts': 'nvts',
+        'market_cap': 'market_cap'
     }
     
     db_field = db_field_map.get(metric_def.metric_id)
@@ -186,23 +183,20 @@ def get_period_dates(period: str) -> tuple[Optional[date], date]:
 def create_data_points(records: List, metric_def: OnchainMetricsInfo) -> List[MetricDataPoint]:
     """데이터베이스 레코드를 데이터 포인트로 변환합니다."""
     db_field_map = {
-        'mvrv_z_score': 'mvrv_z_score',
-        'sopr': 'sopr',
-        'nupl': 'nupl',
-        'realized_price': 'realized_price',
-        'hashrate': 'hashrate',
-        'difficulty': 'difficulty',
-        'miner_reserves': 'miner_reserves',
-        'etf_btc_total': 'etf_btc_total',
-        'etf_btc_flow': 'etf_btc_flow',
-        'open_interest_futures': 'open_interest_futures',
-        'realized_cap': 'realized_cap',
-        'cdd_90dma': 'cdd_90dma',
-        'true_market_mean': 'true_market_mean',
-        'nrpl_btc': 'nrpl_btc',
-        'thermo_cap': 'thermo_cap',
-        'hodl_waves_supply': 'hodl_waves_supply',
-        'aviv': 'aviv'
+        'mvrv_z_score': 'mvrv_z_score', 'sopr': 'sopr', 'nupl': 'nupl',
+        'realized_price': 'realized_price', 'hashrate': 'hashrate',
+        'difficulty': 'difficulty', 'etf_btc_total': 'etf_btc_total',
+        'etf_btc_flow': 'etf_btc_flow', 'realized_cap': 'realized_cap',
+        'cdd_90dma': 'cdd_90dma', 'true_market_mean': 'true_market_mean',
+        'sth_realized_price': 'sth_realized_price', 'thermo_cap': 'thermo_cap',
+        'hodl_waves_supply': 'hodl_waves_supply', 'aviv': 'aviv',
+        'mvrv': 'mvrv', 'lth_mvrv': 'lth_mvrv', 'sth_mvrv': 'sth_mvrv',
+        'puell_multiple': 'puell_multiple', 'reserve_risk': 'reserve_risk',
+        'rhodl_ratio': 'rhodl_ratio', 'terminal_price': 'terminal_price',
+        'delta_price_usd': 'delta_price_usd', 'lth_nupl': 'lth_nupl',
+        'sth_nupl': 'sth_nupl', 'utxos_in_profit_pct': 'utxos_in_profit_pct',
+        'utxos_in_loss_pct': 'utxos_in_loss_pct', 'nvts': 'nvts',
+        'market_cap': 'market_cap'
     }
     
     db_field = db_field_map.get(metric_def.metric_id)
@@ -336,23 +330,20 @@ async def get_metric_data(
     
     # 데이터베이스 필드명 매핑
     db_field_map = {
-        'mvrv_z_score': 'mvrv_z_score',
-        'sopr': 'sopr',
-        'nupl': 'nupl',
-        'realized_price': 'realized_price',
-        'hashrate': 'hashrate',
-        'difficulty': 'difficulty',
-        'miner_reserves': 'miner_reserves',
-        'etf_btc_total': 'etf_btc_total',
-        'etf_btc_flow': 'etf_btc_flow',
-        'open_interest_futures': 'open_interest_futures',
-        'realized_cap': 'realized_cap',
-        'cdd_90dma': 'cdd_90dma',
-        'true_market_mean': 'true_market_mean',
-        'nrpl_btc': 'nrpl_btc',
-        'thermo_cap': 'thermo_cap',
-        'hodl_waves_supply': 'hodl_waves_supply',
-        'aviv': 'aviv'
+        'mvrv_z_score': 'mvrv_z_score', 'sopr': 'sopr', 'nupl': 'nupl',
+        'realized_price': 'realized_price', 'hashrate': 'hashrate',
+        'difficulty': 'difficulty', 'etf_btc_total': 'etf_btc_total',
+        'etf_btc_flow': 'etf_btc_flow', 'realized_cap': 'realized_cap',
+        'cdd_90dma': 'cdd_90dma', 'true_market_mean': 'true_market_mean',
+        'sth_realized_price': 'sth_realized_price', 'thermo_cap': 'thermo_cap',
+        'hodl_waves_supply': 'hodl_waves_supply', 'aviv': 'aviv',
+        'mvrv': 'mvrv', 'lth_mvrv': 'lth_mvrv', 'sth_mvrv': 'sth_mvrv',
+        'puell_multiple': 'puell_multiple', 'reserve_risk': 'reserve_risk',
+        'rhodl_ratio': 'rhodl_ratio', 'terminal_price': 'terminal_price',
+        'delta_price_usd': 'delta_price_usd', 'lth_nupl': 'lth_nupl',
+        'sth_nupl': 'sth_nupl', 'utxos_in_profit_pct': 'utxos_in_profit_pct',
+        'utxos_in_loss_pct': 'utxos_in_loss_pct', 'nvts': 'nvts',
+        'market_cap': 'market_cap'
     }
     
     db_field = db_field_map.get(metric_id)
@@ -462,12 +453,18 @@ async def get_dashboard_summary(
         db_field_map = {
             'mvrv_z_score': 'mvrv_z_score', 'sopr': 'sopr', 'nupl': 'nupl',
             'realized_price': 'realized_price', 'hashrate': 'hashrate',
-            'difficulty': 'difficulty', 'miner_reserves': 'miner_reserves',
-            'etf_btc_total': 'etf_btc_total', 'etf_btc_flow': 'etf_btc_flow',
-            'open_interest_futures': 'open_interest_futures', 'realized_cap': 'realized_cap',
+            'difficulty': 'difficulty', 'etf_btc_total': 'etf_btc_total',
+            'etf_btc_flow': 'etf_btc_flow', 'realized_cap': 'realized_cap',
             'cdd_90dma': 'cdd_90dma', 'true_market_mean': 'true_market_mean',
-            'nrpl_btc': 'nrpl_btc', 'thermo_cap': 'thermo_cap',
-            'hodl_waves_supply': 'hodl_waves_supply', 'aviv': 'aviv'
+            'sth_realized_price': 'sth_realized_price', 'thermo_cap': 'thermo_cap',
+            'hodl_waves_supply': 'hodl_waves_supply', 'aviv': 'aviv',
+            'mvrv': 'mvrv', 'lth_mvrv': 'lth_mvrv', 'sth_mvrv': 'sth_mvrv',
+            'puell_multiple': 'puell_multiple', 'reserve_risk': 'reserve_risk',
+            'rhodl_ratio': 'rhodl_ratio', 'terminal_price': 'terminal_price',
+            'delta_price_usd': 'delta_price_usd', 'lth_nupl': 'lth_nupl',
+            'sth_nupl': 'sth_nupl', 'utxos_in_profit_pct': 'utxos_in_profit_pct',
+            'utxos_in_loss_pct': 'utxos_in_loss_pct', 'nvts': 'nvts',
+            'market_cap': 'market_cap'
         }
         
         for metric in active_metrics_list:

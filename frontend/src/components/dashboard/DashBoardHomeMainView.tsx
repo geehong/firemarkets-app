@@ -112,34 +112,17 @@ const FeatureCard = ({ title, description, icon, href, color }: any) => (
 
 const BriefNewsSection = () => {
     const t = useTranslations('Dashboard');
-    const [briefNews, setBriefNews] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { data, isLoading, refetch } = usePosts({
+        post_type: 'brief_news',
+        status: 'published',
+        page_size: 10,
+        sort_by: 'created_at',
+        order: 'desc'
+    });
 
-    const fetchBriefNews = React.useCallback(() => {
-        setLoading(true);
-        apiClient.getPosts({
-            post_type: 'brief_news',
-            status: 'published',
-            page_size: 50
-        })
-            .then((res: any) => {
-                if (res && res.posts) {
-                    const now = new Date();
-                    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-                    let recentPosts = res.posts.filter((post: any) => new Date(post.created_at) > oneDayAgo);
-                    recentPosts = recentPosts.sort(() => Math.random() - 0.5);
-                    setBriefNews(recentPosts.slice(0, 10));
-                }
-            })
-            .catch(err => console.error(err))
-            .finally(() => setLoading(false));
-    }, []);
+    const briefNews = data?.posts || [];
 
-    useEffect(() => {
-        fetchBriefNews();
-    }, [fetchBriefNews]);
-
-    if (loading) return <div className="h-60 bg-gray-100 dark:bg-gray-800 rounded-2xl animate-pulse"></div>;
+    if (isLoading) return <div className="h-60 bg-gray-100 dark:bg-gray-800 rounded-2xl animate-pulse"></div>;
 
     return (
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl shadow-slate-200/50 dark:shadow-none p-6 border border-slate-100 dark:border-gray-700">
@@ -149,7 +132,7 @@ const BriefNewsSection = () => {
                 </h3>
                 <div className="flex items-center gap-3">
                     <button
-                        onClick={fetchBriefNews}
+                        onClick={() => refetch()}
                         className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-slate-500 transition-colors"
                         title="Refresh"
                     >

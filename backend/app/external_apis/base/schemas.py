@@ -300,15 +300,28 @@ class CryptoMetricsData(BaseModel):
     # 기타 지표
     aviv: Optional[float] = None
     cdd_90dma: Optional[float] = None
-    nrpl_btc: Optional[float] = None
-    miner_reserves: Optional[float] = None
+    nrpl_usd: Optional[float] = None
+    sth_realized_price: Optional[float] = None
     
     # ETF 데이터
     etf_btc_flow: Optional[float] = None
     etf_btc_total: Optional[float] = None
     
-    # Futures 데이터 (JSON)
-    open_interest_futures: Optional[Dict[str, Any]] = None
+    # New on-chain metrics
+    mvrv: Optional[float] = None
+    lth_mvrv: Optional[float] = None
+    sth_mvrv: Optional[float] = None
+    puell_multiple: Optional[float] = None
+    reserve_risk: Optional[float] = None
+    rhodl_ratio: Optional[float] = None
+    terminal_price: Optional[float] = None
+    delta_price_usd: Optional[float] = None
+    lth_nupl: Optional[float] = None
+    sth_nupl: Optional[float] = None
+    utxos_in_profit_pct: Optional[float] = None
+    utxos_in_loss_pct: Optional[float] = None
+    nvts: Optional[float] = None
+    market_cap: Optional[float] = None
 
 # ============================================================================
 # API 응답 데이터 (API Response Data)

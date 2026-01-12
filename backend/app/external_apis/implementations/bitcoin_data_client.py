@@ -174,17 +174,33 @@ class BitcoinDataClient(OnChainAPIClient):
                 'nupl': {'endpoint': 'nupl', 'field': ['nupl']},
                 'sopr': {'endpoint': 'sopr', 'field': ['sopr']},
                 'hashrate': {'endpoint': 'hashrate', 'field': ['hashrate']},
-                'difficulty': {'endpoint': 'difficulty-btc', 'field': ['difficultyBtc', 'difficulty']},
+                'difficulty': {'endpoint': 'difficulty-BTC', 'field': ['difficultyBtc', 'difficulty']},
                 'realized_price': {'endpoint': 'realized-price', 'field': ['realizedPrice', 'realized_price']},
                 'thermo_cap': {'endpoint': 'thermo-cap', 'field': ['thermoCap', 'thermo_cap']},
                 'true_market_mean': {'endpoint': 'true-market-mean', 'field': ['trueMarketMean', 'true_market_mean']},
                 'aviv': {'endpoint': 'aviv', 'field': ['aviv']},
-                'nrpl_btc': {'endpoint': 'nrpl-btc', 'field': ['nrplBtc', 'nrpl_btc']},
-                'etf_btc_flow': {'endpoint': 'etf-btc-flow', 'field': ['etfFlow', 'etfBtcFlow', 'etf_btc_flow']},
+                'nrpl_usd': {'endpoint': 'nrpl-usd', 'field': ['nrplUsd']},
+                'sth_realized_price': {'endpoint': 'sth-realized-price', 'field': ['sthRealizedPrice']},
+                'etf_btc_flow': {'endpoint': 'etf-flow-btc', 'field': ['etfFlow']},
                 'etf_btc_total': {'endpoint': 'etf-btc-total', 'field': ['etfBtcTotal', 'etf_btc_total']},
                 'hodl_waves_supply': {'endpoint': 'hodl-waves-supply', 'field': ['hodlWavesSupply', 'hodl_waves_supply']},
-                'open_interest_futures': {'endpoint': 'open-interest-futures', 'field': ['openInterestFutures', 'open_interest_futures']},
-                'cdd_90dma': {'endpoint': 'cdd-90dma', 'field': ['cdd90dma', 'cdd_90dma']}
+                'cdd_90dma': {'endpoint': 'cdd-90dma', 'field': ['cdd90dma', 'cdd_90dma']},
+                # New metrics for expanded collection
+                'mvrv': {'endpoint': 'mvrv', 'field': ['mvrv']},
+                'lth_mvrv': {'endpoint': 'mvrv-lth', 'field': ['mvrvLth', 'mvrv_lth']},
+                'sth_mvrv': {'endpoint': 'mvrv-sth', 'field': ['mvrvSth', 'mvrv_sth']},
+                'puell_multiple': {'endpoint': 'puell-multiple', 'field': ['puellMultiple', 'puell_multiple']},
+                'reserve_risk': {'endpoint': 'reserve-risk', 'field': ['reserveRisk', 'reserve_risk']},
+                'rhodl_ratio': {'endpoint': 'rhodl-ratio', 'field': ['rhodlRatio', 'rhodl_ratio']},
+                'terminal_price': {'endpoint': 'terminal-price', 'field': ['terminalPrice', 'terminal_price']},
+                'delta_price_usd': {'endpoint': 'delta-price-usd', 'field': ['deltaPriceUsd', 'delta_price_usd']},
+                'lth_nupl': {'endpoint': 'nupl-lth', 'field': ['nuplLth', 'nupl_lth']},
+                'sth_nupl': {'endpoint': 'nupl-sth', 'field': ['nuplSth', 'nupl_sth']},
+                'utxos_in_profit_pct': {'endpoint': 'utxos-in-profit-pct', 'field': ['utxosInProfitPct', 'utxos_in_profit_pct']},
+                'utxos_in_loss_pct': {'endpoint': 'utxos-in-loss-pct', 'field': ['utxosInLossPct', 'utxos_in_loss_pct']},
+                'nvts': {'endpoint': 'nvts', 'field': ['nvts']},
+                'market_cap': {'endpoint': 'market-cap', 'field': ['marketCap', 'market_cap']},
+                'realized_cap': {'endpoint': 'realized-cap', 'field': ['realizedCap', 'realized_cap']}
             }
             
             if metric_name not in metric_map:

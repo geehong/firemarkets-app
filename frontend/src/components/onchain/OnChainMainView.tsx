@@ -24,6 +24,7 @@ interface OnChainChartProps {
     showStockTools?: boolean;
     showExporting?: boolean;
     metricId?: string;
+    metricName?: string;
 }
 
 interface HalvingChartProps {
@@ -362,6 +363,7 @@ const OnChainMainView: React.FC<OnChainMainViewProps> = ({ className, initialMet
                                                 showStockTools={false}
                                                 showExporting={true}
                                                 metricId={metricId || undefined}
+                                                metricName={cleanMetricNameValue}
                                             />
                                         )}
                                     </ComponentCard>

@@ -289,10 +289,16 @@ class ConfigManager:
         """Returns a list of enabled on-chain metrics for collection."""
         # BitcoinDataClient에서 지원하는 모든 메트릭 정의
         all_metrics = [
-            "mvrv_z_score", "nupl", "sopr", "hashrate", "difficulty",
-            "realized_price", "thermo_cap", "true_market_mean", "aviv",
-            "nrpl_btc", "etf_btc_flow", "etf_btc_total", "hodl_waves_supply",
-            "open_interest_futures", "cdd_90dma"
+            # Group A
+            "mvrv_z_score", "mvrv", "nupl", "sopr", "realized_price", 
+            "sth_realized_price", "lth_mvrv", "sth_mvrv", "lth_nupl", 
+            "sth_nupl", "aviv", "true_market_mean", "terminal_price", 
+            "delta_price_usd", "market_cap",
+            # Group B
+            "hashrate", "difficulty", "thermo_cap", "puell_multiple", 
+            "reserve_risk", "rhodl_ratio", "nvts", "nrpl_usd", 
+            "utxos_in_profit_pct", "utxos_in_loss_pct", "realized_cap", 
+            "etf_btc_flow", "etf_btc_total", "hodl_waves_supply", "cdd_90dma"
         ]
         
         # 설정에서 활성화된 메트릭들을 확인

@@ -14,21 +14,27 @@ interface OnChainChartProps {
     showStockTools?: boolean;
     showExporting?: boolean;
     metricId?: string;
+    metricName?: string;
+    locale?: string;
 }
 
 const OnChainChart: React.FC<OnChainChartProps> = ({
     assetId = 'BTCUSDT',
-    title = 'Bitcoin Price vs MVRV Z-Score Correlation',
+    title,
     height = 800,
     showRangeSelector = true,
-     
+
     showStockTools = false,
     showExporting = true,
-    metricId = 'mvrv_z_score'
+    metricId = 'mvrv_z_score',
+    metricName,
+    locale = 'en'
 }) => {
+    const displayMetricName = metricName || (metricId === 'mvrv_z_score' ? 'MVRV Z-Score' : metricId);
+    const chartTitle = title || `Bitcoin Price vs ${displayMetricName} Correlation`;
     const [priceData, setPriceData] = useState<number[][]>([]);
     const [mvrvData, setMvrvData] = useState<number[][]>([]);
-     
+
     const [correlation, setCorrelation] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -47,11 +53,11 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
     } | null>(null);
     const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
     const [isClient, setIsClient] = useState(false);
-     
+
     const [HighchartsReact, setHighchartsReact] = useState<any>(null);
-     
+
     const [Highcharts, setHighcharts] = useState<any>(null);
-     
+
     const chartRef = useRef<any>(null);
     const previousCorrelationRef = useRef<{
         correlation: number;
@@ -122,7 +128,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
 
         const chart = chartRef.current?.chart;
         if (chart && chart.series && chart.series.length > 0) {
-             
+
             chart.series.forEach((series: any) => {
                 series.update({ type: newChartType }, false);
             });
@@ -146,7 +152,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
 
         const chart = chartRef.current?.chart;
         if (chart && chart.series && chart.series.length > 0) {
-             
+
             chart.series.forEach((series: any) => {
                 series.update({ type: newChartType }, false);
             });
@@ -281,7 +287,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
                         setCorrelation(backendCorrelation);
                     } else if (backendCorrelation && typeof backendCorrelation === 'object' && 'value' in backendCorrelation) {
                         // 객체에서 value 속성 추출
-                         
+
                         setCorrelation(Number((backendCorrelation as any).value));
                     } else {
                         // 프론트엔드에서 계산
@@ -305,7 +311,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
                 const formattedPriceData: number[][] = [];
                 const formattedMetricData: number[][] = [];
 
-                 
+
                 dataPoints.forEach((point: any) => {
                     const dateStr = point.timestamp || point.date;
                     const timestamp = new Date(dateStr).getTime();
@@ -408,7 +414,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
     }, [priceData, mvrvData, isMobile]);
 
     // 차트 옵션
-     
+
     const chartOptions: any = {
         chart: {
             height: height,
@@ -427,7 +433,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
                 load: function () {
                     console.log('차트 로드 완료');
                     // 초기 상관관계 계산
-                     
+
                     // @ts-ignore
                     const extremes = this.xAxis[0].getExtremes();
                     const initialCorrelation = calculateCorrelationForRange(extremes.min, extremes.max);
@@ -442,14 +448,16 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
             }
         },
         title: {
-            text: title,
+            text: chartTitle,
             style: {
                 color: '#1f2937',
                 fontSize: isMobile ? '16px' : '20px'
             }
         },
         subtitle: {
-            text: currentCorrelation ? `상관계수: ${currentCorrelation.correlation} (${currentCorrelation.interpretation})` : '데이터 로딩 중...',
+            text: currentCorrelation
+                ? `${locale === 'ko' ? '상관계수' : 'Correlation'}: ${currentCorrelation.correlation} (${currentCorrelation.interpretation})`
+                : (locale === 'ko' ? '데이터 로딩 중...' : 'Loading data...'),
             style: {
                 color: currentCorrelation ? (
                     Math.abs(currentCorrelation.correlation) >= 0.7 ? '#dc2626' :
@@ -471,7 +479,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
             gridLineColor: '#e5e7eb',
             events: {
                 afterSetExtremes: function () {
-                     
+
                     // @ts-ignore
                     const extremes = this.getExtremes();
                     const newCorrelation = calculateCorrelationForRange(extremes.min, extremes.max);
@@ -502,7 +510,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
                         fontSize: isMobile ? '0px' : '12px' // 모바일에서 라벨 숨김
                     },
                     formatter: function () {
-                         
+
                         // @ts-ignore
                         return '$' + this.value.toLocaleString('en-US');
                     }
@@ -513,7 +521,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
             },
             {
                 title: {
-                    text: 'MVRV Z-Score',
+                    text: displayMetricName,
                     style: {
                         color: '#1f2937',
                         fontSize: isMobile ? '0px' : '12px' // 모바일에서 제목 숨김
@@ -538,14 +546,14 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
                 color: '#1f2937'
             },
             formatter: function () {
-                 
+
                 // @ts-ignore
                 const points = this.points || [];
-                 
+
                 // @ts-ignore
                 let tooltip = `<b>${Highcharts.dateFormat('%Y-%m-%d', this.x)}</b><br/>`;
 
-                 
+
                 points.forEach((point: any) => {
                     if (point.series.name === 'Bitcoin Price') {
                         tooltip += `${point.series.name}: $${point.y.toLocaleString('en-US')}<br/>`;
@@ -606,7 +614,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
                 }
             },
             {
-                name: 'MVRV Z-Score',
+                name: displayMetricName,
                 type: chartType,
                 data: mvrvData,
                 color: '#f59e0b',
@@ -744,7 +752,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
                     },
                     tooltip: {
                         positioner: function (labelWidth: number, labelHeight: number, point: any) {
-                             
+
                             const chart = (this as any).chart;
                             return {
                                 x: Math.min(point.plotX + chart.plotLeft, chart.chartWidth - labelWidth - 10),
@@ -762,7 +770,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
             <div className="bg-white rounded-lg p-6 flex items-center justify-center" style={{ height: `${height}px` }}>
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                    <div className="text-gray-700">온체인 데이터 로딩 중...</div>
+                    <div className="text-gray-700">{locale === 'ko' ? '온체인 데이터 로딩 중...' : 'Loading on-chain data...'}</div>
                 </div>
             </div>
         );
@@ -772,7 +780,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
         return (
             <div className="bg-white rounded-lg p-6 flex items-center justify-center" style={{ height: `${height}px` }}>
                 <div className="text-center">
-                    <div className="text-red-600 mb-2">⚠️ 오류 발생</div>
+                    <div className="text-red-600 mb-2">⚠️ {locale === 'ko' ? '오류 발생' : 'Error'}</div>
                     <div className="text-gray-700 text-sm">{error}</div>
                 </div>
             </div>
@@ -796,7 +804,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
             <div className="bg-white rounded-lg p-6 flex items-center justify-center" style={{ height: `${height}px` }}>
                 <div className="text-center">
                     <div className="text-gray-500 mb-2">📊</div>
-                    <div className="text-gray-700">데이터가 없습니다.</div>
+                    <div className="text-gray-700">{locale === 'ko' ? '데이터가 없습니다.' : 'No data available.'}</div>
                 </div>
             </div>
         );

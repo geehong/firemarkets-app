@@ -509,7 +509,6 @@ class CryptoMetric(Base):
     # Network metrics
     hashrate = Column(DECIMAL(30, 10), nullable=True)  # 중복 제거, hashrate만 사용
     difficulty = Column(DECIMAL(30, 10), nullable=True)
-    miner_reserves = Column(DECIMAL(24, 10), nullable=True)
     
     # Market metrics
     realized_cap = Column(DECIMAL(30, 2), nullable=True)
@@ -519,13 +518,29 @@ class CryptoMetric(Base):
     nupl = Column(DECIMAL(18, 10), nullable=True)
     cdd_90dma = Column(DECIMAL(18, 10), nullable=True)
     true_market_mean = Column(DECIMAL(24, 10), nullable=True)
-    nrpl_btc = Column(DECIMAL(24, 10), nullable=True)
+    nrpl_usd = Column(DECIMAL(24, 10), nullable=True)
+    sth_realized_price = Column(DECIMAL(24, 10), nullable=True)
     aviv = Column(DECIMAL(18, 10), nullable=True)
     thermo_cap = Column(DECIMAL(30, 2), nullable=True)
     hodl_waves_supply = Column(DECIMAL(18, 10), nullable=True)
     etf_btc_total = Column(DECIMAL(24, 10), nullable=True)
     etf_btc_flow = Column(DECIMAL(24, 10), nullable=True)
-    open_interest_futures = Column(JSON, nullable=True)
+    
+    # New on-chain metrics
+    mvrv = Column(DECIMAL(18, 10), nullable=True)
+    lth_mvrv = Column(DECIMAL(18, 10), nullable=True)
+    sth_mvrv = Column(DECIMAL(18, 10), nullable=True)
+    puell_multiple = Column(DECIMAL(18, 10), nullable=True)
+    reserve_risk = Column(DECIMAL(18, 10), nullable=True)
+    rhodl_ratio = Column(DECIMAL(18, 10), nullable=True)
+    terminal_price = Column(DECIMAL(24, 10), nullable=True)
+    delta_price_usd = Column(DECIMAL(24, 10), nullable=True)
+    lth_nupl = Column(DECIMAL(18, 10), nullable=True)
+    sth_nupl = Column(DECIMAL(18, 10), nullable=True)
+    utxos_in_profit_pct = Column(DECIMAL(10, 4), nullable=True)
+    utxos_in_loss_pct = Column(DECIMAL(10, 4), nullable=True)
+    nvts = Column(DECIMAL(18, 10), nullable=True)
+    market_cap = Column(DECIMAL(30, 2), nullable=True)
     
     # Metadata
     created_at = Column(TIMESTAMP, server_default=func.now())
