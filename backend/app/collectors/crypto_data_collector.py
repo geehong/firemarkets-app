@@ -79,7 +79,8 @@ class CryptoDataCollector(BaseCollector):
                 .filter(
                     Asset.is_active == True,
                     AssetType.type_name.ilike('%Crypto%'), # 'Crypto' 또는 'Cryptocurrency' 포함
-                    Asset.collection_settings.op('->>')('collect_crypto_data') == 'true'
+                    Asset.collection_settings.op('->>')('collect_crypto_data') == 'true',
+                    ~Asset.ticker.in_(['USDC', 'USDT'])
                 )
             )
             asset_id_tuples = query.all()

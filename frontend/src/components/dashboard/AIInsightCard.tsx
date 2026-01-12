@@ -54,15 +54,20 @@ const AIInsightCard = ({ post }: AIInsightCardProps) => {
             </div>
 
             <div className="p-5 space-y-4">
-                {/* Summary */}
                 {summary && (
                     <div className="space-y-2">
-                        {summary.map((item: string, idx: number) => (
-                            <div key={idx} className="flex gap-2 text-sm text-gray-600 dark:text-gray-300">
-                                <span className="text-blue-500 font-bold">•</span>
-                                <span>{item}</span>
+                        {Array.isArray(summary) ? (
+                            summary.map((item: string, idx: number) => (
+                                <div key={idx} className="flex gap-2 text-sm text-gray-600 dark:text-gray-300">
+                                    <span className="text-blue-500 font-bold">•</span>
+                                    <span>{item}</span>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="text-sm text-gray-600 dark:text-gray-300">
+                                {String(summary)}
                             </div>
-                        ))}
+                        )}
                     </div>
                 )}
 
@@ -74,7 +79,7 @@ const AIInsightCard = ({ post }: AIInsightCardProps) => {
                 )}
 
                 {/* Entities / Tags */}
-                {analysis.entities && (
+                {analysis.entities && Array.isArray(analysis.entities) && (
                     <div className="flex flex-wrap gap-2 pt-2">
                         {analysis.entities.map((tag: string, idx: number) => (
                             <span key={idx} className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-300 px-2 py-1 rounded text-xs font-bold">

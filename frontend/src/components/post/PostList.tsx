@@ -44,6 +44,10 @@ interface PostListProps {
     filterStatus?: string;
     cardType?: 'news' | 'default' | 'brief';
     itemsPerPage?: number;
+    showTitle?: boolean;
+    showPagination?: boolean;
+    showSearch?: boolean;
+    initialSearch?: string;
 }
 
 const PostList: React.FC<PostListProps> = ({
@@ -52,7 +56,11 @@ const PostList: React.FC<PostListProps> = ({
     title: pageTitle,
     filterStatus,
     cardType = 'news',
-    itemsPerPage: initialItemsPerPage = 9
+    itemsPerPage: initialItemsPerPage = 9,
+    showTitle = true,
+    showPagination = true,
+    showSearch = false,
+    initialSearch = ''
 }) => {
     const router = useRouter()
     const pathname = usePathname()
@@ -66,6 +74,14 @@ const PostList: React.FC<PostListProps> = ({
     const [currentPage, setCurrentPage] = useState(1)
     const [itemsPerPage, setItemsPerPage] = useState(initialItemsPerPage)
     const [totalItems, setTotalItems] = useState(0)
+    const [searchQuery, setSearchQuery] = useState(initialSearch)
+    const [finalSearch, setFinalSearch] = useState(initialSearch)
+
+    const handleSearchSubmit = (e?: React.FormEvent) => {
+        if (e) e.preventDefault()
+        setFinalSearch(searchQuery)
+        setCurrentPage(1)
+    }
 
     const fetchPosts = useCallback(async () => {
         setLoading(true)
@@ -75,7 +91,8 @@ const PostList: React.FC<PostListProps> = ({
                 page: currentPage,
                 page_size: itemsPerPage,
                 status: effectiveStatus || undefined,
-                post_type: postType
+                post_type: postType,
+                search: finalSearch || undefined
             })
 
             if (data && data.posts) {
@@ -91,7 +108,7 @@ const PostList: React.FC<PostListProps> = ({
         } finally {
             setLoading(false)
         }
-    }, [currentPage, itemsPerPage, effectiveStatus, postType])
+    }, [currentPage, itemsPerPage, effectiveStatus, postType, finalSearch])
 
     useEffect(() => {
         fetchPosts()
@@ -107,11 +124,44 @@ const PostList: React.FC<PostListProps> = ({
 
     return (
         <div className="space-y-8">
-            <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-                    {pageTitle || (postType === 'news' ? 'Latest News' : 'Blog Posts')}
-                </h1>
-            </div>
+            {showTitle && (
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                    <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
+                        {pageTitle || (postType === 'news' ? 'Latest News' : 'Blog Posts')}
+                    </h1>
+                    {showSearch && (
+                        <form onSubmit={handleSearchSubmit} className="relative w-full max-w-xs">
+                            <input
+                                type="text"
+                                placeholder="Search..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full pl-10 pr-10 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => handleSearchSubmit()}
+                                className="absolute left-3 top-2.5 text-gray-400 hover:text-blue-500 transition-colors"
+                            >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                            </button>
+                            {searchQuery && (
+                                <button
+                                    type="button"
+                                    onClick={() => { setSearchQuery(''); setFinalSearch(''); setCurrentPage(1); }}
+                                    className="absolute right-3 top-2.5 text-gray-400 hover:text-red-500 transition-colors"
+                                >
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            )}
+                        </form>
+                    )}
+                </div>
+            )}
 
             {posts.length === 0 ? (
                 <div className="text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700">
@@ -151,6 +201,7 @@ const PostList: React.FC<PostListProps> = ({
                                     author={authorName}
                                     slug={post.slug}
                                     publishedAt={post.created_at}
+                                    imageUrl={info.image_url}
                                 />
                             )
                         }
@@ -189,7 +240,7 @@ const PostList: React.FC<PostListProps> = ({
                 </div>
             )}
 
-            {totalItems > itemsPerPage && (
+            {showPagination && totalItems > itemsPerPage && (
                 <div className="flex justify-center mt-12">
                     <Pagination
                         currentPage={currentPage}

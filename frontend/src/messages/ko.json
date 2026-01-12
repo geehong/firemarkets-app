@@ -48,6 +48,19 @@
         "institutional": "기관 활동",
         "etfBtcTotal": "비트코인 ETF 총합",
         "etfBtcFlow": "비트코인 ETF 유입",
+        "price": "가격 (Price)",
+        "live": "Live",
+        "close": "종가 (Close)",
+        "daily": "Daily",
+        "intraDay": "IntraDay",
+        "dailyOhlcv": "Daily OHLCV",
+        "intraDayOhlcv": "IntraDay OHLCV",
+        "hour": "시간내 (Hour ⇒ 1m, 5m, 10m, 30m)",
+        "ohlcv": "OHLCV",
+        "movingAverages": "Moving Averages",
+        "monthlyReturns": "월별 수익률",
+        "capitalization": "Capitalization",
+        "piCycle": "Pi Cycle",
         "lthMvrv": "장기 보유자 MVRV (LTH)",
         "sthMvrv": "단기 보유자 MVRV (STH)",
         "puellMultiple": "퓨엘 멀티플 (Puell)",
@@ -126,6 +139,10 @@
     "Common": {
         "underConstruction": "준비중입니다.",
         "loading": "로딩중..."
+    },
+    "OnChain": {
+        "monthlyReturns": "비트코인 월별 수익률",
+        "monthlyReturnsDesc": "비트코인의 역사적 월별 수익률입니다."
     },
     "legal": {
         "privacyPolicy": {

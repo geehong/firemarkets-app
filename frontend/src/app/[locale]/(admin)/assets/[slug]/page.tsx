@@ -100,6 +100,11 @@ export default async function AssetPage({ params }: { params: Promise<{ slug: st
     const { slug, locale } = await params
     const asset = await getAssetData(slug)
 
+    // Check if asset is excluded
+    if (asset && (asset.ticker === 'USDC' || asset.ticker === 'USDT')) {
+        notFound()
+    }
+
     if (!asset) {
         notFound()
     }

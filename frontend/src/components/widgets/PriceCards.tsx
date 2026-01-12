@@ -7,8 +7,8 @@ export interface CryptoPriceCardProps {
     // Data
     symbol: string;
     name: string;
-    price: number;
-    change24h: number;
+    price: number | undefined | null;
+    change24h: number | null | undefined;
     icon?: string;
 
     // Style Customization
@@ -23,6 +23,7 @@ export interface CryptoPriceCardProps {
     showChangePercent?: boolean;
     size?: 'small' | 'medium' | 'large';
     className?: string;
+    customBackgroundColor?: string;
 }
 
 export interface CryptoMetricCardProps {
@@ -62,6 +63,7 @@ export const CryptoPriceCard: React.FC<CryptoPriceCardProps> = ({
     showChangePercent = true,
     size = 'medium',
     className = '',
+    customBackgroundColor,
 }) => {
     // Size Styles
     const sizeStyles: Record<'small' | 'medium' | 'large', {
@@ -95,17 +97,25 @@ export const CryptoPriceCard: React.FC<CryptoPriceCardProps> = ({
     };
 
     const currentSize = sizeStyles[size];
-    const changeColor = change24h >= 0 ? changePositiveColor : changeNegativeColor;
+    const changeColor = (typeof change24h === 'number' && change24h >= 0) ? changePositiveColor : (typeof change24h === 'number' ? changeNegativeColor : 'text-gray-400');
+
+    // If customBackgroundColor is provided, use it via style and omit gradient classes
+    const backgroundClasses = customBackgroundColor
+        ? ''
+        : `bg-gradient-to-br ${gradientFrom} ${gradientTo}`;
+
+    const backgroundStyle = customBackgroundColor ? { backgroundColor: customBackgroundColor } : {};
 
     return (
         <div
             className={`
-        bg-gradient-to-br ${gradientFrom} ${gradientTo} 
+        ${backgroundClasses}
         rounded-lg shadow-lg ${textColor}
         ${currentSize.container}
         hover:shadow-xl transition-shadow duration-300
         ${className}
       `}
+            style={backgroundStyle}
         >
             {/* Header */}
             <div className="flex items-center justify-between mb-2">
@@ -121,16 +131,26 @@ export const CryptoPriceCard: React.FC<CryptoPriceCardProps> = ({
 
             {/* Price */}
             <div className={currentSize.price}>
-                ${price.toLocaleString('en-US', {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                })}
+                {typeof price === 'number' ? (
+                    `$${price.toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    })}`
+                ) : (
+                    <span className="text-gray-400 text-sm">N/A</span>
+                )}
             </div>
 
             {/* 24h Change */}
             {showChangePercent && (
                 <div className={`${currentSize.change} ${changeColor}`}>
-                    {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}% (24h)
+                    {typeof change24h === 'number' ? (
+                        <>
+                            {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}% (24h)
+                        </>
+                    ) : (
+                        <span className="text-gray-400 text-sm">N/A</span>
+                    )}
                 </div>
             )}
         </div>

@@ -155,6 +155,16 @@ const BriefNewsSection = () => {
 const DashBoardHomeMainView = () => {
     const t = useTranslations('Dashboard');
     const locale = useLocale();
+    const [selectedAssetType, setSelectedAssetType] = useState<string>('');
+
+    const assetTypes = [
+        { value: '', label_en: 'All', label_ko: '전체' },
+        { value: 'Stocks', label_en: 'Stocks', label_ko: '주식' },
+        { value: 'Crypto', label_en: 'Crypto', label_ko: '크립토' },
+        { value: 'Commodities', label_en: 'Commodities', label_ko: '상품' },
+        { value: 'ETFs', label_en: 'ETFs', label_ko: 'ETF' },
+        { value: 'Funds', label_en: 'Funds', label_ko: '펀드' },
+    ];
 
     return (
         <DashBoardTemplateView
@@ -210,7 +220,7 @@ const DashBoardHomeMainView = () => {
                         description={t('feature2Desc')}
                         href="/onchain"
                         color="from-violet-500 to-purple-400"
-                        icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>}
+                        icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>}
                     />
                     <FeatureCard
                         title={t('feature3Title')}
@@ -223,15 +233,36 @@ const DashBoardHomeMainView = () => {
 
                 {/* Market Section */}
                 <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl shadow-slate-200/50 dark:shadow-none p-6 border border-slate-100 dark:border-gray-700">
-                    <div className="flex justify-between items-end mb-6">
-                        <h3 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-transparent flex items-center gap-2">
-                            {t('market')}
-                        </h3>
-                        <Link href="/assets" className="text-sm font-medium text-slate-500 hover:text-violet-600 transition-colors">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                        <div className="flex items-center gap-4">
+                            <h3 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-transparent flex items-center gap-2">
+                                {t('market')}
+                            </h3>
+                            <div className="relative">
+                                <select
+                                    value={selectedAssetType}
+                                    onChange={(e) => setSelectedAssetType(e.target.value)}
+                                    className="appearance-none text-xs font-semibold py-1.5 pl-3 pr-8 rounded-full bg-slate-100 dark:bg-gray-700/50 text-slate-600 dark:text-gray-300 border border-slate-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-violet-500/20 hover:border-violet-300 dark:hover:border-violet-700 transition-all cursor-pointer"
+                                    style={{ WebkitAppearance: 'none' }}
+                                >
+                                    {assetTypes.map((type) => (
+                                        <option key={type.value} value={type.value}>
+                                            {locale === 'ko' ? type.label_ko : type.label_en}
+                                        </option>
+                                    ))}
+                                </select>
+                                <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 shadow-sm">
+                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                        <Link href="/assets" className="text-sm font-medium text-slate-500 hover:text-violet-600 transition-colors whitespace-nowrap">
                             {t('viewAll')} →
                         </Link>
                     </div>
-                    <SparklineTable maxRows={10} />
+                    <SparklineTable maxRows={10} typeName={selectedAssetType || undefined} />
                 </div>
 
                 {/* Latest Blog */}

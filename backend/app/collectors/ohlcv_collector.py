@@ -119,7 +119,8 @@ class OHLCVCollector(BaseCollector):
                 .join(AssetType)
                 .filter(
                     Asset.is_active == True,
-                    Asset.collection_settings.op('->>')('collect_price') == 'true'
+                    Asset.collection_settings.op('->>')('collect_price') == 'true',
+                    ~Asset.ticker.in_(['USDC', 'USDT'])
                 )
             )
             

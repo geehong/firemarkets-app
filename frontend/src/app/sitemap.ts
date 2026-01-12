@@ -32,28 +32,79 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }
 
     // Static Routes
-    const staticRoutes = [
+    const locales = ['en', 'ko']
+    const mainRoutes = [
         '',
-        '/en',
-        '/ko',
-        '/en/blog',
-        '/ko/blog',
-        '/en/news',
-        '/ko/news',
-        '/en/assets',
-        '/ko/assets',
-        '/en/onchain',
-        '/ko/onchain',
-        '/en/map',
-        '/ko/map',
-        // Add more static routes as needed
-    ];
+        '/dashboard',
+        '/blog',
+        '/news',
+        '/news/briefnews',
+        '/assets',
+        '/onchain',
+        '/map',
+    ]
+
+    const onchainMetrics = [
+        'halving/cycle-comparison',
+        'halving/halving-bull-chart',
+        'mvrv_z_score',
+        'mvrv',
+        'lth_mvrv',
+        'sth_mvrv',
+        'nupl',
+        'lth_nupl',
+        'sth_nupl',
+        'puell_multiple',
+        'reserve_risk',
+        'realized_price',
+        'sth_realized_price',
+        'terminal_price',
+        'delta_price_usd',
+        'true_market_mean',
+        'aviv',
+        'sopr',
+        'cdd_90dma',
+        'hodl_waves_supply',
+        'nrpl_usd',
+        'utxos_in_profit_pct',
+        'utxos_in_loss_pct',
+        'hashrate',
+        'difficulty',
+        'rhodl_ratio',
+        'nvts',
+        'market_cap',
+        'realized_cap',
+        'thermo_cap',
+        'etf_btc_total',
+        'etf_btc_flow'
+    ]
+
+    const staticRoutes: string[] = []
+
+    // Root translations
+    staticRoutes.push('', '/en', '/ko')
+
+    // Main routes
+    locales.forEach(locale => {
+        mainRoutes.forEach(route => {
+            if (route !== '') {
+                staticRoutes.push(`/${locale}${route}`)
+            }
+        })
+    })
+
+    // On-chain metric routes
+    locales.forEach(locale => {
+        onchainMetrics.forEach(metric => {
+            staticRoutes.push(`/${locale}/onchain/${metric}`)
+        })
+    })
 
     const staticEntries: MetadataRoute.Sitemap = staticRoutes.map(route => ({
         url: `${baseUrl}${route}`,
         lastModified: new Date(),
         changeFrequency: 'daily',
-        priority: route === '' ? 1 : 0.8,
+        priority: route === '' || route === '/en' || route === '/ko' ? 1 : 0.8,
     }));
 
     // Dynamic Post Entries
@@ -97,7 +148,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const tagEntries: MetadataRoute.Sitemap = [];
     tags.forEach(tag => {
         if (tag.slug && tag.usage_count > 0) {
-            ['en', 'ko'].forEach(locale => {
+            locales.forEach(locale => {
                 tagEntries.push({
                     url: `${baseUrl}/${locale}/tag/${tag.slug}`,
                     lastModified: new Date(),

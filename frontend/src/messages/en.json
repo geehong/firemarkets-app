@@ -48,6 +48,19 @@
         "institutional": "Institutional",
         "etfBtcTotal": "Total Bitcoin ETF",
         "etfBtcFlow": "Bitcoin ETF Flow",
+        "price": "Price",
+        "live": "Live",
+        "close": "Close",
+        "daily": "Daily",
+        "intraDay": "IntraDay",
+        "dailyOhlcv": "Daily OHLCV",
+        "intraDayOhlcv": "IntraDay OHLCV",
+        "hour": "Hour (1m, 5m, 10m, 30m)",
+        "ohlcv": "OHLCV",
+        "movingAverages": "Moving Averages",
+        "monthlyReturns": "Monthly Returns",
+        "capitalization": "Capitalization",
+        "piCycle": "Pi Cycle",
         "lthMvrv": "LTH-MVRV",
         "sthMvrv": "STH-MVRV",
         "puellMultiple": "Puell Multiple",
@@ -126,6 +139,10 @@
     "Common": {
         "underConstruction": "This page is currently under construction.",
         "loading": "Loading..."
+    },
+    "OnChain": {
+        "monthlyReturns": "Bitcoin Monthly Returns",
+        "monthlyReturnsDesc": "Historical monthly percentage returns of Bitcoin."
     },
     "legal": {
         "privacyPolicy": {

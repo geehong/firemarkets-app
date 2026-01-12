@@ -56,6 +56,15 @@ const HalvingChart = dynamic<HalvingChartProps>(() => import('@/components/chart
 const CycleComparisonChart = dynamic<CycleComparisonChartProps>(() => import('@/components/charts/onchaincharts/CycleComparisonChart'), { ssr: false })
 const HistoryTable = dynamic<HistoryTableProps>(() => import('@/components/tables/HistoryTable'), { ssr: false })
 
+// New Charts
+const PiCycleChart = dynamic(() => import('@/components/charts/onchaincharts/PiCycleChart'), { ssr: false })
+const CapitalizationChart = dynamic(() => import('@/components/charts/onchaincharts/CapitalizationChart'), { ssr: false })
+const MovingAverageChart = dynamic(() => import('@/components/charts/onchaincharts/MovingAverageChart'), { ssr: false })
+const ClosePriceChart = dynamic(() => import('@/components/charts/ohlcvcharts/ClosePriceChart'), { ssr: false })
+const OHLCVCustomGUIChart = dynamic(() => import('@/components/charts/ohlcvcharts/OHLCVCustomGUIChart'), { ssr: false })
+const LiveChart = dynamic(() => import('@/components/charts/live/LiveChart'), { ssr: false })
+
+
 interface OnChainMainViewProps {
     className?: string
     initialMetrics?: any[]
@@ -72,9 +81,12 @@ const OnChainMainView: React.FC<OnChainMainViewProps> = ({ className, initialMet
     const [isHalvingMode, setIsHalvingMode] = useState(false)
     const [isCycleComparisonMode, setIsCycleComparisonMode] = useState(false)
     const [isDashboardView, setIsDashboardView] = useState(false)
+    const [fullPath, setFullPath] = useState<string>('')
+
 
     useEffect(() => {
         if (!pathname) return;
+        setFullPath(pathname);
 
         const pathParts = pathname.split('/')
         const lastPart = pathParts[pathParts.length - 1];
@@ -92,6 +104,17 @@ const OnChainMainView: React.FC<OnChainMainViewProps> = ({ className, initialMet
         } else if (lastPart === 'onchain' || lastPart === 'halving' || !lastPart) {
             calculatedMetricId = searchMetric || null;
             _isDashboard = !searchMetric;
+        } else if (pathname.includes('/onchain/price/close/daily')) {
+            calculatedMetricId = 'close-daily';
+        } else if (pathname.includes('/onchain/price/close/intraday')) {
+            calculatedMetricId = 'close-intraday';
+        } else if (pathname.includes('/onchain/price/ohlcv/daily')) {
+            calculatedMetricId = 'ohlcv-daily';
+        } else if (pathname.includes('/onchain/price/ohlcv/intraday')) {
+            calculatedMetricId = 'ohlcv-intraday';
+        } else if (pathname.includes('/onchain/price/')) {
+            // New price sub-items (live, moving-averages, capitalization, pi-cycle)
+            calculatedMetricId = lastPart;
         } else {
             calculatedMetricId = lastPart;
         }
@@ -102,6 +125,8 @@ const OnChainMainView: React.FC<OnChainMainViewProps> = ({ className, initialMet
         setIsDashboardView(_isDashboard);
 
     }, [pathname, searchParams]);
+
+    const isPriceMetric = fullPath.includes('/onchain/price/');
 
     // Post slug 결정
     const postSlug = isCycleComparisonMode ? 'cycle-comparison' : (isHalvingMode ? 'halving-bull-chart' : (metricId || ''))
@@ -127,18 +152,45 @@ const OnChainMainView: React.FC<OnChainMainViewProps> = ({ className, initialMet
 
     // 현재 메트릭 설정 (Fallback 포함)
     const metricConfig = metrics.find((m: any) => m.id === metricId) || {
-        name: isCycleComparisonMode ? 'Bitcoin Cycle Comparison' : (isHalvingMode ? 'Bitcoin Halving' : (locale === 'ko' ? '온체인 지표 대시보드' : 'On-Chain Metrics Dashboard')),
+        name: '',
         description: '',
         loadingText: 'Loading data...',
         title: undefined,
         data_count: 0
     }
 
-    const cleanMetricNameValue = isCycleComparisonMode
-        ? 'Bitcoin Cycle Comparison'
-        : (isHalvingMode
-            ? 'Bitcoin Halving'
-            : (metricConfig.name === 'On-Chain Metrics Dashboard' || metricConfig.name === '온체인 지표 대시보드' ? metricConfig.name : cleanMetricName(metricConfig.name)))
+    const cleanMetricNameValue = (() => {
+        if (isCycleComparisonMode) return locale === 'ko' ? '비트코인 사이클 비교' : 'Bitcoin Cycle Comparison';
+        if (isHalvingMode) return locale === 'ko' ? '비트코인 반감기' : 'Bitcoin Halving';
+
+        // postData에서 제목 가져오기 시도
+        if (postData?.title) {
+            const localizedTitle = parseLocalized(postData.title, locale);
+            if (localizedTitle && typeof localizedTitle === 'string' && !localizedTitle.startsWith('{')) {
+                return localizedTitle;
+            }
+        }
+
+        if (metricConfig.name) {
+            return metricConfig.name === 'On-Chain Metrics Dashboard' || metricConfig.name === '온체인 지표 대시보드'
+                ? metricConfig.name
+                : cleanMetricName(metricConfig.name);
+        }
+
+        // 특정 경로에 대한 기본값 (포스트 로딩 전 또는 없을 때)
+        if (fullPath.includes('/onchain/price/live')) return 'Live BTC Price';
+        if (fullPath.includes('/onchain/price/close/daily')) return 'BTC Close Price (Daily)';
+        if (fullPath.includes('/onchain/price/close/intraday')) return 'BTC Close Price (IntraDay)';
+        if (fullPath.includes('/onchain/price/ohlcv/daily')) return 'BTC Daily OHLCV';
+        if (fullPath.includes('/onchain/price/ohlcv/intraday')) return 'BTC IntraDay OHLCV';
+        if (fullPath.includes('/onchain/price/moving-averages')) return 'Moving Averages';
+        if (fullPath.includes('/onchain/price/capitalization')) return 'Capitalization';
+        if (fullPath.includes('/onchain/price/pi-cycle')) return 'Pi Cycle';
+
+        return isDashboardView
+            ? (locale === 'ko' ? '온체인 지표 대시보드' : 'On-Chain Metrics Dashboard')
+            : (metricId || '');
+    })();
 
     // Description Logic
     const descriptionText = (() => {
@@ -354,6 +406,42 @@ const OnChainMainView: React.FC<OnChainMainViewProps> = ({ className, initialMet
                                                 showRangeSelector={true}
                                                 showExporting={true}
                                             />
+                                        ) : fullPath.includes('/onchain/price/live') ? (
+                                            <LiveChart assetIdentifier="BTCUSDT" height={600} />
+                                        ) : fullPath.includes('/onchain/price/close/daily') ? (
+                                            <ClosePriceChart
+                                                assetId="BTCUSDT"
+                                                interval="1d"
+                                                allowedIntervals={['1d', '1w', '1M']}
+                                                height={600}
+                                            />
+                                        ) : fullPath.includes('/onchain/price/close/intraday') ? (
+                                            <ClosePriceChart
+                                                assetId="BTCUSDT"
+                                                interval="1h"
+                                                allowedIntervals={['1m', '5m', '15m', '30m', '1h', '4h']}
+                                                height={600}
+                                            />
+                                        ) : fullPath.includes('/onchain/price/ohlcv/daily') ? (
+                                            <OHLCVCustomGUIChart
+                                                assetIdentifier="BTCUSDT"
+                                                dataInterval="1d"
+                                                allowedIntervals={['1d', '1w', '1M']}
+                                                height={600}
+                                            />
+                                        ) : fullPath.includes('/onchain/price/ohlcv/intraday') ? (
+                                            <OHLCVCustomGUIChart
+                                                assetIdentifier="BTCUSDT"
+                                                dataInterval="1h"
+                                                allowedIntervals={['1m', '5m', '15m', '30m', '1h', '4h']}
+                                                height={600}
+                                            />
+                                        ) : fullPath.includes('/onchain/price/moving-averages') ? (
+                                            <MovingAverageChart assetId="BTCUSDT" height={600} />
+                                        ) : fullPath.includes('/onchain/price/capitalization') ? (
+                                            <CapitalizationChart assetId="BTCUSDT" height={600} />
+                                        ) : fullPath.includes('/onchain/price/pi-cycle') ? (
+                                            <PiCycleChart assetId="BTCUSDT" height={600} />
                                         ) : (
                                             <OnChainChart
                                                 assetId="BTCUSDT"
@@ -421,7 +509,7 @@ const OnChainMainView: React.FC<OnChainMainViewProps> = ({ className, initialMet
                                                             </div>
                                                         )}
                                                     </div>
-                                                ) : (
+                                                ) : !isPriceMetric ? (
                                                     <div>
                                                         <h4 className="font-medium mb-3 text-gray-900 dark:text-gray-100">
                                                             {locale === 'ko' ? '상관관계 해석' : 'Correlation Interpretation'}
@@ -436,13 +524,13 @@ const OnChainMainView: React.FC<OnChainMainViewProps> = ({ className, initialMet
                                                             </div>
                                                         </div>
                                                     </div>
-                                                )}
+                                                ) : null}
                                             </div>
                                         </div>
                                     </ComponentCard>
 
                                     {/* Correlation Score */}
-                                    {(!isHalvingMode && !isCycleComparisonMode && (onchainData as any)?.correlation) && (
+                                    {(!isHalvingMode && !isCycleComparisonMode && !isPriceMetric && (onchainData as any)?.correlation) && (
                                         <ComponentCard title="Current Correlation">
                                             <div className="text-center">
                                                 <div className="text-4xl font-bold mb-2">

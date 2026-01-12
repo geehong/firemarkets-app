@@ -947,6 +947,9 @@ def get_ohlcv_data(
             "total_count": len(ohlcv_data_points)
         }
     except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        logger.error(f"Error getting OHLCV data: {str(e)}\n{error_trace}")
         raise HTTPException(status_code=500, detail=f"Failed to get OHLCV data: {str(e)}")
 
 
@@ -1782,6 +1785,14 @@ def resolve_asset_identifier(db: Session, asset_identifier: str) -> int:
             if asset:
                 return asset.asset_id
         
+        # 3차 시도: 접미사 추가 (예: BTC -> BTCUSDT, BTC -> BTC-USD)
+        suffixes = ['USDT', 'USD', '-USD']
+        for suffix in suffixes:
+            suffixed_ticker = f"{asset_identifier}{suffix}"
+            asset = get_asset_by_ticker(db, suffixed_ticker)
+            if asset:
+                return asset.asset_id
+
         raise HTTPException(status_code=404, detail=f"Asset not found with ticker: {asset_identifier}")
 
 

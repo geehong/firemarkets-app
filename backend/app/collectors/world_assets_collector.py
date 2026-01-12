@@ -673,6 +673,11 @@ class WorldAssetsCollector(BaseCollector):
             # AssetData 객체를 딕셔너리로 변환하면서 asset_id 자동 매핑
             items = []
             for asset in assets_data:
+                # USDC, USDT 제외
+                if asset.ticker in ['USDC', 'USDT']:
+                    self.logging_helper.log_debug(f"Excluding {asset.ticker} from world assets ranking")
+                    continue
+                    
                 # asset_id가 없으면 assets 테이블에서 찾기
                 asset_id = asset.asset_id
                 if not asset_id and asset.ticker and asset.asset_type_id:

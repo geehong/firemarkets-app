@@ -8,6 +8,8 @@ export const EXCLUDED_ASSETS = {
     '2222.SR', // Saudi Aramco - 데이터 수집 불가
     'PLAT',
     'PALLAD',
+    'USDC',
+    'USDT',
     // 추가 제외할 ticker를 여기에 추가
   ] as string[],
 

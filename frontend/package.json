@@ -63,6 +63,7 @@
     "react-is": "^19.2.3",
     "react-pro-sidebar": "^1.1.0",
     "react-quill-new": "^3.7.0",
+    "reactflow": "^11.11.4",
     "recharts": "^3.6.0",
     "sharp": "^0.34.5",
     "socket.io-client": "^4.8.1",

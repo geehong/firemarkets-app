@@ -97,6 +97,21 @@ const AppSidebar: React.FC = () => {
       name: t('onChain'),
       subItems: [
         {
+          name: t('price'),
+          icon: <DollarLineIcon />,
+          subItems: [
+            { name: t('live'), path: "/onchain/price/live", icon: dotIcon },
+            { name: t('daily'), path: "/onchain/price/close/daily", icon: dotIcon },
+            { name: t('intraDay'), path: "/onchain/price/close/intraday", icon: dotIcon },
+            { name: t('dailyOhlcv'), path: "/onchain/price/ohlcv/daily", icon: dotIcon },
+            { name: t('intraDayOhlcv'), path: "/onchain/price/ohlcv/intraday", icon: dotIcon },
+            { name: t('movingAverages'), path: "/onchain/price/moving-averages", icon: dotIcon },
+            { name: t('monthlyReturns'), path: "/onchain/price/MonthlyReturns", icon: dotIcon },
+            // { name: t('capitalization'), path: "/onchain/price/capitalization", icon: dotIcon },
+            { name: t('piCycle'), path: "/onchain/price/pi-cycle", icon: dotIcon },
+          ],
+        },
+        {
           name: t('halving'),
           icon: <BoxCubeIcon />,
           subItems: [

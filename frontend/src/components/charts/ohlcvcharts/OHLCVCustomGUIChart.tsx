@@ -24,6 +24,7 @@ interface OHLCVCustomGUIChartProps {
     height?: number
     externalOhlcvData?: OHLCVData[] | null
     useIntradayData?: boolean
+    allowedIntervals?: string[]
 }
 
 const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
@@ -34,7 +35,8 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
     seriesName,
     height = 650,
     externalOhlcvData = null,
-    useIntradayData = false
+    useIntradayData = false,
+    allowedIntervals = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1M']
 }) => {
     const chartContainerRef = useRef<HTMLDivElement>(null)
     const chartRef = useRef<any>(null)
@@ -132,7 +134,7 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
 
     const getDailyLimit = (interval: string): number => {
         switch (interval) {
-            case '1d': return 365 * 20
+            case '1d': return 50000
             case '1w': return 52 * 30
             case '1M': return 12 * 40
             default: return 50000
@@ -547,10 +549,7 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
 
     const getIntervalLabel = (interval: string) => intervalLabels[interval] || interval
 
-    const intervalOptions = [
-        '1m', '5m', '15m', '30m',
-        '1h', '4h', '1d', '1w', '1M'
-    ]
+    const intervalOptions = allowedIntervals;
 
     if (!isClient) {
         return (
