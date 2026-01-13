@@ -143,22 +143,6 @@ const BaseTemplateView: React.FC<BaseTemplateViewProps> = ({
                                         </div>
                                     )}
                                 </div>
-
-                                {/* Author Row */}
-                                {header.author && (
-                                    <div className="flex items-center gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
-                                        <span className="text-sm text-gray-600 dark:text-gray-400">
-                                            By <span className="font-medium text-gray-900 dark:text-white">{header.author.name}</span>
-                                        </span>
-                                    </div>
-                                )}
-
-                                {/* Lead Description (Optional SEO content visible on page) */}
-                                {seo.description && (
-                                    <p className="text-gray-600 dark:text-gray-300 text-lg leading-relaxed mt-2">
-                                        {seo.description}
-                                    </p>
-                                )}
                             </div>
                         </div>
                     </div>

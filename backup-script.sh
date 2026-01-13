@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # FireMarkets App Backup Script
-# 실행: 6시간마다
+# 실행: 12시간마다
 
 # 환경변수 로드
 if [ -f /home/geehong/firemarkets-app/.env ]; then
@@ -15,8 +15,8 @@ fi
 BACKUP_DATE=$(date +"%Y_%m_%d")
 BACKUP_TIME=$(date +"%Y_%m_%d_%H_%M")
 
-# USB 드라이브 설정
-USB_DEV="/dev/sda1"
+# USB 드라이브 설정 (UUID를 사용하여 장치 이름이 sda/sdb로 바뀌어도 대응 가능하도록 함)
+USB_DEV="/dev/disk/by-uuid/c25491da-c894-4a0a-a045-6fdf98d57030"
 MOUNT_POINT="/mnt/usb_backup"
 
 # 0. USB 포맷 (FORMAT_USB=true 일 때만 실행)

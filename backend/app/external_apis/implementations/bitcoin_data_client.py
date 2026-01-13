@@ -215,7 +215,7 @@ class BitcoinDataClient(OnChainAPIClient):
             size = days if days else 1
             
             async with httpx.AsyncClient() as client:
-                data = await self._fetch_standard(client, endpoint, {'size': size, 'sort': 'timestamp,desc'})
+                data = await self._fetch_standard(client, endpoint, {'size': size, 'sort': 'unixTs,desc'})
                 
                 if not data:
                     logger.warning(f"No data returned for {metric_name}")
@@ -228,11 +228,21 @@ class BitcoinDataClient(OnChainAPIClient):
                 for item in data:
                     try:
                         # Normalize timestamp
-                        ts_str = item.get('d') or item.get('timestamp') or item.get('date') or item.get('unixTs')
-                        if not ts_str:
-                            continue
-                            
-                        ts = safe_date_parse(ts_str)
+                        ts = None
+                        
+                        # Try unixTs first (standard across v1 endpoints)
+                        if item.get('unixTs'):
+                            try:
+                                ts = datetime.fromtimestamp(float(item['unixTs']))
+                            except (ValueError, TypeError):
+                                pass
+
+                        # Fallback to date strings
+                        if not ts:
+                            ts_str = item.get('theDay') or item.get('d') or item.get('timestamp') or item.get('date')
+                            if ts_str:
+                                ts = safe_date_parse(ts_str)
+                                
                         if not ts:
                             continue
                         

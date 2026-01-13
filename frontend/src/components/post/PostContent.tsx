@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import TableOfContents from '../template/block/TableOfContents'
 
 interface PostContentProps {
     content: string
@@ -14,10 +15,14 @@ const PostContent: React.FC<PostContentProps> = ({ content }) => {
                     color: inherit !important;
                 }
             `}</style>
-            <article
-                className="prose dark:prose-invert max-w-none"
-                dangerouslySetInnerHTML={{ __html: content }}
-            />
+            <div className="flex flex-col">
+                <TableOfContents contentSelector="#post-article-content" />
+                <article
+                    id="post-article-content"
+                    className="prose dark:prose-invert max-w-none"
+                    dangerouslySetInnerHTML={{ __html: content }}
+                />
+            </div>
         </>
     )
 }
