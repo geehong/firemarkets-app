@@ -26,6 +26,7 @@ const ClosePriceChart: React.FC<ClosePriceChartProps> = ({
     const [Highcharts, setHighcharts] = useState<any>(null);
     const chartRef = useRef<any>(null);
     const [selectedInterval, setSelectedInterval] = useState(interval);
+    const [useLogScale, setUseLogScale] = useState(false);
 
     // Interval mapping
     const intradayIntervals = ['1m', '5m', '15m', '30m', '1h', '4h']
@@ -102,6 +103,7 @@ const ClosePriceChart: React.FC<ClosePriceChartProps> = ({
         xAxis: { type: 'datetime' },
         yAxis: {
             title: { text: 'Price (USD)' },
+            type: useLogScale ? 'logarithmic' : 'linear',
             opposite: false
         },
         tooltip: { shared: true, valueDecimals: 2, valuePrefix: '$' },
@@ -136,6 +138,12 @@ const ClosePriceChart: React.FC<ClosePriceChartProps> = ({
             <div className="flex justify-between items-center mb-4 px-2">
                 <h3 className="text-lg font-semibold text-gray-800">{displayTitle}</h3>
                 <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setUseLogScale(!useLogScale)}
+                        className={`px-3 py-1 text-xs rounded-md border ${useLogScale ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-gray-50 border-gray-200 text-gray-600'}`}
+                    >
+                        Log
+                    </button>
                     <span className="text-sm text-gray-500">Interval:</span>
                     <select
                         value={selectedInterval}

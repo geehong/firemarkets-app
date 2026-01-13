@@ -42,6 +42,7 @@ const OHLCVVolumeChart: React.FC<OHLCVVolumeChartProps> = ({
     const [volumeData, setVolumeData] = useState<Array<{ x: number; y: number; color: string; labelColor: string }> | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [selectedInterval, setSelectedInterval] = useState<string>(dataInterval || '1d')
+    const [useLogScale, setUseLogScale] = useState<boolean>(false)
     const chartRef = useRef<any>(null)
 
     // Load Highcharts modules
@@ -579,7 +580,8 @@ const OHLCVVolumeChart: React.FC<OHLCVVolumeChartProps> = ({
                         },
                         accessibility: {
                             description: 'price'
-                        }
+                        },
+                        type: useLogScale ? 'logarithmic' : 'linear'
                     },
                     {
                         top: '70%',
@@ -687,7 +689,7 @@ const OHLCVVolumeChart: React.FC<OHLCVVolumeChartProps> = ({
         } catch (error) {
             console.error('Failed to create chart options:', error)
         }
-    }, [isClient, Highcharts, chartData, volumeData, title, assetIdentifier])
+    }, [isClient, Highcharts, chartData, volumeData, title, assetIdentifier, useLogScale])
 
     // Load CSS dynamically
     useEffect(() => {
@@ -807,6 +809,23 @@ const OHLCVVolumeChart: React.FC<OHLCVVolumeChartProps> = ({
                 }}>
                     {title}
                 </h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button
+                        onClick={() => setUseLogScale(!useLogScale)}
+                        style={{
+                            padding: '4px 8px',
+                            fontSize: '12px',
+                            borderRadius: '4px',
+                            border: '1px solid',
+                            cursor: 'pointer',
+                            backgroundColor: useLogScale ? '#eff6ff' : '#f9fafb',
+                            borderColor: useLogScale ? '#bfdbfe' : '#e5e7eb',
+                            color: useLogScale ? '#2563eb' : '#4b5563'
+                        }}
+                    >
+                        Log
+                    </button>
+                </div>
 
                 <div style={{
                     display: 'flex',

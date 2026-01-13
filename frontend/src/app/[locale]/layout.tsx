@@ -7,6 +7,7 @@ import QueryProvider from '@/context/QueryProvider';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import { notFound } from 'next/navigation';
+import ScrollToTop from '@/components/common/ScrollToTop';
 
 const outfit = Outfit({
   subsets: ["latin"],
@@ -36,7 +37,10 @@ export default async function LocaleLayout({
         <NextIntlClientProvider messages={messages}>
           <QueryProvider>
             <ThemeProvider>
-              <SidebarProvider>{children}</SidebarProvider>
+              <SidebarProvider>
+                {children}
+                <ScrollToTop />
+              </SidebarProvider>
             </ThemeProvider>
           </QueryProvider>
         </NextIntlClientProvider>

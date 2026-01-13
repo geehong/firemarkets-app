@@ -392,7 +392,8 @@ For each news item, generate the following fields in both English and Korean:
 3. **Content**: A rich, expanded body text (2-3 paragraphs). 
    - Supplement the short input with context, definitions of terms, or potential market implications based on your knowledge.
    - Use clear, professional, yet accessible language (explain difficult terms).
-   - Format with HTML tags (e.g., <strong> for bold, <p> for paragraphs, <h2>/<h3> for headings, <ul>/<li> for lists).
+   - Format with HTML tags (e.g., <strong> for bold, <p> for paragraphs, <ul>/<li> for lists).
+   - **Layout**: Do NOT include the main title or any <h2>/<h3> headings at the beginning of the 'content'. Start directly with the body text.
 
 **IMPORTANT**: Do NOT include specific prices, market cap numbers, dates, or any numerical market data. Your training data may be outdated and incorrect. Focus on general information, concepts, and qualitative analysis only.
 
@@ -539,7 +540,8 @@ You are a top-tier financial columnist and lead investigative journalist. Your t
 4. **Structure**: 
    - **Title**: A thought-provoking, high-impact headline (English & Korean).
    - **Description**: A compelling, narrative-style lead paragraph (English & Korean).
-   - **Content**: A detailed body text (3-5 paragraphs) using HTML tags (e.g., <h2>, <p>, <strong>). Prioritize flowing prose.
+   - **Content**: A detailed body text (3-5 paragraphs) using HTML tags (e.g., <p>, <strong>). Prioritize flowing prose.
+   - **Layout**: Do NOT include the main title or any <h2>/<h3> headings at the beginning of the 'content'. Start directly with the narrative text.
 5. **Language**: Provide output in both English and Korean.
 
 **IMPORTANT**: Do NOT include specific current prices or precise numerical market data unless absolutely certain from sources. Focus on qualitative depth and trend analysis.
@@ -581,9 +583,10 @@ Title: {title}
 [Instructions]
 1. **Writing Style**: Use a sophisticated, literary, and deeply analytical narrative style (완전한 문장 형태의 문어체 서술형). 
 2. **Strict Prohibition**: NEVER use bullet points, numbered lists, or the '-' character for list-making. The entire piece must be flowing prose.
-3. **Format**: Use HTML tags (e.g., <h2>, <p>, <strong>). Do NOT use Markdown.
-4. **Language**: Provide output in both English and Korean.
-5. **Structure**: 
+3. **Format**: Use HTML tags (e.g., <p>, <strong>). Do NOT use Markdown.
+4. **Layout**: Do NOT include the main title or any <h2>/<h3> headings at the beginning of the 'content'. Start directly with the narrative text.
+5. **Language**: Provide output in both English and Korean.
+6. **Structure**: 
     - Title (Refined)
     - Description (Narrative Meta summary)
     - Content (Narrative Body)
@@ -612,8 +615,9 @@ Content: {content[:2000]}
 1. **Writing Style**: Use an authoritative, literary, and descriptive narrative style (완전한 문장 형태의 문어체 서술형).
 2. **Strict Prohibition**: NEVER use bullet points, numbered lists, or the '-' character for list-making. The entire piece must be flowing prose.
 3. **Synthesis & Expansion**: Connect ideas logically to create a single coherent narrative arc. Add context and depth where appropriate.
-4. **Format**: Use HTML tags (e.g., <h2>, <p>, <strong>). Do NOT use Markdown.
-5. **Language**: Provide refined narrative versions in both English and Korean.
+4. **Format**: Use HTML tags (e.g., <p>, <strong>). Do NOT use Markdown.
+5. **Layout**: Do NOT include the main title or any <h2>/<h3> headings at the beginning of the 'content'. Start directly with the narrative text.
+6. **Language**: Provide refined narrative versions in both English and Korean.
 
 **IMPORTANT**: Focus on qualitative analysis and long-term implications. Avoid dry market reporting.
 

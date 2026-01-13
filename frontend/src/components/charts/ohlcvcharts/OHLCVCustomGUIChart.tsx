@@ -496,7 +496,19 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
                 chartRef.current = null
             }
         }
-    }, [isClient, Highcharts, chartData, volumeData, seriesId, seriesName, assetIdentifier, height, useLogScale])
+    }, [isClient, Highcharts, chartData, volumeData, seriesId, seriesName, assetIdentifier, height])
+
+    // Update log scale specifically without recreating the chart
+    useEffect(() => {
+        if (!chartRef.current) return
+
+        const chart = chartRef.current
+        if (chart.yAxis && chart.yAxis[0]) {
+            chart.yAxis[0].update({
+                type: useLogScale ? 'logarithmic' : 'linear'
+            }, true) // true for redraw
+        }
+    }, [useLogScale])
 
 
     // Load CSS dynamically
@@ -625,6 +637,22 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
                     gap: '8px',
                     marginLeft: 'auto'
                 }}>
+                    <button
+                        onClick={() => setUseLogScale(!useLogScale)}
+                        style={{
+                            padding: '4px 8px',
+                            fontSize: '12px',
+                            borderRadius: '4px',
+                            border: '1px solid',
+                            cursor: 'pointer',
+                            backgroundColor: useLogScale ? '#eff6ff' : '#f9fafb',
+                            borderColor: useLogScale ? '#bfdbfe' : '#e5e7eb',
+                            color: useLogScale ? '#2563eb' : '#4b5563',
+                            marginRight: '8px'
+                        }}
+                    >
+                        Log
+                    </button>
                     <label htmlFor={`${seriesId}-interval-select`} style={{
                         color: '#666666',
                         fontSize: '14px',

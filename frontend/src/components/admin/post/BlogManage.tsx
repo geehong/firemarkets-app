@@ -211,6 +211,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
         try {
           await Promise.all(selectedPosts.map(id => {
             const post = blogs.find(b => b.id === id);
+            if (!post) return;
             // Default extract from post_info or existing fields
             // Assuming post_info is available in the list data (it should be if included in API)
             // If post_info is a string, parse it.
