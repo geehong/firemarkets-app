@@ -53,8 +53,11 @@ class OnchainCollector(BaseCollector):
             self.logging_helper.log_warning("No onchain metrics are enabled for collection in configuration.")
             return {"processed_assets": 0, "total_added_records": 0}
 
-        from datetime import datetime
-        day_of_month = datetime.now().day
+        from datetime import datetime, timedelta
+        
+        # Use KST (UTC+9) for day calculation to align with 08:50 KST job schedule
+        kst_now = datetime.utcnow() + timedelta(hours=9)
+        day_of_month = kst_now.day
         is_even_day = (day_of_month % 2 == 0)
         
         # Group A (Odd days): 15 metrics
