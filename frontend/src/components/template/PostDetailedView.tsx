@@ -10,6 +10,7 @@ import PostContent from '../post/PostContent'
 import { parseLocalized } from '@/utils/parseLocalized'
 import BaseTemplateView from './BaseTemplateView'
 import PostComments from '@/components/post/PostComments'
+import PostSidebar from '@/components/post/PostSidebar'
 
 interface PostDetailedViewProps {
     post: any
@@ -218,6 +219,7 @@ const PostDetailedView: React.FC<PostDetailedViewProps> = ({ post, locale }) => 
                 // ]
             }}
             tabs={tabs}
+            sidebar={<PostSidebar locale={locale} postType={post.post_type} />}
         />
     )
 }

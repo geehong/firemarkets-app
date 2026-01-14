@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { resolveApiBaseUrl } from '@/lib/api'
 
 export interface GroupedConfigItem {
     value: any
@@ -38,9 +39,8 @@ export const useGroupedConfigs = (): UseGroupedConfigsReturn => {
         setError(null)
 
         try {
-            // Use configured backend URL or default
-            const backendUrl = 'https://backend.firemarkets.net';
-            const response = await fetch(`${backendUrl}/api/v1/configurations/grouped`)
+            const backendApiUrl = resolveApiBaseUrl();
+            const response = await fetch(`${backendApiUrl}/configurations/grouped`)
 
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`)
@@ -58,8 +58,8 @@ export const useGroupedConfigs = (): UseGroupedConfigsReturn => {
 
     const updateConfig = async (key: string, newValue: Record<string, GroupedConfigItem>) => {
         try {
-            const backendUrl = 'https://backend.firemarkets.net';
-            const response = await fetch(`${backendUrl}/api/v1/configurations/grouped/${key}`, {
+            const backendApiUrl = resolveApiBaseUrl();
+            const response = await fetch(`${backendApiUrl}/configurations/grouped/${key}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',

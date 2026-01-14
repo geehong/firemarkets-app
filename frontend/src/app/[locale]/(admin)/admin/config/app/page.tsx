@@ -2,19 +2,19 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/hooks/auth/useAuthNew';
 import { useScheduler } from '@/hooks/admin/useScheduler';
-import SchedulerControls from '@/components/admin/config/ui/SchedulerControls';
-import SchedulerSettings from '@/components/admin/config/ui/SchedulerSettings';
-import TickerTableAgGrid from '@/components/admin/ticker/TickerTableAgGrid';
-import LogsTable from '@/components/admin/logs/LogsTable';
-import RealTimeLogs from '@/components/admin/logs/RealTimeLogs';
-import RealtimeWebSocketSettings from '@/components/admin/config/ui/RealtimeWebSocketSettings';
-import OnChainSettings from '@/components/admin/onchain/OnChainSettings';
+import SchedulerControls from '@/components/admin/config/app/SchedulerControls';
+import SchedulerSettings from '@/components/admin/config/app/SchedulerSettings';
+import TickerTableAgGrid from '@/components/admin/config/app/TickerTableAgGrid';
+import LogsTable from '@/components/admin/config/logs/LogsTable';
+import RealTimeLogs from '@/components/admin/config/logs/RealTimeLogs';
+import RealtimeWebSocketSettings from '@/components/admin/config/app/RealtimeWebSocketSettings';
+import OnChainSettings from '@/components/admin/config/app/OnChainSettings';
+import AiAgentSetting from '@/components/admin/config/app/AiAgentSetting';
 import ConfigReadMe from '@/components/admin/common/ConfigReadMe';
+
 
 import { useLocale } from 'next-intl';
 import AdminConfigTemplateView from '@/components/template/admin/AdminConfigTemplateView';
-
-import AdvancedConfigList from '@/components/admin/config/ui/AdvancedConfigList';
 
 export default function AppConfigPage() {
     const locale = useLocale();
@@ -40,7 +40,7 @@ export default function AppConfigPage() {
         <AdminConfigTemplateView locale={locale} subtitle="Application schedules, tickers, logs, and system configurations.">
             <div className="bg-white rounded-lg shadow p-6 mb-6">
                 <div className="flex flex-wrap gap-2">
-                    {['scheduler', 'ticker', 'logs', 'advanced', 'onchain', 'realtime', 'guide'].map(tab => (
+                    {['scheduler', 'ticker', 'logs', 'onchain', 'realtime', 'aiagent', 'guide'].map(tab => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
@@ -112,15 +112,7 @@ export default function AppConfigPage() {
                     </div>
                 )}
 
-                {activeTab === 'advanced' && (
-                    <div>
-                        <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-xl font-semibold">System Configurations</h2>
-                            <span className="text-sm text-gray-500">Manage all JSON-based system settings directly.</span>
-                        </div>
-                        <AdvancedConfigList />
-                    </div>
-                )}
+
 
                 {activeTab === 'onchain' && (
                     <div>
@@ -133,6 +125,13 @@ export default function AppConfigPage() {
                     <div>
                         <h2 className="text-xl font-semibold mb-4">Realtime & WebSocket Layout</h2>
                         <RealtimeWebSocketSettings />
+                    </div>
+                )}
+
+                {activeTab === 'aiagent' && (
+                    <div>
+                        <h2 className="text-xl font-semibold mb-4">Ai Agent Settings</h2>
+                        <AiAgentSetting />
                     </div>
                 )}
 

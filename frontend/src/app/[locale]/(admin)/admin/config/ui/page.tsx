@@ -1,7 +1,7 @@
 'use client';
 import React, { useState } from 'react';
 import { useAuth } from '@/hooks/auth/useAuthNew';
-import MenuManager from '@/components/admin/menu/MenuManager';
+import MenuManager from '@/components/admin/config/ui/MenuManager';
 
 import { useLocale } from 'next-intl';
 import AdminConfigTemplateView from '@/components/template/admin/AdminConfigTemplateView';

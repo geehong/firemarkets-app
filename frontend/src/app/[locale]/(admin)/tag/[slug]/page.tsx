@@ -24,62 +24,74 @@ export default function TagPage() {
     const [currentPage, setCurrentPage] = useState(1)
     const pageSize = 12
 
+    // Virtual tag state
+    const [isVirtual, setIsVirtual] = useState(false);
+
     // Fetch tag info
     useEffect(() => {
         const fetchTag = async () => {
             try {
+                // Try to find exact tag match
                 const tags = await apiClient.request(`/posts/tags/search?q=${encodeURIComponent(slug)}&limit=10`)
                 if (tags && Array.isArray(tags)) {
-                    const found = tags.find((t: any) => t.slug === slug) || tags[0]
-                    setTag(found)
+                    const found = tags.find((t: any) => t.slug === slug)
+                    if (found) {
+                        setTag(found)
+                        setIsVirtual(false)
+                        return
+                    }
                 }
+
+                // If not found, treat as virtual tag (search query)
+                setTag({ name: decodeURIComponent(slug), slug: slug, isVirtual: true })
+                setIsVirtual(true)
             } catch (error) {
                 console.error('Failed to fetch tag:', error)
+                // Fallback to virtual tag on error
+                setTag({ name: decodeURIComponent(slug), slug: slug, isVirtual: true })
+                setIsVirtual(true)
             }
         }
         if (slug) fetchTag()
     }, [slug])
 
+    // Common props for usePosts
+    const commonParams = {
+        status: 'published',
+        // If virtual, use 'search' param. If real tag, use 'tag' param.
+        ...(isVirtual ? { search: decodeURIComponent(slug) } : { tag: slug }),
+        sort_by: 'created_at',
+        order: 'desc' as const
+    }
+
     // Fetch posts - for individual tabs
     const { data, isLoading } = usePosts({
-        tag: slug,
-        status: 'published',
+        ...commonParams,
         page: currentPage,
         page_size: pageSize,
         post_type: activeType !== 'all' ? activeType : undefined,
-        sort_by: 'created_at',
-        order: 'desc'
     })
 
     // Fetch each type separately for "all" tab
     const { data: blogData, isLoading: blogLoading } = usePosts({
-        tag: slug,
-        status: 'published',
+        ...commonParams,
         page: 1,
         page_size: 6,
         post_type: 'post',
-        sort_by: 'created_at',
-        order: 'desc'
     })
 
     const { data: newsData, isLoading: newsLoading } = usePosts({
-        tag: slug,
-        status: 'published',
+        ...commonParams,
         page: 1,
         page_size: 4,
         post_type: 'news',
-        sort_by: 'created_at',
-        order: 'desc'
     })
 
     const { data: briefData, isLoading: briefLoading } = usePosts({
-        tag: slug,
-        status: 'published',
+        ...commonParams,
         page: 1,
         page_size: 10,
         post_type: 'brief_news',
-        sort_by: 'created_at',
-        order: 'desc'
     })
 
     const posts = data?.posts || []
@@ -97,14 +109,20 @@ export default function TagPage() {
         setCurrentPage(1)
     }, [activeType, slug])
 
+    // Calculate counts
+    const blogCount = blogData?.total || 0
+    const newsCount = newsData?.total || 0
+    const briefCount = briefData?.total || 0
+    const allCount = blogCount + newsCount + briefCount
+
     const tabs: { key: PostType; label: string }[] = [
-        { key: 'all', label: '전체' },
-        { key: 'post', label: '블로그' },
-        { key: 'news', label: '뉴스' },
-        { key: 'brief_news', label: '단신' },
+        { key: 'all', label: `전체 (${allCount})` },
+        { key: 'post', label: `블로그 (${blogCount})` },
+        { key: 'news', label: `뉴스 (${newsCount})` },
+        { key: 'brief_news', label: `단신 (${briefCount})` },
     ]
 
-    if (!tag && !isLoading) {
+    if (!tag && !slug) { // Only show not found if no slug provided
         return (
             <div className="p-8 text-center">
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Tag Not Found</h1>

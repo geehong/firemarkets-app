@@ -84,16 +84,16 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
     if (order !== sortOrder) setSortOrder(order);
   }, [searchParams, typeList, defaultStatus, currentPostType, statusFilter, currentPage, pageSize, searchTerm, sortBy, sortOrder]);
 
-  // Debounce search update
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (localSearchInput !== searchTerm) {
-        updateURL({ search: localSearchInput, page: 1 });
-      }
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [localSearchInput, searchTerm, updateURL]);
+  // Debounce search update REMOVED per user request for manual trigger
+  // useEffect(() => {
+  //   const timer = setTimeout(() => {
+  //     if (localSearchInput !== searchTerm) {
+  //       updateURL({ search: localSearchInput, page: 1 });
+  //     }
+  //   }, 500);
+  //
+  //   return () => clearTimeout(timer);
+  // }, [localSearchInput, searchTerm, updateURL]);
 
   // Hooks
   const { data, isLoading, isError, error, refetch } = usePosts({
@@ -352,7 +352,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
               placeholder="제목 검색..."
             />
             <button
-              onClick={() => refetch()}
+              onClick={() => updateURL({ search: localSearchInput, page: 1 })}
               className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded-md text-sm flex items-center gap-1"
             >
               <Search className="w-4 h-4" />

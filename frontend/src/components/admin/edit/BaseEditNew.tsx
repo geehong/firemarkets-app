@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef, useCallback, ReactNode } from 'react'
-import SimpleQuillEditor from './SimpleQuillEditor'
+import SimpleQuillEditor from './htmledit/SimpleQuillEditor'
 
 // 실제 API 응답 구조에 맞춘 PostFormState 타입
 export type PostFormState = {

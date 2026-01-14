@@ -5,7 +5,7 @@ from groq import Groq, AsyncGroq
 from typing import List, Dict, Optional, Any
 from app.models.blog import Post
 from app.models.asset import AppConfiguration
-from app.core.config import GOOGLE_API_KEY, GROQ_API_KEY
+from app.core.config import GOOGLE_API_KEY, GROQ_API_KEY, GLOBAL_APP_CONFIGS
 from app.core.database import SessionLocal
 import logging
 import json
@@ -309,7 +309,13 @@ class NewsAIEditorAgent:
             "count": len(cluster)
         }
         
-        prompt = f"""
+        # 프롬프트 구성
+        config = GLOBAL_APP_CONFIGS.get("ai_agent_prompts", {})
+        prompt_template = config.get("analyze_cluster_prompt", {}).get("value", "")
+
+        if not prompt_template:
+             # Fallback
+             prompt_template = """
 You are a top-tier financial columnist and lead investigative journalist. Your mission is to transform the provided raw news articles into a single, high-quality, professional journalistic essay.
 
 [News Articles]
@@ -335,8 +341,9 @@ Return ONLY a JSON object with the following structure:
     "analysis_en": "Detailed narrative essay analysis in English",
     "sentiment": "Positive/Negative/Neutral",
     "entities": ["..."]
-}}
-"""
+}}"""
+
+        prompt = prompt_template.replace("{articles_text}", articles_text)
         try:
             # Gemini API 호출 (비동기 지원 여부 확인 필요, synchronous wrap or async if lib supports)
             # google-generativeai current lib is mostly sync references usually, but has async generate_content_async?
@@ -379,7 +386,12 @@ Return ONLY a JSON object with the following structure:
             d = item.get("description", "")
             prompt_text += f"ID: {item.get('id')}\nTitle: {t}\nDesc: {d}\n---\n"
 
-        prompt = f"""
+        # Dynamic Prompt
+        config = GLOBAL_APP_CONFIGS.get("ai_agent_prompts", {})
+        prompt_template = config.get("translate_batch_prompt", {}).get("value", "")
+
+        if not prompt_template:
+            prompt_template = """
 You are an expert financial news editor and SEO specialist. Your task is to transform short news snippets into rich, engaging, and simplified news storage optimized for search engines (SEO).
 
 [Input Data]
@@ -409,8 +421,9 @@ Return ONLY a valid JSON array of objects. Each object must have:
     "content_ko": "Expanded Body Content (Korean) - Use HTML formatting"
 }}
 
-RETURN ONLY JSON. NO MARKDOWN WRAPPERS.
-"""
+RETURN ONLY JSON. NO MARKDOWN WRAPPERS."""
+
+        prompt = prompt_template.replace("{prompt_text}", prompt_text)
         try:
             text_response = await self._generate_content(prompt, task_type="collection")
             
@@ -527,7 +540,12 @@ RETURN ONLY JSON. NO MARKDOWN WRAPPERS.
             date = p.published_at.strftime('%Y-%m-%d %H:%M') if p.published_at else 'Unknown'
             articles_text += f"\n[Article {i+1}] Title: {title}\nSource: {source} (Time: {date})\nContent: {content[:1000]}...\n"
 
-        prompt = f"""
+        # Dynamic Prompt
+        config = GLOBAL_APP_CONFIGS.get("ai_agent_prompts", {})
+        prompt_template = config.get("merge_posts_prompt", {}).get("value", "")
+
+        if not prompt_template:
+            prompt_template = """
 You are a top-tier financial columnist and lead investigative journalist. Your task is to synthesize the following group of related news articles into ONE single, high-quality, professional journalistic essay.
 
 [Input Articles]
@@ -555,8 +573,9 @@ Return ONLY a valid JSON object:
     "description_ko": "...",
     "content_en": "...",
     "content_ko": "..."
-}}
-"""
+}}"""
+
+        prompt = prompt_template.replace("{articles_text}", articles_text)
         try:
             text_response = await self._generate_content(prompt, task_type="merge", max_retries=1, base_delay=3)
             result = self._parse_json_response(text_response)
@@ -573,9 +592,15 @@ Return ONLY a valid JSON object:
         title = post_data.get('title', '')
         content = post_data.get('content', '')
         
+        config = GLOBAL_APP_CONFIGS.get("ai_agent_prompts", {})
+        
         if not content:
             # If no content, try to generate from title alone
-            prompt = f"""
+            # If no content, try to generate from title alone
+            prompt_template = config.get("rewrite_post_prompt_title_only", {}).get("value", "")
+            
+            if not prompt_template:
+                prompt_template = """
 You are a top-tier financial columnist and lead investigative journalist. Write a comprehensive and cohesive journalistic essay based on the following title.
 
 Title: {title}
@@ -600,16 +625,19 @@ Return ONLY a valid JSON object:
     "description_ko": "...",
     "content_en": "...",
     "content_ko": "..."
-}}
-"""
+}}"""
+            prompt = prompt_template.replace("{title}", title)
         else:
             # Rewrite existing content
-            prompt = f"""
+            prompt_template = config.get("rewrite_post_prompt_content", {}).get("value", "")
+            
+            if not prompt_template:
+                prompt_template = """
 You are a top-tier financial columnist and lead investigative journalist. Rewrite the following post into a sophisticated, cohesive, and high-quality journalistic essay.
 
 [Input Post]
 Title: {title}
-Content: {content[:2000]}
+Content: {content}
 
 [Instructions]
 1. **Writing Style**: Use an authoritative, literary, and descriptive narrative style (완전한 문장 형태의 문어체 서술형).
@@ -630,8 +658,10 @@ Return ONLY a valid JSON object:
     "description_ko": "...",
     "content_en": "...",
     "content_ko": "..."
-}}
-"""
+}}"""
+            # Truncate content for prompt safety if needed, though template replacement is raw
+            truncated_content = content[:2000]
+            prompt = prompt_template.replace("{title}", title).replace("{content}", truncated_content)
         try:
             # Change task_type to 'general' to use Gemini provider logic
             text_response = await self._generate_content(prompt, task_type="general", max_retries=1, base_delay=3)

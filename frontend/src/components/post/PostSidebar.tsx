@@ -1,0 +1,213 @@
+'use client'
+
+import React, { useState, useEffect, useRef } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { usePosts } from '@/hooks/data/usePosts'
+import { parseLocalized } from '@/utils/parseLocalized'
+
+interface PostSidebarProps {
+    locale: string;
+    postType?: string;
+}
+
+const SidebarWidget: React.FC<{
+    title: string;
+    children: React.ReactNode;
+    actions?: React.ReactNode;
+}> = ({ title, children, actions }) => {
+    return (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 mb-6 last:mb-0">
+            <div className="flex items-center justify-between mb-4 border-b border-gray-100 dark:border-gray-700 pb-2">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                    {title}
+                </h3>
+                {actions && (
+                    <div className="flex items-center gap-1">
+                        {actions}
+                    </div>
+                )}
+            </div>
+            {children}
+        </div>
+    )
+}
+
+const PostSidebar: React.FC<PostSidebarProps> = ({ locale, postType }) => {
+    const router = useRouter()
+    const sidebarRef = useRef<HTMLElement>(null)
+    const [searchTerm, setSearchTerm] = useState('')
+
+    // Debugging Sticky
+    useEffect(() => {
+        const handleScroll = () => {
+            if (sidebarRef.current) {
+                const rect = sidebarRef.current.getBoundingClientRect()
+                console.log('Sticky Debug:', {
+                    scrollY: window.scrollY,
+                    sidebarTop: rect.top,
+                    sidebarHeight: rect.height,
+                    windowHeight: window.innerHeight,
+                    isSticky: rect.top <= 120 // roughly top-24 + offset
+                })
+            }
+        }
+        window.addEventListener('scroll', handleScroll)
+        return () => window.removeEventListener('scroll', handleScroll)
+    }, [])
+
+    // Pagination State
+    const [page, setPage] = useState(1)
+    const pageSize = 5
+
+    // 1. Search Logic
+    const handleSearch = (e: React.FormEvent) => {
+        e.preventDefault()
+        if (searchTerm.trim()) {
+            router.push(`/${locale}/news?search=${encodeURIComponent(searchTerm)}`)
+        }
+    }
+
+    // 2. Fetch Posts with Pagination
+    // If postType is 'blog', we query for 'post' type. If 'brief_news' or 'news', use mapped type.
+    const queryPostType = postType === 'blog' ? 'post' : postType;
+
+    const { data: postsData, isLoading } = usePosts({
+        page,
+        page_size: pageSize,
+        post_type: queryPostType, // Filter by type
+    })
+
+    const posts = postsData?.posts || []
+    const totalPages = postsData?.total_pages || 1
+
+    const handlePrevPage = () => {
+        if (page > 1) setPage(p => p - 1)
+    }
+
+    const handleNextPage = () => {
+        if (page < totalPages) setPage(p => p + 1)
+    }
+
+    // Dynamic Title Logic
+    const getRecentTitle = () => {
+        if (postType === 'news') return locale === 'ko' ? '최근 뉴스' : 'Recent News'
+        if (postType === 'brief_news') return locale === 'ko' ? '최근 단신' : 'Recent Briefs'
+        if (postType === 'blog') return locale === 'ko' ? '최근 포스트' : 'Recent Posts'
+        return locale === 'ko' ? '최근 글' : 'Recent Posts'
+    }
+
+    // 4. Recent Comments (Placeholder)
+    const recentComments: any[] = []
+
+    return (
+        <aside ref={sidebarRef} className="w-full">
+            {/* 1. Search Widget */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 mb-6">
+                <form onSubmit={handleSearch} className="relative">
+                    <input
+                        type="text"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder={locale === 'ko' ? '검색어를 입력하세요...' : 'Search...'}
+                        className="w-full pl-4 pr-10 py-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                    />
+                    <button
+                        type="submit"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 transition-colors"
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                    </button>
+                </form>
+            </div>
+
+            {/* 3. Recent Posts Widget */}
+            <SidebarWidget
+                title={getRecentTitle()}
+                actions={
+                    <>
+                        <button
+                            onClick={handlePrevPage}
+                            disabled={page === 1}
+                            className={`p-1 rounded-md transition-colors ${page === 1 ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-400'}`}
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                        </button>
+                        <button
+                            onClick={handleNextPage}
+                            disabled={page >= totalPages} // Show next if likely more pages
+                            className={`p-1 rounded-md transition-colors ${page >= totalPages ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed hidden' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-400'}`}
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                        </button>
+                    </>
+                }
+            >
+                <div className="space-y-4 min-h-[300px]">
+                    {isLoading ? (
+                        <div className="animate-pulse space-y-4">
+                            {[1, 2, 3, 4, 5].map((i) => (
+                                <div key={i} className="flex gap-3">
+                                    <div className="w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded-md"></div>
+                                    <div className="flex-1 space-y-2 py-1">
+                                        <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+                                        <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        posts.length > 0 ? (
+                            posts.map((post) => (
+                                <div key={post.id} className="flex gap-3 group">
+                                    {/* Thumbnail (Optional) */}
+                                    {post.cover_image && (
+                                        <div className="flex-shrink-0 w-16 h-16 rounded-md overflow-hidden bg-gray-100 dark:bg-gray-700">
+                                            <img
+                                                src={post.cover_image}
+                                                alt={parseLocalized(post.title, locale)}
+                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                            />
+                                        </div>
+                                    )}
+                                    <div className="flex flex-col justify-center">
+                                        <Link
+                                            href={post.post_type === 'news' ? `/${locale}/news/${post.slug}` :
+                                                post.post_type === 'brief_news' ? `/${locale}/briefnews/${post.slug}` :
+                                                    `/${locale}/blog/${post.slug}`}
+                                            className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 line-clamp-2 leading-snug transition-colors"
+                                        >
+                                            {parseLocalized(post.title, locale)}
+                                        </Link>
+                                        <span className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                                            {new Date(post.created_at).toLocaleDateString(locale)}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <p className="text-sm text-gray-500 text-center py-4">No posts found.</p>
+                        )
+                    )}
+                </div>
+            </SidebarWidget>
+
+            {/* 4. Recent Comments Widget */}
+            {recentComments.length > 0 && (
+                <SidebarWidget title={locale === 'ko' ? '최근 댓글' : 'Recent Comments'}>
+                    <div className="space-y-3">
+                        {/* Map comments here */}
+                    </div>
+                </SidebarWidget>
+            )}
+        </aside>
+    )
+}
+
+export default PostSidebar

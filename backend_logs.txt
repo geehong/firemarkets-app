@@ -1,0 +1,200 @@
+received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+2026-01-14 15:35:42,057 - INFO - received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+📢 [BACKEND←BROADCASTER] 수신: APE = $0.2265 (provider: binance)
+🚀 Broadcasting 'realtime_quote' to room 'prices_APE': $0.2265 (+0.00%)
+emitting event "realtime_quote" to prices_APE [/]
+2026-01-14 15:35:42,058 - INFO - emitting event "realtime_quote" to prices_APE [/]
+✅ Broadcasted to room 'prices_APE' successfully.
+✅ [BACKEND←BROADCASTER] 브로드캐스트 완료: APE
+[36mDEBUG[0m:    < TEXT '42["broadcast_quote",{"asset_id":1,"ticker":"BT...ata_source":"binance"}]' [168 bytes]
+5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":491,"ticker":"BNB","timestamp_utc":"2026-01-14T06:35:42.057188+00:00","price":937.45,"volume":0.014,"data_source":"binance"}]
+2026-01-14 15:35:42,058 - INFO - 5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":491,"ticker":"BNB","timestamp_utc":"2026-01-14T06:35:42.057188+00:00","price":937.45,"volume":0.014,"data_source":"binance"}]
+received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+2026-01-14 15:35:42,058 - INFO - received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+📢 [BACKEND←BROADCASTER] 수신: BNB = $937.45 (provider: binance)
+🚀 Broadcasting 'realtime_quote' to room 'prices_BNB': $937.45 (+0.00%)
+emitting event "realtime_quote" to prices_BNB [/]
+2026-01-14 15:35:42,058 - INFO - emitting event "realtime_quote" to prices_BNB [/]
+[36mDEBUG[0m:    < TEXT '42["broadcast_quote",{"asset_id":548,"ticker":"...ta_source":"coinbase"}]' [170 bytes]
+OZJ8O1DJNSuxz9uKAAAC: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":491,"ticker":"BNB","timestamp_utc":"2026-01-14T06:35:42.057188+00:00","price":937.45,"volume":0.014,"data_source":"binance"}]
+2026-01-14 15:35:42,059 - INFO - OZJ8O1DJNSuxz9uKAAAC: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":491,"ticker":"BNB","timestamp_utc":"2026-01-14T06:35:42.057188+00:00","price":937.45,"volume":0.014,"data_source":"binance"}]
+WWhLFCWMCR8Op_uEAAAE: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":491,"ticker":"BNB","timestamp_utc":"2026-01-14T06:35:42.057188+00:00","price":937.45,"volume":0.014,"data_source":"binance"}]
+2026-01-14 15:35:42,059 - INFO - WWhLFCWMCR8Op_uEAAAE: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":491,"ticker":"BNB","timestamp_utc":"2026-01-14T06:35:42.057188+00:00","price":937.45,"volume":0.014,"data_source":"binance"}]
+nZujtrgR4ivrGMdHAAAI: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":491,"ticker":"BNB","timestamp_utc":"2026-01-14T06:35:42.057188+00:00","price":937.45,"volume":0.014,"data_source":"binance"}]
+2026-01-14 15:35:42,059 - INFO - nZujtrgR4ivrGMdHAAAI: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":491,"ticker":"BNB","timestamp_utc":"2026-01-14T06:35:42.057188+00:00","price":937.45,"volume":0.014,"data_source":"binance"}]
+5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.057596+00:00","price":94673.06,"volume":24198.87835,"data_source":"binance"}]
+2026-01-14 15:35:42,059 - INFO - 5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.057596+00:00","price":94673.06,"volume":24198.87835,"data_source":"binance"}]
+received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+2026-01-14 15:35:42,059 - INFO - received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+[36mDEBUG[0m:    < TEXT '42["broadcast_quote",{"asset_id":548,"ticker":"...ta_source":"coinbase"}]' [164 bytes]
+✅ Broadcasted to room 'prices_BNB' successfully.
+✅ [BACKEND←BROADCASTER] 브로드캐스트 완료: BNB
+📢 [BACKEND←BROADCASTER] 수신: BTCUSDT = $94673.06 (provider: binance)
+🚀 Broadcasting 'realtime_quote' to room 'prices_BTCUSDT': $94673.06 (+0.00%)
+emitting event "realtime_quote" to prices_BTCUSDT [/]
+2026-01-14 15:35:42,059 - INFO - emitting event "realtime_quote" to prices_BTCUSDT [/]
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":491,"ticker":"B...ata_source":"binance"}]' [157 bytes]
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":491,"ticker":"B...ata_source":"binance"}]' [157 bytes]
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":491,"ticker":"B...ata_source":"binance"}]' [157 bytes]
+OZJ8O1DJNSuxz9uKAAAC: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.057596+00:00","price":94673.06,"volume":24198.87835,"data_source":"binance"}]
+2026-01-14 15:35:42,060 - INFO - OZJ8O1DJNSuxz9uKAAAC: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.057596+00:00","price":94673.06,"volume":24198.87835,"data_source":"binance"}]
+WWhLFCWMCR8Op_uEAAAE: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.057596+00:00","price":94673.06,"volume":24198.87835,"data_source":"binance"}]
+2026-01-14 15:35:42,060 - INFO - WWhLFCWMCR8Op_uEAAAE: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.057596+00:00","price":94673.06,"volume":24198.87835,"data_source":"binance"}]
+nZujtrgR4ivrGMdHAAAI: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.057596+00:00","price":94673.06,"volume":24198.87835,"data_source":"binance"}]
+2026-01-14 15:35:42,060 - INFO - nZujtrgR4ivrGMdHAAAI: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.057596+00:00","price":94673.06,"volume":24198.87835,"data_source":"binance"}]
+5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":548,"ticker":"SOL","timestamp_utc":"2026-01-14T06:35:42.057973+00:00","price":144.03,"volume":1601597.83747492,"data_source":"coinbase"}]
+2026-01-14 15:35:42,060 - INFO - 5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":548,"ticker":"SOL","timestamp_utc":"2026-01-14T06:35:42.057973+00:00","price":144.03,"volume":1601597.83747492,"data_source":"coinbase"}]
+received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+2026-01-14 15:35:42,061 - INFO - received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+✅ Broadcasted to room 'prices_BTCUSDT' successfully.
+✅ [BACKEND←BROADCASTER] 브로드캐스트 완료: BTCUSDT
+📢 [BACKEND←BROADCASTER] 수신: SOL = $144.03 (provider: coinbase)
+🚀 Broadcasting 'realtime_quote' to room 'prices_SOL': $144.03 (+0.00%)
+emitting event "realtime_quote" to prices_SOL [/]
+2026-01-14 15:35:42,061 - INFO - emitting event "realtime_quote" to prices_SOL [/]
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":1,"ticker":"BTC...ata_source":"binance"}]' [167 bytes]
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":1,"ticker":"BTC...ata_source":"binance"}]' [167 bytes]
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":1,"ticker":"BTC...ata_source":"binance"}]' [167 bytes]
+OZJ8O1DJNSuxz9uKAAAC: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":548,"ticker":"SOL","timestamp_utc":"2026-01-14T06:35:42.057973+00:00","price":144.03,"volume":1601597.83747492,"data_source":"coinbase"}]
+2026-01-14 15:35:42,061 - INFO - OZJ8O1DJNSuxz9uKAAAC: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":548,"ticker":"SOL","timestamp_utc":"2026-01-14T06:35:42.057973+00:00","price":144.03,"volume":1601597.83747492,"data_source":"coinbase"}]
+WWhLFCWMCR8Op_uEAAAE: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":548,"ticker":"SOL","timestamp_utc":"2026-01-14T06:35:42.057973+00:00","price":144.03,"volume":1601597.83747492,"data_source":"coinbase"}]
+2026-01-14 15:35:42,061 - INFO - WWhLFCWMCR8Op_uEAAAE: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":548,"ticker":"SOL","timestamp_utc":"2026-01-14T06:35:42.057973+00:00","price":144.03,"volume":1601597.83747492,"data_source":"coinbase"}]
+nZujtrgR4ivrGMdHAAAI: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":548,"ticker":"SOL","timestamp_utc":"2026-01-14T06:35:42.057973+00:00","price":144.03,"volume":1601597.83747492,"data_source":"coinbase"}]
+2026-01-14 15:35:42,062 - INFO - nZujtrgR4ivrGMdHAAAI: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":548,"ticker":"SOL","timestamp_utc":"2026-01-14T06:35:42.057973+00:00","price":144.03,"volume":1601597.83747492,"data_source":"coinbase"}]
+5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":548,"ticker":"SOL","timestamp_utc":"2026-01-14T06:35:42.058343+00:00","price":144.03,"volume":0.01578252,"data_source":"coinbase"}]
+2026-01-14 15:35:42,062 - INFO - 5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":548,"ticker":"SOL","timestamp_utc":"2026-01-14T06:35:42.058343+00:00","price":144.03,"volume":0.01578252,"data_source":"coinbase"}]
+received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+2026-01-14 15:35:42,062 - INFO - received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+✅ Broadcasted to room 'prices_SOL' successfully.
+✅ [BACKEND←BROADCASTER] 브로드캐스트 완료: SOL
+📢 [BACKEND←BROADCASTER] 수신: SOL = $144.03 (provider: coinbase)
+🚀 Broadcasting 'realtime_quote' to room 'prices_SOL': $144.03 (+0.00%)
+emitting event "realtime_quote" to prices_SOL [/]
+2026-01-14 15:35:42,062 - INFO - emitting event "realtime_quote" to prices_SOL [/]
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":548,"ticker":"S...ta_source":"coinbase"}]' [169 bytes]
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":548,"ticker":"S...ta_source":"coinbase"}]' [169 bytes]
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":548,"ticker":"S...ta_source":"coinbase"}]' [169 bytes]
+OZJ8O1DJNSuxz9uKAAAC: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":548,"ticker":"SOL","timestamp_utc":"2026-01-14T06:35:42.058343+00:00","price":144.03,"volume":0.01578252,"data_source":"coinbase"}]
+2026-01-14 15:35:42,063 - INFO - OZJ8O1DJNSuxz9uKAAAC: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":548,"ticker":"SOL","timestamp_utc":"2026-01-14T06:35:42.058343+00:00","price":144.03,"volume":0.01578252,"data_source":"coinbase"}]
+WWhLFCWMCR8Op_uEAAAE: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":548,"ticker":"SOL","timestamp_utc":"2026-01-14T06:35:42.058343+00:00","price":144.03,"volume":0.01578252,"data_source":"coinbase"}]
+2026-01-14 15:35:42,063 - INFO - WWhLFCWMCR8Op_uEAAAE: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":548,"ticker":"SOL","timestamp_utc":"2026-01-14T06:35:42.058343+00:00","price":144.03,"volume":0.01578252,"data_source":"coinbase"}]
+nZujtrgR4ivrGMdHAAAI: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":548,"ticker":"SOL","timestamp_utc":"2026-01-14T06:35:42.058343+00:00","price":144.03,"volume":0.01578252,"data_source":"coinbase"}]
+2026-01-14 15:35:42,063 - INFO - nZujtrgR4ivrGMdHAAAI: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":548,"ticker":"SOL","timestamp_utc":"2026-01-14T06:35:42.058343+00:00","price":144.03,"volume":0.01578252,"data_source":"coinbase"}]
+✅ Broadcasted to room 'prices_SOL' successfully.
+✅ [BACKEND←BROADCASTER] 브로드캐스트 완료: SOL
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":548,"ticker":"S...ta_source":"coinbase"}]' [163 bytes]
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":548,"ticker":"S...ta_source":"coinbase"}]' [163 bytes]
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":548,"ticker":"S...ta_source":"coinbase"}]' [163 bytes]
+[36mDEBUG[0m:    < TEXT '42["broadcast_quote",{"asset_id":2,"ticker":"ET...ata_source":"binance"}]' [167 bytes]
+5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":2,"ticker":"ETHUSDT","timestamp_utc":"2026-01-14T06:35:42.123118+00:00","price":3325.81,"volume":535804.2181,"data_source":"binance"}]
+2026-01-14 15:35:42,124 - INFO - 5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":2,"ticker":"ETHUSDT","timestamp_utc":"2026-01-14T06:35:42.123118+00:00","price":3325.81,"volume":535804.2181,"data_source":"binance"}]
+received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+2026-01-14 15:35:42,124 - INFO - received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+📢 [BACKEND←BROADCASTER] 수신: ETHUSDT = $3325.81 (provider: binance)
+🚀 Broadcasting 'realtime_quote' to room 'prices_ETHUSDT': $3325.81 (+0.00%)
+emitting event "realtime_quote" to prices_ETHUSDT [/]
+2026-01-14 15:35:42,124 - INFO - emitting event "realtime_quote" to prices_ETHUSDT [/]
+OZJ8O1DJNSuxz9uKAAAC: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":2,"ticker":"ETHUSDT","timestamp_utc":"2026-01-14T06:35:42.123118+00:00","price":3325.81,"volume":535804.2181,"data_source":"binance"}]
+2026-01-14 15:35:42,124 - INFO - OZJ8O1DJNSuxz9uKAAAC: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":2,"ticker":"ETHUSDT","timestamp_utc":"2026-01-14T06:35:42.123118+00:00","price":3325.81,"volume":535804.2181,"data_source":"binance"}]
+WWhLFCWMCR8Op_uEAAAE: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":2,"ticker":"ETHUSDT","timestamp_utc":"2026-01-14T06:35:42.123118+00:00","price":3325.81,"volume":535804.2181,"data_source":"binance"}]
+2026-01-14 15:35:42,124 - INFO - WWhLFCWMCR8Op_uEAAAE: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":2,"ticker":"ETHUSDT","timestamp_utc":"2026-01-14T06:35:42.123118+00:00","price":3325.81,"volume":535804.2181,"data_source":"binance"}]
+nZujtrgR4ivrGMdHAAAI: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":2,"ticker":"ETHUSDT","timestamp_utc":"2026-01-14T06:35:42.123118+00:00","price":3325.81,"volume":535804.2181,"data_source":"binance"}]
+2026-01-14 15:35:42,124 - INFO - nZujtrgR4ivrGMdHAAAI: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":2,"ticker":"ETHUSDT","timestamp_utc":"2026-01-14T06:35:42.123118+00:00","price":3325.81,"volume":535804.2181,"data_source":"binance"}]
+[36mDEBUG[0m:    < TEXT '42["broadcast_quote",{"asset_id":1,"ticker":"BT...ata_source":"binance"}]' [164 bytes]
+[36mDEBUG[0m:    < TEXT '42["broadcast_quote",{"asset_id":559,"ticker":"...ata_source":"binance"}]' [162 bytes]
+✅ Broadcasted to room 'prices_ETHUSDT' successfully.
+✅ [BACKEND←BROADCASTER] 브로드캐스트 완료: ETHUSDT
+[36mDEBUG[0m:    < TEXT '42["broadcast_quote",{"asset_id":524,"ticker":"...ata_source":"binance"}]' [164 bytes]
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":2,"ticker":"ETH...ata_source":"binance"}]' [166 bytes]
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":2,"ticker":"ETH...ata_source":"binance"}]' [166 bytes]
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":2,"ticker":"ETH...ata_source":"binance"}]' [166 bytes]
+5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.123799+00:00","price":94673.07,"volume":0.00016,"data_source":"binance"}]
+2026-01-14 15:35:42,126 - INFO - 5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.123799+00:00","price":94673.07,"volume":0.00016,"data_source":"binance"}]
+received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+2026-01-14 15:35:42,126 - INFO - received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+[36mDEBUG[0m:    < TEXT '42["broadcast_quote",{"asset_id":488,"ticker":"...ata_source":"binance"}]' [163 bytes]
+[36mDEBUG[0m:    < TEXT '42["broadcast_quote",{"asset_id":1,"ticker":"BT...ta_source":"coinbase"}]' [172 bytes]
+[36mDEBUG[0m:    < TEXT '42["broadcast_quote",{"asset_id":1,"ticker":"BT...ta_source":"coinbase"}]' [167 bytes]
+📢 [BACKEND←BROADCASTER] 수신: BTCUSDT = $94673.07 (provider: binance)
+🚀 Broadcasting 'realtime_quote' to room 'prices_BTCUSDT': $94673.07 (+0.00%)
+emitting event "realtime_quote" to prices_BTCUSDT [/]
+2026-01-14 15:35:42,126 - INFO - emitting event "realtime_quote" to prices_BTCUSDT [/]
+OZJ8O1DJNSuxz9uKAAAC: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.123799+00:00","price":94673.07,"volume":0.00016,"data_source":"binance"}]
+2026-01-14 15:35:42,126 - INFO - OZJ8O1DJNSuxz9uKAAAC: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.123799+00:00","price":94673.07,"volume":0.00016,"data_source":"binance"}]
+WWhLFCWMCR8Op_uEAAAE: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.123799+00:00","price":94673.07,"volume":0.00016,"data_source":"binance"}]
+2026-01-14 15:35:42,126 - INFO - WWhLFCWMCR8Op_uEAAAE: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.123799+00:00","price":94673.07,"volume":0.00016,"data_source":"binance"}]
+nZujtrgR4ivrGMdHAAAI: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.123799+00:00","price":94673.07,"volume":0.00016,"data_source":"binance"}]
+2026-01-14 15:35:42,126 - INFO - nZujtrgR4ivrGMdHAAAI: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.123799+00:00","price":94673.07,"volume":0.00016,"data_source":"binance"}]
+5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":559,"ticker":"UNI","timestamp_utc":"2026-01-14T06:35:42.124245+00:00","price":5.706,"volume":4687113.11,"data_source":"binance"}]
+2026-01-14 15:35:42,127 - INFO - 5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":559,"ticker":"UNI","timestamp_utc":"2026-01-14T06:35:42.124245+00:00","price":5.706,"volume":4687113.11,"data_source":"binance"}]
+received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+2026-01-14 15:35:42,127 - INFO - received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+✅ Broadcasted to room 'prices_BTCUSDT' successfully.
+✅ [BACKEND←BROADCASTER] 브로드캐스트 완료: BTCUSDT
+📢 [BACKEND←BROADCASTER] 수신: UNI = $5.706 (provider: binance)
+🚀 Broadcasting 'realtime_quote' to room 'prices_UNI': $5.706 (+0.00%)
+emitting event "realtime_quote" to prices_UNI [/]
+2026-01-14 15:35:42,127 - INFO - emitting event "realtime_quote" to prices_UNI [/]
+✅ Broadcasted to room 'prices_UNI' successfully.
+✅ [BACKEND←BROADCASTER] 브로드캐스트 완료: UNI
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":1,"ticker":"BTC...ata_source":"binance"}]' [163 bytes]
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":1,"ticker":"BTC...ata_source":"binance"}]' [163 bytes]
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":1,"ticker":"BTC...ata_source":"binance"}]' [163 bytes]
+5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":524,"ticker":"LDO","timestamp_utc":"2026-01-14T06:35:42.124656+00:00","price":0.6622,"volume":11806670.94,"data_source":"binance"}]
+2026-01-14 15:35:42,127 - INFO - 5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":524,"ticker":"LDO","timestamp_utc":"2026-01-14T06:35:42.124656+00:00","price":0.6622,"volume":11806670.94,"data_source":"binance"}]
+received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+2026-01-14 15:35:42,128 - INFO - received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+📢 [BACKEND←BROADCASTER] 수신: LDO = $0.6622 (provider: binance)
+🚀 Broadcasting 'realtime_quote' to room 'prices_LDO': $0.6622 (+0.00%)
+emitting event "realtime_quote" to prices_LDO [/]
+2026-01-14 15:35:42,128 - INFO - emitting event "realtime_quote" to prices_LDO [/]
+✅ Broadcasted to room 'prices_LDO' successfully.
+✅ [BACKEND←BROADCASTER] 브로드캐스트 완료: LDO
+5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":488,"ticker":"AVAX","timestamp_utc":"2026-01-14T06:35:42.125046+00:00","price":14.68,"volume":4210064.25,"data_source":"binance"}]
+2026-01-14 15:35:42,128 - INFO - 5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":488,"ticker":"AVAX","timestamp_utc":"2026-01-14T06:35:42.125046+00:00","price":14.68,"volume":4210064.25,"data_source":"binance"}]
+received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+2026-01-14 15:35:42,128 - INFO - received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+📢 [BACKEND←BROADCASTER] 수신: AVAX = $14.68 (provider: binance)
+🚀 Broadcasting 'realtime_quote' to room 'prices_AVAX': $14.68 (+0.00%)
+emitting event "realtime_quote" to prices_AVAX [/]
+2026-01-14 15:35:42,128 - INFO - emitting event "realtime_quote" to prices_AVAX [/]
+✅ Broadcasted to room 'prices_AVAX' successfully.
+✅ [BACKEND←BROADCASTER] 브로드캐스트 완료: AVAX
+5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.125434+00:00","price":94650.17,"volume":18618.96428971,"data_source":"coinbase"}]
+2026-01-14 15:35:42,128 - INFO - 5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.125434+00:00","price":94650.17,"volume":18618.96428971,"data_source":"coinbase"}]
+received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+2026-01-14 15:35:42,128 - INFO - received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+📢 [BACKEND←BROADCASTER] 수신: BTCUSDT = $94650.17 (provider: coinbase)
+🚀 Broadcasting 'realtime_quote' to room 'prices_BTCUSDT': $94650.17 (+0.00%)
+emitting event "realtime_quote" to prices_BTCUSDT [/]
+2026-01-14 15:35:42,128 - INFO - emitting event "realtime_quote" to prices_BTCUSDT [/]
+OZJ8O1DJNSuxz9uKAAAC: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.125434+00:00","price":94650.17,"volume":18618.96428971,"data_source":"coinbase"}]
+2026-01-14 15:35:42,129 - INFO - OZJ8O1DJNSuxz9uKAAAC: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.125434+00:00","price":94650.17,"volume":18618.96428971,"data_source":"coinbase"}]
+WWhLFCWMCR8Op_uEAAAE: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.125434+00:00","price":94650.17,"volume":18618.96428971,"data_source":"coinbase"}]
+2026-01-14 15:35:42,129 - INFO - WWhLFCWMCR8Op_uEAAAE: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.125434+00:00","price":94650.17,"volume":18618.96428971,"data_source":"coinbase"}]
+nZujtrgR4ivrGMdHAAAI: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.125434+00:00","price":94650.17,"volume":18618.96428971,"data_source":"coinbase"}]
+2026-01-14 15:35:42,129 - INFO - nZujtrgR4ivrGMdHAAAI: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.125434+00:00","price":94650.17,"volume":18618.96428971,"data_source":"coinbase"}]
+5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.125819+00:00","price":94650.17,"volume":4.733e-05,"data_source":"coinbase"}]
+2026-01-14 15:35:42,129 - INFO - 5VOEk6WgQz62d0wZAAAG: Received packet MESSAGE data 2["broadcast_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.125819+00:00","price":94650.17,"volume":4.733e-05,"data_source":"coinbase"}]
+received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+2026-01-14 15:35:42,129 - INFO - received event "broadcast_quote" from uddmi6v7vE11dSrUAAAH [/]
+✅ Broadcasted to room 'prices_BTCUSDT' successfully.
+✅ [BACKEND←BROADCASTER] 브로드캐스트 완료: BTCUSDT
+📢 [BACKEND←BROADCASTER] 수신: BTCUSDT = $94650.17 (provider: coinbase)
+🚀 Broadcasting 'realtime_quote' to room 'prices_BTCUSDT': $94650.17 (+0.00%)
+emitting event "realtime_quote" to prices_BTCUSDT [/]
+2026-01-14 15:35:42,129 - INFO - emitting event "realtime_quote" to prices_BTCUSDT [/]
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":1,"ticker":"BTC...ta_source":"coinbase"}]' [171 bytes]
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":1,"ticker":"BTC...ta_source":"coinbase"}]' [171 bytes]
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":1,"ticker":"BTC...ta_source":"coinbase"}]' [171 bytes]
+OZJ8O1DJNSuxz9uKAAAC: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.125819+00:00","price":94650.17,"volume":4.733e-05,"data_source":"coinbase"}]
+2026-01-14 15:35:42,130 - INFO - OZJ8O1DJNSuxz9uKAAAC: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.125819+00:00","price":94650.17,"volume":4.733e-05,"data_source":"coinbase"}]
+WWhLFCWMCR8Op_uEAAAE: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.125819+00:00","price":94650.17,"volume":4.733e-05,"data_source":"coinbase"}]
+2026-01-14 15:35:42,130 - INFO - WWhLFCWMCR8Op_uEAAAE: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.125819+00:00","price":94650.17,"volume":4.733e-05,"data_source":"coinbase"}]
+nZujtrgR4ivrGMdHAAAI: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.125819+00:00","price":94650.17,"volume":4.733e-05,"data_source":"coinbase"}]
+2026-01-14 15:35:42,130 - INFO - nZujtrgR4ivrGMdHAAAI: Sending packet MESSAGE data 2["realtime_quote",{"asset_id":1,"ticker":"BTCUSDT","timestamp_utc":"2026-01-14T06:35:42.125819+00:00","price":94650.17,"volume":4.733e-05,"data_source":"coinbase"}]
+✅ Broadcasted to room 'prices_BTCUSDT' successfully.
+✅ [BACKEND←BROADCASTER] 브로드캐스트 완료: BTCUSDT
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":1,"ticker":"BTC...ta_source":"coinbase"}]' [166 bytes]
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":1,"ticker":"BTC...ta_source":"coinbase"}]' [166 bytes]
+[36mDEBUG[0m:    > TEXT '42["realtime_quote",{"asset_id":1,"ticker":"BTC...ta_source":"coinbase"}]' [166 bytes]

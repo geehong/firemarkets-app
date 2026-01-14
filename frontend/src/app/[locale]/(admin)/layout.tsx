@@ -35,7 +35,7 @@ export default function AdminLayout({
         {/* Header */}
         <AppHeader />
         {/* Page Content */}
-        <div className="p-4 mx-auto md:p-6 max-w-[1920px] w-full flex-1 overflow-x-hidden">
+        <div className="p-4 mx-auto md:p-6 max-w-[1920px] w-full flex-1">
           {children}
         </div>
         <AppFooter />

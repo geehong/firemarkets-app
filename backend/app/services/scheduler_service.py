@@ -342,8 +342,10 @@ class SchedulerService:
                                     
                                     # HTML Content Construction: 서술형(Narrative) 스타일로 구성
                                     # 요약문은 문단 처음에 굵게 강조하여 서론 느낌을 주고, 이어서 상세 분석이 나오도록 함
-                                    content_html_ko = f"<h2>{title_ko}</h2><p><strong>{summary_text_ko}</strong></p><p>{analysis_text_ko}</p>"
-                                    content_html_en = f"<h2>{title_en}</h2><p><strong>{summary_text_en}</strong></p><p>{analysis_text_en}</p>"
+                                    # content_html_ko = f"<h2>{title_ko}</h2><p><strong>{summary_text_ko}</strong></p><p>{analysis_text_ko}</p>"
+                                    # content_html_en = f"<h2>{title_en}</h2><p><strong>{summary_text_en}</strong></p><p>{analysis_text_en}</p>"
+                                    content_html_ko = f"<p><strong>{summary_text_ko}</strong></p><p>{analysis_text_ko}</p>"
+                                    content_html_en = f"<p><strong>{summary_text_en}</strong></p><p>{analysis_text_en}</p>"
                                     
                                     # Aggregate Metadata from Cluster
                                     all_tickers = set()

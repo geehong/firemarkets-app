@@ -4,12 +4,12 @@ import React from 'react'
 import dynamic from 'next/dynamic'
 
 // Dynamic imports for editors
-const SimpleTiptapEditor = dynamic(() => import('../SimpleTiptapEditor'), { ssr: false })
-const SimpleQuillEditor = dynamic(() => import('../SimpleQuillEditor'), { ssr: false })
-const SimpleEditorJS = dynamic(() => import('../SimpleEditorJS'), { ssr: false })
-const SimpleSummernote = dynamic(() => import('../SimpleSummernote'), { ssr: false })
-const SimpleToastUiEditor = dynamic(() => import('../SimpleToastUiEditor'), { ssr: false })
-const SimpleTinyMceEditor = dynamic(() => import('../SimpleTinyMceEditor'), { ssr: false })
+const SimpleTiptapEditor = dynamic(() => import('../htmledit/SimpleTiptapEditor'), { ssr: false })
+const SimpleQuillEditor = dynamic(() => import('../htmledit/SimpleQuillEditor'), { ssr: false })
+const SimpleEditorJS = dynamic(() => import('../htmledit/SimpleEditorJS'), { ssr: false })
+const SimpleSummernote = dynamic(() => import('../htmledit/SimpleSummernote'), { ssr: false })
+const SimpleToastUiEditor = dynamic(() => import('../htmledit/SimpleToastUiEditor'), { ssr: false })
+const SimpleTinyMceEditor = dynamic(() => import('../htmledit/SimpleTinyMceEditor'), { ssr: false })
 
 interface MainContentBlockProps {
     title: { ko: string; en: string } | string

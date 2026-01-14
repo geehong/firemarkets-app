@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import SimpleQuillEditor from './SimpleQuillEditor'
+import SimpleQuillEditor from './htmledit/SimpleQuillEditor'
 // import { apiClient } from '@/lib/api' // 사용하지 않으므로 주석 처리
 
 // SimpleCKEditor에서 타입 선언을 관리하므로 여기서는 불필요
