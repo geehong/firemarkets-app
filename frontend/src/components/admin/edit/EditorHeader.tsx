@@ -13,18 +13,20 @@ export interface EditorBlockVisibility {
     aiAnalysis: boolean
     financial: boolean
     assetInfo: boolean
+    shortcode: boolean
 }
 
 interface EditorHeaderProps {
     mode: 'create' | 'edit'
     activeLanguage: 'ko' | 'en'
+    status: string // Add status prop
     onActiveLanguageChange: (lang: 'ko' | 'en') => void
     editorType: string
     onEditorTypeChange: (type: string) => void
     toastUiPreviewStyle?: 'vertical' | 'tab' | 'vertical-stack'
     onToastUiPreviewStyleChange?: (style: 'vertical' | 'tab' | 'vertical-stack') => void
     saving: boolean
-    onSave: (status: 'draft' | 'published') => void
+    onSave: (status: string) => void
     onCancel: () => void
     blockVisibility: EditorBlockVisibility
     onToggleBlock: (blockKey: keyof EditorBlockVisibility) => void
@@ -33,6 +35,7 @@ interface EditorHeaderProps {
 export default function EditorHeader({
     mode,
     activeLanguage,
+    status, // Accept prop
     onActiveLanguageChange,
     editorType,
     onEditorTypeChange,
@@ -76,7 +79,8 @@ export default function EditorHeader({
         seo: 'SEO 설정',
         aiAnalysis: 'AI 분석 (AI Analysis)',
         financial: '재무 데이터 (Financial)',
-        assetInfo: '자산 정보 (Asset Info)'
+        assetInfo: '자산 정보 (Asset Info)',
+        shortcode: '숏코드 삽입 (Shortcodes)'
     }
 
     return (
@@ -202,11 +206,16 @@ export default function EditorHeader({
                     </button>
                     <button
                         type="button"
-                        onClick={() => onSave('published')}
+                        onClick={() => {
+                            // In edit mode, respect the current status (from dropdown)
+                            // In create mode, default to published
+                            const targetStatus = mode === 'edit' ? status : 'published'
+                            onSave(targetStatus)
+                        }}
                         disabled={saving}
                         className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
                     >
-                        {saving ? '발행 중...' : '발행'}
+                        {saving ? '저장 중...' : (mode === 'edit' ? '저장' : '발행')}
                     </button>
                 </div>
             </div>

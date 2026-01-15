@@ -8,8 +8,9 @@ interface PublishingBlockProps {
   publishedAt?: string
   onPublishedAtChange: (date: string) => void
   onPreview: () => void
-  onSave: (status: 'draft' | 'published') => Promise<void>
+  onSave: (status: string) => Promise<void>
   saving?: boolean
+  mode?: 'create' | 'edit'
 }
 
 export default function PublishingBlock({
@@ -19,7 +20,8 @@ export default function PublishingBlock({
   onPublishedAtChange,
   onPreview,
   onSave,
-  saving = false
+  saving = false,
+  mode = 'create'
 }: PublishingBlockProps) {
   // Format date for datetime-local input (YYYY-MM-DDThh:mm)
   const formatDate = (dateString?: string) => {
@@ -88,14 +90,17 @@ export default function PublishingBlock({
         </button>
         <button
           type="button"
-          onClick={() => onSave('published')}
+          onClick={() => {
+            const targetStatus = mode === 'edit' ? status : 'published'
+            onSave(targetStatus)
+          }}
           disabled={saving}
           className={`flex-1 px-3 py-2 text-white rounded disabled:opacity-50 transition-colors font-medium text-sm shadow-sm ${status === 'scheduled'
-              ? 'bg-green-600 hover:bg-green-700'
-              : 'bg-blue-600 hover:bg-blue-700'
+            ? 'bg-green-600 hover:bg-green-700'
+            : 'bg-blue-600 hover:bg-blue-700'
             }`}
         >
-          {saving ? '처리 중...' : (status === 'scheduled' ? '예약 발행' : '발행하기')}
+          {saving ? '처리 중...' : (status === 'scheduled' ? '예약 발행' : (mode === 'edit' ? '저장' : '발행하기'))}
         </button>
       </div>
 

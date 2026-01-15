@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import dynamic from 'next/dynamic'
 import { usePost, useCreatePost, useUpdatePost, useRegeneratePost, Post, PostCreateData, PostUpdateData } from '@/hooks/data/usePosts'
 import { useAssetOverviews } from '@/hooks/assets/useAssetOverviews'
 import { useAssetDetail } from '@/hooks/assets/useAssets'
@@ -18,6 +19,10 @@ import SyncSettings from './editorblock/SyncSettings'
 import PostInfoBlock from './editorblock/PostInfoBlock'
 import FinancialDataBlock from './editorblock/FinancialDataBlock'
 import BlockWrapper from './BlockWrapper'
+import ShortcodeInsertionBlock from './editorblock/ShortcodeInsertionBlock'
+import SimpleQuillEditor from './htmledit/SimpleQuillEditor'
+
+const SimpleTinyMceEditor = dynamic(() => import('./htmledit/SimpleTinyMceEditor'), { ssr: false })
 
 export type PostFormState = Post
 
@@ -93,6 +98,7 @@ export default function BaseEdit({
   const [toastUiPreviewStyle, setToastUiPreviewStyle] = useState<'vertical' | 'tab' | 'vertical-stack'>('vertical')
   const [loading, setLoading] = useState(mode === 'edit')
   const [saving, setSaving] = useState(false)
+  const [useTinyMce, setUseTinyMce] = useState(false) // Toggle for TinyMCE
 
   // Block Visibility State
   const [blockVisibility, setBlockVisibility] = useState<EditorBlockVisibility>({
@@ -101,6 +107,7 @@ export default function BaseEdit({
     sync: true,
     postInfo: true,
     media: true,
+    shortcode: true,
     seo: true,
     aiAnalysis: true,
     financial: showFinancialData,
@@ -115,6 +122,7 @@ export default function BaseEdit({
     'organization',
 
     'media',
+    'shortcode',
     'seo',
   ])
 
@@ -334,7 +342,7 @@ export default function BaseEdit({
     handleUpdate('slug', slug)
   }
 
-  const handleSave = useCallback(async (status: 'draft' | 'published' = 'draft') => {
+  const handleSave = useCallback(async (status: string = 'draft') => {
     try {
       setSaving(true)
       const postPayload: any = {
@@ -423,7 +431,6 @@ export default function BaseEdit({
             activeLanguage={activeLanguage}
             editorType={editorType}
             toastUiPreviewStyle={toastUiPreviewStyle}
-
           />
         )
         break
@@ -471,6 +478,7 @@ export default function BaseEdit({
             onPublishedAtChange={(val) => handleUpdate('published_at', val)}
             onPreview={() => { }} // TODO: Implement preview
             onSave={handleSave}
+            mode={mode}
             saving={saving}
           />
         )
@@ -503,6 +511,25 @@ export default function BaseEdit({
             postInfo={formData.post_info}
             postType={formData.post_type}
             slug={formData.slug}
+          />
+        )
+        break
+      case 'shortcode':
+        title = '숏코드 삽입 (Shortcodes)'
+        content = (
+          <ShortcodeInsertionBlock
+            onInsert={(shortcode) => {
+              const field = activeLanguage === 'ko' ? 'content_ko' : 'content';
+              const currentContent = formData[field] || '';
+              const newContent = currentContent + `\n<p>${shortcode}</p>`;
+
+              setFormData(prev => ({
+                ...prev,
+                [field]: newContent
+              }));
+
+              if (onUpdateFormData) onUpdateFormData(field, newContent);
+            }}
           />
         )
         break
@@ -626,6 +653,7 @@ export default function BaseEdit({
         mode={mode}
         activeLanguage={activeLanguage}
         onActiveLanguageChange={setActiveLanguage}
+        status={formData.status}
         editorType={editorType}
         onEditorTypeChange={setEditorType}
         toastUiPreviewStyle={toastUiPreviewStyle}

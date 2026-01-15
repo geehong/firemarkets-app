@@ -2,12 +2,12 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, ArrowUpDown, Bot, Eye } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, ArrowUpDown, Bot, Eye, RefreshCw, Eraser } from 'lucide-react';
 import { useAuth } from '@/hooks/auth/useAuthNew';
 import { nanoid } from 'nanoid';
 import { parseLocalized } from '@/utils/parseLocalized';
 import { useLocale } from 'next-intl';
-import { usePosts, useDeletePost, useUpdatePost, useMergePosts, Post } from '@/hooks/data/usePosts';
+import { usePosts, useDeletePost, useUpdatePost, useMergePosts, useCleanupPosts, Post } from '@/hooks/data/usePosts';
 
 const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatus?: string }> = ({
   postType = 'post',
@@ -35,6 +35,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
   const [selectedPosts, setSelectedPosts] = useState<number[]>([]);
   const [bulkAction, setBulkAction] = useState('delete');
   const [isMerging, setIsMerging] = useState(false); // Add loading state
+  const [isCleaning, setIsCleaning] = useState(false);
 
   // Helper to update URL
   const updateURL = useCallback((updates: Record<string, string | number | undefined>) => {
@@ -96,7 +97,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
   // }, [localSearchInput, searchTerm, updateURL]);
 
   // Hooks
-  const { data, isLoading, isError, error, refetch } = usePosts({
+  const { data, isLoading, isError, error, refetch, isRefetching } = usePosts({
     page: currentPage,
     page_size: pageSize,
     post_type: currentPostType === 'all' ? undefined : currentPostType,
@@ -110,6 +111,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
   const deletePostMutation = useDeletePost();
   const updatePostMutation = useUpdatePost();
   const mergePostsMutation = useMergePosts();
+  const cleanupPostsMutation = useCleanupPosts();
 
   // Handle 401 Error in usePosts
   useEffect(() => {
@@ -165,6 +167,29 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
     } else {
       setSelectedPosts(selectedPosts.filter(id => id !== postId));
     }
+  };
+
+  const handleCleanup = async () => {
+    if (!confirm('불량 뉴스(내용 없음, 번역 실패 등)를 자동으로 정리하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) {
+      return;
+    }
+
+    setIsCleaning(true);
+    try {
+      const result = await cleanupPostsMutation.mutateAsync();
+      // @ts-ignore
+      alert(result.message);
+    } catch (err) {
+      console.error('Cleanup error:', err);
+      // @ts-ignore
+      alert(`정리 중 오류가 발생했습니다: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsCleaning(false);
+    }
+  };
+
+  const handleRefresh = () => {
+    refetch();
   };
 
   const handleBulkAction = async () => {
@@ -314,13 +339,17 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
             </h1>
           </div>
 
-          <button
-            onClick={() => router.push(`/admin/${typeList.includes('post') ? 'post' : 'page'}/create?post_type=${currentPostType}`)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            새글추가
-          </button>
+          <div className="flex items-center gap-2">
+
+
+            <button
+              onClick={() => router.push(`/admin/${typeList.includes('post') ? 'post' : 'page'}/create?post_type=${currentPostType}`)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              새글추가
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-8 mb-4">
@@ -415,8 +444,30 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
               </select>
             )}
           </div>
-
           <div className="ml-auto flex items-center gap-2">
+            {/* Refresh Button */}
+            <button
+              onClick={handleRefresh}
+              className={`p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors ${isRefetching || isLoading ? 'animate-spin' : ''}`}
+              title="새로고침"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+
+            {/* Cleanup Button */}
+            {(typeList.includes('news') || typeList.includes('raw_news') || currentPostType === 'all' || typeList.includes('all')) && (
+              <button
+                onClick={handleCleanup}
+                disabled={isCleaning}
+                className={`p-1.5 bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900/30 dark:hover:bg-red-900/50 dark:text-red-400 rounded-lg flex items-center justify-center border border-red-200 dark:border-red-800 ${isCleaning ? 'animate-pulse' : ''}`}
+                title={locale === 'ko' ? "불량 뉴스 정리 (빈 내용, 오역 등)" : "Clean News (Empty content, translation errors, etc.)"}
+              >
+                <Eraser className="w-4 h-4" />
+              </button>
+            )}
+
+            <div className="h-4 w-px bg-gray-300 dark:bg-gray-600 mx-1"></div>
+
             <select
               value={pageSize}
               onChange={(e) => handleStateChange({ page_size: Number(e.target.value), page: 1 })}
@@ -452,172 +503,178 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
         </div>
       </div>
 
-      {isLoading && (
-        <div className="text-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-          <p className="mt-2 text-gray-600 dark:text-gray-400">Loading...</p>
-        </div>
-      )}
+      {
+        isLoading && (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+            <p className="mt-2 text-gray-600 dark:text-gray-400">Loading...</p>
+          </div>
+        )
+      }
 
-      {isError && (
-        <div className="text-center py-8">
-          <p className="text-red-500 mb-4">Error loading posts: {error instanceof Error ? error.message : 'Unknown error'}</p>
-          <button
-            onClick={() => refetch()}
-            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
-          >
-            Try Again
-          </button>
-        </div>
-      )}
+      {
+        isError && (
+          <div className="text-center py-8">
+            <p className="text-red-500 mb-4">Error loading posts: {error instanceof Error ? error.message : 'Unknown error'}</p>
+            <button
+              onClick={() => refetch()}
+              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
+        )
+      }
 
-      {!isLoading && !isError && (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50 dark:bg-gray-700">
-              <tr>
-                <th className="px-4 py-3 text-left">
-                  <input
-                    type="checkbox"
-                    onChange={(e) => handleSelectAll(e.target.checked)}
-                    checked={blogs.length > 0 && selectedPosts.length === blogs.length}
-                    className="rounded border-gray-300"
-                  />
-                </th>
-                <th
-                  className="px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
-                  onClick={() => handleSort('title')}
-                >
-                  <div className="flex items-center">
-                    제목 {renderSortIcon('title')}
-                  </div>
-                </th>
-                <th
-                  className="px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
-                  onClick={() => handleSort('post_type')}
-                >
-                  <div className="flex items-center">
-                    타입 {renderSortIcon('post_type')}
-                  </div>
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white">카테고리</th>
-                <th
-                  className="px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
-                  onClick={() => handleSort('status')}
-                >
-                  <div className="flex items-center">
-                    상태 {renderSortIcon('status')}
-                  </div>
-                </th>
-                <th
-                  className="px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
-                  onClick={() => handleSort('created_at')}
-                >
-                  <div className="flex items-center">
-                    작성일 {renderSortIcon('created_at')}
-                  </div>
-                </th>
-                <th
-                  className="px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
-                  onClick={() => handleSort('published_at')}
-                >
-                  <div className="flex items-center">
-                    발행일 {renderSortIcon('published_at')}
-                  </div>
-                </th>
-                <th className="px-4 py-3 text-center text-sm font-medium text-gray-900 dark:text-white">액션</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {blogs.length === 0 ? (
+      {
+        !isLoading && !isError && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-50 dark:bg-gray-700">
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
-                    No posts available
-                  </td>
+                  <th className="px-4 py-3 text-left">
+                    <input
+                      type="checkbox"
+                      onChange={(e) => handleSelectAll(e.target.checked)}
+                      checked={blogs.length > 0 && selectedPosts.length === blogs.length}
+                      className="rounded border-gray-300"
+                    />
+                  </th>
+                  <th
+                    className="px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                    onClick={() => handleSort('title')}
+                  >
+                    <div className="flex items-center">
+                      제목 {renderSortIcon('title')}
+                    </div>
+                  </th>
+                  <th
+                    className="px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                    onClick={() => handleSort('post_type')}
+                  >
+                    <div className="flex items-center">
+                      타입 {renderSortIcon('post_type')}
+                    </div>
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white">카테고리</th>
+                  <th
+                    className="px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                    onClick={() => handleSort('status')}
+                  >
+                    <div className="flex items-center">
+                      상태 {renderSortIcon('status')}
+                    </div>
+                  </th>
+                  <th
+                    className="px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                    onClick={() => handleSort('created_at')}
+                  >
+                    <div className="flex items-center">
+                      작성일 {renderSortIcon('created_at')}
+                    </div>
+                  </th>
+                  <th
+                    className="px-4 py-3 text-left text-sm font-medium text-gray-900 dark:text-white cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                    onClick={() => handleSort('published_at')}
+                  >
+                    <div className="flex items-center">
+                      발행일 {renderSortIcon('published_at')}
+                    </div>
+                  </th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-900 dark:text-white">액션</th>
                 </tr>
-              ) : (
-                blogs.map((blog) => (
-                  <tr key={blog.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        checked={selectedPosts.includes(blog.id)}
-                        onChange={(e) => handleSelectPost(blog.id, e.target.checked)}
-                        className="rounded border-gray-300"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <h3
-                        className="text-sm font-medium text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1"
-                        onClick={() => handleEditPost(blog.id)}
-                      >
-                        {parseLocalized(blog.title, locale)}
-                        {blog.post_type.startsWith('ai_') && (
-                          <Bot className="w-4 h-4 text-purple-600 dark:text-purple-400" aria-label="AI Generated" />
-                        )}
-                      </h3>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                      <span className={`px-2 py-0.5 rounded text-xs flex items-center gap-1 w-fit ${blog.post_type.startsWith('ai_')
-                        ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
-                        : 'bg-gray-100 dark:bg-gray-700'
-                        }`}>
-                        {blog.post_type.startsWith('ai_') && <Bot className="w-3 h-3" />}
-                        {blog.post_type}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                      {blog.category?.name || '-'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${blog.status === 'published'
-                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                        : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                        }`}>
-                        {blog.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                      {new Date(blog.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                      {blog.published_at ? new Date(blog.published_at).toLocaleDateString() : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => handleEditPost(blog.id)}
-                          className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-100 dark:text-blue-400 dark:hover:text-blue-300 dark:hover:bg-blue-900 rounded"
-                          title="에디터"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <a
-                          href={blog.post_type === 'news' ? `/news/${blog.slug}` : blog.post_type === 'brief_news' ? `/briefnews/${blog.slug}` : `/blog/${blog.slug}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-1 text-green-600 hover:text-green-800 hover:bg-green-100 dark:text-green-400 dark:hover:text-green-300 dark:hover:bg-green-900 rounded"
-                          title="보기"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </a>
-                        <button
-                          onClick={() => handleDeletePost(blog.id)}
-                          className="p-1 text-red-600 hover:text-red-800 hover:bg-red-100 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900 rounded"
-                          title="삭제"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                {blogs.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+                      No posts available
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+                ) : (
+                  blogs.map((blog) => (
+                    <tr key={blog.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedPosts.includes(blog.id)}
+                          onChange={(e) => handleSelectPost(blog.id, e.target.checked)}
+                          className="rounded border-gray-300"
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <h3
+                          className="text-sm font-medium text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1"
+                          onClick={() => handleEditPost(blog.id)}
+                        >
+                          {parseLocalized(blog.title, locale)}
+                          {blog.post_type.startsWith('ai_') && (
+                            <Bot className="w-4 h-4 text-purple-600 dark:text-purple-400" aria-label="AI Generated" />
+                          )}
+                        </h3>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                        <span className={`px-2 py-0.5 rounded text-xs flex items-center gap-1 w-fit ${blog.post_type.startsWith('ai_')
+                          ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
+                          : 'bg-gray-100 dark:bg-gray-700'
+                          }`}>
+                          {blog.post_type.startsWith('ai_') && <Bot className="w-3 h-3" />}
+                          {blog.post_type}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                        {blog.category?.name || '-'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${blog.status === 'published'
+                          ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                          : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                          }`}>
+                          {blog.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                        {new Date(blog.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                        {blog.published_at ? new Date(blog.published_at).toLocaleDateString() : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => handleEditPost(blog.id)}
+                            className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-100 dark:text-blue-400 dark:hover:text-blue-300 dark:hover:bg-blue-900 rounded"
+                            title="에디터"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <a
+                            href={blog.post_type === 'news' ? `/news/${blog.slug}` : blog.post_type === 'brief_news' ? `/briefnews/${blog.slug}` : `/blog/${blog.slug}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1 text-green-600 hover:text-green-800 hover:bg-green-100 dark:text-green-400 dark:hover:text-green-300 dark:hover:bg-green-900 rounded"
+                            title="보기"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </a>
+                          <button
+                            onClick={() => handleDeletePost(blog.id)}
+                            className="p-1 text-red-600 hover:text-red-800 hover:bg-red-100 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900 rounded"
+                            title="삭제"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+    </div >
   );
 };
 

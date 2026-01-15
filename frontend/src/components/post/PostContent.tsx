@@ -2,6 +2,8 @@
 
 import React from 'react'
 import TableOfContents from '../template/block/TableOfContents'
+import { parseShortcodes } from '@/utils/shortcodeParser'
+import ShortcodeRenderer from './ShortcodeRenderer'
 
 interface PostContentProps {
     content: string
@@ -20,8 +22,20 @@ const PostContent: React.FC<PostContentProps> = ({ content }) => {
                 <article
                     id="post-article-content"
                     className="prose dark:prose-invert max-w-none"
-                    dangerouslySetInnerHTML={{ __html: content }}
-                />
+                >
+                    {parseShortcodes(content).map((part, index) => {
+                        if (part.type === 'shortcode' && part.shortcode) {
+                            return <ShortcodeRenderer key={index} shortcode={part.shortcode} />
+                        }
+                        return (
+                            <div
+                                key={index}
+                                dangerouslySetInnerHTML={{ __html: part.content || '' }}
+                                className="html-part"
+                            />
+                        )
+                    })}
+                </article>
             </div>
         </>
     )

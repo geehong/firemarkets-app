@@ -23,7 +23,44 @@ import time
 import json
 from datetime import datetime
 
+
+import logging
+import time
+import json
+import re
+from datetime import datetime
+
 logger = logging.getLogger(__name__)
+
+def is_mostly_english(text):
+    """
+    Heuristic to check if text in a Korean field is actually mostly English.
+    Returns True if the proportion of Korean characters is too low.
+    """
+    if not text:
+        return False
+        
+    # Strip HTML tags
+    clean_text = re.sub('<[^<]+?>', '', text)
+    clean_text = clean_text.strip()
+    
+    if not clean_text:
+        return False
+        
+    # Count Korean characters (Syllables)
+    ko_chars = len(re.findall('[가-힣]', clean_text))
+    # Count English alphabet characters
+    en_chars = len(re.findall('[a-zA-Z]', clean_text))
+    
+    # Heuristic: If English characters are dominant (e.g. > 100) and Korean characters 
+    # make up less than 20% of the total alpha count, it's likely a failed translation.
+    total_alpha = ko_chars + en_chars
+    if total_alpha > 50:
+        ratio = ko_chars / total_alpha
+        if ratio < 0.25: # Less than 25% Korean
+            return True
+            
+    return False
 
 router = APIRouter()
 
@@ -1136,3 +1173,88 @@ async def delete_comment(
     db.delete(comment)
     db.commit()
     return comment
+
+
+@router.post("/cleanup", response_model=dict)
+async def cleanup_posts(
+    current_user: User = Depends(get_current_active_superuser),
+    db: Session = Depends(get_postgres_db)
+):
+    """
+    불량 뉴스 데이터 정리 (관리자 전용)
+    - 내용이 없거나 짧은 뉴스
+    - 번역이 실패하여 한글 필드에 영어가 대부분인 뉴스
+    """
+    try:
+        # 1. Fetch candidates (raw_news, brief_news, ai_draft_news)
+        posts = db.query(Post).filter(
+            Post.post_type.in_(['raw_news', 'brief_news', 'ai_draft_news'])
+        ).all()
+        
+        to_delete_ids = []
+        
+        for p in posts:
+            # Check 1: Empty Content/Description
+            content_empty = not p.content or not p.content.strip()
+            
+            # Check description emptiness
+            desc = p.description
+            is_desc_empty = False
+            
+            if desc is None:
+                is_desc_empty = True
+            elif isinstance(desc, dict):
+                has_text = False
+                for val in desc.values():
+                    if val and str(val).strip():
+                        has_text = True
+                        break
+                if not has_text:
+                    is_desc_empty = True
+            elif isinstance(desc, str):
+                 if not desc.strip():
+                     is_desc_empty = True
+            else:
+                if not desc:
+                    is_desc_empty = True
+
+            # If both are empty, mark for deletion
+            if content_empty and is_desc_empty:
+                to_delete_ids.append(p.id)
+                continue
+
+            # Check 2: Short length for raw_news and ai_draft_news
+            if p.post_type in ['raw_news', 'ai_draft_news']:
+                c_len = len(p.content.strip()) if p.content else 0
+                ck_len = len(p.content_ko.strip()) if p.content_ko else 0
+                # If neither the English nor Korean content exceeds 256 characters
+                if max(c_len, ck_len) <= 256:
+                    to_delete_ids.append(p.id)
+                    continue
+
+            # Check 3: Mixed English/Korean content in content_ko
+            # This is specifically for failed AI translations where content_ko is mostly English.
+            if p.content_ko and is_mostly_english(p.content_ko):
+                to_delete_ids.append(p.id)
+                continue
+
+        count = len(to_delete_ids)
+        
+        if count > 0:
+            # Bulk delete
+            chunk_size = 1000
+            deleted_total = 0
+            
+            for i in range(0, count, chunk_size):
+                chunk = to_delete_ids[i:i+chunk_size]
+                db.query(Post).filter(Post.id.in_(chunk)).delete(synchronize_session=False)
+                deleted_total += len(chunk)
+            
+            db.commit()
+            return {"message": f"Successfully deleted {deleted_total} bad news records.", "count": deleted_total}
+        else:
+            return {"message": "No bad news records found to delete.", "count": 0}
+
+    except Exception as e:
+        logger.error(f"Cleanup error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

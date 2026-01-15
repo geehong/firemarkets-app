@@ -2,6 +2,7 @@
 
 import React, { useRef, useState } from 'react'
 import { Image as ImageIcon, Link as LinkIcon, Upload as UploadIcon } from 'lucide-react'
+import { tokenService } from '@/services/tokenService'
 
 interface MediaBlockProps {
     coverImage: string | null
@@ -40,6 +41,9 @@ export default function MediaBlock({
 
             const response = await fetch('/uploads/image', {
                 method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${tokenService.getAccessToken()}`
+                },
                 body: formData,
             })
 
@@ -78,6 +82,9 @@ export default function MediaBlock({
 
             const response = await fetch('/uploads/image', {
                 method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${tokenService.getAccessToken()}`
+                },
                 body: formData,
             })
 

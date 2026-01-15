@@ -1,7 +1,11 @@
 'use client'
 
 import React, { useState, useEffect, useRef, useCallback, ReactNode } from 'react'
+import dynamic from 'next/dynamic'
 import SimpleQuillEditor from './htmledit/SimpleQuillEditor'
+import ShortcodeInsertionBlock from './editorblock/ShortcodeInsertionBlock'
+
+const SimpleTinyMceEditor = dynamic(() => import('./htmledit/SimpleTinyMceEditor'), { ssr: false })
 
 // 실제 API 응답 구조에 맞춘 PostFormState 타입
 export type PostFormState = {
@@ -103,6 +107,7 @@ export default function BaseEdit({
   const [activeLanguage, setActiveLanguage] = useState<'ko' | 'en'>('ko')
   const [loading, setLoading] = useState(mode === 'edit')
   const [saving, setSaving] = useState(false)
+  const [useTinyMce, setUseTinyMce] = useState(false) // Toggle for TinyMCE
 
   // CKEditor 내용 변경을 추적하기 위한 ref
   const editorContentRef = useRef<string>('')
@@ -298,6 +303,19 @@ export default function BaseEdit({
     return Math.max(1, readTime) // 최소 1분
   }
 
+  // 숏코드 삽입 핸들러
+  const handleInsertShortcode = (shortcode: string) => {
+    setFormData(prev => {
+      const field = activeLanguage === 'ko' ? 'content_ko' : 'content'
+      const currentContent = prev[field]
+      // Append content. Ideally insert at cursor, but appending is safer for state manipulation without ref
+      return {
+        ...prev,
+        [field]: currentContent + `\n<p>${shortcode}</p>`
+      }
+    })
+  }
+
   // 저장 함수
   const handleSave = async (status: 'draft' | 'published' = 'draft') => {
     try {
@@ -476,19 +494,41 @@ export default function BaseEdit({
 
               {/* 본문 */}
               <div className="p-6">
-                <SimpleQuillEditor
-                  key={activeLanguage}
-                  value={activeLanguage === 'ko' ? formData.content_ko : formData.content}
-                  onChange={handleEditorChange}
-                  placeholder="본문을 입력하세요..."
-                  height={500}
-                />
+                <div className="flex justify-end mb-2">
+                  <button
+                    onClick={() => setUseTinyMce(!useTinyMce)}
+                    className="text-xs text-gray-500 hover:text-blue-600 underline"
+                  >
+                    {useTinyMce ? 'Switch to Quill' : 'Switch to TinyMCE'}
+                  </button>
+                </div>
+                {useTinyMce ? (
+                  <SimpleTinyMceEditor
+                    key={`tinymce-${activeLanguage}`}
+                    value={activeLanguage === 'ko' ? formData.content_ko : formData.content}
+                    onChange={(val) => {
+                      // TinyMCE Change Handler
+                      handleEditorChange(val)
+                    }}
+                    placeholder="본문을 입력하세요..."
+                    height={500}
+                  />
+                ) : (
+                  <SimpleQuillEditor
+                    key={`quill-${activeLanguage}`}
+                    value={activeLanguage === 'ko' ? formData.content_ko : formData.content}
+                    onChange={handleEditorChange}
+                    placeholder="본문을 입력하세요..."
+                    height={500}
+                  />
+                )}
               </div>
             </div>
           </div>
 
           {/* 오른쪽: 사이드바 */}
           <div className="w-80 space-y-6">
+            <ShortcodeInsertionBlock onInsert={handleInsertShortcode} />
             {/* 사이드바는 BlogEdit, AssetsEdit에서 구현 */}
             {children}
           </div>

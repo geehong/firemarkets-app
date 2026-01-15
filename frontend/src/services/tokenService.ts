@@ -204,6 +204,12 @@ class TokenService {
     const tokenData = this.getTokenData()
     return tokenData !== null && !this.isTokenExpired()
   }
+
+  // 로그인 유지 여부 확인 (LocalStorage 사용 여부)
+  isPersistent(): boolean {
+    if (typeof window === 'undefined') return false
+    return !!localStorage.getItem(this.ACCESS_TOKEN_KEY)
+  }
 }
 
 export const tokenService = new TokenService()

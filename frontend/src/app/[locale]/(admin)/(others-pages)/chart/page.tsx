@@ -41,8 +41,13 @@ const OHLCVVolumeChart = dynamic(
     { ssr: false }
 )
 
+const MultipleComparisonChart = dynamic(
+    () => import('@/components/charts/ohlcvcharts/MultipleComparisonChart'),
+    { ssr: false }
+)
+
 export default function ChartsPage() {
-    const [activeTab, setActiveTab] = useState<'bar' | 'line' | 'treemap' | 'live' | 'mini' | 'ohlcv' | 'onchain' | 'volume'>('bar')
+    const [activeTab, setActiveTab] = useState<'bar' | 'line' | 'treemap' | 'live' | 'mini' | 'ohlcv' | 'onchain' | 'volume' | 'multiple'>('bar')
 
     const tabs = [
         { id: 'bar', label: 'Bar Charts' },
@@ -52,6 +57,7 @@ export default function ChartsPage() {
         { id: 'mini', label: 'Mini Charts' },
         { id: 'ohlcv', label: 'OHLCV' },
         { id: 'volume', label: 'Volume' },
+        { id: 'multiple', label: 'Multiple Comparison' },
         { id: 'onchain', label: 'On-Chain' },
     ] as const
 
@@ -168,6 +174,18 @@ export default function ChartsPage() {
                                 assetIdentifier="BTCUSDT"
                                 dataInterval="1d"
                                 title="BTC/USDT Volume"
+                                height={650}
+                            />
+                        </div>
+                    </ComponentCard>
+                )}
+
+                {activeTab === 'multiple' && (
+                    <ComponentCard title="Multiple Asset Comparison">
+                        <div className="h-[650px]">
+                            <MultipleComparisonChart
+                                assets={['BTCUSDT', 'SPY', 'GSUSD']}
+                                interval="1d"
                                 height={650}
                             />
                         </div>

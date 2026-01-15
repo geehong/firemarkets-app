@@ -34,7 +34,7 @@ class SessionService {
   private refreshTimer: NodeJS.Timeout | null = null
   private activityTimer: NodeJS.Timeout | null = null
   private readonly REFRESH_INTERVAL = 5 * 60 * 1000 // 5분마다 체크
-  private readonly INACTIVITY_TIMEOUT = 30 * 60 * 1000 // 30분 비활성 시 로그아웃
+  private readonly INACTIVITY_TIMEOUT = 120 * 60 * 1000 // 2시간 비활성 시 로그아웃 (사용자 요청)
 
   constructor() {
     // 클라이언트 사이드에서만 초기화
@@ -214,6 +214,12 @@ class SessionService {
   private setupActivityTracking(): void {
     // 클라이언트 사이드에서만 실행
     if (typeof window === 'undefined') return
+
+    // 로그인 유지가 켜져있으면(Persistent Session) 자동 로그아웃 하지 않음
+    if (tokenService.isPersistent()) {
+      console.log('Persistent session verified. Inactivity timer disabled.')
+      return
+    }
 
     const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click']
 

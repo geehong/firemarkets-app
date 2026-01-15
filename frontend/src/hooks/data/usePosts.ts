@@ -642,3 +642,33 @@ export const useRegeneratePost = () => {
     },
   })
 }
+
+// 뉴스 정리 훅
+export const useCleanupPosts = () => {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (): Promise<{ message: string; count: number }> => {
+      const url = `${getApiBase()}/posts/cleanup`
+      console.log('🔍 [useCleanupPosts] Cleaning up posts:', url)
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.detail || `Failed to cleanup posts: ${response.status}`)
+      }
+
+      const data = await response.json()
+      console.log('✅ [useCleanupPosts] Cleanup completed:', data)
+      return data
+    },
+    onSuccess: () => {
+      // 목록 갱신
+      queryClient.invalidateQueries({ queryKey: ['posts'] })
+    },
+  })
+}
