@@ -252,6 +252,13 @@ class DataProcessor:
             if items is None:
                 items = payload if isinstance(payload, list) else [payload]
 
+            # Metadata extraction
+            meta = {}
+            if isinstance(payload, dict):
+                meta = payload.get("metadata") or payload.get("meta") or {}
+            if not meta:
+                meta = task.get("meta") or {}
+
             # Repository로 위임
             if task_type == "stock_profile":
                 return await self.repository.save_stock_profile(items)
@@ -264,14 +271,9 @@ class DataProcessor:
             elif task_type in ("crypto_info", "crypto_data"):
                 return await self.repository.save_crypto_data(items)
             elif task_type in ("ohlcv_data", "ohlcv_day_data", "ohlcv_intraday_data"):
-                meta = {}
-                if isinstance(payload, dict):
-                    meta = payload.get("metadata") or payload.get("meta") or {}
-                if not meta:
-                    meta = task.get("meta") or {}
                 return await self.repository.save_ohlcv_data(items, meta)
             elif task_type == "world_assets_ranking":
-                return await self.repository.save_world_assets_ranking(items, task.get("meta", {}))
+                return await self.repository.save_world_assets_ranking(items, meta)
             elif task_type == "macrotrends_financials":
                 return await self.repository.save_macrotrends_financials(items)
             elif task_type == "onchain_metric":

@@ -1,4 +1,5 @@
 import time
+import os
 import json
 from typing import Any, Callable, Optional, List, Dict
 
@@ -139,6 +140,24 @@ class ConfigManager:
                         return keys
         except ImportError:
             logger.warning("Could not import GLOBAL_APP_CONFIGS, falling back to database query")
+
+    def get_bitcoin_data_api_key(self) -> Optional[str]:
+        """Retrieves the Bitcoin Data API Key."""
+        # Check env var first
+        env_key = os.getenv("BITCOIN_DATA_API_KEY")
+        if env_key:
+            return env_key
+            
+        # Check in get_api_keys
+        api_keys = self.get_api_keys()
+        if api_keys:
+             # Try various likely keys
+             for k in ["BITCOIN_DATA_API_KEY", "BITCOIN_DATA", "BITCOIN_IS_DATA_KEY"]:
+                 if k in api_keys:
+                     return api_keys[k]
+        
+        # Check direct config
+        return self._get_config("BITCOIN_DATA_API_KEY", None, str)
 
         # Fallback to database query
         db = SessionLocal()

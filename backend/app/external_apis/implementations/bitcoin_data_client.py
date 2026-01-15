@@ -23,16 +23,32 @@ class BitcoinDataClient(OnChainAPIClient):
         # Standard API URL (v1)
         self.base_url = "https://bitcoin-data.com/v1"
         self.call_timestamps = []  # Track request timestamps for strict rate limiting
+        
+        # Load API Key
+        from app.core.config_manager import ConfigManager
+        self.config_manager = ConfigManager()
+        self.api_key = self.config_manager.get_bitcoin_data_api_key()
+        
+        if self.api_key:
+            logger.info("BitcoinDataClient initialized with API Key")
+        else:
+            logger.warning("BitcoinDataClient initialized WITHOUT API Key. Strict rate limits (8/hr) apply.")
 
     async def _enforce_rate_limit(self):
         """
-        Enforce 8 requests per hour limit internally.
-        Since ApiStrategyManager only handles per-minute limits comfortably,
-        we handle the hourly constraint here to support ~15 metrics collection.
+        Enforce rate limits internally.
+        If API Key is present, we assume higher limits (Pro tier: 200/hr, 5000/day).
+        If no API Key, we enforce strict 8 requests per hour limit.
         """
         import time
         import asyncio
         
+        # If API key is present, we relax the 8/hr limit
+        # But we still want to avoid bursting too fast if needed, but 200/hr is generous
+        if self.api_key:
+            # For Pro tier, simple burst protection is enough, handled by get_rate_limit_info
+            return
+
         current_time = time.time()
         # Remove timestamps older than 1 hour (3600 seconds)
         self.call_timestamps = [t for t in self.call_timestamps if current_time - t < 3600]
@@ -58,13 +74,17 @@ class BitcoinDataClient(OnChainAPIClient):
             async with httpx.AsyncClient() as client:
                 # Test with a lightweight endpoint
                 url = f"{self.base_url}/btc-price?size=1"
+                params = {}
+                if self.api_key:
+                    params['api_key'] = self.api_key
+
                 try:
-                    response = await client.get(url, timeout=self.api_timeout)
+                    response = await client.get(url, params=params, timeout=self.api_timeout)
                     if response.status_code == 200:
                         logger.info(f"Bitcoin Data API connection successful: {url}")
                         return True
                     else:
-                        logger.warning(f"Connection test failed: {response.status_code}")
+                        logger.warning(f"Connection test failed: {response.status_code} - {response.text}")
                 except Exception as e:
                     logger.warning(f"Connection test failed for {url}: {e}")
                 
@@ -75,16 +95,23 @@ class BitcoinDataClient(OnChainAPIClient):
     
     def get_rate_limit_info(self) -> Dict[str, Any]:
         """Get Bitcoin Data API rate limit information"""
+        if self.api_key:
+            # Pro tier limits
+            return {
+                "free_tier": {
+                    "requests_per_minute": 300,
+                    "requests_per_hour": 200,    # Pro tier
+                    "requests_per_day": 5000,
+                    "calls_per_minute": 60       # Relaxed
+                }
+            }
+        
         return {
             "free_tier": {
                 "requests_per_minute": 1,  # Prevent bursts (API limit is 8/hr)
                 "requests_per_hour": 8,    # Free plan: 8 requests per hour
                 "requests_per_day": 15,    # Free plan: 15 requests per day
                 "calls_per_minute": 1      # For ApiStrategyManager compatibility
-            },
-            "pro_tier": {
-                "requests_per_minute": 300,
-                "requests_per_day": 10000
             }
         }
     
@@ -96,13 +123,22 @@ class BitcoinDataClient(OnChainAPIClient):
         
         try:
             url = f"{self.base_url}/{endpoint}"
-            if params:
-                query_string = "&".join([f"{k}={v}" for k, v in params.items()])
-                url = f"{url}?{query_string}"
             
-            logger.info(f"Fetching {endpoint} from {url}")
+            final_params = params.copy() if params else {}
+            if self.api_key:
+                final_params['api_key'] = self.api_key
             
-            response = await client.get(url, timeout=self.api_timeout)
+            # Log URL without API key for security
+            log_url = url
+            if final_params:
+                display_params = {k: v for k, v in final_params.items() if k != 'api_key'}
+                if display_params:
+                     query_string = "&".join([f"{k}={v}" for k, v in display_params.items()])
+                     log_url = f"{url}?{query_string}"
+            
+            logger.info(f"Fetching {endpoint} from {log_url}")
+            
+            response = await client.get(url, params=final_params, timeout=self.api_timeout)
             
             if response.status_code == 200:
                 data = response.json()
@@ -121,6 +157,9 @@ class BitcoinDataClient(OnChainAPIClient):
                 if isinstance(data, dict):
                     return [data]
                 
+                return None
+            elif response.status_code == 429:
+                logger.warning(f"Bitcoin API Rate Limit Exceeded (429). Headers: {response.headers}")
                 return None
             else:
                 logger.warning(f"Bitcoin API error {response.status_code}: {response.text}")

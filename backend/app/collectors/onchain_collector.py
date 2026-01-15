@@ -86,15 +86,38 @@ class OnchainCollector(BaseCollector):
             f"Collecting {len(metrics_to_collect)} metrics for asset_id {self.bitcoin_asset_id}."
         )
 
-        # 3. 데이터 수집 실행 및 결과 집계
-        tasks = [
-            self.process_with_semaphore(
-                self._fetch_and_enqueue_for_metric(metric_name)
-            )
-            for metric_name in metrics_to_collect
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # 3. 데이터 수집 실행 및 결과 집계 (순차 실행으로 변경)
+        # 무료 티어의 8req/hour 제한을 준수하기 위해 순간적인 Burst 요청을 방지합니다.
+        results = []
         
+        # API 키 유무에 따른 지연 시간 설정
+        api_key = self.config_manager.get_bitcoin_data_api_key()
+        if api_key:
+            delay = 2  # API 키가 있으면 2초 간격 (안정적)
+            self.logging_helper.log_info("API Key detected. Using fast sequential collection (2s delay).")
+        else:
+            delay = self.config_manager.get_onchain_api_delay() # 기본값 480초 (8분)
+            self.logging_helper.log_info(f"No API Key. Using slow sequential collection ({delay}s delay) to respect Free Tier limits.")
+
+        for i, metric_name in enumerate(metrics_to_collect):
+            try:
+                # 개별 메트릭 수집
+                # process_with_semaphore는 여전히 동시성 제어에 유용할 수 있으나, 여기서 이미 순차적이므로 큰 의미는 없음.
+                # 하지만 기존 로직 유지를 위해 사용.
+                result = await self.process_with_semaphore(
+                    self._fetch_and_enqueue_for_metric(metric_name)
+                )
+                results.append(result)
+                
+                # 마지막 아이템이 아니면 대기
+                if i < len(metrics_to_collect) - 1:
+                    self.logging_helper.log_debug(f"Sleeping {delay}s before next metric...")
+                    await asyncio.sleep(delay)
+                    
+            except Exception as e:
+                self.logging_helper.log_error(f"Error collecting {metric_name}: {e}")
+                results.append({"success": False, "error": str(e)})
+
         # 온체인 컬렉터는 자산 1개(비트코인)에 대해 여러 메트릭을 처리합니다.
         # 따라서 processed_assets는 1 또는 0 입니다.
         successful_metrics = [r for r in results if isinstance(r, dict) and r.get("success")]

@@ -53,7 +53,15 @@ except Exception as e:
     logger.error(f"❌ Failed to load global configurations: {e}")
 
 # Socket.IO 클라이언트 설정 (백엔드 서버에 연결)
-sio_client = socketio.AsyncClient(logger=verbose, engineio_logger=verbose)
+# reconnection=True, reconnection_attempts=0 (무한), reconnection_delay=1 (1초)
+sio_client = socketio.AsyncClient(
+    logger=verbose, 
+    engineio_logger=verbose,
+    reconnection=True,
+    reconnection_attempts=0,
+    reconnection_delay=1,
+    reconnection_delay_max=5
+)
 
 # --- Broadcaster 전용 상태 및 캐시 관리 ---
 
@@ -157,6 +165,13 @@ async def listen_to_redis_and_broadcast():
                 all_messages = []
                 for stream_name, group_name in realtime_streams.items():
                     try:
+                        # 연결 확인 및 대기 로직 추가
+                        if not sio_client.connected:
+                            logger.warning("⚠️ 백엔드와 연결되지 않음. 재연결 대기 중... (메시지 처리 일시 중지)")
+                            while not sio_client.connected:
+                                await asyncio.sleep(1)
+                            logger.info("✅ 백엔드 재연결 완료! 메시지 처리 재개.")
+
                         # 스트림 존재 여부 확인
                         stream_exists = await redis_client.exists(stream_name)
                         if not stream_exists:
@@ -261,7 +276,7 @@ async def listen_to_redis_and_broadcast():
                                 logger.debug(f"✅ Found asset_id {asset_id} for symbol: {symbol} (original: {original_symbol})")
 
                             # 브로드캐스트할 때는 데이터베이스에 저장된 티커 형식 사용 (예: ETH)
-                            # Frontend의 useRealtimePrices와 일치하도록 DB 티커 형식으로 전송
+                            # Frontend의 useRealtimePrices와 일치하도록 DB 티커 형식 (예: ETH) 사용
                             quote_data = {
                                 "asset_id": asset_id,
                                 "ticker": ticker_for_broadcast,  # DB 티커 형식 (예: ETH, BTC)
@@ -276,10 +291,11 @@ async def listen_to_redis_and_broadcast():
                                 await sio_client.emit('broadcast_quote', quote_data)
                                 logger.debug(f"✅ [BROADCASTER→BACKEND] 전송 완료: {symbol} = ${price}")
                             else:
-                                logger.warning(f"⚠️ [BROADCASTER→BACKEND] 백엔드 연결 실패: {symbol} 전송 불가")
+                                logger.warning(f"⚠️ [BROADCASTER→BACKEND] 백엔드 연결 끊김: {symbol} 전송 불가 (재시도 예정)")
 
-                            # 메시지 ACK
-                            await redis_client.xack(stream_name, group_name, message_id)
+                            # 메시지 ACK (연결 상태에서만)
+                            if sio_client.connected:
+                                await redis_client.xack(stream_name, group_name, message_id)
 
                         except Exception as e:
                             logger.exception(f"❌ 메시지 처리 중 오류: {e}")

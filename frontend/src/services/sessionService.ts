@@ -14,7 +14,7 @@ interface SessionState {
 
 interface SessionEvent {
   type: 'login' | 'logout' | 'token_refresh' | 'session_expired' | 'error'
-   
+
   data?: any
   timestamp: number
 }
@@ -50,8 +50,12 @@ class SessionService {
     try {
       this.setState({ isLoading: true, error: null })
 
-      // 토큰이 있는지 확인
-      if (!tokenService.hasValidTokens()) {
+      // 토큰 데이터가 있는지 확인 (만료 여부와 관계없이)
+      const tokenData = tokenService.getTokenData()
+      const refreshToken = tokenService.getRefreshToken()
+
+      // 1. 토큰 데이터가 아예 없으면 로그아웃 상태
+      if (!tokenData && !refreshToken) {
         this.setState({
           isAuthenticated: false,
           user: null,
@@ -61,13 +65,32 @@ class SessionService {
         return
       }
 
-      // 토큰이 만료되었는지 확인
+      // 2. 토큰이 만료되었는지 확인
       if (tokenService.isTokenExpired()) {
+        console.log('Access token expired, attempting refresh...')
+        // 3. 만료되었지만 Refresh Token이 있으면 갱신 시도
+        if (refreshToken) {
+          const refreshSuccess = await this.refreshToken()
+          if (refreshSuccess) {
+            // 갱신 성공 시 상태 업데이트는 refreshToken() 내부에서 처리됨
+            // verifyToken을 통해 사용자 정보 최신화
+            const verifyResult = await authService.verifyToken()
+            if (verifyResult.success && verifyResult.user) {
+              this.setState({
+                user: verifyResult.user,
+                isAuthenticated: true
+              })
+            }
+            return
+          }
+        }
+
+        // 갱신 실패하거나 Refresh Token이 없으면 만료 처리
         await this.handleTokenExpired()
         return
       }
 
-      // 토큰 검증
+      // 4. 토큰이 유효하면 검증
       const verifyResult = await authService.verifyToken()
       if (verifyResult.success && verifyResult.user) {
         this.setState({
