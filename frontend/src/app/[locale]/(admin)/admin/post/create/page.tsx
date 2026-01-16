@@ -8,6 +8,14 @@ function CreatePostContent() {
     const searchParams = useSearchParams();
     const postType = (searchParams.get('post_type') || 'post') as any;
 
+    const slug = searchParams.get('slug');
+    const title = searchParams.get('title');
+
+    const initialData = {
+        slug: slug || '',
+        title: title ? { ko: title, en: title } : { ko: '', en: '' }
+    };
+
     const handleSave = () => {
         router.push('/admin/post/list');
     };
@@ -17,7 +25,13 @@ function CreatePostContent() {
     };
 
     return (
-        <BlogEdit mode="create" postType={postType} onSave={handleSave} onCancel={handleCancel} />
+        <BlogEdit 
+            mode="create" 
+            postType={postType} 
+            onSave={handleSave} 
+            onCancel={handleCancel}
+            initialData={initialData}
+        />
     );
 }
 

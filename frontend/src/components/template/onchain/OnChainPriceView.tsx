@@ -34,6 +34,7 @@ const ClosePriceChart = dynamic(() => import('@/components/charts/ohlcvcharts/Cl
 const OHLCVCustomGUIChart = dynamic(() => import('@/components/charts/ohlcvcharts/OHLCVCustomGUIChart'), { ssr: false })
 const LiveChart = dynamic(() => import('@/components/charts/live/LiveChart'), { ssr: false })
 const BitcoinMonthlyReturns = dynamic(() => import('@/components/widgets/BitcoinMonthlyReturns').then(mod => mod.BitcoinMonthlyReturns), { ssr: false })
+const BitcoinPredictionChart = dynamic(() => import('@/components/charts/BitcoinPredictionChart'), { ssr: false })
 
 interface OnChainPriceViewProps {
     locale: string
@@ -108,6 +109,7 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
         if (fullPath.includes('/onchain/price/capitalization')) return 'Capitalization';
         if (fullPath.includes('/onchain/price/pi-cycle')) return 'Pi Cycle';
         if (fullPath.toLowerCase().includes('/onchain/price/monthlyreturns')) return 'Monthly Returns';
+        if (fullPath.includes('/onchain/price/outlook-2026')) return locale === 'ko' ? '2026년 전망' : '2026 Outlook';
 
         return isDashboardView
             ? (locale === 'ko' ? '온체인 지표 대시보드' : 'On-Chain Metrics Dashboard')
@@ -142,6 +144,11 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
         if (pData?.description) {
             const localized = parseLocalized(pData.description, locale);
             if (localized && typeof localized === 'string' && !localized.startsWith('{')) return localized;
+        }
+        if (fullPath.includes('/onchain/price/outlook-2026')) {
+            return locale === 'ko'
+                ? '주요 기관 및 분석가들의 2026년 비트코인 가격 전망을 종합적으로 시각화했습니다.'
+                : 'Comprehensive visualization of Bitcoin price predictions for 2026 from major institutions and analysts.';
         }
         return isDashboardView
             ? (locale === 'ko' ? '비트코인 온체인 지표 대시보드' : 'Bitcoin On-chain Metrics Dashboard')
@@ -234,6 +241,48 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
 
     const hasPostContent = postData && ((postData as any).content || (postData as any).content_ko);
 
+    const detailsTabContent = (
+        <div>
+            {postData && (postData as any).id ? (
+                <>
+                    <div className="mb-6">
+                        <Link
+                            href={`/${locale}/admin/post/edit/${(postData as any).id}`}
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors duration-200"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            Edit OnChain
+                        </Link>
+                    </div>
+                    <AdminDataInspector
+                        data={postData}
+                        isLoading={postLoading}
+                        error={postError}
+                        title={`${cleanMetricNameValue} - ${locale === 'ko' ? '상세 데이터' : 'Raw Data'}`}
+                        locale={locale}
+                    />
+                </>
+            ) : (
+                <div className="text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                    <p className="text-gray-500 mb-4">
+                        {locale === 'ko' ? '연결된 포스트가 없습니다.' : 'No linked post found.'}
+                    </p>
+                    <Link
+                        href={`/${locale}/admin/post/create?post_type=onchain&slug=${metricId || ''}&title=${encodeURIComponent(cleanMetricNameValue || '')}`}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors duration-200"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        {locale === 'ko' ? '포스트 생성하기' : 'Create Post'}
+                    </Link>
+                </div>
+            )}
+        </div>
+    );
+
     // Tabs
     const tabs = [
         {
@@ -241,7 +290,7 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
             label: 'Overview',
             content: (
                 <div className="space-y-6">
-                    {/* DASHBOARD VIEW */}
+                    {/* DASHBOARD VIEW - unchanged */}
                     {isDashboardView ? (
                         <div className="space-y-6">
                             {/* Summary Cards */}
@@ -376,6 +425,8 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
                                             <PiCycleChart assetId="BTCUSDT" height={600} />
                                         ) : fullPath.toLowerCase().includes('/onchain/price/monthlyreturns') ? (
                                             <BitcoinMonthlyReturns />
+                                        ) : fullPath.includes('/onchain/price/outlook-2026') ? (
+                                            <BitcoinPredictionChart />
                                         ) : (
                                             <OnChainChart
                                                 assetId="BTCUSDT"
@@ -468,30 +519,7 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
         ...(isAdmin ? [{
             id: 'details',
             label: 'Details',
-            content: (
-                <div>
-                    {postData && (postData as any).id && (
-                        <div className="mb-6">
-                            <Link
-                                href={`/${locale}/admin/post/edit/${(postData as any).id}`}
-                                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors duration-200"
-                            >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                                Edit OnChain
-                            </Link>
-                        </div>
-                    )}
-                    <AdminDataInspector
-                        data={postData}
-                        isLoading={postLoading}
-                        error={postError}
-                        title={`${cleanMetricNameValue} - ${locale === 'ko' ? '상세 데이터' : 'Raw Data'}`}
-                        locale={locale}
-                    />
-                </div>
-            )
+            content: detailsTabContent
         }] : [])
     ]
 

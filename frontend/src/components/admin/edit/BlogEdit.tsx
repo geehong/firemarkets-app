@@ -12,6 +12,7 @@ interface BlogEditProps extends Omit<BaseEditProps, 'postType'> {
   categoryId?: number
   authorId?: number
   postType?: 'post' | 'page' | 'news' | 'assets' | 'onchain' | 'raw_news'
+  initialData?: any
 }
 
 export default function BlogEdit({
@@ -130,6 +131,7 @@ export default function BlogEdit({
       onSavingChange={setBaseEditSaving}
       onFormDataChange={setFormData}
       onRegisterUpdateFormData={handleUpdateFormData}
+      initialData={props.initialData}
       {...props}
     >
       {/* 퍼블리싱 블럭 */}

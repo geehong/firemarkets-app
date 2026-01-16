@@ -50,6 +50,7 @@ export interface BaseEditProps {
   onActiveLanguageChange?: (activeLanguage: 'ko' | 'en') => void
   onAssetDataChange?: (assetData: any) => void
   onRegisterUpdateFormData?: (fn: (field: keyof PostFormState, value: any) => void) => void
+  initialData?: Partial<PostFormState>
 }
 
 export default function BaseEdit({
@@ -71,7 +72,8 @@ export default function BaseEdit({
   onUpdateFormData,
   onActiveLanguageChange,
   onAssetDataChange,
-  onRegisterUpdateFormData
+  onRegisterUpdateFormData,
+  initialData
 }: BaseEditProps) {
 
   // --- 1. State & Hooks ---
@@ -268,9 +270,20 @@ export default function BaseEdit({
         content: postData.content || '',
         content_ko: postData.content_ko || ''
       })
+    } else if (mode === 'create' && initialData) {
+      // Handle initialData for create mode
+      setFormData(prev => ({
+        ...prev,
+        ...initialData,
+        // Ensure complex objects are merged correctly if needed
+        title: {
+          ko: initialData.title?.ko || (typeof initialData.title === 'string' ? initialData.title : '') || prev.title.ko,
+          en: initialData.title?.en || (typeof initialData.title === 'string' ? initialData.title : '') || prev.title.en,
+        }
+      }))
     }
     setLoading(postLoading)
-  }, [mode, postData, postLoading])
+  }, [mode, postData, postLoading, initialData])
 
   // Notification Effects
   useEffect(() => { if (onActiveLanguageChange) onActiveLanguageChange(activeLanguage) }, [activeLanguage, onActiveLanguageChange])
