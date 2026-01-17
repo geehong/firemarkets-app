@@ -280,7 +280,7 @@ export default function AssetsEdit({
         onPublishedAtChange={(date) => updateFormData('published_at', date)}
         onPreview={() => console.log('미리보기')}
         onSave={async (status) => {
-          handleAssetsSave({ ...formData, status })
+          handleAssetsSave({ ...formData, status: status as any })
         }}
         saving={saving}
       />

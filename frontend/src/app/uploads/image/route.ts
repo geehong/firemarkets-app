@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
+// @ts-ignore
 import sharp from 'sharp'
 
 export async function POST(request: NextRequest) {

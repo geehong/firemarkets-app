@@ -69,9 +69,9 @@ export default function BlogEdit({
   const [updateFormData, setUpdateFormData] = useState<((field: keyof PostFormState, value: string | number | boolean | string[] | { ko: string; en: string } | null) => void) | null>(null)
 
   // 안정적인 handleSave 함수
-  const stableHandleSave = React.useCallback((status: 'draft' | 'published') => {
+  const stableHandleSave = React.useCallback((status: string) => {
     if (handleSaveRef.current) {
-      return handleSaveRef.current(status)
+      return handleSaveRef.current(status as 'draft' | 'published')
     }
     return Promise.resolve()
   }, [])

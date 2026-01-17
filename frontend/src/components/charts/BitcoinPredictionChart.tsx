@@ -172,7 +172,7 @@ const BitcoinPredictionChart: React.FC = () => {
                 dataLabels: {
                     enabled: true,
                     formatter: function() {
-                        const pt = this.point as any;
+                        const pt = (this as any).point;
                         const lowK = Math.round(pt.custom.low / 1000) + 'k';
                         const highK = Math.round(pt.custom.high / 1000) + 'k';
                         const rangeStr = lowK === highK ? lowK : `${lowK}~${highK}`;
