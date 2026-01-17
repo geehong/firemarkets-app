@@ -177,26 +177,42 @@ class TiingoClient(TradFiAPIClient):
             if start_date:
                 params["startDate"] = start_date
             if end_date:
-                # 종료일이 휴일인지 확인
-                end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
-                if not is_trading_day(end_date_obj):
-                    logger.info(f"Tiingo: {format_trading_status_message(end_date_obj)} - 데이터 요청 스킵")
-                    return None
                 params["endDate"] = end_date
             
             # Rate limiting 적용
             await self._wait_for_rate_limit(self.api_key)
             
-            # Use httpx directly to get the raw response content
+            # FX/Crypto/Stock 엔드포인트 구분
+            # XAUUSD, XAGUSD, XPTUSD, XPDUSD 등은 FX 엔드포인트 사용
+            fx_symbols = {"XAUUSD", "XAGUSD", "XPTUSD", "XPDUSD", "XAU", "XAG", "XPT", "XPD"}
+            is_fx = tiingo_symbol.upper() in fx_symbols or (len(tiingo_symbol) == 6 and not tiingo_symbol.isdigit())
+            
             async with httpx.AsyncClient() as client:
-                url = f"{self.base_url}/tiingo/daily/{tiingo_symbol.lower()}/prices"
+                if is_fx:
+                    # FX/Spot Commodity
+                    url = f"{self.base_url}/tiingo/fx/{tiingo_symbol.lower()}/prices"
+                    params["resampleFreq"] = "1day"
+                else:
+                    # Stock / ETF
+                    url = f"{self.base_url}/tiingo/daily/{tiingo_symbol.lower()}/prices"
+                
                 params["token"] = self.api_key
+                logger.info(f"Tiingo requesting: {url} with params: {params}")
                 resp = await client.get(url, params=params, timeout=self.api_timeout)
                 
                 # 404 에러 처리: 지원하지 않는 심볼
                 if resp.status_code == 404:
-                    logger.info(f"Tiingo: Symbol not supported (미지원 티커): {symbol} -> {tiingo_symbol}")
-                    return None
+                    if not is_fx:
+                        # 주식 에러 시 FX로 한번 더 시도 (fallback)
+                        url = f"{self.base_url}/tiingo/fx/{tiingo_symbol.lower()}/prices"
+                        params["resampleFreq"] = "1day"
+                        resp = await client.get(url, params=params, timeout=self.api_timeout)
+                        if resp.status_code == 200:
+                            is_fx = True
+                    
+                    if resp.status_code == 404:
+                        logger.info(f"Tiingo: Symbol not supported (미지원 티커): {symbol} -> {tiingo_symbol}")
+                        return None
                 
                 resp.raise_for_status()
                 

@@ -26,6 +26,7 @@ class MarketDataClient:
         
         # 지원하는 데이터 타입
         self.supported_endpoints = {
+            
             'stocks': '/stocks',
             'options': '/options',
             'indices': '/indices'

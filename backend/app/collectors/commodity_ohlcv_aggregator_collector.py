@@ -74,11 +74,11 @@ class CommodityOHLCVAggregatorCollector(BaseCollector):
             # 4시간 단위로 truncate (0, 4, 8, 12, 16, 20)
             truncate_sql = "date_trunc('hour', timestamp_utc) - ((EXTRACT(HOUR FROM timestamp_utc)::int % 4) * INTERVAL '1 hour')"
             table_name = "ohlcv_intraday_data"
-        elif interval == "1d":
-            # 지난 30일의 데이터를 집계
-            start_time = now - timedelta(days=30)
-            truncate_sql = "date_trunc('day', timestamp_utc)"
-            table_name = "ohlcv_day_data"
+        # elif interval == "1d":
+        #     # 지난 30일의 데이터를 집계
+        #     start_time = now - timedelta(days=30)
+        #     truncate_sql = "date_trunc('day', timestamp_utc)"
+        #     table_name = "ohlcv_day_data"
         else:
             logger.warning(f"Unsupported interval: {interval}")
             return 0
@@ -110,33 +110,37 @@ class CommodityOHLCVAggregatorCollector(BaseCollector):
                     volume = EXCLUDED.volume,
                     updated_at = NOW()
             """)
-        else:  # ohlcv_day_data
-            aggregate_sql = text(f"""
-                INSERT INTO {table_name} (asset_id, timestamp_utc, data_interval, open_price, high_price, low_price, close_price, volume)
-                SELECT 
-                    r.asset_id,
-                    {truncate_sql} as agg_timestamp,
-                    :interval as data_interval,
-                    (array_agg(r.price ORDER BY r.timestamp_utc ASC))[1] as open_price,
-                    MAX(r.price) as high_price,
-                    MIN(r.price) as low_price,
-                    (array_agg(r.price ORDER BY r.timestamp_utc DESC))[1] as close_price,
-                    COALESCE(SUM(r.volume), 0) as volume
-                FROM realtime_quotes_time_delay r
-                JOIN assets a ON r.asset_id = a.asset_id
-                JOIN asset_types at ON a.asset_type_id = at.asset_type_id
-                WHERE at.type_name = 'Commodities'
-                  AND r.timestamp_utc >= :start_time
-                  AND r.timestamp_utc < :end_time
-                GROUP BY r.asset_id, {truncate_sql}
-                ON CONFLICT (asset_id, timestamp_utc) DO UPDATE SET
-                    data_interval = EXCLUDED.data_interval,
-                    high_price = GREATEST({table_name}.high_price, EXCLUDED.high_price),
-                    low_price = LEAST({table_name}.low_price, EXCLUDED.low_price),
-                    close_price = EXCLUDED.close_price,
-                    volume = EXCLUDED.volume,
-                    updated_at = NOW()
-            """)
+        # else:  # ohlcv_day_data
+        #     aggregate_sql = text(f"""
+        #         INSERT INTO {table_name} (asset_id, timestamp_utc, data_interval, open_price, high_price, low_price, close_price, volume)
+        #         SELECT 
+        #             r.asset_id,
+        #             {truncate_sql} as agg_timestamp,
+        #             :interval as data_interval,
+        #             (array_agg(r.price ORDER BY r.timestamp_utc ASC))[1] as open_price,
+        #             MAX(r.price) as high_price,
+        #             MIN(r.price) as low_price,
+        #             (array_agg(r.price ORDER BY r.timestamp_utc DESC))[1] as close_price,
+        #             COALESCE(SUM(r.volume), 0) as volume
+        #         FROM realtime_quotes_time_delay r
+        #         JOIN assets a ON r.asset_id = a.asset_id
+        #         JOIN asset_types at ON a.asset_type_id = at.asset_type_id
+        #         WHERE at.type_name = 'Commodities'
+        #           AND r.timestamp_utc >= :start_time
+        #           AND r.timestamp_utc < :end_time
+        #         GROUP BY r.asset_id, {truncate_sql}
+        #         ON CONFLICT (asset_id, timestamp_utc) DO UPDATE SET
+        #             data_interval = EXCLUDED.data_interval,
+        #             high_price = GREATEST({table_name}.high_price, EXCLUDED.high_price),
+        #             low_price = LEAST({table_name}.low_price, EXCLUDED.low_price),
+        #             close_price = EXCLUDED.close_price,
+        #             volume = EXCLUDED.volume,
+        #             updated_at = NOW()
+        #     """)
+        
+        if table_name != "ohlcv_intraday_data":
+            logger.warning(f"Skipping aggregation for table {table_name} (interval: {interval})")
+            return 0
         
         try:
             result = self.db.execute(aggregate_sql, {

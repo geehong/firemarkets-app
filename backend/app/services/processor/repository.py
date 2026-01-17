@@ -234,14 +234,51 @@ class DataRepository:
                         'symbol': item.get('symbol', ''),
                         'name': item.get('name', ''),
                         'price': item.get('price'),
-                        # ... 기타 필드들 ...
+                        'current_price': item.get('price'),  # price와 current_price 동기화
+                        'market_cap': item.get('market_cap'),
+                        'circulating_supply': item.get('circulating_supply'),
+                        'total_supply': item.get('total_supply'),
+                        'max_supply': item.get('max_supply'),
+                        'volume_24h': item.get('volume_24h'),
+                        'percent_change_1h': item.get('percent_change_1h'),
+                        'percent_change_24h': item.get('percent_change_24h'),
+                        'percent_change_7d': item.get('percent_change_7d'),
+                        'percent_change_30d': item.get('percent_change_30d'),
+                        'cmc_rank': item.get('rank'),
+                        'category': item.get('category'),
+                        'description': item.get('description'),
+                        'logo_url': item.get('logo_url'),
+                        'website_url': item.get('website_url'),
+                        'slug': item.get('slug'),
+                        'date_added': item.get('date_added'),
+                        'platform': item.get('platform'),
+                        'explorer': item.get('explorer'),
+                        'source_code': item.get('source_code'),
+                        'tags': item.get('tags'),
+                        'is_active': True
                     }
                     crypto_data_dict = {k: v for k, v in crypto_data_dict.items() if v is not None}
                     
+
+                    # logo_url: 이미 로컬 경로('/images/')로 설정된 경우 덮어쓰지 않음
                     stmt = pg_insert(CryptoData).values(**crypto_data_dict)
+                    set_dict = {k: getattr(stmt.excluded, k) for k in crypto_data_dict.keys() if k != 'asset_id'}
+                    
+                    # logo_url에 대한 조건부 업데이트 로직 적용
+                    if 'logo_url' in set_dict:
+                        from sqlalchemy import case, literal
+                        # 기존 값이 '/images/%'로 시작하면(로컬 아이콘), 기존 값 유지. 아니면 새로운 값으로 업데이트
+                        set_dict['logo_url'] = case(
+                            (CryptoData.logo_url.like('/images/%'), CryptoData.logo_url),
+                            else_=stmt.excluded.logo_url
+                        )
+
                     stmt = stmt.on_conflict_do_update(
                         index_elements=['asset_id'],
-                        set_={k: getattr(stmt.excluded, k) for k in crypto_data_dict.keys() if k != 'asset_id'}
+                        set_={
+                            **set_dict,
+                            'last_updated': func.now()
+                        }
                     )
                     pg_db.execute(stmt)
                     saved_count += 1
@@ -653,12 +690,22 @@ class DataRepository:
         
         pg_db = next(get_postgres_db())
         try:
-            # 1. 수집 가능한 모든 필드 정의
+            # 1. 수집 가능한 모든 필드 정의 (Group A + Group B 전체)
             all_metric_fields = [
-                'mvrv_z_score', 'nupl', 'sopr', 'hashrate', 'difficulty',
-                'realized_price', 'thermo_cap', 'true_market_mean', 'aviv',
-                'nrpl_btc', 'etf_btc_flow', 'etf_btc_total', 'hodl_waves_supply',
-                'cdd_90dma', 'hodl_age_distribution', 'open_interest_futures'
+                # Group A (홀수일)
+                'mvrv_z_score', 'mvrv', 'nupl', 'sopr', 'realized_price',
+                'sth_realized_price', 'lth_mvrv', 'sth_mvrv', 'lth_nupl',
+                'sth_nupl', 'aviv', 'true_market_mean', 'terminal_price',
+                'delta_price_usd', 'market_cap',
+                # Group B (짝수일)
+                'hashrate', 'difficulty', 'thermo_cap', 'puell_multiple',
+                'reserve_risk', 'rhodl_ratio', 'nvts', 'nrpl_usd',
+                'utxos_in_profit_pct', 'utxos_in_loss_pct', 'realized_cap',
+                'etf_btc_flow', 'etf_btc_total', 'hodl_waves_supply', 'cdd_90dma',
+                # JSON 필드
+                'hodl_age_distribution', 'open_interest_futures',
+                # Legacy (호환성)
+                'nrpl_btc'
             ]
             
             # 2. 데이터 유효성 검사 및 정제

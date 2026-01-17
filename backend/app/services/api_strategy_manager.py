@@ -98,10 +98,10 @@ class ApiStrategyManager:
         
         # 7. 커머디티용 클라이언트 (GoldAPI 사용 - 금/은 OHLCV)
         self.commodity_ohlcv_clients = [
-            GoldAPIClient(),  # 금/은 전용 API ($99/월 - Unlimited)
+            #GoldAPIClient(),  # 금/은 전용 API ($99/월 - Unlimited)
             #FMPClient(),     # 커머디티 데이터 제공 안함
             #PolygonClient(),
-            #TiingoClient(),
+            TiingoClient(),
            # TwelveDataClient()
         ]
         
@@ -384,9 +384,9 @@ class ApiStrategyManager:
             API 이름 문자열
         """
         class_name = client.__class__.__name__
-        # if 'Tiingo' in class_name:
-        #     return 'tiingo'
-        if 'Polygon' in class_name:
+        if 'Tiingo' in class_name:
+            return 'tiingo'
+        elif 'Polygon' in class_name:
             return 'polygon'
         elif 'FMP' in class_name:
             return 'fmp'
@@ -779,8 +779,8 @@ class ApiStrategyManager:
                     elif hasattr(client, '__class__') and 'TwelveDataClient' in str(client.__class__):
                         # TwelveData는 interval, start_date, end_date, limit 파라미터 지원
                         data = await client.get_ohlcv_data(ticker, interval=interval, start_date=start_date, end_date=end_date, limit=adjusted_limit)
-                    elif hasattr(client, '__class__') and 'PolygonClient' in str(client.__class__):
-                        # Polygon은 interval, start_date, end_date, limit 파라미터 지원
+                    elif hasattr(client, '__class__') and ('TiingoClient' in str(client.__class__) or 'PolygonClient' in str(client.__class__)):
+                        # Tiingo/Polygon은 interval, start_date, end_date, limit 파라미터 지원
                         data = await client.get_ohlcv_data(ticker, interval=interval, start_date=start_date, end_date=end_date, limit=adjusted_limit)
                     else:
                         # 다른 클라이언트들은 기존 방식 유지

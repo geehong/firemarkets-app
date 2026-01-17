@@ -259,7 +259,9 @@
     },
     "tiingo": {
       "PALLAD": "XPDUSD",
-      "PLAT": "XPTUSD"
+      "PLAT": "XPTUSD",
+      "GCUSD": "XAUUSD",
+      "SIUSD": "XAGUSD"
     }
   }
 }
