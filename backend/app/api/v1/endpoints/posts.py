@@ -12,7 +12,7 @@ from app.schemas.blog import (
     PostProductCreate, PostProductResponse, PostChartCreate, PostChartResponse,
     PostAuthorResponse, PostSyncRequest, PostSyncResponse, PostStatsResponse
 )
-from app.models.blog import Post, PostCategory, PostTag, PostComment
+from app.models.blog import Post, PostCategory, PostTag, PostComment, PostTagAssociation, PostProduct, PostChart
 from app.models.asset import User
 from app.dependencies.auth_deps import get_current_user, get_current_user_optional, get_current_active_superuser
 from app.services.posts_service import posts_service
@@ -1238,6 +1238,25 @@ async def cleanup_posts(
                 to_delete_ids.append(p.id)
                 continue
 
+            # Check 4: Title filtering (Shadow, Chinese, Japanese)
+            title_text = ""
+            if isinstance(p.title, dict):
+                title_text = f"{p.title.get('en', '')} {p.title.get('ko', '')}"
+            else:
+                title_text = str(p.title)
+            
+            # 4-1. Shadow / 그림자 check
+            if re.search(r'(shadow|그림자)', title_text, re.IGNORECASE):
+                to_delete_ids.append(p.id)
+                continue
+                
+            # 4-2. Chinese / Japanese character check
+            # Chinese: \u4e00-\u9fff
+            # Japanese: \u3040-\u309f (Hiragana), \u30a0-\u30ff (Katakana)
+            if re.search(r'[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]', title_text):
+                to_delete_ids.append(p.id)
+                continue
+
         count = len(to_delete_ids)
         
         if count > 0:
@@ -1247,6 +1266,14 @@ async def cleanup_posts(
             
             for i in range(0, count, chunk_size):
                 chunk = to_delete_ids[i:i+chunk_size]
+                
+                # 1. Delete associations first to avoid FK violations
+                db.query(PostTagAssociation).filter(PostTagAssociation.post_id.in_(chunk)).delete(synchronize_session=False)
+                db.query(PostComment).filter(PostComment.post_id.in_(chunk)).delete(synchronize_session=False)
+                db.query(PostProduct).filter(PostProduct.post_id.in_(chunk)).delete(synchronize_session=False)
+                db.query(PostChart).filter(PostChart.post_id.in_(chunk)).delete(synchronize_session=False)
+                
+                # 2. Delete the posts
                 db.query(Post).filter(Post.id.in_(chunk)).delete(synchronize_session=False)
                 deleted_total += len(chunk)
             

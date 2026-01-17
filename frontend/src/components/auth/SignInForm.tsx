@@ -34,7 +34,7 @@ export default function SignInForm() {
 
       if (result.success) {
         // Redirect to dashboard
-        router.push('/en/dashboard');
+        router.push('/dashboard');
       } else {
         setError(result.error || "Invalid username or password");
       }

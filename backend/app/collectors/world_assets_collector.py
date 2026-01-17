@@ -54,6 +54,7 @@ class WorldAssetsCollector(BaseCollector):
     ):
         super().__init__(db, config_manager, api_manager, redis_queue_manager)
         self.companies_marketcap_url = "https://companiesmarketcap.com/assets-by-market-cap/"
+        self.companies_marketcap_etfs_url = "https://companiesmarketcap.com/etfs/largest-etfs-by-marketcap/"
         self.eight_marketcap_url = "https://8marketcap.com/companies/"
         self.eight_marketcap_etfs_url = "https://8marketcap.com/etfs/"
         self.eight_marketcap_cryptos_url = "https://8marketcap.com/cryptos/"
@@ -98,6 +99,9 @@ class WorldAssetsCollector(BaseCollector):
             # 1. 자산 데이터 수집 (companiesmarketcap.com)
             companies_data = await self.scrape_companies_marketcap()
             
+            # 1-2. ETFs 데이터 수집 (companiesmarketcap.com)
+            companies_etfs_data = await self.scrape_companies_marketcap_etfs()
+            
             # 2. 8marketcap.com 데이터 수집 (Companies)
             eight_marketcap_data = await self.scrape_eight_marketcap()
             
@@ -113,12 +117,14 @@ class WorldAssetsCollector(BaseCollector):
             # 6. 각 데이터 소스별로 큐에 전송 (표준 패턴 적용)
             self.logging_helper.log_info(f"Data collection summary:")
             self.logging_helper.log_info(f"  - CompaniesMarketCap: {len(companies_data)} assets")
+            self.logging_helper.log_info(f"  - CompaniesMarketCap ETFs: {len(companies_etfs_data)} assets")
             self.logging_helper.log_info(f"  - 8MarketCap Companies: {len(eight_marketcap_data)} assets")
             self.logging_helper.log_info(f"  - 8MarketCap ETFs: {len(eight_marketcap_etfs_data)} assets")
             self.logging_helper.log_info(f"  - 8MarketCap Cryptos: {len(eight_marketcap_cryptos_data)} assets")
             self.logging_helper.log_info(f"  - 8MarketCap Metals: {len(eight_marketcap_metals_data)} assets")
             
             companies_updated = await self._send_to_queue(companies_data, 'companiesmarketcap')
+            companies_etfs_updated = await self._send_to_queue(companies_etfs_data, 'companiesmarketcap_etfs')
             eight_marketcap_updated = await self._send_to_queue(eight_marketcap_data, '8marketcap_companies')
             eight_marketcap_etfs_updated = await self._send_to_queue(eight_marketcap_etfs_data, '8marketcap_etfs')
             eight_marketcap_cryptos_updated = await self._send_to_queue(eight_marketcap_cryptos_data, '8marketcap_cryptos')
@@ -126,6 +132,7 @@ class WorldAssetsCollector(BaseCollector):
             
             self.logging_helper.log_info(f"Queue processing summary:")
             self.logging_helper.log_info(f"  - CompaniesMarketCap: {companies_updated} items sent to queue")
+            self.logging_helper.log_info(f"  - CompaniesMarketCap ETFs: {companies_etfs_updated} items sent to queue")
             self.logging_helper.log_info(f"  - 8MarketCap Companies: {eight_marketcap_updated} items sent to queue")
             self.logging_helper.log_info(f"  - 8MarketCap ETFs: {eight_marketcap_etfs_updated} items sent to queue")
             self.logging_helper.log_info(f"  - 8MarketCap Cryptos: {eight_marketcap_cryptos_updated} items sent to queue")
@@ -135,7 +142,7 @@ class WorldAssetsCollector(BaseCollector):
             # bond_data = await self.get_bis_bond_data()
             
             # 7. 총 업데이트 수 계산
-            assets_updated = (companies_updated + eight_marketcap_updated + 
+            assets_updated = (companies_updated + companies_etfs_updated + eight_marketcap_updated + 
                             eight_marketcap_etfs_updated + eight_marketcap_cryptos_updated + 
                             eight_marketcap_metals_updated)
             
@@ -206,6 +213,44 @@ class WorldAssetsCollector(BaseCollector):
             raise
         
         self.logging_helper.log_info(f"Successfully scraped {len(all_assets)} assets from main page")
+        return all_assets
+    
+    async def scrape_companies_marketcap_etfs(self) -> List[AssetData]:
+        """companiesmarketcap.com/etfs/ 에서 ETF 순위 데이터를 크롤링"""
+        all_assets = []
+        
+        try:
+            self.logging_helper.log_info("Scraping ETFs page from companiesmarketcap.com")
+            
+            response = requests.get(self.companies_marketcap_etfs_url, headers=self.headers, timeout=30)
+            response.raise_for_status()
+                
+            soup = BeautifulSoup(response.content, 'html.parser')
+            table = soup.find('table')
+                
+            if not table:
+                self.logging_helper.log_warning("No table found on ETFs page")
+                return all_assets
+            
+            rows = table.find_all('tr')[1:]  # 헤더 제외
+            
+            for row in rows:
+                try:
+                    asset_data = self._parse_asset_row(row, len(all_assets) + 1)
+                    if asset_data:
+                        # ETF 타입으로 강제 설정
+                        asset_data.asset_type_id = 5
+                        all_assets.append(asset_data)
+                except Exception as e:
+                    self.logging_helper.log_error(f"Error parsing ETF row: {e}")
+                    continue
+                
+        except Exception as e:
+            self.logging_helper.log_error(f"Error scraping companiesmarketcap.com ETFs: {e}")
+            # ETF 실패해도 전체 프로세스는 계속 진행
+            return []
+        
+        self.logging_helper.log_info(f"Successfully scraped {len(all_assets)} ETFs from companiesmarketcap.com")
         return all_assets
     
     async def scrape_eight_marketcap(self) -> List[AssetData]:
@@ -342,13 +387,28 @@ class WorldAssetsCollector(BaseCollector):
             if len(cells) < 4:
                 return None
             
+            # 8marketcap이나 companiesmarketcap 일부 페이지에는 첫 번째 컬럼에 'fav' 아이콘이 있음
+            # 이를 감지하여 인덱스를 조정
+            start_idx = 0
+            if cells[0].get('class') and 'fav' in cells[0].get('class'):
+                start_idx = 1
+            
             # 실제 테이블 구조에 맞는 컬럼 인덱스
             # 0: Rank, 1: Name, 2: Market Cap, 3: Price, 4: Today (변동률), 5: Price (30d), 6: Country
-            name_cell = cells[1] if len(cells) > 1 else None
-            market_cap_cell = cells[2] if len(cells) > 2 else None
-            price_cell = cells[3] if len(cells) > 3 else None
-            change_cell = cells[4] if len(cells) > 4 else None
-            country_cell = cells[6] if len(cells) > 6 else None
+            name_idx = start_idx + 1
+            mcap_idx = start_idx + 2
+            price_idx = start_idx + 3
+            change_idx = start_idx + 4
+            
+            name_cell = cells[name_idx] if len(cells) > name_idx else None
+            market_cap_cell = cells[mcap_idx] if len(cells) > mcap_idx else None
+            price_cell = cells[price_idx] if len(cells) > price_idx else None
+            change_cell = cells[change_idx] if len(cells) > change_idx else None
+            
+            # 국가 정보는 보통 뒤쪽에 위치 (최대한 찾아봄)
+            country_cell = None
+            if len(cells) > start_idx + 6:
+                country_cell = cells[len(cells)-1] # 보통 마지막 컬럼
             
             # 이름과 티커 추출 (Name 컬럼에서 분리)
             name = ""
@@ -358,6 +418,13 @@ class WorldAssetsCollector(BaseCollector):
                 company_name_div = name_cell.find('div', class_='company-name')
                 if company_name_div:
                     name = company_name_div.get_text(strip=True)
+                else:
+                    # fallback (단순 텍스트인 경우)
+                    name_text = name_cell.get_text(strip=True)
+                    # 만약 티커가 이름 뒤에 붙어있다면 분리 시도
+                    if ' ' in name_text:
+                        name = name_text
+
                 
                 # 티커 추출
                 company_code_div = name_cell.find('div', class_='company-code')
@@ -446,13 +513,19 @@ class WorldAssetsCollector(BaseCollector):
             if change_str.upper() in ['N/A', 'NA', '-', '--', 'N/A%']:
                 return None
             
-            change_str = change_str.replace('%', '').replace(',', '')
-            value = float(change_str)
+            # 숫자가 아닌 문자 제거 (단, 마이너스와 소수점은 제외)
+            # 때때로 가격($123.45)이 이 필드에 들어오는 경우를 방지하기 위해 정규식 사용
+            clean_str = re.sub(r'[^\d\.\-]', '', change_str.replace(',', ''))
+            
+            if not clean_str or clean_str == '.':
+                return None
+                
+            value = float(clean_str)
             
             # 합리적인 범위 체크 (일반적인 주식/암호화폐 변동률 범위)
             # 극단적인 값은 사이트 오류로 간주하고 NULL 처리
             if value > 1000 or value < -1000:  # ±1000% 이상은 NULL 처리
-                self.logging_helper.log_warning(f"Extreme change percent value {value}% treated as NULL (likely site error)")
+                self.logging_helper.log_warning(f"Extreme change percent value {value}% treated as NULL (likely site error or wrong column)")
                 return None
             
             return value
@@ -486,6 +559,13 @@ class WorldAssetsCollector(BaseCollector):
     def _enrich_asset_data(self, name: str, ticker: str) -> Dict[str, Any]:
         """기존 DB와 조인하여 풍부한 정보 획득"""
         try:
+            if not name.strip() and not ticker.strip():
+                return {
+                    'country': 'Unknown',
+                    'asset_type_id': 2,
+                    'asset_id': None
+                }
+
             db = self.db
             
             # StockProfile 모델 import

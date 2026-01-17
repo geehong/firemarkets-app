@@ -32,8 +32,8 @@ export default async function LocaleLayout({
   const messages = await getMessages();
 
   return (
-    <html lang={locale}>
-      <body className={`${outfit.className} dark:bg-gray-900 overflow-x-hidden`}>
+    <html lang={locale} suppressHydrationWarning>
+      <body className={`${outfit.className} dark:bg-gray-900 overflow-x-hidden`} suppressHydrationWarning>
         <NextIntlClientProvider messages={messages}>
           <QueryProvider>
             <ThemeProvider>
