@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
                  // We can re-use sharp or just copy file
                  // await fs.copyFile(filePath, standaloneFilePath) // fs/promises needed
                  // Let's just use sharp again or copy
-                 await sharp(buffer).webp({ quality: 80 }).toFile(standaloneFilePath).catch(e => console.log('Standalone copy skipped:', e.message))
+                 await sharp(buffer).webp({ quality: 80 }).toFile(standaloneFilePath).catch((e: any) => console.log('Standalone copy skipped:', e.message))
             }
         } catch (e) {
             // Ignore errors for standalone copy
