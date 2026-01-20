@@ -28,7 +28,7 @@ export default function ShortcodeRenderer({ shortcode }: ShortcodeRendererProps)
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d']
 
 const ChartRenderer = ({ props }: { props: Record<string, string> }) => {
-    const { type, title, labels, data, ticker, interval } = props
+    const { type, title, labels, data, ticker, interval, startDate, endDate } = props
 
     // Handle Specialized Charts
     if (type === 'close_price') {
@@ -39,6 +39,8 @@ const ChartRenderer = ({ props }: { props: Record<string, string> }) => {
                     interval={interval}
                     title={title}
                     height={500}
+                    startDate={startDate}
+                    endDate={endDate}
                 />
             </div>
         )
@@ -52,6 +54,8 @@ const ChartRenderer = ({ props }: { props: Record<string, string> }) => {
                     dataInterval={interval}
                     seriesName={title}
                     height={600}
+                    startDate={startDate}
+                    endDate={endDate}
                 />
             </div>
         )
