@@ -226,8 +226,13 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
           const newPost = await mergePostsMutation.mutateAsync(selectedPosts);
 
           // 생성된 초안 편집 페이지로 이동
-          const routePrefix = (typeList.includes('page') || currentPostType === 'page') ? 'page' : 'post';
-          router.push(`/admin/${routePrefix}/edit/${newPost.id}`);
+          if (newPost && newPost.id) {
+              const routePrefix = (typeList.includes('page') || currentPostType === 'page') ? 'page' : 'post';
+              router.push(`/admin/${routePrefix}/edit/${newPost.id}`);
+          } else {
+              alert('병합은 완료되었으나 페이지 이동에 실패했습니다.');
+              refetch();
+          }
         } finally {
           setIsMerging(false);
         }
@@ -300,6 +305,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
   };
 
   const handleEditPost = (postId: number) => {
+    if (!postId) return;
     const routePrefix = (typeList.includes('page') || currentPostType === 'page') ? 'page' : 'post';
     window.open(`/admin/${routePrefix}/edit/${postId}`, '_blank');
   };
