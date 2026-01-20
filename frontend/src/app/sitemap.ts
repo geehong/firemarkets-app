@@ -6,7 +6,7 @@ export const revalidate = 3600 // revalidate every hour
 // Google limits sitemaps to 50,000 URLs.
 // Each post generates 2 URLs (en, ko).
 // So 10,000 posts = 20,000 URLs, which is safely within the limit.
-const PER_SITEMAP_POSTS = 10000;
+const PER_SITEMAP_POSTS = 1000;
 
 // generateSitemaps removed to force single sitemap.xml generation
 
