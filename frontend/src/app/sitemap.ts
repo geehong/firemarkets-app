@@ -28,7 +28,8 @@ export async function generateSitemaps() {
     }
 }
 
-export default async function sitemap({ id }: { id: number }): Promise<MetadataRoute.Sitemap> {
+export default async function sitemap(props: { id: number } | Promise<{ id: number }>): Promise<MetadataRoute.Sitemap> {
+    const { id } = await (props as any);
     const baseUrl = 'https://firemarkets.net'
     
     // Ensure id is a number
