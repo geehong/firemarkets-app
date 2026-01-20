@@ -12,6 +12,7 @@ interface MediaBlockProps {
     postInfo: any // To access source image URL
     postType?: string
     slug?: string
+    onUploadComplete?: (url: string) => void
 }
 
 export default function MediaBlock({
@@ -21,7 +22,8 @@ export default function MediaBlock({
     onCoverImageAltChange,
     postInfo,
     postType = 'posts',
-    slug = 'untitled'
+    slug = 'untitled',
+    onUploadComplete
 }: MediaBlockProps) {
     const fileInputRef = useRef<HTMLInputElement>(null)
     const [isUploading, setIsUploading] = useState(false)
@@ -54,12 +56,14 @@ export default function MediaBlock({
             const data = await response.json()
             if (data.success && data.url) {
                 onCoverImageChange(data.url)
+                if (onUploadComplete) onUploadComplete(data.url)
             }
         } catch (error) {
             console.error('Failed to save source image:', error)
             alert('외부 이미지를 저장하는데 실패했습니다.')
             // Fallback: use external URL directly if saving fails
             onCoverImageChange(sourceImageUrl)
+            if (onUploadComplete) onUploadComplete(sourceImageUrl)
         } finally {
             setIsUploading(false)
         }
@@ -95,6 +99,7 @@ export default function MediaBlock({
             const data = await response.json()
             if (data.success && data.url) {
                 onCoverImageChange(data.url)
+                if (onUploadComplete) onUploadComplete(data.url)
             }
         } catch (error) {
             console.error('Failed to upload image:', error)

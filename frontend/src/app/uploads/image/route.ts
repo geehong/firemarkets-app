@@ -64,6 +64,27 @@ export async function POST(request: NextRequest) {
             .webp({ quality: 80 })
             .toFile(filePath)
 
+        // [Fix for Standalone Mode]
+        // If running in standalone mode (or if .next/standalone exists), we might need to copy the file there too
+        // because the server might be serving from there.
+        try {
+            const standaloneDir = path.join(process.cwd(), '.next', 'standalone', 'public', 'images', 'posts', postType)
+            // Check if standalone/public exists (simple heuristic)
+            // We blindly try to write if we are not already IN standalone dir
+            if (!process.cwd().includes('standalone')) {
+                 // Try to create dir and copy
+                 await mkdir(standaloneDir, { recursive: true }).catch(() => {})
+                 const standaloneFilePath = path.join(standaloneDir, fileName)
+                 // We can re-use sharp or just copy file
+                 // await fs.copyFile(filePath, standaloneFilePath) // fs/promises needed
+                 // Let's just use sharp again or copy
+                 await sharp(buffer).webp({ quality: 80 }).toFile(standaloneFilePath).catch(e => console.log('Standalone copy skipped:', e.message))
+            }
+        } catch (e) {
+            // Ignore errors for standalone copy
+            console.log('Standalone sync check skipped')
+        }
+
         // Return Public URL
         const publicUrl = `/images/posts/${postType}/${fileName}`
 
