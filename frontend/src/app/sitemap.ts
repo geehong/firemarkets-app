@@ -96,7 +96,7 @@ export default async function sitemap({ id }: { id: number }): Promise<MetadataR
         const locales = ['en', 'ko']
         const mainRoutes = [
             '',
-            '/dashboard',
+            // '/dashboard', // Excluded for AdSense: likely requires login or is dynamic
             '/blog',
             '/news',
             '/news/briefnews',

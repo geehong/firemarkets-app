@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+
+# Disallow private user areas
+Disallow: /settings/
+Disallow: /profile/
+Disallow: /api/
+
+# Sitemaps
+Sitemap: https://firmarkets.net/sitemap.xml
+Sitemap: https://firmarkets.net/sitemap-0.xml

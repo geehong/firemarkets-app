@@ -12,6 +12,8 @@ import BaseTemplateView from './BaseTemplateView'
 import PostComments from '@/components/post/PostComments'
 import PostSidebar from '@/components/post/PostSidebar'
 
+import FireMarketsAnalysis from '../post/FireMarketsAnalysis'
+
 interface PostDetailedViewProps {
     post: any
     locale: string
@@ -158,6 +160,12 @@ const PostDetailedView: React.FC<PostDetailedViewProps> = ({ post, locale }) => 
                     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 overflow-hidden">
                         <PostContent content={content} />
                     </div>
+                    
+                    {/* FireMarkets Analysis Section for News */}
+                    {post.post_type === 'news' && (
+                        <FireMarketsAnalysis postInfo={postInfo} locale={locale} />
+                    )}
+
                     <PostInfoCard post={post} locale={locale} />
 
                     {/* Comments Section */}
