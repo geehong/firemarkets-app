@@ -11,6 +11,8 @@ interface ClosePriceChartProps {
     title?: string;
     height?: number;
     locale?: string;
+    startDate?: string;
+    endDate?: string;
 }
 
 const ClosePriceChart: React.FC<ClosePriceChartProps> = ({
@@ -19,7 +21,9 @@ const ClosePriceChart: React.FC<ClosePriceChartProps> = ({
     allowedIntervals = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1M'],
     title,
     height = 500,
-    locale = 'en'
+    locale = 'en',
+    startDate,
+    endDate
 }) => {
     const [isClient, setIsClient] = useState(false);
     const [HighchartsReact, setHighchartsReact] = useState<any>(null);
@@ -100,7 +104,11 @@ const ClosePriceChart: React.FC<ClosePriceChartProps> = ({
     const chartOptions = {
         chart: { height, backgroundColor: '#ffffff' },
         title: { text: null },
-        xAxis: { type: 'datetime' },
+        xAxis: {
+            type: 'datetime',
+            min: startDate ? new Date(startDate).getTime() : undefined,
+            max: endDate ? new Date(endDate).getTime() : undefined
+        },
         yAxis: {
             title: { text: 'Price (USD)' },
             type: useLogScale ? 'logarithmic' : 'linear',
@@ -124,7 +132,10 @@ const ClosePriceChart: React.FC<ClosePriceChartProps> = ({
                 }
             }
         ],
-        rangeSelector: { enabled: true },
+        rangeSelector: {
+            enabled: true,
+            selected: (startDate || endDate) ? undefined : 2 // Default to 6m if no range specified
+        },
         navigator: { enabled: true }
     };
 
