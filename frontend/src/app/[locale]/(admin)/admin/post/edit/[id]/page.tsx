@@ -3,6 +3,8 @@ import React, { use } from 'react';
 import { useRouter } from 'next/navigation';
 import BlogEdit from '@/components/admin/edit/BlogEdit';
 
+import toast from 'react-hot-toast';
+
 export default function EditPostPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
     // params is a Promise in Next.js 15+ for Client Components
@@ -10,7 +12,7 @@ export default function EditPostPage({ params }: { params: Promise<{ id: string 
     const id = parseInt(idStr);
 
     const handleSave = () => {
-        router.push('/admin/post/list');
+        toast.success('Post saved successfully');
     };
 
     const handleCancel = () => {
