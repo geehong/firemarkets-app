@@ -113,10 +113,13 @@ export default function AgGridHistoryTable({ assetIdentifier = 'BTCUSDT', dataIn
           >{iv.toUpperCase()}</button>
         ))}
         <div className="ml-2 text-sm flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" title="Start">
             <DateRangePicker
               numberOfMonths={1}
               variant="start"
+              label=""
+              placeholder=""
+              className="w-12 px-0 text-transparent" // Hide text, make narrow
               onStartDate={(s) => {
                 const v = s || ''
                 console.log('[AgGridHistoryTable] start single change', v)
@@ -124,10 +127,13 @@ export default function AgGridHistoryTable({ assetIdentifier = 'BTCUSDT', dataIn
               }}
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" title="End">
             <DateRangePicker
               numberOfMonths={1}
               variant="end"
+              label=""
+              placeholder=""
+              className="w-12 px-0 text-transparent" // Hide text, make narrow
               onEndDate={(e) => {
                 const v = e || ''
                 console.log('[AgGridHistoryTable] end single change', v)

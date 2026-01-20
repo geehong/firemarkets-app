@@ -104,7 +104,10 @@ docker-compose --profile processing stop backend && docker-compose --profile pro
 
 docker-compose restart scheduler
 docker-compose restart backend
+
 docker-compose restart frontend
+docker-compose up -d --build frontend
+npm run build
 
 docker-compose restart nginx-proxy-manager
 docker-compose restart data_processor

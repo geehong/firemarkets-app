@@ -70,6 +70,10 @@ const BaseTemplateView: React.FC<BaseTemplateViewProps> = ({
     // Default to first tab
     const [activeTab, setActiveTab] = useState<string>(tabs[0]?.id || '')
 
+    if (header) {
+        console.log('[BaseTemplateView Debug] header:', header);
+    }
+
     return (
         <div className="space-y-6">
             <div className={`grid grid-cols-1 ${sidebar ? 'lg:grid-cols-12 gap-8' : ''}`}>
@@ -95,8 +99,8 @@ const BaseTemplateView: React.FC<BaseTemplateViewProps> = ({
 
                             <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03] p-6">
                                 <div className="flex flex-col gap-6">
-                                    {/* Cover Image */}
-                                    {header.coverImage && (
+                                    {/* Cover Image - prevent displaying icons as cover images */}
+                                    {header.coverImage && !header.coverImage.includes('/icons/') && (
                                         <div className="w-full aspect-[16/10] overflow-hidden rounded-lg relative">
                                             <img
                                                 src={header.coverImage}

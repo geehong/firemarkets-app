@@ -60,52 +60,78 @@ class OnchainCollector(BaseCollector):
         day_of_month = kst_now.day
         is_even_day = (day_of_month % 2 == 0)
         
-        # Group A (Odd days): 15 metrics
-        group_a = [
-            'mvrv_z_score', 'mvrv', 'nupl', 'sopr', 'realized_price', 
-            'sth_realized_price', 'lth_mvrv', 'sth_mvrv', 'lth_nupl', 
-            'sth_nupl', 'aviv', 'true_market_mean', 'terminal_price', 
-            'delta_price_usd', 'market_cap'
-        ]
+        # 3. 데이터 수집 대상 결정
+        # API 키가 없으면 하루 15회 제한(무료)을 준수해야 함 -> 홀수/짝수 분할 전략 사용
+        # 단, "스마트 수집"을 통해 한번 요청시 필요한 기간만큼(최소 30일) 넉넉히 가져와서 빈 구멍을 메움
+        api_key = self.config_manager.get_bitcoin_data_api_key()
         
-        # Group B (Even days): 15 metrics
-        group_b = [
-            'hashrate', 'difficulty', 'thermo_cap', 'puell_multiple', 
-            'reserve_risk', 'rhodl_ratio', 'nvts', 'nrpl_usd', 
-            'utxos_in_profit_pct', 'utxos_in_loss_pct', 'realized_cap', 
-            'etf_btc_flow', 'etf_btc_total', 'hodl_waves_supply', 'cdd_90dma'
-        ]
-        
-        current_group = group_b if is_even_day else group_a
-        
-        # 필터링: 현재 그룹에 속하고 설정에서 활성화된 메트릭만 선택
-        metrics_to_collect = [m for m in enabled_metrics if m in current_group]
-        
-        self.logging_helper.log_info(
-            f"Starting onchain collection (Day: {day_of_month}, Group: {'B' if is_even_day else 'A'}). "
-            f"Collecting {len(metrics_to_collect)} metrics for asset_id {self.bitcoin_asset_id}."
-        )
+        if api_key:
+            # API 키가 있으면 제한 없이 매일 전체 수집
+            metrics_to_collect = enabled_metrics
+            self.logging_helper.log_info(
+                f"API Key detected. Collecting ALL {len(metrics_to_collect)} metrics daily."
+            )
+        else:
+            # Group A (Odd days): 15 metrics
+            group_a = [
+                'mvrv_z_score', 'mvrv', 'nupl', 'sopr', 'realized_price', 
+                'sth_realized_price', 'lth_mvrv', 'sth_mvrv', 'lth_nupl', 
+                'sth_nupl', 'aviv', 'true_market_mean', 'terminal_price', 
+                'delta_price_usd', 'market_cap'
+            ]
+            
+            # Group B (Even days): 15 metrics
+            group_b = [
+                'hashrate', 'difficulty', 'thermo_cap', 'puell_multiple', 
+                'reserve_risk', 'rhodl_ratio', 'nvts', 'nrpl_usd', 
+                'utxos_in_profit_pct', 'utxos_in_loss_pct', 'realized_cap', 
+                'etf_btc_flow', 'etf_btc_total', 'hodl_waves_supply', 'cdd_90dma'
+            ]
+            
+            current_group = group_b if is_even_day else group_a
+            
+            # 필터링: 현재 그룹에 속하고 설정에서 활성화된 메트릭만 선택
+            metrics_to_collect = [m for m in enabled_metrics if m in current_group]
+            
+            self.logging_helper.log_info(
+                f"No API Key (Active Split Mode). Day: {day_of_month} ({'Even' if is_even_day else 'Odd'}). "
+                f"Target Group: {'B' if is_even_day else 'A'}. Collecting {len(metrics_to_collect)} metrics."
+            )
 
         # 3. 데이터 수집 실행 및 결과 집계 (순차 실행으로 변경)
-        # 무료 티어의 8req/hour 제한을 준수하기 위해 순간적인 Burst 요청을 방지합니다.
         results = []
         
         # API 키 유무에 따른 지연 시간 설정
-        api_key = self.config_manager.get_bitcoin_data_api_key()
         if api_key:
-            delay = 2  # API 키가 있으면 2초 간격 (안정적)
-            self.logging_helper.log_info("API Key detected. Using fast sequential collection (2s delay).")
+            delay = 2
         else:
             delay = self.config_manager.get_onchain_api_delay() # 기본값 480초 (8분)
-            self.logging_helper.log_info(f"No API Key. Using slow sequential collection ({delay}s delay) to respect Free Tier limits.")
 
+        # DB 세션 확보 (Latest Date 조회용)
+        from .utils.db_helpers import get_latest_metric_date
+        
         for i, metric_name in enumerate(metrics_to_collect):
             try:
-                # 개별 메트릭 수집
-                # process_with_semaphore는 여전히 동시성 제어에 유용할 수 있으나, 여기서 이미 순차적이므로 큰 의미는 없음.
-                # 하지만 기존 로직 유지를 위해 사용.
+                # [Smart Collection] DB에서 해당 메트릭의 최신 날짜 확인
+                latest_date = get_latest_metric_date(self.db, self.bitcoin_asset_id, metric_name)
+                
+                # 수집할 일수(days) 계산
+                # 기본 30일, 공백이 길면 그만큼 더 많이
+                days_to_fetch = 30
+                if latest_date:
+                    days_gap = (datetime.utcnow().date() - latest_date.date()).days
+                    if days_gap > 30:
+                        days_to_fetch = days_gap + 3 # 여유분 추가
+                else:
+                    days_to_fetch = 365 * 5 # 데이터가 아예 없으면 5년치 (초기 로딩)
+                
+                # API 최대 `size` 제한 고려 (보통 1000~수천 가능하지만 적절히 제한)
+                if days_to_fetch > 2000: days_to_fetch = 2000
+
+                self.logging_helper.log_info(f"Smart Collection for {metric_name}: Last data {latest_date}, fetching {days_to_fetch} days.")
+
                 result = await self.process_with_semaphore(
-                    self._fetch_and_enqueue_for_metric(metric_name)
+                    self._fetch_and_enqueue_for_metric(metric_name, days=days_to_fetch)
                 )
                 results.append(result)
                 
@@ -138,19 +164,19 @@ class OnchainCollector(BaseCollector):
             self.logging_helper.log_error(f"Error finding Bitcoin asset ID: {e}")
             return None
 
-    async def _fetch_and_enqueue_for_metric(self, metric_name: str) -> Dict[str, Any]:
+    async def _fetch_and_enqueue_for_metric(self, metric_name: str, days: int = None) -> Dict[str, Any]:
         """
         Fetches data for a single onchain metric and enqueues it.
         """
         try:
-            self.logging_helper.log_info(f"[OnchainCollector] 메트릭 '{metric_name}' 수집 시작 (asset_id: {self.bitcoin_asset_id})")
+            self.logging_helper.log_info(f"[OnchainCollector] 메트릭 '{metric_name}' 수집 시작 (asset_id: {self.bitcoin_asset_id}, days: {days})")
             
             # 3. 데이터 가져오라고 시키기 (ApiStrategyManager 사용)
             # 동적 Limit 시스템 사용 (다른 클라이언트들과 동일)
             metric_data: List[OnchainMetricDataPoint] = await self.api_manager.get_onchain_metric(
                 metric_name=metric_name,
                 asset_id=self.bitcoin_asset_id,
-                days=None  # ApiStrategyManager에서 동적으로 계산
+                days=days  # Smart Collection에서 계산된 days 전달
             )
 
             if not metric_data:

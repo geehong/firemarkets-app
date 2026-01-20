@@ -450,52 +450,72 @@ async def get_dashboard_summary(
         latest_updates = []
         
         # 데이터베이스 필드명 매핑
+        # 데이터베이스 필드명 매핑 (Group A + Group B + Others, Total 30+)
         db_field_map = {
-            'mvrv_z_score': 'mvrv_z_score', 'sopr': 'sopr', 'nupl': 'nupl',
-            'realized_price': 'realized_price', 'hashrate': 'hashrate',
-            'difficulty': 'difficulty', 'etf_btc_total': 'etf_btc_total',
-            'etf_btc_flow': 'etf_btc_flow', 'realized_cap': 'realized_cap',
-            'cdd_90dma': 'cdd_90dma', 'true_market_mean': 'true_market_mean',
-            'sth_realized_price': 'sth_realized_price', 'thermo_cap': 'thermo_cap',
-            'hodl_waves_supply': 'hodl_waves_supply', 'aviv': 'aviv',
-            'mvrv': 'mvrv', 'lth_mvrv': 'lth_mvrv', 'sth_mvrv': 'sth_mvrv',
-            'puell_multiple': 'puell_multiple', 'reserve_risk': 'reserve_risk',
-            'rhodl_ratio': 'rhodl_ratio', 'terminal_price': 'terminal_price',
-            'delta_price_usd': 'delta_price_usd', 'lth_nupl': 'lth_nupl',
-            'sth_nupl': 'sth_nupl', 'utxos_in_profit_pct': 'utxos_in_profit_pct',
-            'utxos_in_loss_pct': 'utxos_in_loss_pct', 'nvts': 'nvts',
-            'market_cap': 'market_cap'
+            # Group A
+            'mvrv_z_score': 'mvrv_z_score', 'mvrv': 'mvrv', 'nupl': 'nupl', 'sopr': 'sopr', 
+            'realized_price': 'realized_price', 'sth_realized_price': 'sth_realized_price', 
+            'lth_mvrv': 'lth_mvrv', 'sth_mvrv': 'sth_mvrv', 'lth_nupl': 'lth_nupl', 
+            'sth_nupl': 'sth_nupl', 'aviv': 'aviv', 'true_market_mean': 'true_market_mean', 
+            'terminal_price': 'terminal_price', 'delta_price_usd': 'delta_price_usd', 
+            'market_cap': 'market_cap',
+            
+            # Group B
+            'hashrate': 'hashrate', 'difficulty': 'difficulty', 'thermo_cap': 'thermo_cap', 
+            'puell_multiple': 'puell_multiple', 'reserve_risk': 'reserve_risk', 
+            'rhodl_ratio': 'rhodl_ratio', 'nvts': 'nvts', 'nrpl_usd': 'nrpl_usd', 
+            'utxos_in_profit_pct': 'utxos_in_profit_pct', 'utxos_in_loss_pct': 'utxos_in_loss_pct', 
+            'realized_cap': 'realized_cap', 'etf_btc_flow': 'etf_btc_flow', 
+            'etf_btc_total': 'etf_btc_total', 'hodl_waves_supply': 'hodl_waves_supply', 
+            'cdd_90dma': 'cdd_90dma'
         }
         
-        for metric in active_metrics_list:
-            db_field = db_field_map.get(metric.metric_id)
-            if not db_field:
-                continue
-                
-            data_range = get_metric_data_range(metric, db, clean_ticker)
-            if data_range and data_range.count > 0:
-                # 최신 값 가져오기
-                latest_record = db.query(getattr(CryptoMetric, db_field)).filter(
-                    CryptoMetric.asset_id == bitcoin_asset.asset_id,
-                    getattr(CryptoMetric, db_field).isnot(None)
-                ).order_by(desc(CryptoMetric.timestamp_utc)).first()
-                
+        # 3. 우선 DB에 정의된 메트릭 확인
+        active_metrics_map = {m.metric_id: m for m in active_metrics_list}
+        
+        # 4. db_field_map에 있는 모든 키를 순회하며 데이터 확인
+        # (DB에 정의 없어도 코드로 지원하는 메트릭은 표시)
+        for metric_id, db_field in db_field_map.items():
+            
+            # 메트릭 기본 정보 (DB에 있으면 사용, 없으면 임시 생성)
+            metric_info = active_metrics_map.get(metric_id)
+            metric_name = metric_info.name if metric_info else metric_id.replace('_', ' ').title()
+            
+            # 데이터 범위 조회 (이전 로직 재사용 불가하여 직접 쿼리)
+            data_result = db.query(
+                func.min(CryptoMetric.timestamp_utc).label('min_date'),
+                func.max(CryptoMetric.timestamp_utc).label('max_date'),
+                func.count(getattr(CryptoMetric, db_field)).label('count')
+            ).filter(
+                CryptoMetric.asset_id == bitcoin_asset.asset_id,
+                getattr(CryptoMetric, db_field).isnot(None)
+            ).first()
+            
+            count = data_result.count if data_result else 0
+            
+            # 데이터가 있거나(count > 0) 활성 메트릭 리스트에 있는 경우만 결과에 포함
+            if count > 0 or metric_info:
                 latest_value = None
-                if latest_record and latest_record[0] is not None:
-                    try:
-                        # Convert to float for JSON response. 
-                        # Handles int, float, str, and Decimal types returned by DB.
-                        latest_value = float(latest_record[0])
-                    except (ValueError, TypeError):
-                        # For complex types like dict/list (JSON columns), keep as None
-                        latest_value = None
                 
+                if count > 0:
+                     # 최신 값 가져오기
+                    latest_record = db.query(getattr(CryptoMetric, db_field)).filter(
+                        CryptoMetric.asset_id == bitcoin_asset.asset_id,
+                        getattr(CryptoMetric, db_field).isnot(None)
+                    ).order_by(desc(CryptoMetric.timestamp_utc)).first()
+                    
+                    if latest_record and latest_record[0] is not None:
+                        try:
+                            latest_value = float(latest_record[0])
+                        except (ValueError, TypeError):
+                            latest_value = None
+
                 latest_updates.append({
-                    "metric_id": metric.metric_id,
-                    "metric_name": metric.name,
-                    "data_count": data_range.count,
-                    "latest_date": data_range.max_date.isoformat() if data_range.max_date else None,
-                    "start_date": data_range.min_date.isoformat() if data_range.min_date else None,
+                    "metric_id": metric_id,
+                    "metric_name": metric_name,
+                    "data_count": count,
+                    "latest_date": data_result.max_date.isoformat() if data_result and data_result.max_date else None,
+                    "start_date": data_result.min_date.isoformat() if data_result and data_result.min_date else None,
                     "latest_value": latest_value
                 })
         

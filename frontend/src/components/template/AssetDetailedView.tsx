@@ -203,6 +203,21 @@ const AssetDetailedView: React.FC<AssetDetailedViewProps> = ({ asset, locale }) 
     ) : undefined;
 
 
+    // Filter out cover image if it is the same as the logo or looks like an icon
+    const rawCoverImage = asset.cover_image || asset.image
+    const hasValidCover = rawCoverImage && rawCoverImage !== asset.logo_url && !rawCoverImage.includes('/icons/')
+    const finalCoverImage = hasValidCover ? rawCoverImage : undefined
+
+    console.log('[AssetDetailedView Debug]', {
+        name: assetName,
+        logo_url: asset.logo_url,
+        cover_image_prop: asset.cover_image,
+        image_prop: asset.image,
+        rawCoverImage,
+        hasValidCover,
+        finalCoverImage
+    });
+
     return (
         <BaseTemplateView
             locale={locale}
@@ -212,10 +227,21 @@ const AssetDetailedView: React.FC<AssetDetailedViewProps> = ({ asset, locale }) 
                 keywords: [identifier, assetName, typeName]
             }}
             header={{
-                title: assetName,
+                title: (
+                    <div className="flex items-center gap-3">
+                        {!finalCoverImage && asset.logo_url && (
+                            <img
+                                src={asset.logo_url}
+                                alt={assetName}
+                                className="w-8 h-8 md:w-10 md:h-10 object-contain bg-white rounded-full shadow-sm"
+                            />
+                        )}
+                        <span>{assetName}</span>
+                    </div>
+                ),
                 category: { name: typeName },
                 author: { name: identifier }, // Reusing author field for Ticker
-                coverImage: asset.logo_url, // Using logo as cover image fallback or main image
+                coverImage: finalCoverImage,
                 breadcrumbs: [
                     { label: 'Admin', href: `/${locale}/admin` },
                     { label: 'Assets', href: `/${locale}/admin/assets` },
