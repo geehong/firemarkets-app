@@ -87,8 +87,24 @@ const MovingAverageChart: React.FC<MovingAverageChartProps> = ({
         .filter(d => !isNaN(d[0]) && !isNaN(d[1]))
         .sort((a, b) => a[0] - b[0]);
 
-    const sma50 = calculateSMA(priceData, 50);
-    const sma200 = calculateSMA(priceData, 200);
+    const maConfigs = [
+        { period: 10, color: '#4ade80', visible: false },  // Green-400
+        { period: 20, color: '#22c55e', visible: false },  // Green-500
+        { period: 40, color: '#059669', visible: false },  // Emerald-600
+        { period: 50, color: '#f59e0b', visible: true },   // Amber-500 (Default)
+        { period: 111, color: '#8b5cf6', visible: false }, // Violet-500
+        { period: 200, color: '#ef4444', visible: true },  // Red-500 (Default)
+        { period: 365, color: '#3b82f6', visible: false }, // Blue-500
+        { period: 700, color: '#6b7280', visible: false }, // Gray-500 (350*2)
+    ];
+
+    const maSeries = maConfigs.map(config => ({
+        name: `${config.period} Day SMA`,
+        data: calculateSMA(priceData, config.period),
+        color: config.color,
+        lineWidth: 1.5,
+        visible: config.visible,
+    }));
 
     const chartOptions = {
         chart: { height, backgroundColor: '#ffffff' },
@@ -102,9 +118,8 @@ const MovingAverageChart: React.FC<MovingAverageChartProps> = ({
         tooltip: { shared: true, valueDecimals: 2, valuePrefix: '$' },
         legend: { enabled: true },
         series: [
-            { name: 'Bitcoin Price', data: priceData, color: '#3b82f6', lineWidth: 1, opacity: 0.6 },
-            { name: '50 Day SMA', data: sma50, color: '#f59e0b', lineWidth: 2 },
-            { name: '200 Day SMA', data: sma200, color: '#ef4444', lineWidth: 2 }
+            { name: 'Bitcoin Price', data: priceData, color: '#1e293b', lineWidth: 1, opacity: 0.5, id: 'price' }, // Slate-800
+            ...maSeries
         ],
         rangeSelector: { enabled: true, selected: 4 },
         navigator: { enabled: true }
