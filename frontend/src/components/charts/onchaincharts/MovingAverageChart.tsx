@@ -28,7 +28,7 @@ const MovingAverageChart: React.FC<MovingAverageChartProps> = ({
         queryFn: () => apiClient.getAssetsOhlcv({
             asset_identifier: assetId,
             data_interval: '1d',
-            limit: 2000
+            limit: 10000
         }),
         staleTime: 60 * 60 * 1000,
     });
