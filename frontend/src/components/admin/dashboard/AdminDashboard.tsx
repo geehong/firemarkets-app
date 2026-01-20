@@ -149,12 +149,18 @@ export default function AdminDashboard() {
                                                 </p>
                                             </div>
                                         </div>
-                                        <Link
-                                            href={`/${locale}/admin/post/edit/${post.id}`}
-                                            className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-md hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700"
-                                        >
-                                            Edit
-                                        </Link>
+                                            {post.id ? (
+                                                <Link
+                                                    href={`/${locale}/admin/post/edit/${post.id}`}
+                                                    className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-md hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700"
+                                                >
+                                                    Edit
+                                                </Link>
+                                            ) : (
+                                                <span className="px-3 py-1.5 text-xs font-medium text-gray-400 bg-gray-50 border border-gray-200 rounded-md dark:bg-gray-800 dark:border-gray-700 cursor-not-allowed">
+                                                    No ID
+                                                </span>
+                                            )}
                                     </div>
                                 ))
                             ) : (
