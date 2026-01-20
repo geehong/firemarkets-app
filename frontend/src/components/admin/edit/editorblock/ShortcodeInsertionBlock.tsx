@@ -19,6 +19,8 @@ export default function ShortcodeInsertionBlock({ onInsert }: ShortcodeInsertion
     // Custom Chart/Table State
     const [ticker, setTicker] = useState('BTCUSDT')
     const [interval, setInterval] = useState('1d')
+    const [startDate, setStartDate] = useState('')
+    const [endDate, setEndDate] = useState('')
 
     // Table State
     const [tableType, setTableType] = useState('simple') // simple | history
@@ -39,13 +41,101 @@ export default function ShortcodeInsertionBlock({ onInsert }: ShortcodeInsertion
         // Simple Charts
         return `[chart type="${chartType}" title="${chartTitle}" labels="${chartLabels}" data="${chartData}"]`
     }
-// ...
-    // Custom Chart/Table State
-    const [ticker, setTicker] = useState('BTCUSDT')
-    const [interval, setInterval] = useState('1d')
-    const [startDate, setStartDate] = useState('')
-    const [endDate, setEndDate] = useState('')
-// ...
+
+    const generateTableShortcode = () => {
+        if (tableType === 'history') {
+            return `[table type="history" ticker="${ticker}" interval="${interval}"]`
+        }
+
+        // Simple Table
+        // Example format: [table data="r1c1,r1c2;r2c1,r2c2"]
+        const formattedData = tableContent.trim().replace(/\n/g, ';')
+        return `[table type="simple" data="${formattedData}"]`
+    }
+
+    const handleInsert = () => {
+        const code = activeTab === 'chart' ? generateChartShortcode() : generateTableShortcode()
+        onInsert(code)
+    }
+
+    return (
+        <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
+            <div className="border-b px-4 py-3 bg-gray-50 flex justify-between items-center">
+                <h3 className="font-semibold text-gray-900 flex items-center">
+                    <Code className="w-4 h-4 mr-2" />
+                    숏코드 삽입
+                </h3>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex border-b">
+                <button
+                    className={`flex-1 py-2 text-sm font-medium ${activeTab === 'chart' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                    onClick={() => setActiveTab('chart')}
+                >
+                    <PieChart className="w-4 h-4 inline-block mr-1" /> 차트
+                </button>
+                <button
+                    className={`flex-1 py-2 text-sm font-medium ${activeTab === 'table' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                    onClick={() => setActiveTab('table')}
+                >
+                    <Table className="w-4 h-4 inline-block mr-1" /> 테이블
+                </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+                {activeTab === 'chart' ? (
+                    <div className="space-y-3">
+                        <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">차트 타입</label>
+                            <select
+                                value={chartType}
+                                onChange={(e) => setChartType(e.target.value)}
+                                className="w-full text-sm border-gray-300 rounded-md"
+                            >
+                                <optgroup label="Custom Crypto Charts">
+                                    <option value="close_price">Close Price Chart</option>
+                                    <option value="ohlcv_custom">OHLCV Chart</option>
+                                </optgroup>
+                                <optgroup label="Simple Charts">
+                                    <option value="bar">Bar Chart</option>
+                                    <option value="line">Line Chart</option>
+                                    <option value="pie">Pie Chart</option>
+                                    <option value="doughnut">Doughnut Chart</option>
+                                </optgroup>
+                            </select>
+                        </div>
+
+                        {['close_price', 'ohlcv_custom'].includes(chartType) ? (
+                            <>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Ticker (Symbol)</label>
+                                    <input
+                                        type="text"
+                                        value={ticker}
+                                        onChange={(e) => setTicker(e.target.value)}
+                                        className="w-full text-sm border-gray-300 rounded-md"
+                                        placeholder="BTCUSDT"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Interval</label>
+                                    <select
+                                        value={interval}
+                                        onChange={(e) => setInterval(e.target.value)}
+                                        className="w-full text-sm border-gray-300 rounded-md"
+                                    >
+                                        <option value="1m">1 Minute</option>
+                                        <option value="5m">5 Minutes</option>
+                                        <option value="15m">15 Minutes</option>
+                                        <option value="30m">30 Minutes</option>
+                                        <option value="1h">1 Hour</option>
+                                        <option value="4h">4 Hours</option>
+                                        <option value="1d">1 Day</option>
+                                        <option value="1w">1 Week</option>
+                                        <option value="1M">1 Month</option>
+                                    </select>
+                                </div>
                                 <div>
                                     <label className="block text-xs font-medium text-gray-700 mb-1">제목 (선택)</label>
                                     <input
