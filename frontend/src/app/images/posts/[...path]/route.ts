@@ -2,15 +2,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
-import { getType } from 'mime';
+
+// Simple helper to get content type based on extension
+function getContentType(filePath: string): string {
+    const ext = path.extname(filePath).toLowerCase();
+    switch (ext) {
+        case '.webp': return 'image/webp';
+        case '.png': return 'image/png';
+        case '.jpg':
+        case '.jpeg': return 'image/jpeg';
+        case '.gif': return 'image/gif';
+        case '.svg': return 'image/svg+xml';
+        default: return 'application/octet-stream';
+    }
+}
 
 export async function GET(
     request: NextRequest,
-    { params }: { params: { path: string[] } }
+    context: { params: Promise<{ path: string[] }> }
 ) {
-    // Await params if necessary (Next.js 15+ might require it, but 14 is fine. Safe to extract.)
-    // params.path is an array of path segments
-    const pathSegments = params.path; 
+    const { path: pathSegments } = await context.params;
     
     if (!pathSegments || pathSegments.length === 0) {
         return new NextResponse("File path not provided", { status: 400 });
@@ -34,7 +45,7 @@ export async function GET(
         const fileBuffer = await fs.readFile(filePath);
 
         // Determine content type
-        const contentType = getType(filePath) || 'application/octet-stream';
+        const contentType = getContentType(filePath);
 
         // Return response with file
         return new NextResponse(fileBuffer, {
