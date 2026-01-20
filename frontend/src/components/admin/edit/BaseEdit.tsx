@@ -355,7 +355,7 @@ export default function BaseEdit({
     handleUpdate('slug', slug)
   }
 
-  const handleSave = useCallback(async (status: string = 'draft') => {
+  const handleSave = useCallback(async (status: string = 'draft', options?: { skipCallback?: boolean }) => {
     try {
       setSaving(true)
       const postPayload: any = {
@@ -372,7 +372,10 @@ export default function BaseEdit({
         result = await updatePostMutation.mutateAsync({ postId, postData: postPayload as PostUpdateData })
       }
 
-      if (onSave && result) onSave(result)
+      // Only call onSave callback if NOT skipped (default behavior)
+      if (onSave && result && !options?.skipCallback) {
+        onSave(result)
+      }
     } catch (e) {
       console.error(e)
       alert("저장 중 오류가 발생했습니다.")
@@ -383,7 +386,10 @@ export default function BaseEdit({
 
 
   // Only expose handleSave if requested (Legacy support)
-  const handleSaveRef = useRef(handleSave)
+  // We need to cast it or update the type definition of handleSaveRef to allow extra args if needed, 
+  // but for legacy onHandleSave it usually expects (status) => Promise.
+  // We can wrap it to maintain compatibility while allowing internal usage.
+  const handleSaveRef = useRef<any>(handleSave)
   handleSaveRef.current = handleSave
   useEffect(() => { if (onHandleSave) onHandleSave(handleSaveRef.current) }, [onHandleSave])
 
@@ -513,6 +519,7 @@ export default function BaseEdit({
           />
         )
         break
+
       case 'media':
         title = '미디어 (Media)'
         content = (
@@ -525,30 +532,16 @@ export default function BaseEdit({
             postType={formData.post_type}
             slug={formData.slug}
             onUploadComplete={(url) => {
-              // Auto-save logic: update state then trigger save
-              setFormData(prev => {
-                  const newState = { ...prev, cover_image: url };
-                  // We need to trigger save with this new state
-                  // Since handleSave uses current state (which might be stale in closure), 
-                  // or we can pass the data directly if handleSave supported it.
-                  // For now, allow a small delay for state update or use a ref-safe save (not implemented).
-                  // Best approach: Just trigger handleSave, relying on state update queue or modify handleSave to accept data.
-                  return newState;
-              });
+              // 1. Always update state with new URL
+              setFormData(prev => ({ ...prev, cover_image: url }));
               
-              // Trigger save "soon" to ensure state is committed? 
-              // Actually setFormData is async.
-              // Let's modify handleSave to optionally accept data to save.
-              // OR: Implement a specific "UpdateAndSave" function.
-              
-              // Implementation:
-              setTimeout(() => {
-                  handleSaveRef.current('draft'); 
-                  // Note: calling with 'draft' (or current status)
-                  // Ideally we want to preserve current status.
-                  // But handleSave defaults to 'draft'.
-                  // Let's pass formData.status
-              }, 100);
+              // 2. Auto-save triggers ONLY in EDIT mode
+              // preventing "Create -> Save -> Redirect" flow which disrupts user
+              if (mode === 'edit') {
+                 setTimeout(() => {
+                    handleSaveRef.current('draft', { skipCallback: true }); 
+                 }, 500); // Slight delay to ensure state update is processed
+              }
             }}
           />
         )
