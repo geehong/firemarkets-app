@@ -8,32 +8,14 @@ export const revalidate = 3600 // revalidate every hour
 // So 10,000 posts = 20,000 URLs, which is safely within the limit.
 const PER_SITEMAP_POSTS = 10000;
 
-export async function generateSitemaps() {
-    try {
-        // Fetch just 1 item to accurately get the total count from the API
-        const data: any = await apiClient.getPosts({
-            page: 1,
-            page_size: 1,
-            status: 'published'
-        });
+// generateSitemaps removed to force single sitemap.xml generation
 
-        const total = data?.total || 0;
-        const sitemapCount = Math.max(1, Math.ceil(total / PER_SITEMAP_POSTS));
 
-        return Array.from({ length: sitemapCount }, (_, i) => ({ id: i }));
-    } catch (e) {
-        console.error('Sitemap generation failed:', e);
-        // Fallback to at least one sitemap
-        return [{ id: 0 }];
-    }
-}
-
-export default async function sitemap(props: { id: number } | Promise<{ id: number }>): Promise<MetadataRoute.Sitemap> {
-    const { id } = await (props as any);
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const baseUrl = 'https://firemarkets.net'
     
-    // Ensure id is a number
-    const pageIndex = id || 0;
+    // Single sitemap mode
+    const pageIndex = 0;
 
     // 1. Fetch posts for this specific range (pageIndex + 1)
     let posts: any[] = [];
@@ -94,7 +76,7 @@ export default async function sitemap(props: { id: number } | Promise<{ id: numb
             console.error('Sitemap: Failed to fetch tags', e);
         }
 
-        const locales = ['en', 'ko']
+        const locales = ['ko', 'en']
         const mainRoutes = [
             '',
             // '/dashboard', // Excluded for AdSense: likely requires login or is dynamic
