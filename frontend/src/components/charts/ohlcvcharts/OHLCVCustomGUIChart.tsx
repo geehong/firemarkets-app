@@ -1,4 +1,3 @@
-
 'use client'
 
 import React, { useEffect, useRef, useState } from 'react'
@@ -25,6 +24,8 @@ interface OHLCVCustomGUIChartProps {
     externalOhlcvData?: OHLCVData[] | null
     useIntradayData?: boolean
     allowedIntervals?: string[]
+    startDate?: string
+    endDate?: string
 }
 
 const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
@@ -36,7 +37,9 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
     height = 650,
     externalOhlcvData = null,
     useIntradayData = false,
-    allowedIntervals = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1M']
+    allowedIntervals = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1M'],
+    startDate,
+    endDate
 }) => {
     const chartContainerRef = useRef<HTMLDivElement>(null)
     const chartRef = useRef<any>(null)
@@ -361,7 +364,7 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
                     backgroundColor: '#ffffff'
                 },
                 rangeSelector: {
-                    selected: 2,
+                    selected: (startDate || endDate) ? undefined : 2, // Default to 6m if no range specified
                     buttons: [
                         { type: 'month', count: 1, text: '1m' },
                         { type: 'month', count: 3, text: '3m' },
@@ -407,6 +410,10 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
                         enabled: true,
                         iconsURL: '/images/icons/stock-icons/'
                     }
+                },
+                xAxis: {
+                    min: startDate ? new Date(startDate).getTime() : undefined,
+                    max: endDate ? new Date(endDate).getTime() : undefined
                 },
                 yAxis: [
                     {
@@ -496,7 +503,7 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
                 chartRef.current = null
             }
         }
-    }, [isClient, Highcharts, chartData, volumeData, seriesId, seriesName, assetIdentifier, height])
+    }, [isClient, Highcharts, chartData, volumeData, seriesId, seriesName, assetIdentifier, height, startDate, endDate])
 
     // Update log scale specifically without recreating the chart
     useEffect(() => {
