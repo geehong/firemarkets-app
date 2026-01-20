@@ -95,7 +95,7 @@ export default function BlogEdit({
     // 블로그 특화 데이터 처리
     const blogData = {
       ...data,
-      post_type: postType,
+      post_type: data.post_type || postType,
       // 블로그 특화 필드들은 customFields에 포함
       customFields: {
         // 향후 기능들을 위한 placeholder
