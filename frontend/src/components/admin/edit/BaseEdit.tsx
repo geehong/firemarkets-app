@@ -242,6 +242,10 @@ export default function BaseEdit({
   // Initial Data Load
   useEffect(() => {
     if (mode === 'edit' && postData) {
+      // Prevent overwriting client state if we already have this post loaded
+      // This protects against background refetches wiping out user edits
+      if (formData.id === postData.id) return
+
       const processMultilingualField = (field: any) => {
         if (typeof field === 'string') return { ko: field, en: field }
         if (typeof field === 'object' && field !== null) {
@@ -283,6 +287,7 @@ export default function BaseEdit({
       }))
     }
     setLoading(postLoading)
+    console.log('[BaseEdit] Data sync effect triggered. postData:', postData?.id, 'formData:', formData.id)
   }, [mode, postData, postLoading, initialData])
 
   // Notification Effects
@@ -364,6 +369,12 @@ export default function BaseEdit({
         published_at: status === 'published' ? new Date().toISOString() : formData.published_at,
         tags: formData.tags?.map((t: any) => typeof t === 'string' ? t : t.name) || []
       }
+      
+      console.log('[BaseEdit] handleSave payload:', { 
+        id: formData.id, 
+        post_type: formData.post_type, 
+        tags: postPayload.tags 
+      });
 
       let result
       if (mode === 'create') {
