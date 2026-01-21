@@ -1,11 +1,10 @@
 "use client"
 
 import React, { useEffect, useState, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { apiClient } from '@/lib/api';
+import { useMovingAverages } from '@/hooks/analysis/useTechnicalAnalysis';
 
 interface MovingAverageChartProps {
-    assetId?: string;
+    assetId?: string; // Kept for prop compatibility, but we use ticker logic mostly
     title?: string;
     height?: number;
     locale?: string;
@@ -23,15 +22,8 @@ const MovingAverageChart: React.FC<MovingAverageChartProps> = ({
     const chartRef = useRef<any>(null);
     const [useLogScale, setUseLogScale] = useState(true);
 
-    const { data: ohlcvData, isLoading } = useQuery({
-        queryKey: ['ohlcv-moving-averages', assetId],
-        queryFn: () => apiClient.getAssetsOhlcv({
-            asset_identifier: assetId,
-            data_interval: '1d',
-            limit: 10000
-        }),
-        staleTime: 60 * 60 * 1000,
-    });
+    // Use Custom Hook for Backend API
+    const { data: maData, loading: isLoading } = useMovingAverages(assetId);
 
     useEffect(() => {
         const loadHighcharts = async () => {
@@ -60,19 +52,6 @@ const MovingAverageChart: React.FC<MovingAverageChartProps> = ({
         loadHighcharts()
     }, [])
 
-    const calculateSMA = (data: number[][], period: number) => {
-        if (data.length < period) return [];
-        const sma: number[][] = [];
-        for (let i = period - 1; i < data.length; i++) {
-            let sum = 0;
-            for (let j = 0; j < period; j++) {
-                sum += data[i - j][1];
-            }
-            sma.push([data[i][0], sum / period]);
-        }
-        return sma;
-    };
-
     if (isLoading || !isClient || !Highcharts || !HighchartsReact) {
         return (
             <div className="bg-white rounded-lg p-6 flex items-center justify-center" style={{ height: `${height}px` }}>
@@ -81,29 +60,43 @@ const MovingAverageChart: React.FC<MovingAverageChartProps> = ({
         );
     }
 
-    const rawData = (ohlcvData?.data || ohlcvData || []) as any[];
-    const priceData: number[][] = rawData
-        .map(d => [new Date(d.timestamp_utc).getTime(), parseFloat(d.close_price)])
-        .filter(d => !isNaN(d[0]) && !isNaN(d[1]))
-        .sort((a, b) => a[0] - b[0]);
+    if (!maData || !maData.data) {
+        return <div className="p-10 text-center text-red-500">Failed to load data.</div>;
+    }
 
+    // Process Backend Data for Highcharts
+    const processedData = maData.data.map(d => {
+        const timestamp = new Date(d.date).getTime();
+        return {
+            ...d,
+            timestamp,
+        };
+    }).sort((a, b) => a.timestamp - b.timestamp);
+
+    // Create Price Series
+    const priceSeriesData = processedData.map(d => [d.timestamp, d.close]);
+
+    // Create SMA Series
     const maConfigs = [
-        { period: 10, color: '#4ade80', visible: false },  // Green-400
-        { period: 20, color: '#22c55e', visible: false },  // Green-500
-        { period: 40, color: '#059669', visible: false },  // Emerald-600
-        { period: 50, color: '#f59e0b', visible: true },   // Amber-500 (Default)
-        { period: 111, color: '#8b5cf6', visible: false }, // Violet-500
-        { period: 200, color: '#ef4444', visible: true },  // Red-500 (Default)
-        { period: 365, color: '#3b82f6', visible: false }, // Blue-500
-        { period: 700, color: '#6b7280', visible: false }, // Gray-500 (350*2)
+        { period: 10, color: '#4ade80', visible: false }, 
+        { period: 20, color: '#22c55e', visible: false }, 
+        { period: 40, color: '#059669', visible: false }, 
+        { period: 50, color: '#f59e0b', visible: true },  
+        { period: 111, color: '#8b5cf6', visible: false },
+        { period: 200, color: '#ef4444', visible: true }, 
+        { period: 365, color: '#3b82f6', visible: false },
+        { period: 700, color: '#6b7280', visible: false },
     ];
 
     const maSeries = maConfigs.map(config => ({
         name: `${config.period} Day SMA`,
-        data: calculateSMA(priceData, config.period),
+        data: processedData.map(d => [d.timestamp, (d as any)[`SMA_${config.period}`]]),
         color: config.color,
         lineWidth: 1.5,
         visible: config.visible,
+        tooltip: {
+            valueDecimals: 2
+        }
     }));
 
     const chartOptions = {
@@ -118,7 +111,7 @@ const MovingAverageChart: React.FC<MovingAverageChartProps> = ({
         tooltip: { shared: true, valueDecimals: 2, valuePrefix: '$' },
         legend: { enabled: true },
         series: [
-            { name: 'Bitcoin Price', data: priceData, color: '#1e293b', lineWidth: 1, opacity: 0.5, id: 'price' }, // Slate-800
+            { name: 'Bitcoin Price', data: priceSeriesData, color: '#1e293b', lineWidth: 1, opacity: 0.5, id: 'price' },
             ...maSeries
         ],
         rangeSelector: { enabled: true, selected: 4 },

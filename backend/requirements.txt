@@ -45,3 +45,9 @@ aiohttp==3.8.2
 feedparser==6.0.10
 groq==0.5.0
 markdown==3.5.1
+
+# AI/ML Dependencies
+torch --index-url https://download.pytorch.org/whl/cu118
+transformers
+accelerate
+scipy

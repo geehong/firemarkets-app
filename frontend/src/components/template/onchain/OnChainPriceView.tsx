@@ -105,7 +105,7 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
         if (fullPath.includes('/onchain/price/close/intraday')) return 'BTC Close Price (IntraDay)';
         if (fullPath.includes('/onchain/price/ohlcv/daily')) return 'BTC Daily OHLCV';
         if (fullPath.includes('/onchain/price/ohlcv/intraday')) return 'BTC IntraDay OHLCV';
-        if (fullPath.includes('/onchain/price/moving-averages')) return 'Moving Averages';
+        if (fullPath.includes('/onchain/price/moving-averages') || fullPath.includes('/onchain/analysis/moving-averages')) return 'Moving Averages';
         if (fullPath.includes('/onchain/price/capitalization')) return 'Capitalization';
         if (fullPath.includes('/onchain/price/pi-cycle')) return 'Pi Cycle';
         if (fullPath.toLowerCase().includes('/onchain/price/monthlyreturns')) return 'Monthly Returns';
@@ -417,7 +417,7 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
                                                 allowedIntervals={['1m', '5m', '15m', '30m', '1h', '4h']}
                                                 height={600}
                                             />
-                                        ) : fullPath.includes('/onchain/price/moving-averages') ? (
+                                        ) : (fullPath.includes('/onchain/price/moving-averages') || fullPath.includes('/onchain/analysis/moving-averages')) ? (
                                             <MovingAverageChart assetId="BTCUSDT" height={600} />
                                         ) : fullPath.includes('/onchain/price/capitalization') ? (
                                             <CapitalizationChart assetId="BTCUSDT" height={600} />

@@ -41,6 +41,7 @@ export interface BaseTemplateViewProps {
         }[];
         coverImage?: string;
         actions?: React.ReactNode; // Extra buttons (e.g. Edit)
+        headerClassName?: string; // Optional class for the header container
     };
     /**
      * Tabbed content configuration
@@ -97,8 +98,8 @@ const BaseTemplateView: React.FC<BaseTemplateViewProps> = ({
                                 </nav>
                             )}
 
-                            <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03] p-6">
-                                <div className="flex flex-col gap-6">
+                            <div className={`overflow-hidden rounded-3xl border ${header.headerClassName ? 'border-transparent' : 'border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]'} ${header.headerClassName || 'p-6'}`}>
+                                <div className={`flex flex-col gap-6 ${header.headerClassName ? 'p-6 md:p-8' : ''}`}>
                                     {/* Cover Image - prevent displaying icons as cover images */}
                                     {header.coverImage && !header.coverImage.includes('/icons/') && (
                                         <div className="w-full aspect-[16/10] overflow-hidden rounded-lg relative">
@@ -110,11 +111,11 @@ const BaseTemplateView: React.FC<BaseTemplateViewProps> = ({
                                         </div>
                                     )}
 
-                                    <div className="space-y-4">
+                                    <div className="space-y-4 relative z-10">
                                         {/* Meta Row: Category | Status | Date */}
-                                        <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
+                                        <div className={`flex flex-wrap items-center gap-3 text-sm ${header.headerClassName ? 'text-white/60' : 'text-gray-500 dark:text-gray-400'}`}>
                                             {header.category && (
-                                                <span className="font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded">
+                                                <span className={`font-semibold px-2 py-1 rounded ${header.headerClassName ? 'text-blue-400 bg-white/10' : 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'}`}>
                                                     {header.category.name}
                                                 </span>
                                             )}
@@ -144,7 +145,7 @@ const BaseTemplateView: React.FC<BaseTemplateViewProps> = ({
 
                                         {/* H1 Title */}
                                         <div className="flex justify-between items-start gap-4">
-                                            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white leading-tight">
+                                            <h1 className={`text-2xl md:text-3xl font-black leading-tight ${header.headerClassName ? 'text-white' : 'text-gray-900 dark:text-white'}`}>
                                                 {header.title}
                                             </h1>
                                             {header.actions && (

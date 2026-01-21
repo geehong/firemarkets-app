@@ -8,7 +8,7 @@ from ..core.config import GLOBAL_APP_CONFIGS
 
 def get_current_db() -> Generator[Session, None, None]:
     """데이터베이스 세션 의존성"""
-    return get_postgres_db()
+    yield from get_postgres_db()
 
 def get_global_configs():
     """전역 설정 의존성"""

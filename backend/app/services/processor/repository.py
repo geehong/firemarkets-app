@@ -547,15 +547,22 @@ class DataRepository:
                         'ticker': ticker,
                         'market_cap_usd': item.get('market_cap_usd'),
                         'price_usd': item.get('price_usd'),
+                        'daily_change_percent': item.get('daily_change_percent'),
                         'ranking_date': ranking_date,
                         'data_source': data_source,
-                        # ...
                     }
                     
                     stmt = pg_insert(WorldAssetsRanking).values(**pg_data)
                     stmt = stmt.on_conflict_do_update(
                         index_elements=['ranking_date', 'ticker', 'data_source'],
-                        set_={k: getattr(stmt.excluded, k) for k in pg_data.keys() if k not in ['ranking_date', 'ticker', 'data_source']}
+                        set_={
+                            'rank': stmt.excluded.rank,
+                            'name': stmt.excluded.name,
+                            'market_cap_usd': stmt.excluded.market_cap_usd,
+                            'price_usd': stmt.excluded.price_usd,
+                            'daily_change_percent': stmt.excluded.daily_change_percent,
+                            'last_updated': func.now()
+                        }
                     )
                     pg_db.execute(stmt)
                     saved_count += 1

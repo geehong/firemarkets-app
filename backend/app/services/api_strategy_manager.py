@@ -624,7 +624,9 @@ class ApiStrategyManager:
                 'polygon': 'polygon',
                 'finnhub': 'finnhub',
                 'binance': 'binance',
-                'coinbase': 'coinbase'
+                'coinbase': 'coinbase',
+                'alpha_vantage': 'alpha_vantage',
+                'alphavantage': 'alpha_vantage'
             }
             
             preferred_api_name = data_source_to_client.get(preferred_data_source_lower)

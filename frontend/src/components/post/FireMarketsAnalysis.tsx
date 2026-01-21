@@ -1,14 +1,13 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
 import { apiClient } from '@/lib/api'
+import { useFearAndGreed } from '@/hooks/analysis/useFearAndGreed'
+import { useRealtimePrices } from '@/hooks/data/useSocket'
+import { TrendingUp, TrendingDown, Minus, Info, Activity, ShieldCheck, Zap } from 'lucide-react'
 
-interface AssetAnalysisCardProps {
-    ticker: string
-    locale: string
-}
-
+// --- Formatting Utilities ---
 const formatCurrency = (value: number | undefined | null) => {
     if (value === undefined || value === null) return '-';
     return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -19,233 +18,185 @@ const formatNumber = (value: number | undefined | null) => {
     return value.toLocaleString();
 }
 
+const getPercentDiff = (targetValue: number | undefined | null, baseValue: number | undefined | null) => {
+    if (!targetValue || !baseValue) return null;
+    return ((targetValue - baseValue) / baseValue) * 100;
+};
+
+// --- Sub-components ---
+
+const TechnicalBadge = ({ label, type }: { label: string, type: 'bull' | 'bear' | 'neutral' }) => {
+    const colors = {
+        bull: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800',
+        bear: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800',
+        neutral: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400 border-gray-200 dark:border-gray-700'
+    };
+    const Icons = {
+        bull: <TrendingUp className="w-3 h-3" />,
+        bear: <TrendingDown className="w-3 h-3" />,
+        neutral: <Minus className="w-3 h-3" />
+    };
+
+    return (
+        <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${colors[type]}`}>
+            {Icons[type]}
+            {label.toUpperCase()}
+        </span>
+    );
+};
+
+interface AssetAnalysisCardProps {
+    ticker: string
+    locale: string
+}
+
 const AssetAnalysisCard: React.FC<AssetAnalysisCardProps> = ({ ticker, locale }) => {
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    
+    // 1. Get WebSocket Prices
+    const { latestPrice } = useRealtimePrices(ticker);
 
     useEffect(() => {
         const fetchData = async () => {
             try {
-                // Fetch common info first to get asset ID and basic details
-                // Fetch common info first to get asset ID, basic details, AND price
-                const commonData = await apiClient.getAssetInfo(ticker);
+                // 2. Fetch common & specific data (Fundamental/Moving Averages)
+                const commonData = await apiClient.getAssetInfo(ticker).catch(() => null);
+                const typeName = commonData?.type_name || '';
+
                 let specificData: any = {};
-                let stockRes: any = null;
-
                 try {
-                    stockRes = await apiClient.getStockInfo(ticker);
-                    if (stockRes) {
-                         const numeric = stockRes.numeric_overview || {};
-                         const post = stockRes.post_overview || {};
-                         const financials = numeric.stock_financials_data || {};
+                    let endpoint = `/asset-overviews/stock/${ticker}`;
+                    if (typeName === 'Crypto') endpoint = `/asset-overviews/crypto/${ticker}`;
+                    else if (typeName === 'ETFs' || typeName === 'Funds') endpoint = `/asset-overviews/etf/${ticker}`;
 
+                    const specificRes = await apiClient.request(endpoint, { silentStatusCodes: [404] }).catch(() => null);
+                    if (specificRes) {
                         specificData = {
-                            ...numeric,
-                            ...post,
-                            ...financials // Flatten financials to top level for easier access
+                            ...(specificRes.numeric_overview || {}),
+                            ...(specificRes.post_overview || {}),
+                            ...(specificRes.numeric_overview?.stock_financials_data || {})
                         };
                     }
-                } catch (e) {
-                    console.log(`Failed to fetch stock info for ${ticker}`, e);
-                }
+                } catch (e) {}
 
-                const finalData = {
+                // Sync with initial data
+                const initialPrice = commonData?.price || commonData?.current_price || specificData.price;
+                const initialPrevClose = commonData?.prev_close || specificData.prev_close || specificData.previous_close;
+                
+                setData({
                     ...commonData,
                     ...specificData,
-                    // Prioritize commonData (which uses /asset-overviews/common) for financial metrics
-                    // as it seems to have the most accurate/complete recent market data (prev_close, MAs etc.)
-                    // specificData (from /asset-overviews/stock) is used for basic financial overview but might be missing live/daily stats
-                    
-                    price: commonData?.price || specificData.price,
-                    current_price: commonData?.price || specificData.price || commonData?.current_price,
-                    
-                    // Allow multiple sources for name
-                    company_name: specificData.company_name || specificData.title?.en || specificData.name || commonData?.name,
-                    name: specificData.company_name || specificData.title?.en || specificData.name || commonData?.name,
-
-                    // Prioritize commonData for technicals/market stats
-                    prev_close: commonData?.prev_close || specificData.prev_close || specificData.previous_close, 
-                    week_52_high: commonData?.week_52_high || specificData.week_52_high,
-                    week_52_low: commonData?.week_52_low || specificData.week_52_low,
-                    volume: commonData?.volume || specificData.volume,
-                    average_vol_3m: commonData?.average_vol_3m || specificData.average_vol_3m,
-                    day_50_moving_avg: commonData?.day_50_moving_avg || specificData.day_50_moving_avg,
-                    day_200_moving_avg: commonData?.day_200_moving_avg || specificData.day_200_moving_avg,
-                };
-
-                // console.log(`[AssetAnalysisCard Debug] Mapped Data for ${ticker}:`, finalData);
-                setData(finalData);
+                    current_price: latestPrice?.price || initialPrice || initialPrevClose,
+                    prev_close: initialPrevClose,
+                    company_name: commonData?.company_name || commonData?.title?.en || commonData?.name || ticker,
+                    price_change_percentage_24h: latestPrice?.changePercent ?? commonData?.price_change_percentage_24h ?? commonData?.daily_change_percent,
+                });
             } catch (error) {
-                console.error(`Error fetching data for ${ticker}:`, error);
+                console.error(`Error for ${ticker}:`, error);
             } finally {
                 setLoading(false);
             }
         };
-
         fetchData();
-    }, [ticker]);
+    }, [ticker, locale]);
 
-    if (loading) {
-        return (
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 h-[280px] animate-pulse">
-                <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mb-4"></div>
-                <div className="space-y-3">
-                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full"></div>
-                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full"></div>
-                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full"></div>
-                </div>
-            </div>
-        );
-    }
+    // Update price when socket pushes new data
+    useEffect(() => {
+        if (latestPrice && data) {
+            setData((prev: any) => prev ? ({
+                ...prev,
+                current_price: latestPrice.price,
+                price_change_percentage_24h: latestPrice.changePercent ?? prev.price_change_percentage_24h
+            }) : prev);
+        }
+    }, [latestPrice]);
 
+    const analysis = useMemo(() => {
+        if (!data || !data.current_price || !data.day_50_moving_avg || !data.day_200_moving_avg) return null;
+        const { current_price: price, day_50_moving_avg: ma50, day_200_moving_avg: ma200 } = data;
+
+        const isAbove200 = price > ma200;
+        const isAbove50 = price > ma50;
+        const isGoldenCross = ma50 > ma200;
+
+        let trend: 'bull' | 'bear' | 'neutral' = 'neutral';
+        if (isAbove200) trend = isAbove50 ? 'bull' : 'neutral';
+        else trend = isAbove50 ? 'neutral' : 'bear';
+
+        const signals = [];
+        if (isGoldenCross) signals.push(locale === 'ko' ? '골든크로스 발생' : 'Golden Cross Detected');
+        if (isAbove200) signals.push(locale === 'ko' ? '장기 추세 상방' : 'Long-term Uptrend');
+        else signals.push(locale === 'ko' ? '장기 추세 하방' : 'Long-term Downtrend');
+
+        return { trend, signals: signals.slice(0, 2) };
+    }, [data, locale]);
+
+    if (loading) return <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl h-32 animate-pulse border border-gray-100 dark:border-gray-800" />;
     if (!data) return null;
 
-    const t = {
-        prevClose: locale === 'ko' ? '전일 종가' : 'Previous Close',
-        volume: locale === 'ko' ? '거래량' : 'Volume',
-        high52: locale === 'ko' ? '52주 최고가' : '52 Week High',
-        low52: locale === 'ko' ? '52주 최저가' : '52 Week Low',
-        avgVol3m: locale === 'ko' ? '평균 거래량 (3M)' : 'Avg Volume (3M)',
-        ma50: locale === 'ko' ? '50일 이동평균' : '50 Day MA',
-        ma200: locale === 'ko' ? '200일 이동평균' : '200 Day MA',
-        techTrend: locale === 'ko' ? '기술적 트렌드' : 'Technical Trend',
-        momentum: locale === 'ko' ? '모멘텀' : 'Momentum',
-        bullish: locale === 'ko' ? '상승세' : 'Bullish',
-        bearish: locale === 'ko' ? '하락세' : 'Bearish',
-        neutral: locale === 'ko' ? '중립' : 'Neutral',
-        strong: locale === 'ko' ? '강함' : 'Strong',
-        weak: locale === 'ko' ? '약함' : 'Weak',
-        goldenCross: locale === 'ko' ? '골든 크로스 (장기 상승 추세)' : 'Golden Cross Pattern (Long-term Uptrend)',
-        priceAbove200: locale === 'ko' ? '200일 이평선 상회 (긍정적)' : 'Price above 200MA (Positive)',
-        deathCross: locale === 'ko' ? '데스 크로스 (장기 하락 추세)' : 'Death Cross Pattern (Long-term Downtrend)',
-        priceBelow200: locale === 'ko' ? '200일 이평선 하회 (부정적)' : 'Price below 200MA (Negative)',
-    };
-
-    const getTrendAnalysis = () => {
-        if (!data || !data.current_price || !data.day_50_moving_avg || !data.day_200_moving_avg) return null;
-        
-        const price = data.current_price;
-        const ma50 = data.day_50_moving_avg;
-        const ma200 = data.day_200_moving_avg;
-
-        let trend = t.neutral;
-        let trendColor = 'text-gray-600 dark:text-gray-400';
-        let signal = '';
-
-        if (price > ma200) {
-            trend = t.bullish;
-            trendColor = 'text-green-600 dark:text-green-400';
-            if (ma50 > ma200) {
-                signal = t.goldenCross;
-            } else {
-                signal = t.priceAbove200;
-            }
-        } else {
-            trend = t.bearish;
-            trendColor = 'text-red-600 dark:text-red-400';
-            if (ma50 < ma200) {
-                 signal = t.deathCross;
-            } else {
-                 signal = t.priceBelow200;
-            }
-        }
-
-        // Short term momentum
-        let momentum = t.neutral;
-        if (price > ma50) momentum = t.strong;
-        else momentum = t.weak;
-
-        return { trend, trendColor, signal, momentum };
-    };
-
-    const analysis = getTrendAnalysis();
-
-    const getPercentDiff = (targetValue: number | undefined | null, baseValue: number | undefined | null) => {
-        if (!targetValue || !baseValue) return null;
-        const diff = ((targetValue - baseValue) / baseValue) * 100;
-        return diff;
-    };
-
-    const renderMetric = (label: string, value: number | undefined | null, isCurrency: boolean = true, compareBase?: number) => {
-        const percent = compareBase ? getPercentDiff(value, compareBase) : null;
-        const formattedValue = isCurrency ? formatCurrency(value) : formatNumber(value);
-        
-        return (
-            <div className="flex flex-col">
-                <span className="text-gray-500 dark:text-gray-400 text-xs text-nowrap">{label}</span>
-                <span className="font-medium text-gray-800 dark:text-gray-200">
-                    {formattedValue}
-                    {percent !== null && (
-                        <span className={`ml-1 text-xs ${percent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            ({percent > 0 ? '+' : ''}{percent.toFixed(2)}%)
-                        </span>
-                    )}
-                </span>
-            </div>
-        );
-    };
-
-    const getDisplayName = () => {
-        const name = data.company_name || data.name;
-        // console.log(`[AssetAnalysisCard Debug] ${ticker} Name Check:`, { company_name: data.company_name, name: data.name, resolved: name });
-        if (!name) return ticker;
-        if (name.toUpperCase() === ticker.toUpperCase()) return ticker;
-        return `${name} (${ticker})`;
-    };
-    
-    // Debug logging
-    console.log(`[AssetAnalysisCard Final Data] ${ticker}:`, data);
-    console.log(`[AssetAnalysisCard Analysis] ${ticker}:`, analysis);
+    const name = data.company_name || data.name || ticker;
+    const displayName = name.toUpperCase() === ticker.toUpperCase() ? ticker : `${name} (${ticker})`;
 
     return (
-        <div className="bg-white dark:bg-gray-800 p-5 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow w-full">
-            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-4 pb-3 border-b border-gray-100 dark:border-gray-700">
-                <div className="flex flex-wrap items-center gap-3">
-                    <Link href={`/${locale}/assets/${ticker}`} className="group flex items-center gap-2">
-                        <span className="font-bold text-xl text-blue-600 dark:text-blue-400 group-hover:underline">
-                            {getDisplayName()}
-                        </span>
-                        <span className="text-gray-400 dark:text-gray-500 text-sm group-hover:text-blue-500">&rarr;</span>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 border border-slate-100 dark:border-gray-700/50 shadow-sm hover:shadow-md transition-all group">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
+                <div className="flex flex-col gap-1.5">
+                    <Link href={`/${locale}/assets/${ticker}`} className="inline-flex items-center gap-2 group-hover:text-blue-600 transition-colors">
+                        <span className="font-bold text-lg text-slate-800 dark:text-slate-100">{displayName}</span>
+                        <Zap className="w-4 h-4 text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </Link>
-
                     {analysis && (
-                        <div className="flex items-center gap-2 text-sm">
-                            <span className={`px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 font-bold ${analysis.trendColor}`}>
-                                {analysis.trend}
-                            </span>
-                             <span className={`px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 ${analysis.momentum === t.strong ? 'text-green-600' : 'text-orange-500'}`}>
-                                {t.momentum}: {analysis.momentum}
-                            </span>
+                        <div className="flex flex-wrap gap-2">
+                            <TechnicalBadge 
+                                type={analysis.trend} 
+                                label={analysis.trend === 'bull' ? (locale === 'ko' ? '상승' : 'Bullish') : (analysis.trend === 'bear' ? (locale === 'ko' ? '하락' : 'Bearish') : (locale === 'ko' ? '중립' : 'Neutral'))} 
+                            />
+                            {analysis.signals.map((s, idx) => (
+                                <span key={idx} className="text-[10px] text-slate-400 dark:text-gray-500 flex items-center gap-1 bg-slate-50 dark:bg-gray-900 px-2 py-0.5 rounded border border-slate-100 dark:border-gray-800">
+                                    <Info className="w-3 h-3" /> {s}
+                                </span>
+                            ))}
                         </div>
                     )}
                 </div>
 
-                {data.current_price && (
-                     <div className="flex items-baseline gap-2">
-                        <span className="text-lg font-bold text-gray-900 dark:text-white">
-                            {formatCurrency(data.current_price)}
+                <div className="flex items-baseline gap-3 bg-slate-50 dark:bg-gray-900/50 p-3 rounded-xl border border-slate-100 dark:border-gray-800">
+                    <span className="text-xl font-black text-slate-900 dark:text-white">{formatCurrency(data.current_price)}</span>
+                    {data.price_change_percentage_24h !== undefined && (
+                        <span className={`text-sm font-bold flex items-center gap-0.5 ${data.price_change_percentage_24h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {data.price_change_percentage_24h >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                            {Math.abs(data.price_change_percentage_24h).toFixed(2)}%
                         </span>
-                        {data.price_change_percentage_24h !== undefined && (
-                            <span className={`text-sm font-medium ${data.price_change_percentage_24h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                {data.price_change_percentage_24h >= 0 ? '▲' : '▼'} {Math.abs(data.price_change_percentage_24h).toFixed(2)}%
-                            </span>
-                        )}
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 text-sm">
-                {renderMetric(t.prevClose, data.prev_close, true)}
-                {renderMetric(t.high52, data.week_52_high, true, data.prev_close)}
-                {renderMetric(t.low52, data.week_52_low, true, data.prev_close)}
-                {renderMetric(t.volume, data.volume, false)}
-                {renderMetric(t.avgVol3m, data.average_vol_3m, false)}
-                {renderMetric(t.ma50, data.day_50_moving_avg, true, data.prev_close)}
-                {renderMetric(t.ma200, data.day_200_moving_avg, true, data.prev_close)}
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 p-1">
+                {[
+                    { label: locale === 'ko' ? '전일 종가' : 'Prev Close', val: formatCurrency(data.prev_close) },
+                    { label: locale === 'ko' ? '50일 평균' : '50D MA', val: formatCurrency(data.day_50_moving_avg), diff: getPercentDiff(data.current_price, data.day_50_moving_avg) },
+                    { label: locale === 'ko' ? '200일 평균' : '200D MA', val: formatCurrency(data.day_200_moving_avg), diff: getPercentDiff(data.current_price, data.day_200_moving_avg) },
+                    { label: locale === 'ko' ? '52주 최고' : '52W High', val: formatCurrency(data.week_52_high), diff: getPercentDiff(data.current_price, data.week_52_high) },
+                ].map((item, i) => (
+                    <div key={i} className="flex flex-col gap-0.5">
+                        <span className="text-[11px] font-semibold text-slate-400 dark:text-gray-500 uppercase tracking-wider">{item.label}</span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{item.val}</span>
+                            {item.diff !== null && item.diff !== undefined && (
+                                <span className={`text-[10px] font-medium ${item.diff >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                    {item.diff > 0 ? '+' : ''}{item.diff.toFixed(1)}%
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                ))}
             </div>
         </div>
     );
-}
+};
+
+// --- Main Components ---
 
 interface FireMarketsAnalysisProps {
     postInfo: any
@@ -253,40 +204,86 @@ interface FireMarketsAnalysisProps {
 }
 
 const FireMarketsAnalysis: React.FC<FireMarketsAnalysisProps> = ({ postInfo, locale }) => {
-    // In the future, this data will come from real-time API or post metadata
-    // For now, we show a placeholder structure to satisfy AdSense content requirements
-    
-    // Check if we have any tickers to analyze
+    const { fngData, loading: fngLoading } = useFearAndGreed();
     const tickers: string[] = postInfo.tickers || [];
     
+    // Improved crypto detection: check if any ticker contains crypto keywords or category matches
+    const cryptoKeywords = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA', 'TRX', 'LINK', 'PEPE', 'SHIB', 'AVAX'];
+    const isCryptoPost = useMemo(() => {
+        const hasCryptoTicker = tickers.some(t => 
+            cryptoKeywords.some(key => t.toUpperCase().includes(key))
+        );
+        const hasCryptoCategory = (postInfo.category || '').toLowerCase().includes('crypto');
+        return hasCryptoTicker || hasCryptoCategory;
+    }, [tickers, postInfo.category]);
+
     if (tickers.length === 0) return null;
 
     return (
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-6 border border-blue-100 dark:border-blue-800 my-8">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
-                <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-                FireMarkets Analysis
-            </h3>
-            
-            <p className="text-gray-700 dark:text-gray-300 text-sm mb-4">
-                {locale === 'ko' 
-                    ? `FireMarkets의 데이터 분석 시스템이 감지한 ${tickers.join(', ')} 관련 시장 데이터입니다. 이 자산의 최근 변동성과 기술적 지표를 참고하세요.`
-                    : `Market data analysis for ${tickers.join(', ')} detected by FireMarkets system. Please refer to the recent volatility and technical indicators of this asset.`
-                }
-            </p>
+        <section className="my-10 overflow-hidden rounded-3xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-2xl shadow-slate-200/50 dark:shadow-none">
+            {/* Header Section */}
+            <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 p-6 md:p-8 text-white relative">
+                <div className="absolute top-0 right-0 p-4 opacity-10">
+                    <Activity className="w-24 h-24" />
+                </div>
+                
+                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 relative z-10">
+                    <div className="max-w-2xl">
+                        <div className="flex items-center gap-2 mb-3">
+                            <div className="p-1.5 bg-blue-500 rounded-lg">
+                                <Zap className="w-4 h-4 text-white" />
+                            </div>
+                            <span className="text-sm font-bold tracking-widest uppercase text-blue-400">Deep Analysis</span>
+                        </div>
+                        <h3 className="text-2xl md:text-3xl font-black mb-3">FireMarkets Intelligent Outlook</h3>
+                        <p className="text-slate-400 text-sm leading-relaxed">
+                            {locale === 'ko' 
+                                ? `${tickers.join(', ')} 관련 실시간 기술 분석 결과입니다. 현재 가격과 주요 이동평균선의 이격도를 기반으로 시장의 힘을 측정합니다.`
+                                : `Real-time technical analysis for ${tickers.join(', ')}. Measures market strength based on price deviation from key moving averages.`
+                            }
+                        </p>
+                    </div>
 
-            <div className="grid grid-cols-1 gap-4">
-                {tickers.map((ticker) => (
-                    <AssetAnalysisCard key={ticker} ticker={ticker} locale={locale} />
-                ))}
+                    {isCryptoPost && (
+                        <div className="bg-white/5 backdrop-blur-md p-4 rounded-2xl border border-white/10 flex flex-col items-center min-w-[140px]">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mb-1">Crypto Mood</span>
+                            {fngLoading ? (
+                                <div className="h-8 w-12 bg-white/10 animate-pulse rounded mt-1" />
+                            ) : fngData ? (
+                                <>
+                                    <div className={`text-2xl font-black ${parseInt(fngData.value) > 60 ? 'text-green-400' : (parseInt(fngData.value) < 40 ? 'text-red-400' : 'text-amber-400')}`}>
+                                        {fngData.value}
+                                    </div>
+                                    <span className="text-[11px] font-medium opacity-80">{fngData.value_classification}</span>
+                                </>
+                            ) : (
+                                <span className="text-xs text-slate-500 mt-1 italic">N/A</span>
+                            )}
+                        </div>
+                    )}
+                </div>
             </div>
-            
-            <p className="text-xs text-gray-400 mt-4 text-center">
-                * This data is automatically generated based on real-time market conditions.
-            </p>
-        </div>
+
+            {/* Analysis Grid */}
+            <div className="p-6 md:p-8 space-y-4">
+                <div className="grid grid-cols-1 gap-4">
+                    {tickers.map((ticker) => (
+                        <AssetAnalysisCard key={ticker} ticker={ticker} locale={locale} />
+                    ))}
+                </div>
+            </div>
+
+            {/* Footer / Disclaimer */}
+            <div className="bg-slate-50 dark:bg-gray-900/50 px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-3 border-t border-slate-100 dark:border-gray-800">
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <ShieldCheck className="w-4 h-4 text-green-500" />
+                    <span>Calculated by FireMarkets Algorithmic Engine</span>
+                </div>
+                <p className="text-[10px] text-slate-400 italic">
+                    * Not financial advice. Data for informational purposes only.
+                </p>
+            </div>
+        </section>
     )
 }
 

@@ -8,7 +8,7 @@ from app.api.v1.endpoints import (
     realtime, scheduler, collectors, assets, world_assets, crypto, 
     onchain, etf, dashboard, configurations, admin, logs, metrics, 
     open_interest, tickers, navigation, posts, asset_overviews,
-    auth  # <-- Added V1 auth
+    auth, analysis
 )
 from app.api.v1 import external_apis
 from app.core.database import engine
@@ -59,6 +59,7 @@ origins = [
     "ws://127.0.0.1:3000", "ws://127.0.0.1:3006", "ws://127.0.0.1:8000", "ws://127.0.0.1:8001",
     # 프로덕션 도메인 추가
     "https://firemarkets.net", "http://firemarkets.net",
+    "https://www.firemarkets.net", "http://www.firemarkets.net",
     "http://firemarkets.net:3006", "https://firemarkets.net:3006",
     "wss://firemarkets.net", "ws://firemarkets.net",
     "https://backend.firemarkets.net", "http://backend.firemarkets.net",
@@ -98,6 +99,7 @@ app.include_router(tickers.router, prefix="/api/v1/tickers", tags=["tickers"])
 app.include_router(navigation.router, prefix="/api/v1/navigation", tags=["navigation"])
 app.include_router(posts.router, prefix="/api/v1/posts", tags=["posts"])
 app.include_router(asset_overviews.router, prefix="/api/v1/asset-overviews", tags=["asset-overviews"])
+app.include_router(analysis.router, prefix="/api/v1/analysis", tags=["analysis"])
 app.include_router(external_apis.router, prefix="/api/v1/external-apis", tags=["external-apis"])
 
 @app.get("/")

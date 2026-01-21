@@ -36,6 +36,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
   const [bulkAction, setBulkAction] = useState('delete');
   const [isMerging, setIsMerging] = useState(false); // Add loading state
   const [isCleaning, setIsCleaning] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState<string | null>(null);
 
   // Helper to update URL
   const updateURL = useCallback((updates: Record<string, string | number | undefined>) => {
@@ -51,6 +52,11 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
 
     router.replace(`${pathname}?${params.toString()}`);
   }, [searchParams, pathname, router]);
+
+  useEffect(() => {
+    console.log('[BlogManage] Component Mounted');
+    return () => console.log('[BlogManage] Component Unmounted');
+  }, []);
 
   // Auth check
   useEffect(() => {
@@ -169,24 +175,32 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
     }
   };
 
-  const handleCleanup = async () => {
-    if (!confirm('불량 뉴스(내용 없음, 번역 실패 등)를 자동으로 정리하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) {
-      return;
-    }
-
+  const handleCleanup = useCallback(async () => {
+    console.log('[BlogManage] handleCleanup (API Call) started immediately');
+    
     setIsCleaning(true);
+    setCleanupResult(null);
     try {
       const result = await cleanupPostsMutation.mutateAsync();
+      console.log('[BlogManage] Cleanup successfully completed', result);
+      
       // @ts-ignore
-      alert(result.message);
+      const msg = result.message || '정리 완료';
+      setCleanupResult(msg);
+      
+      // Auto-hide result after 3 seconds
+      setTimeout(() => setCleanupResult(null), 3000);
+      
+      refetch(); // Refresh list to show changes
     } catch (err) {
-      console.error('Cleanup error:', err);
+      console.error('[BlogManage] Cleanup error:', err);
       // @ts-ignore
-      alert(`정리 중 오류가 발생했습니다: ${err.message || 'Unknown error'}`);
+      setCleanupResult(`Error: ${err.message || 'Fail'}`);
+      setTimeout(() => setCleanupResult(null), 5000);
     } finally {
       setIsCleaning(false);
     }
-  };
+  }, [cleanupPostsMutation, refetch]);
 
   const handleRefresh = () => {
     refetch();
@@ -453,6 +467,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
           <div className="ml-auto flex items-center gap-2">
             {/* Refresh Button */}
             <button
+              type="button"
               onClick={handleRefresh}
               className={`p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors ${isRefetching || isLoading ? 'animate-spin' : ''}`}
               title="새로고침"
@@ -460,16 +475,29 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
               <RefreshCw className="w-4 h-4" />
             </button>
 
-            {/* Cleanup Button */}
+            {/* Cleanup Button - Immediate Execution */}
             {(typeList.includes('news') || typeList.includes('raw_news') || currentPostType === 'all' || typeList.includes('all')) && (
-              <button
-                onClick={handleCleanup}
-                disabled={isCleaning}
-                className={`p-1.5 bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900/30 dark:hover:bg-red-900/50 dark:text-red-400 rounded-lg flex items-center justify-center border border-red-200 dark:border-red-800 ${isCleaning ? 'animate-pulse' : ''}`}
-                title={locale === 'ko' ? "불량 뉴스 정리 (빈 내용, 오역 등)" : "Clean News (Empty content, translation errors, etc.)"}
-              >
-                <Eraser className="w-4 h-4" />
-              </button>
+              <div className="relative flex items-center gap-2">
+                {cleanupResult && (
+                  <span className="text-xs font-medium text-blue-600 animate-in fade-in slide-in-from-right-2 duration-300 whitespace-nowrap bg-blue-50 px-2 py-1 rounded border border-blue-200 shadow-sm">
+                    {cleanupResult}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('[BlogManage] Cleanup button clicked - immediate execution');
+                    handleCleanup();
+                  }}
+                  disabled={isCleaning}
+                  className={`p-1.5 rounded-lg flex items-center justify-center border transition-all duration-200 bg-red-100 hover:bg-red-200 text-red-700 border-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 dark:text-red-400 dark:border-red-800 ${isCleaning ? 'animate-spin cursor-not-allowed opacity-50' : ''}`}
+                  title={locale === 'ko' ? "불량 뉴스 정리 (빈 내용, 오역 등)" : "Clean News (Empty content, translation errors, etc.)"}
+                >
+                  <Eraser className="w-4 h-4" />
+                </button>
+              </div>
             )}
 
             <div className="h-4 w-px bg-gray-300 dark:bg-gray-600 mx-1"></div>

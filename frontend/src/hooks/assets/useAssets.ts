@@ -279,7 +279,7 @@ export const useTreemapLiveData = (
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['treemap-live-view', params],
     queryFn: () => apiClient.getTreemapLiveData(params),
-    staleTime: 5 * 60 * 1000, // 5분 캐시 (백엔드 캐시와 동일)
+    staleTime: 5 * 60 * 1000, // 5분 캐시
     refetchInterval: 15 * 60 * 1000, // 15분마다 자동 갱신
   })
 

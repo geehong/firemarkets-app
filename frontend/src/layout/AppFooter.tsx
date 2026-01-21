@@ -7,7 +7,7 @@ export default function AppFooter() {
 
     return (
         <footer className="w-full bg-white border-t border-gray-200 dark:bg-gray-900 dark:border-gray-800 mt-auto">
-            <div className="max-w-[1920px] mx-auto px-4 md:px-6 py-6 lg:py-8">
+            <div className="mx-auto px-4 md:px-6 lg:px-[5%] py-6 lg:py-8 max-w-none">
                 <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                     <div className="flex flex-col items-center md:items-start gap-2">
                         <div className="flex items-center gap-4 mb-1">

@@ -26,7 +26,7 @@ export default function BriefNewsDetailView({
     originalUrl
 }: BriefNewsDetailViewProps) {
     return (
-        <main className="container mx-auto px-4 py-8 max-w-7xl">
+        <main className="w-full px-4 py-8 max-w-none">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                 {/* Main Content Column */}
                 <div className="lg:col-span-8">

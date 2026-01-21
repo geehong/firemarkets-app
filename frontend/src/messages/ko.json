@@ -88,7 +88,8 @@
         "widgets": "위젯",
         "map": "맵",
         "privacyPolicy": "개인정보처리방침",
-        "termsOfService": "이용약관"
+        "termsOfService": "이용약관",
+        "analysis": "분석"
     },
     "Dashboard": {
         "live": "라이브",

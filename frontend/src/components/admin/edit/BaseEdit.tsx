@@ -691,7 +691,7 @@ export default function BaseEdit({
   }
 
   return (
-    <div className="bg-gray-50 min-h-screen pb-20">
+    <div className="pb-20">
       <EditorHeader
         mode={mode}
         activeLanguage={activeLanguage}
@@ -708,7 +708,7 @@ export default function BaseEdit({
         onToggleBlock={(key) => setBlockVisibility(prev => ({ ...prev, [key]: !prev[key] }))}
       />
 
-      <div className="w-full px-4 lg:px-6 py-4 lg:py-6">
+      <div className="w-full py-4 lg:py-6">
         <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start">
           {/* Main Column */}
           <div className="flex-1 w-full lg:w-auto space-y-4">

@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
+import { apiClient } from '@/lib/api'
 import AssetInfo from '../assets/AssetInfo'
 import LivePriceStocksEtfChart from '@/components/charts/live/LivePriceStocksEtfChart'
 import LivePriceCryptoChart from '@/components/charts/live/LivePriceCryptoChart'
@@ -13,6 +14,9 @@ import ETFInfoCard from '@/components/assets/cards/ETFInfoCard'
 import FinancialsTab from '@/components/assets/FinancialsTab'
 import AgGridHistoryTable from '@/components/tables/AgGridHistoryTable'
 import { useAuth } from '@/hooks/auth/useAuthNew'
+import { Activity, Zap, TrendingUp, TrendingDown } from 'lucide-react'
+import { useRealtimePrices } from '@/hooks/data/useSocket'
+import { useFearAndGreed } from '@/hooks/analysis/useFearAndGreed'
 import BaseTemplateView from './BaseTemplateView'
 
 interface AssetDetailedViewProps {
@@ -22,6 +26,7 @@ interface AssetDetailedViewProps {
 
 const AssetDetailedView: React.FC<AssetDetailedViewProps> = ({ asset, locale }) => {
     const { isAdmin } = useAuth()
+    const { fngData, loading: fngLoading } = useFearAndGreed();
 
     const typeName = asset.type_name
     const isStock = typeName === 'Stocks'
@@ -44,6 +49,63 @@ const AssetDetailedView: React.FC<AssetDetailedViewProps> = ({ asset, locale }) 
 
     const identifier = asset.ticker || asset.symbol || asset.slug
     const assetName = getStringValue(asset.name)
+    
+    // 1. WebSocket Live Prices
+    const { latestPrice } = useRealtimePrices(identifier);
+
+    // 2. Technical Data Fetching for Header Analysis
+    const [techData, setTechData] = useState<any>(null);
+
+    useEffect(() => {
+        const fetchTechData = async () => {
+            try {
+                // Fetch basic asset info
+                const commonData = await apiClient.getAssetInfo(identifier).catch(() => null);
+                const type = commonData?.type_name || '';
+                
+                // Fetch specific technical data based on type
+                let specificData: any = {};
+                let endpoint = `/asset-overviews/stock/${identifier}`;
+                if (type === 'Crypto') endpoint = `/asset-overviews/crypto/${identifier}`;
+                else if (type === 'ETFs' || type === 'Funds') endpoint = `/asset-overviews/etf/${identifier}`;
+
+                const specificRes = await apiClient.request(endpoint, { silentStatusCodes: [404] }).catch(() => null);
+                if (specificRes) {
+                    specificData = {
+                        ...(specificRes.numeric_overview || {}),
+                        ...(specificRes.numeric_overview?.stock_financials_data || {})
+                    };
+                }
+                setTechData({ ...commonData, ...specificData });
+            } catch (e) {
+                console.error("Technical data fetch failed", e);
+            }
+        };
+        fetchTechData();
+    }, [identifier]);
+
+    // Derived Display values
+    const displayPrice = latestPrice?.price || techData?.current_price || asset.current_price;
+    const displayChange = latestPrice?.changePercent ?? techData?.price_change_percentage_24h ?? asset.price_change_percentage_24h;
+
+    // Header Analysis Logic
+    const analysis = useMemo(() => {
+        if (!techData || !displayPrice || !techData.day_50_moving_avg || !techData.day_200_moving_avg) return null;
+        const { day_50_moving_avg: ma50, day_200_moving_avg: ma200 } = techData;
+        
+        const trend = (displayPrice > ma200) ? (displayPrice > ma50 ? 'bull' : 'neutral') : (displayPrice > ma50 ? 'neutral' : 'bear');
+        
+        const signals = [];
+        if (ma50 > ma200) signals.push(locale === 'ko' ? '골든크로스' : 'Golden Cross');
+        if (displayPrice > ma200) signals.push(locale === 'ko' ? '장기 추세 상방' : 'Long-term Uptrend');
+        else signals.push(locale === 'ko' ? '장기 추세 하방' : 'Long-term Downtrend');
+        
+        return { trend, signals };
+    }, [techData, displayPrice, locale]);
+
+    const formatCurrency = (val: any) => val ? `$${Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-';
+    const getPercentDiffValue = (target: number, base: number) => base ? ((target - base) / base * 100).toFixed(1) : null;
+
     const contentObj = {
         en: asset.content_en || asset.content,
         ko: asset.content_ko
@@ -189,34 +251,45 @@ const AssetDetailedView: React.FC<AssetDetailedViewProps> = ({ asset, locale }) 
         }] : [])
     ]
 
-    const headerActions = asset.current_price ? (
-        <div className="flex flex-col items-end">
-            <span className="text-3xl font-bold text-gray-900 dark:text-white">
-                ${asset.current_price.toLocaleString()}
-            </span>
-            {(asset.price_change_percentage_24h !== undefined) && (
-                <span className={`flex items-center text-sm font-medium ${asset.price_change_percentage_24h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {asset.price_change_percentage_24h >= 0 ? '▲' : '▼'} {Math.abs(asset.price_change_percentage_24h).toFixed(2)}%
+    // Header Actions (Analysis Summary View)
+    const headerActions = (
+        <div className="flex flex-col items-end gap-3 relative z-10 w-full max-w-[500px]">
+            <div className="flex items-baseline gap-3">
+                <span className="text-4xl font-black text-white drop-shadow-md">
+                    {formatCurrency(displayPrice)}
                 </span>
-            )}
+                {displayChange !== undefined && (
+                    <span className={`flex items-center text-lg font-bold px-2.5 py-1 rounded-xl bg-white/10 backdrop-blur-md ${displayChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {displayChange >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />} 
+                        {Math.abs(displayChange).toFixed(2)}%
+                    </span>
+                )}
+            </div>
+            
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 w-full">
+                {[
+                    { label: locale === 'ko' ? '전일 종가' : 'Prev Close', val: formatCurrency(techData?.prev_close || asset.prev_close) },
+                    { label: locale === 'ko' ? '50일 평균' : '50D MA', val: formatCurrency(techData?.day_50_moving_avg), diff: getPercentDiffValue(displayPrice, techData?.day_50_moving_avg) },
+                    { label: locale === 'ko' ? '200일 평균' : '200D MA', val: formatCurrency(techData?.day_200_moving_avg), diff: getPercentDiffValue(displayPrice, techData?.day_200_moving_avg) },
+                    { label: locale === 'ko' ? '52주 최고' : '52W High', val: formatCurrency(techData?.week_52_high), diff: getPercentDiffValue(displayPrice, techData?.week_52_high) },
+                ].map((item, i) => (
+                    <div key={i} className="flex flex-col bg-white/5 p-2 rounded-lg border border-white/10 backdrop-blur-sm">
+                        <span className="text-[9px] font-bold text-white/40 uppercase tracking-tighter mb-0.5">{item.label}</span>
+                        <span className="text-xs font-bold text-white leading-none whitespace-nowrap">{item.val}</span>
+                        {item.diff && (
+                            <span className={`text-[10px] font-medium mt-0.5 ${Number(item.diff) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {Number(item.diff) > 0 ? '+' : ''}{item.diff}%
+                            </span>
+                        )}
+                    </div>
+                ))}
+            </div>
         </div>
-    ) : undefined;
+    )
 
-
-    // Filter out cover image if it is the same as the logo or looks like an icon
     const rawCoverImage = asset.cover_image || asset.image
-    const hasValidCover = rawCoverImage && rawCoverImage !== asset.logo_url && !rawCoverImage.includes('/icons/')
-    const finalCoverImage = hasValidCover ? rawCoverImage : undefined
-
-    console.log('[AssetDetailedView Debug]', {
-        name: assetName,
-        logo_url: asset.logo_url,
-        cover_image_prop: asset.cover_image,
-        image_prop: asset.image,
-        rawCoverImage,
-        hasValidCover,
-        finalCoverImage
-    });
+    const finalCoverImage = (rawCoverImage && rawCoverImage !== asset.logo_url && !rawCoverImage.includes('/icons/')) ? rawCoverImage : undefined
+    const formattedTitle = identifier.toUpperCase() === assetName.toUpperCase() ? identifier : `${assetName} (${identifier})`;
 
     return (
         <BaseTemplateView
@@ -227,20 +300,52 @@ const AssetDetailedView: React.FC<AssetDetailedViewProps> = ({ asset, locale }) 
                 keywords: [identifier, assetName, typeName]
             }}
             header={{
+                headerClassName: 'bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white relative',
                 title: (
-                    <div className="flex items-center gap-3">
-                        {!finalCoverImage && asset.logo_url && (
-                            <img
-                                src={asset.logo_url}
-                                alt={assetName}
-                                className="w-8 h-8 md:w-10 md:h-10 object-contain bg-white rounded-full shadow-sm"
-                            />
-                        )}
-                        <span>{assetName}</span>
+                    <div className="flex flex-col gap-4">
+                        <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
+                            <Activity className="w-24 h-24" />
+                        </div>
+                        
+                        <div className="flex items-center gap-4">
+                            {!finalCoverImage && asset.logo_url && (
+                                <div className="p-1 bg-white rounded-xl shadow-lg shrink-0">
+                                    <img src={asset.logo_url} alt={assetName} className="w-10 h-10 md:w-12 md:h-12 object-contain" />
+                                </div>
+                            )}
+                            <div className="flex flex-col overflow-hidden">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <Zap className="w-3 h-3 text-blue-400 fill-blue-400/20" />
+                                    <span className="text-[9px] font-black uppercase tracking-widest text-blue-400">Intelligent Outlook</span>
+                                </div>
+                                <span className="text-2xl md:text-3xl font-black truncate">{formattedTitle}</span>
+                                <div className="flex flex-wrap items-center gap-2 mt-2">
+                                    {analysis && (
+                                        <>
+                                            <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${analysis.trend === 'bull' ? 'bg-green-500/20 text-green-400 border-green-500/30' : (analysis.trend === 'bear' ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'bg-gray-500/20 text-gray-400 border-gray-500/30')}`}>
+                                                {analysis.trend === 'bull' ? (locale === 'ko' ? '상승' : 'Bullish') : (analysis.trend === 'bear' ? (locale === 'ko' ? '하락' : 'Bearish') : (locale === 'ko' ? '중립' : 'Neutral'))}
+                                            </span>
+                                            {analysis.signals.map((s, idx) => (
+                                                <span key={idx} className="bg-white/5 border border-white/10 px-2.5 py-0.5 rounded text-[10px] font-medium text-white/70 whitespace-nowrap">{s}</span>
+                                            ))}
+                                        </>
+                                    )}
+                                    {isCrypto && fngData && (
+                                        <div className="flex items-center gap-2 bg-white/10 backdrop-blur-md px-2.5 py-0.5 rounded-full border border-white/20">
+                                            <span className="text-[9px] font-bold text-white/50 uppercase tracking-tighter">Mood</span>
+                                            <span className={`text-[11px] font-black ${parseInt(fngData.value) > 60 ? 'text-green-400' : (parseInt(fngData.value) < 40 ? 'text-red-400' : 'text-amber-400')}`}>
+                                                {fngData.value}
+                                            </span>
+                                            <span className="text-[10px] text-white/70 opacity-80 whitespace-nowrap">{fngData.value_classification}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 ),
                 category: { name: typeName },
-                author: { name: identifier }, // Reusing author field for Ticker
+                author: { name: identifier },
                 coverImage: finalCoverImage,
                 breadcrumbs: [
                     { label: 'Admin', href: `/${locale}/admin` },

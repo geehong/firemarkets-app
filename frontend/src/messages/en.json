@@ -88,7 +88,8 @@
         "widgets": "Widgets",
         "map": "Map",
         "privacyPolicy": "Privacy Policy",
-        "termsOfService": "Terms of Service"
+        "termsOfService": "Terms of Service",
+        "analysis": "Analysis"
     },
     "Dashboard": {
         "live": "LIVE",

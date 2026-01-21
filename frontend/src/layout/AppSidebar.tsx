@@ -105,11 +105,22 @@ const AppSidebar: React.FC = () => {
             { name: t('intraDay'), path: "/onchain/price/close/intraday", icon: dotIcon },
             { name: t('dailyOhlcv'), path: "/onchain/price/ohlcv/daily", icon: dotIcon },
             { name: t('intraDayOhlcv'), path: "/onchain/price/ohlcv/intraday", icon: dotIcon },
-            { name: t('movingAverages'), path: "/onchain/price/moving-averages", icon: dotIcon },
+            // Moving Averages moved to Analysis section
             { name: t('monthlyReturns'), path: "/onchain/price/MonthlyReturns", icon: dotIcon },
             // { name: t('capitalization'), path: "/onchain/price/capitalization", icon: dotIcon },
             { name: t('piCycle'), path: "/onchain/price/pi-cycle", icon: dotIcon },
             { name: t('outlook2026'), path: "/onchain/price/outlook-2026", icon: dotIcon },
+          ],
+        },
+        {
+          name: t('analysis'),
+          icon: <GridIcon />,
+          subItems: [
+            { name: t('movingAverages'), path: "/onchain/analysis/moving-averages", icon: dotIcon },
+            /* { name: "Technical", path: "/onchain/analysis/technical", icon: dotIcon },
+            { name: "Quantitative", path: "/onchain/analysis/quantitative", icon: dotIcon },
+            { name: "Fundamental", path: "/onchain/analysis/fundamental", icon: dotIcon },
+            { name: "Speculative", path: "/onchain/analysis/speculative", icon: dotIcon }, */
           ],
         },
         {
@@ -446,7 +457,7 @@ const AppSidebar: React.FC = () => {
 
   return (
     <aside
-      className={`fixed top-0 left-0 z-50 h-screen transition-all duration-300 ease-in-out ${isExpanded || isMobileOpen || isHovered ? "w-[290px]" : "w-[90px]"
+      className={`fixed top-0 left-0 z-50 h-screen transition-all duration-300 ease-in-out overflow-hidden bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 ${isExpanded || isMobileOpen || isHovered ? "w-[290px]" : "w-[90px]"
         } ${isMobileOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0`}
       onMouseEnter={() => !isExpanded && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -454,6 +465,7 @@ const AppSidebar: React.FC = () => {
       <Sidebar
         width={isExpanded || isMobileOpen || isHovered ? "290px" : "90px"}
         collapsed={!isExpanded && !isHovered && !isMobileOpen}
+        transitionDuration={300}
         toggled={isMobileOpen}
         breakPoint={mounted ? "lg" : undefined}
         onBreakPoint={mounted ? setBroken : undefined}
@@ -462,27 +474,30 @@ const AppSidebar: React.FC = () => {
           height: '100%',
           borderRight: 'none',
         }}
-        className="h-full bg-white border-r border-gray-200 dark:bg-gray-900 dark:border-gray-800 text-gray-600 dark:text-gray-400 [&_.ps-sidebar-container]:no-scrollbar"
+        className="h-full bg-transparent border-none text-gray-600 dark:text-gray-400 [&_.ps-sidebar-container]:no-scrollbar"
       >
-        <div className={`py-8 flex justify-center`}>
+        <div className={`py-8 flex justify-center overflow-hidden`}>
           <Link href="/">
-            {isExpanded || isHovered || isMobileOpen ? (
-              <>
-                <Image className="dark:hidden" src="/images/logo/logo.svg" alt="Logo" width={200} height={40} />
-                <Image className="hidden dark:block" src="/images/logo/logo-dark.svg" alt="Logo" width={200} height={40} />
-              </>
-            ) : (
-              <Image src="/images/logo/logo-icon.svg" alt="Logo" width={32} height={32} />
-            )}
+            <div className={`transition-all duration-300 ${isExpanded || isHovered || isMobileOpen ? "w-[200px] opacity-100" : "w-[32px] overflow-hidden"}`}>
+              {isExpanded || isHovered || isMobileOpen ? (
+                <>
+                  <Image className="dark:hidden" src="/images/logo/logo.svg" alt="Logo" width={200} height={40} />
+                  <Image className="hidden dark:block" src="/images/logo/logo-dark.svg" alt="Logo" width={200} height={40} />
+                </>
+              ) : (
+                <Image src="/images/logo/logo-icon.svg" alt="Logo" width={32} height={32} />
+              )}
+            </div>
           </Link>
         </div>
 
         <div className="flex flex-col flex-1">
-          <div className="mb-6 px-4">
-            {(!isExpanded && !isHovered && !isMobileOpen) ? (
-              <div className="flex justify-center mb-4"><HorizontaLDots /></div>
-            ) : (
+          <div className="mb-6 px-4 overflow-hidden">
+            <div className={`transition-all duration-300 ${isExpanded || isHovered || isMobileOpen ? "opacity-100 h-auto" : "opacity-0 h-0"}`}>
               <h2 className="mb-4 text-xs font-semibold text-gray-400 uppercase">Menu</h2>
+            </div>
+            {(!isExpanded && !isHovered && !isMobileOpen) && (
+              <div className="flex justify-center mb-4 transition-opacity duration-300"><HorizontaLDots /></div>
             )}
             <Menu
               menuItemStyles={{
@@ -517,11 +532,12 @@ const AppSidebar: React.FC = () => {
 
           {/* OTHERS section - only for admin/super_admin */}
           {(userRole === 'admin' || userRole === 'super_admin') && (
-            <div className="px-4">
-              {(!isExpanded && !isHovered && !isMobileOpen) ? (
-                <div className="flex justify-center mb-4"><HorizontaLDots /></div>
-              ) : (
+            <div className="px-4 overflow-hidden">
+              <div className={`transition-all duration-300 ${isExpanded || isHovered || isMobileOpen ? "opacity-100 h-auto" : "opacity-0 h-0"}`}>
                 <h2 className="mb-4 text-xs font-semibold text-gray-400 uppercase">Others</h2>
+              </div>
+              {(!isExpanded && !isHovered && !isMobileOpen) && (
+                <div className="flex justify-center mb-4 transition-opacity duration-300"><HorizontaLDots /></div>
               )}
               <Menu
                 menuItemStyles={{
@@ -547,7 +563,9 @@ const AppSidebar: React.FC = () => {
           )}
         </div>
 
-        {isExpanded || isHovered || isMobileOpen ? <SidebarWidget /> : null}
+        <div className={`transition-all duration-300 origin-bottom ${isExpanded || isHovered || isMobileOpen ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-4 scale-95 pointer-events-none h-0 overflow-hidden"}`}>
+          <SidebarWidget />
+        </div>
       </Sidebar>
     </aside>
   );

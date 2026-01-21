@@ -60,7 +60,7 @@ class SchedulerService:
             "job_key": "OHLCV",
             "config": {
                 "scheduled_intervals": ["1d"],
-                "asset_type_filter": ["Stocks", "ETFs", "Indices", "Currencies"]
+                "asset_type_filter": ["Stocks", "ETFs", "Indices", "Currencies", "Bonds"]
             }
         },
         "ohlcv_intraday_clients": {
