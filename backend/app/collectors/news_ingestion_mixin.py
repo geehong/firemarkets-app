@@ -103,6 +103,18 @@ class NewsIngestionMixin:
                             p['desc_ko'] = item_data.get('description_ko', '')
                             p['content_en'] = item_data.get('content_en', '')
                             p['content_ko'] = item_data.get('content_ko', '')
+                            
+                            # Merge Tickers
+                            ai_tickers = item_data.get('tickers', [])
+                            if ai_tickers:
+                                current_tickers = p.get('tickers', [])
+                                # Normalize and de-dupe
+                                merged_tickers = list(set(current_tickers + ai_tickers))
+                                p['tickers'] = merged_tickers
+                            
+                            # Store Keywords and Tags
+                            p['keywords'] = item_data.get('keywords', [])
+                            p['tags'] = item_data.get('tags', [])
                         else:
                             self._fill_fallback_content(p)
                             
@@ -147,6 +159,8 @@ class NewsIngestionMixin:
                         "external_id": p.get("external_id", ""),
                         "url": p.get("url", ""),
                         "tickers": p.get("tickers", []),
+                        "keywords": p.get("keywords", []),
+                        "tags": p.get("tags", []),
                         "image_url": p.get("image_url"),
                         "author": p.get("author")
                     },

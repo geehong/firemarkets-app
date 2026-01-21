@@ -361,6 +361,14 @@ class SchedulerService:
                                                 else:
                                                     all_tickers.add(str(tickers))
 
+                                    ai_tickers = analysis.get('tickers', [])
+                                    ai_keywords = analysis.get('keywords', [])
+                                    ai_tags = analysis.get('tags', [])
+                                    
+                                    # Merge AI tickers with source tickers
+                                    if ai_tickers:
+                                        all_tickers.update(ai_tickers)
+
                                     slug = f"ai-insight-{int(datetime.utcnow().timestamp())}-{processed_count}"
                                     insight_post = Post(
                                         title={"en": title_en, "ko": title_ko},
@@ -375,6 +383,8 @@ class SchedulerService:
                                             "author": primary_info.get('author'),
                                             "source": primary_info.get('source'),
                                             "tickers": list(all_tickers),
+                                            "keywords": ai_keywords,
+                                            "tags": ai_tags,
                                             "image_url": primary_info.get('image_url'),
                                             "analysis": analysis,
                                             "source_articles": [p.slug for p in cluster]

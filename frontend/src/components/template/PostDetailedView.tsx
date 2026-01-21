@@ -161,8 +161,8 @@ const PostDetailedView: React.FC<PostDetailedViewProps> = ({ post, locale }) => 
                         <PostContent content={content} />
                     </div>
                     
-                    {/* FireMarkets Analysis Section for News */}
-                    {post.post_type === 'news' && (
+                    {/* FireMarkets Analysis Section for News, Blog, and Post */}
+                    {(post.post_type === 'news' || post.post_type === 'blog' || post.post_type === 'post') && (
                         <FireMarketsAnalysis postInfo={postInfo} locale={locale} />
                     )}
 

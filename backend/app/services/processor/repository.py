@@ -694,7 +694,7 @@ class DataRepository:
             all_metric_fields = [
                 # Group A (홀수일)
                 'mvrv_z_score', 'mvrv', 'nupl', 'sopr', 'realized_price',
-                'sth_realized_price', 'lth_mvrv', 'sth_mvrv', 'lth_nupl',
+                'sth_realized_price', 'lth_realized_price', 'lth_mvrv', 'sth_mvrv', 'lth_nupl',
                 'sth_nupl', 'aviv', 'true_market_mean', 'terminal_price',
                 'delta_price_usd', 'market_cap',
                 # Group B (짝수일)

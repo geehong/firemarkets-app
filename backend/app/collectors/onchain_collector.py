@@ -72,7 +72,7 @@ class OnchainCollector(BaseCollector):
                 f"API Key detected. Collecting ALL {len(metrics_to_collect)} metrics daily."
             )
         else:
-            # Group A (Odd days): 15 metrics
+            # Group A (Odd days): 15 metrics 홀수일
             group_a = [
                 'mvrv_z_score', 'mvrv', 'nupl', 'sopr', 'realized_price', 
                 'sth_realized_price', 'lth_mvrv', 'sth_mvrv', 'lth_nupl', 
@@ -80,7 +80,7 @@ class OnchainCollector(BaseCollector):
                 'delta_price_usd', 'market_cap'
             ]
             
-            # Group B (Even days): 15 metrics
+            # Group B (Even days): 15 metrics 짝수일
             group_b = [
                 'hashrate', 'difficulty', 'thermo_cap', 'puell_multiple', 
                 'reserve_risk', 'rhodl_ratio', 'nvts', 'nrpl_usd', 
@@ -339,6 +339,10 @@ class OnchainCollector(BaseCollector):
                 },
                 "sth_realized_price": {
                     "sthRealizedPrice": "sth_realized_price"
+                },
+                "lth_realized_price": {
+                    "lthRealizedPrice": "lth_realized_price",
+                    "lth_realized_price": "lth_realized_price"
                 },
                 "cdd_90dma": {
                     "cdd90dma": "cdd_90dma",

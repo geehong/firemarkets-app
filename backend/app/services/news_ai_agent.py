@@ -340,7 +340,10 @@ Return ONLY a JSON object with the following structure:
     "analysis_ko": "Detailed narrative essay analysis in Korean",
     "analysis_en": "Detailed narrative essay analysis in English",
     "sentiment": "Positive/Negative/Neutral",
-    "entities": ["..."]
+    "sentiment": "Positive/Negative/Neutral",
+    "tickers": ["BTC", "ETH" ...],
+    "keywords": ["ETF", "Regulation" ...],
+    "tags": ["Bitcoin", "SEC", "Approval" ...]
 }}"""
 
         prompt = prompt_template.replace("{articles_text}", articles_text)
@@ -418,7 +421,10 @@ Return ONLY a valid JSON array of objects. Each object must have:
     "description_en": "Meta Description (English)",
     "description_ko": "Meta Description (Korean)",
     "content_en": "Expanded Body Content (English) - Use HTML formatting",
-    "content_ko": "Expanded Body Content (Korean) - Use HTML formatting"
+    "content_ko": "Expanded Body Content (Korean) - Use HTML formatting",
+    "tickers": ["BTC", "AAPL"...],
+    "keywords": ["Crypto", "Stock", "Economy"...],
+    "tags": ["Bitcoin", "Apple", "Tech"...]
 }}
 
 RETURN ONLY JSON. NO MARKDOWN WRAPPERS."""

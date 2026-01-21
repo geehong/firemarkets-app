@@ -23,20 +23,33 @@ export default function TableOfContents({ contentSelector }: TableOfContentsProp
             if (!container) return
 
             const headingElements = container.querySelectorAll('h2, h3')
+            const seenIds = new Set<string>()
             const items: TOCItem[] = Array.from(headingElements).map((el, index) => {
+                let id = el.id
+
                 // ID가 없거나 자동 생성된 ID면 텍스트 기반으로 새로 생성하여 강제 할당 (앵커 링크 동작 보장)
-                if (!el.id || el.id.startsWith('heading-')) {
+                if (!id || id.startsWith('heading-')) {
                     const textContent = el.textContent || ''
                     const slug = textContent
                         .toLowerCase()
                         .trim()
                         .replace(/[^\w\s가-힣-]/g, '')
                         .replace(/\s+/g, '-') || `h-${index}`
-                    el.id = slug
+                    id = slug
                 }
 
+                // ID 중복 방지
+                let uniqueId = id
+                let counter = 1
+                while (seenIds.has(uniqueId)) {
+                    uniqueId = `${id}-${counter}`
+                    counter++
+                }
+                seenIds.add(uniqueId)
+                el.id = uniqueId
+
                 return {
-                    id: el.id,
+                    id: uniqueId,
                     text: el.textContent || '',
                     level: parseInt(el.tagName.replace('H', ''))
                 }
