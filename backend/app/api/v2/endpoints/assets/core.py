@@ -11,9 +11,9 @@ from sqlalchemy.sql import exists
 from typing import Optional, List, Dict, Any
 import logging
 
-from .....core.database import get_postgres_db
-from .....models import Asset, AssetType, OHLCVData
-from .....schemas.asset import AssetsListResponse, AssetTypesResponse, AssetDetailResponse
+from app.core.database import get_postgres_db
+from app.models import Asset, AssetType, OHLCVData
+from app.schemas.asset import AssetsListResponse, AssetTypesResponse, AssetDetailResponse
 from .shared.resolvers import resolve_asset_identifier, get_asset_type, get_asset_with_type
 
 logger = logging.getLogger(__name__)

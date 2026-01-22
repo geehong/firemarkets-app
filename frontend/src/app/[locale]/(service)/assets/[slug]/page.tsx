@@ -4,72 +4,23 @@ import { apiClient } from '@/lib/api'
 import AssetHeader from '@/components/assets/AssetHeader'
 import AssetDetailedView from '@/components/template/AssetDetailedView'
 
-// Reconstruct the AssetOverviews logic on the server
+// Fetch asset data using V2 API
 async function getAssetData(slug: string) {
     try {
-        const assetDetail = await apiClient.getAssetDetail(slug)
-        if (!assetDetail) return null
-
-        const typeName = assetDetail.type_name
-        let detailedData: any = {}
-
-        // Fetch type-specific data
-        try {
-            if (typeName === 'Stocks') {
-                const stockRes = await apiClient.getStockInfo(slug)
-                if (stockRes) {
-                    detailedData = {
-                        ...detailedData,
-                        ...stockRes.post_overview,
-                        ...stockRes.numeric_overview,
-                        // Merge financials if needed
-                    }
-                }
-            } else if (typeName === 'Crypto') {
-                const cryptoRes = await apiClient.getCryptoInfo(slug)
-                if (cryptoRes) {
-                    detailedData = {
-                        ...detailedData,
-                        ...cryptoRes.post_overview,
-                        ...cryptoRes.numeric_overview,
-                        crypto_symbol: cryptoRes.numeric_overview?.symbol,
-                        crypto_market_cap: cryptoRes.numeric_overview?.market_cap,
-                    }
-                }
-            } else if (typeName === 'ETFs' || typeName === 'Funds') {
-                const etfRes = await apiClient.getETFInfo(slug)
-                if (etfRes) {
-                    detailedData = {
-                        ...detailedData,
-                        ...etfRes.post_overview,
-                        ...etfRes.numeric_overview,
-                    }
-                }
-            }
-        } catch (e) {
-            console.error(`Failed to fetch specific info for ${slug} (${typeName})`, e)
+        const v2Overview = await apiClient.v2GetOverview(slug)
+        if (!v2Overview || !v2Overview.asset_id) {
+            return null
         }
-
-        // Fetch common data (always)
-        try {
-            const commonData = await apiClient.getAssetInfo(slug)
-            if (commonData) {
-                detailedData = { ...detailedData, ...commonData }
-            }
-        } catch (e) {
-            console.error(`Failed to fetch common info for ${slug}`, e)
+        
+        // Return merged data from v2 API
+        return {
+            ...v2Overview,
+            type_name: v2Overview.asset_type,
+            name: v2Overview.name || slug,
+            ticker: v2Overview.ticker || slug,
+            // Spread numeric_data if exists
+            ...(v2Overview.numeric_data || {}),
         }
-
-        // specific field mappings or fallbacks
-        // existing AssetOverview logic for fallbacks:
-        const mergedAsset = {
-            ...assetDetail,
-            ...detailedData,
-            name: detailedData.title || detailedData.name || assetDetail.name,
-            ticker: detailedData.ticker || detailedData.symbol || assetDetail.ticker,
-        }
-
-        return mergedAsset
     } catch (error) {
         console.error('Failed to fetch asset data:', error)
         return null

@@ -10,9 +10,8 @@ from typing import List, Dict, Any
 from datetime import datetime, timedelta
 import logging
 
-from .....core.database import get_postgres_db
-from .....models import OHLCVData, Asset, AssetType
-from .....schemas.common import TickerSummaryResponse
+from app.core.database import get_postgres_db
+from app.models import OHLCVData, Asset, AssetType
 from .shared.resolvers import get_asset_by_ticker
 
 logger = logging.getLogger(__name__)
@@ -24,7 +23,7 @@ router = APIRouter()
 # Ticker Summary Endpoint
 # ============================================================================
 
-@router.get("/ticker-summary", response_model=TickerSummaryResponse)
+@router.get("/ticker-summary")
 def get_ticker_summary_v2(
     tickers: str = Query(..., description="쉼표로 구분된 티커 목록"),
     db: Session = Depends(get_postgres_db)
@@ -150,7 +149,7 @@ def get_market_movers_v2(
     상승/하락 상위 종목 조회
     """
     try:
-        from .....models import WorldAssetsRanking
+        from app.models import WorldAssetsRanking
         
         today = datetime.now().date()
         
@@ -221,7 +220,7 @@ def get_quick_stats_v2(
     전체 시장 요약 정보
     """
     try:
-        from .....models import WorldAssetsRanking
+        from app.models import WorldAssetsRanking
         
         today = datetime.now().date()
         

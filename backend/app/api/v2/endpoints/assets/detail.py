@@ -10,9 +10,9 @@ from sqlalchemy import text
 from typing import Optional, List, Dict, Any
 import logging
 
-from .....core.database import get_postgres_db
-from .....models import Asset, AssetType
-from .....schemas.asset import (
+from app.core.database import get_postgres_db
+from app.models import Asset, AssetType
+from app.schemas.asset import (
     StockProfileResponse, StockFinancialsResponse, 
     ETFInfoResponse, ETFSectorExposureResponse, ETFHoldingsResponse,
     IndexInfoResponse
@@ -89,7 +89,6 @@ def get_stock_profile(db: Session, asset_id: int) -> Dict[str, Any]:
         FROM stock_profiles sp
         JOIN assets a ON sp.asset_id = a.asset_id
         WHERE sp.asset_id = :asset_id
-        ORDER BY sp.created_at DESC
         LIMIT 1
     """), {"asset_id": asset_id})
     

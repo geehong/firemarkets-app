@@ -12,9 +12,8 @@ from datetime import date, datetime, timedelta
 from collections import defaultdict
 import logging
 
-from .....core.database import get_postgres_db
-from .....models import OHLCVData, Asset
-from .....schemas.asset import OHLCVResponse, PriceResponse
+from app.core.database import get_postgres_db
+from app.models import OHLCVData, Asset
 from .shared.resolvers import resolve_asset_identifier
 from .shared.validators import validate_data_interval
 
@@ -141,7 +140,7 @@ def aggregate_to_monthly(daily_rows: List[OHLCVData]) -> List[Dict]:
 # OHLCV Endpoint
 # ============================================================================
 
-@router.get("/{asset_identifier}/ohlcv", response_model=OHLCVResponse)
+@router.get("/{asset_identifier}/ohlcv")
 def get_ohlcv_data_v2(
     asset_identifier: str = Path(..., description="Asset ID or Ticker"),
     data_interval: str = Query("1d", description="데이터 간격 (1d, 1h, 1W, 1M)"),
@@ -174,12 +173,12 @@ def get_ohlcv_data_v2(
             if limit:
                 aggregated = aggregated[-limit:]
             
-            return OHLCVResponse(
-                asset_id=asset_id,
-                data_interval=data_interval,
-                count=len(aggregated),
-                data=aggregated
-            )
+            return {
+                "asset_id": asset_id,
+                "data_interval": data_interval,
+                "count": len(aggregated),
+                "data": aggregated
+            }
         
         # 일봉/시간봉은 직접 조회
         ohlcv_rows = db_get_ohlcv_data(db, asset_id, start_date, end_date, data_interval, limit)
@@ -198,12 +197,12 @@ def get_ohlcv_data_v2(
             for row in ohlcv_rows
         ]
         
-        return OHLCVResponse(
-            asset_id=asset_id,
-            data_interval=data_interval,
-            count=len(data),
-            data=data
-        )
+        return {
+            "asset_id": asset_id,
+            "data_interval": data_interval,
+            "count": len(data),
+            "data": data
+        }
         
     except HTTPException:
         raise
@@ -216,7 +215,7 @@ def get_ohlcv_data_v2(
 # Price Endpoint
 # ============================================================================
 
-@router.get("/{asset_identifier}/price", response_model=PriceResponse)
+@router.get("/{asset_identifier}/price")
 def get_price_data_v2(
     asset_identifier: str = Path(..., description="Asset ID or Ticker"),
     data_interval: str = Query("1d", description="데이터 간격"),
@@ -235,7 +234,7 @@ def get_price_data_v2(
         
         if not latest:
             # 실시간 데이터 또는 WorldAssetsRanking에서 폴백
-            from .....models import WorldAssetsRanking
+            from app.models import WorldAssetsRanking
             world_asset = db.query(WorldAssetsRanking).filter(
                 WorldAssetsRanking.asset_id == asset_id
             ).order_by(WorldAssetsRanking.ranking_date.desc()).first()

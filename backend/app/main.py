@@ -5,12 +5,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 # from app.api import auth  <-- Removed legacy import
 from app.api.v1.endpoints import (
-    realtime, scheduler, collectors, assets, world_assets, crypto, 
+    realtime, scheduler, collectors, world_assets, crypto, 
     onchain, etf, dashboard, configurations, admin, logs, metrics, 
-    open_interest, tickers, navigation, posts, asset_overviews,
+    open_interest, tickers, navigation, posts,
     auth, analysis
 )
 from app.api.v1 import external_apis
+from app.api.v2.api import api_router as api_v2_router  # v2 API
 from app.core.database import engine
 from app.models.user import User
 from app.models.session import UserSession, TokenBlacklist, AuditLog
@@ -84,7 +85,7 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(realtime.router, prefix="/api/v1/realtime", tags=["realtime"])
 app.include_router(scheduler.router, prefix="/api/v1/scheduler", tags=["scheduler"])
 app.include_router(collectors.router, prefix="/api/v1/collectors", tags=["collectors"])
-app.include_router(assets.router, prefix="/api/v1/assets", tags=["assets"])
+# app.include_router(assets.router, prefix="/api/v1/assets", tags=["assets"]) # Removed
 app.include_router(world_assets.router, prefix="/api/v1/world-assets", tags=["world-assets"])
 app.include_router(crypto.router, prefix="/api/v1/crypto", tags=["crypto"])
 app.include_router(onchain.router, prefix="/api/v1/onchain", tags=["onchain"])
@@ -98,9 +99,12 @@ app.include_router(open_interest.router, prefix="/api/v1/open-interest", tags=["
 app.include_router(tickers.router, prefix="/api/v1/tickers", tags=["tickers"])
 app.include_router(navigation.router, prefix="/api/v1/navigation", tags=["navigation"])
 app.include_router(posts.router, prefix="/api/v1/posts", tags=["posts"])
-app.include_router(asset_overviews.router, prefix="/api/v1/asset-overviews", tags=["asset-overviews"])
+# app.include_router(asset_overviews.router, prefix="/api/v1/asset-overviews", tags=["asset-overviews"]) # Removed
 app.include_router(analysis.router, prefix="/api/v1/analysis", tags=["analysis"])
 app.include_router(external_apis.router, prefix="/api/v1/external-apis", tags=["external-apis"])
+
+# v2 API 엔드포인트 (모듈화된 자산 API)
+app.include_router(api_v2_router, prefix="/api/v2", tags=["v2"])
 
 @app.get("/")
 async def root():

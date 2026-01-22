@@ -2,7 +2,7 @@
 from fastapi import APIRouter
 
 from .endpoints import (
-    assets, 
+    # assets, # Removed
     world_assets, 
     tickers, 
     configurations, 
@@ -43,7 +43,8 @@ async def api_v1_root():
     }
 
 # 라우터 등록
-api_router.include_router(assets.router, tags=["assets"])
+# 라우터 등록
+# api_router.include_router(assets.router, tags=["assets"]) # Removed
 api_router.include_router(world_assets.router, tags=["world-assets"])
 api_router.include_router(tickers.router, tags=["tickers"])
 api_router.include_router(configurations.router, tags=["configurations"])

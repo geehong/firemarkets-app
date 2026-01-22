@@ -1,4 +1,4 @@
-# Backend Assets API 재구조화 계획서 검토 및 개선안
+67# Backend Assets API 재구조화 계획서 검토 및 개선안
 
 ## 📋 검토 개요
 

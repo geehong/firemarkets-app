@@ -64,10 +64,10 @@ export const useCycleData = (cycle: CycleConfig, enabled: boolean = true) => {
       setLoading(true)
       setError(null)
       try {
-        const result = await apiClient.getAssetPrice('1', {
-          dataInterval: '1d',
-          startDate: cycle.startDate,
-          endDate: cycle.endDate,
+        const result = await apiClient.v2GetOhlcv('BTC', {
+          data_interval: '1d',
+          start_date: cycle.startDate,
+          end_date: cycle.endDate,
           limit: 10000
         })
 
@@ -139,10 +139,10 @@ export const useMultipleCycleData = (cycles: CycleConfig[], enabled: boolean = t
       setError(null)
       try {
         const promises = cycles.map(cycle => 
-          apiClient.getAssetPrice('1', {
-            dataInterval: '1d',
-            startDate: cycle.startDate,
-            endDate: cycle.endDate,
+          apiClient.v2GetOhlcv('BTC', {
+            data_interval: '1d',
+            start_date: cycle.startDate,
+            end_date: cycle.endDate,
             limit: 10000
           }).then(result => {
             if (result && result.data && Array.isArray(result.data)) {

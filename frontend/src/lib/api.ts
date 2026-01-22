@@ -115,6 +115,74 @@ export class ApiClient {
     return this.baseURL
   }
 
+  // v2 API Base URL (v1 URL에서 /v2로 변환)
+  private getV2BaseURL(): string {
+    return this.getBaseURL().replace('/api/v1', '/api/v2')
+  }
+
+  // v2 API 요청 메서드
+  public async requestV2<T = any>(endpoint: string, init?: RequestInit & { silentStatusCodes?: number[] }): Promise<T> {
+    const url = `${this.getV2BaseURL()}${endpoint}`
+
+    const defaultHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    }
+
+    if (this.accessToken) {
+      defaultHeaders['Authorization'] = `Bearer ${this.accessToken}`
+    }
+
+    try {
+      const fetchOptions: RequestInit = {
+        ...init,
+        headers: { ...defaultHeaders, ...(init?.headers as Record<string, string> | undefined) },
+        mode: 'cors',
+        credentials: 'omit',
+        signal: AbortSignal.timeout(30000)
+      }
+
+      const res = await fetch(url, fetchOptions)
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        const shouldLog = !init?.silentStatusCodes?.includes(res.status)
+
+        if (shouldLog) {
+          console.error(`[API V2 ERROR] ${res.status} ${res.statusText}:`, text)
+        }
+
+        const error = new Error(`API V2 Error: ${res.status} ${res.statusText} ${text}`)
+          ; (error as any).status = res.status
+        throw error
+      }
+
+      if (res.status === 204) {
+        return {} as Promise<T>
+      }
+
+      const text = await res.text().catch(() => '')
+
+      if (!text) {
+        return {} as Promise<T>
+      }
+
+      try {
+        return JSON.parse(text)
+      } catch {
+        return (text || {}) as unknown as Promise<T>
+      }
+    } catch (error: any) {
+      if (error.status && init?.silentStatusCodes?.includes(error.status)) {
+        throw error
+      }
+
+      console.error('[API V2 REQUEST FAILED]', { url, method: init?.method ?? 'GET', error: error.message })
+      throw error
+    }
+  }
+
+
 
   public async request<T = any>(endpoint: string, init?: RequestInit & { silentStatusCodes?: number[] }): Promise<T> {
     const url = `${this.getBaseURL()}${endpoint}`
@@ -186,53 +254,7 @@ export class ApiClient {
     }
   }
 
-  // Assets
-  getAssets(params?: { assetTypeId?: number; limit?: number; offset?: number; search?: string }) {
-    const search = new URLSearchParams()
-    if (params?.assetTypeId) search.append('asset_type_id', String(params.assetTypeId))
-    if (params?.limit) search.append('limit', String(params.limit))
-    if (params?.offset) search.append('offset', String(params.offset))
-    if (params?.search) search.append('search', params.search)
-    const qs = search.toString()
-    return this.request(`/assets${qs ? `?${qs}` : ''}`)
-  }
 
-  getAsset(id: string) { return this.request(`/assets/${id}`) }
-
-  getAssetTypes(params?: { hasData?: boolean; includeDescription?: boolean }) {
-    const search = new URLSearchParams()
-    if (params?.hasData !== undefined) search.append('has_data', String(params.hasData))
-    if (params?.includeDescription !== undefined) search.append('include_description', String(params.includeDescription))
-    const qs = search.toString()
-    return this.request(`/assets/asset-types${qs ? `?${qs}` : ''}`)
-  }
-
-  getAssetDetail(assetIdentifier: string) {
-    return this.request(`/assets/${assetIdentifier}`)
-  }
-
-  getAssetPrice(assetIdentifier: string, params?: {
-    dataInterval?: string
-    startDate?: string
-    endDate?: string
-    limit?: number
-  }) {
-    const search = new URLSearchParams()
-    if (params?.dataInterval) search.append('data_interval', params.dataInterval)
-    if (params?.startDate) search.append('start_date', params.startDate)
-    if (params?.endDate) search.append('end_date', params.endDate)
-    if (params?.limit) search.append('limit', String(params.limit))
-    const qs = search.toString()
-    return this.request(`/assets/price/${assetIdentifier}${qs ? `?${qs}` : ''}`)
-  }
-
-  getMarketCaps(params?: { assetTypeId?: number; limit?: number }) {
-    const search = new URLSearchParams()
-    if (params?.assetTypeId) search.append('asset_type_id', String(params.assetTypeId))
-    if (params?.limit) search.append('limit', String(params.limit))
-    const qs = search.toString()
-    return this.request(`/assets/market-caps${qs ? `?${qs}` : ''}`)
-  }
 
   // Realtime
   getRealtimeTable(params?: { assetTypeId?: number; limit?: number; sortBy?: string; sortOrder?: 'asc' | 'desc' }) {
@@ -299,58 +321,12 @@ export class ApiClient {
     return this.request(`/realtime/pg/quotes-delay-price${qs ? `?${qs}` : ''}`)
   }
 
-  // Assets OHLCV - main OHLCV endpoint with more flexibility
-  getAssetsOhlcv(params: { asset_identifier: string; data_interval?: string; start_date?: string; end_date?: string; limit?: number; }) {
-    const search = new URLSearchParams()
-    search.append('data_interval', params.data_interval ?? '1d')
-    if (params.start_date) search.append('start_date', params.start_date)
-    if (params.end_date) search.append('end_date', params.end_date)
-    if (params.limit) search.append('limit', String(params.limit))
-    const qs = search.toString()
-    return this.request(`/assets/ohlcv/${params.asset_identifier}${qs ? `?${qs}` : ''}`)
-  }
 
-  // Realtime (fallback) - intraday OHLCV from MySQL API
-  getIntradayOhlcv(params: { asset_identifier: string; data_interval?: string; ohlcv?: boolean; days?: number; limit?: number; }) {
-    const search = new URLSearchParams()
-    if (params.asset_identifier) search.append('asset_identifier', params.asset_identifier)
-    search.append('data_interval', params.data_interval ?? '4h')
-    search.append('ohlcv', String(params.ohlcv ?? true))
-    search.append('days', String(params.days ?? 1))
-    if (params.limit) search.append('limit', String(params.limit))
-    const qs = search.toString()
-    const url = `/realtime/intraday-ohlcv${qs ? `?${qs}` : ''}`
-    console.log('[ApiClient.getIntradayOhlcv] Request URL:', url, {
-      params,
-      data_interval: params.data_interval ?? '4h (default)',
-      limit: params.limit
-    })
-    return this.request(url)
-  }
 
   // Crypto
   getCryptoData(id: string) { return this.request(`/crypto/${id}`) }
 
-  getCryptoMetrics(assetIdentifier: string) {
-    return this.request(`/assets/crypto-metrics/asset/${assetIdentifier}`)
-  }
 
-  getTechnicalIndicators(assetIdentifier: string, params?: { indicators?: string[]; period?: number }) {
-    const search = new URLSearchParams()
-    if (params?.indicators) params.indicators.forEach(indicator => search.append('indicators', indicator))
-    if (params?.period) search.append('period', String(params.period))
-    const qs = search.toString()
-    return this.request(`/assets/${assetIdentifier}/technical-indicators${qs ? `?${qs}` : ''}`)
-  }
-
-  getCryptoMarketOverview(params?: { limit?: number; sortBy?: string; sortOrder?: 'asc' | 'desc' }) {
-    const search = new URLSearchParams()
-    if (params?.limit) search.append('limit', String(params.limit))
-    if (params?.sortBy) search.append('sort_by', params.sortBy)
-    if (params?.sortOrder) search.append('sort_order', params.sortOrder)
-    const qs = search.toString()
-    return this.request(`/crypto/market-overview${qs ? `?${qs}` : ''}`)
-  }
 
   // Dashboard
   getDashboardData() { return this.request('/dashboard') }
@@ -434,63 +410,7 @@ export class ApiClient {
     return this.request('/crypto/global-metrics');
   }
 
-  // TreeMap Live Data (optional filters)
-  getTreemapLiveData(params?: { asset_type_id?: number; type_name?: string }) {
-    const search = new URLSearchParams();
-    if (typeof params?.asset_type_id === 'number') search.append('asset_type_id', String(params.asset_type_id));
-    if (params?.type_name) search.append('type_name', params.type_name);
-    const qs = search.toString();
-    return this.request(`/assets/treemap/live${qs ? `?${qs}` : ''}`);
-  }
 
-  // Assets Overview - 통합 자산 개요 데이터
-  getAssetOverview(assetIdentifier: string) {
-    return this.request(`/assets/overview/${assetIdentifier}`);
-  }
-
-  // Update Asset Overview - 자산 개요 정보 업데이트
-
-  updateAssetOverview(assetIdentifier: string, data: Record<string, any>) {
-    return this.request(`/assets/overview/${assetIdentifier}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  // Asset Overviews - 새로운 뷰 기반 엔드포인트
-  getStockInfo(assetIdentifier: string) {
-    return this.request(`/asset-overviews/stock/${assetIdentifier}`);
-  }
-
-  getCryptoInfo(assetIdentifier: string) {
-    return this.request(`/asset-overviews/crypto/${assetIdentifier}`);
-  }
-
-  getETFInfo(assetIdentifier: string) {
-    return this.request(`/asset-overviews/etf/${assetIdentifier}`);
-  }
-
-  getAssetInfo(assetIdentifier: string) {
-    return this.request(`/asset-overviews/common/${assetIdentifier}`);
-  }
-
-  // Assets List with filters
-  getAssetsList(params?: {
-    type_name?: string;
-    has_ohlcv_data?: boolean;
-    limit?: number;
-    offset?: number;
-    search?: string;
-  }) {
-    const search = new URLSearchParams();
-    if (params?.type_name) search.append('type_name', params.type_name);
-    if (params?.has_ohlcv_data !== undefined) search.append('has_ohlcv_data', String(params.has_ohlcv_data));
-    if (params?.limit) search.append('limit', String(params.limit));
-    if (params?.offset) search.append('offset', String(params.offset));
-    if (params?.search) search.append('search', params.search);
-    const qs = search.toString();
-    return this.request(`/assets/assets${qs ? `?${qs}` : ''}`);
-  }
 
   // Onchain Metrics List
   getOnchainMetrics(ticker?: string) {
@@ -524,15 +444,6 @@ export class ApiClient {
     if (params?.ticker) search.append('ticker', params.ticker);
     const qs = search.toString();
     return this.request(`/onchain/metrics/${metric}/data${qs ? `?${qs}` : ''}`);
-  }
-
-  // Performance TreeMap Data (for AssetsList)
-  getPerformanceTreeMap(params?: { asset_type_id?: number; type_name?: string }) {
-    const search = new URLSearchParams();
-    if (typeof params?.asset_type_id === 'number') search.append('asset_type_id', String(params.asset_type_id));
-    if (params?.type_name) search.append('type_name', params.type_name);
-    const qs = search.toString();
-    return this.request(`/assets/treemap/live${qs ? `?${qs}` : ''}`);
   }
 
   // Post APIs
@@ -791,6 +702,170 @@ export class ApiClient {
 
   getMe() {
     return this.request('/auth/me')
+  }
+
+  // ============================================================================
+  // API v2 Methods (Modular Asset APIs)
+  // ============================================================================
+
+  // --- V2 Core Module ---
+  v2GetAssetTypes(params?: { has_data?: boolean; include_description?: boolean }) {
+    const search = new URLSearchParams()
+    if (params?.has_data !== undefined) search.append('has_data', String(params.has_data))
+    if (params?.include_description !== undefined) search.append('include_description', String(params.include_description))
+    const qs = search.toString()
+    return this.requestV2(`/assets/core/types${qs ? `?${qs}` : ''}`)
+  }
+
+  v2GetAssets(params?: { type_name?: string; has_ohlcv_data?: boolean; search?: string; limit?: number; offset?: number }) {
+    const search = new URLSearchParams()
+    if (params?.type_name) search.append('type_name', params.type_name)
+    if (params?.has_ohlcv_data !== undefined) search.append('has_ohlcv_data', String(params.has_ohlcv_data))
+    if (params?.search) search.append('search', params.search)
+    if (params?.limit) search.append('limit', String(params.limit))
+    if (params?.offset) search.append('offset', String(params.offset))
+    const qs = search.toString()
+    return this.requestV2(`/assets/core${qs ? `?${qs}` : ''}`)
+  }
+
+  v2GetAssetMetadata(assetIdentifier: string) {
+    return this.requestV2(`/assets/core/${assetIdentifier}/metadata`)
+  }
+
+  v2SearchAssets(query: string, params?: { type_name?: string; limit?: number }) {
+    const search = new URLSearchParams()
+    search.append('query', query)
+    if (params?.type_name) search.append('type_name', params.type_name)
+    if (params?.limit) search.append('limit', String(params.limit))
+    const qs = search.toString()
+    return this.requestV2(`/assets/core/search?${qs}`)
+  }
+
+  // --- V2 Market Module ---
+  v2GetOhlcv(assetIdentifier: string, params?: { data_interval?: string; start_date?: string; end_date?: string; limit?: number }) {
+    const search = new URLSearchParams()
+    if (params?.data_interval) search.append('data_interval', params.data_interval)
+    if (params?.start_date) search.append('start_date', params.start_date)
+    if (params?.end_date) search.append('end_date', params.end_date)
+    if (params?.limit) search.append('limit', String(params.limit))
+    const qs = search.toString()
+    return this.requestV2(`/assets/market/${assetIdentifier}/ohlcv${qs ? `?${qs}` : ''}`)
+  }
+
+  v2GetPrice(assetIdentifier: string) {
+    return this.requestV2(`/assets/market/${assetIdentifier}/price`)
+  }
+
+  v2GetPriceHistory(assetIdentifier: string, period: string = '1m') {
+    return this.requestV2(`/assets/market/${assetIdentifier}/history?period=${period}`)
+  }
+
+  // --- V2 Detail Module ---
+  v2GetProfile(assetIdentifier: string) {
+    return this.requestV2(`/assets/detail/${assetIdentifier}/profile`)
+  }
+
+  v2GetFinancials(assetIdentifier: string, limit: number = 10) {
+    return this.requestV2(`/assets/detail/${assetIdentifier}/financials?limit=${limit}`)
+  }
+
+  v2GetCryptoInfo(assetIdentifier: string) {
+    return this.requestV2(`/assets/detail/${assetIdentifier}/crypto-info`)
+  }
+
+  v2GetEtfInfo(assetIdentifier: string) {
+    return this.requestV2(`/assets/detail/${assetIdentifier}/etf-info`)
+  }
+
+  v2GetEtfSectors(assetIdentifier: string) {
+    return this.requestV2(`/assets/detail/${assetIdentifier}/etf-sectors`)
+  }
+
+  v2GetEtfHoldings(assetIdentifier: string, limit: number = 50) {
+    return this.requestV2(`/assets/detail/${assetIdentifier}/etf-holdings?limit=${limit}`)
+  }
+
+  v2GetIndexInfo(assetIdentifier: string) {
+    return this.requestV2(`/assets/detail/${assetIdentifier}/index-info`)
+  }
+
+  // --- V2 Analysis Module ---
+  v2GetTechnicals(assetIdentifier: string, params?: { indicator_type?: string; data_interval?: string; limit?: number }) {
+    const search = new URLSearchParams()
+    if (params?.indicator_type) search.append('indicator_type', params.indicator_type)
+    if (params?.data_interval) search.append('data_interval', params.data_interval)
+    if (params?.limit) search.append('limit', String(params.limit))
+    const qs = search.toString()
+    return this.requestV2(`/assets/analysis/${assetIdentifier}/technicals${qs ? `?${qs}` : ''}`)
+  }
+
+  v2GetEstimates(assetIdentifier: string, limit: number = 10) {
+    return this.requestV2(`/assets/analysis/${assetIdentifier}/estimates?limit=${limit}`)
+  }
+
+  v2GetCryptoMetrics(assetIdentifier: string) {
+    return this.requestV2(`/assets/analysis/${assetIdentifier}/crypto-metrics`)
+  }
+
+  v2GetTreemap(params?: { asset_type_id?: number; type_name?: string; limit?: number }) {
+    const search = new URLSearchParams()
+    if (params?.asset_type_id) search.append('asset_type_id', String(params.asset_type_id))
+    if (params?.type_name) search.append('type_name', params.type_name)
+    if (params?.limit) search.append('limit', String(params.limit))
+    const qs = search.toString()
+    return this.requestV2(`/assets/analysis/treemap${qs ? `?${qs}` : ''}`)
+  }
+
+  v2GetMarketCaps(params?: { type_name?: string; limit?: number; offset?: number }) {
+    const search = new URLSearchParams()
+    if (params?.type_name) search.append('type_name', params.type_name)
+    if (params?.limit) search.append('limit', String(params.limit))
+    if (params?.offset) search.append('offset', String(params.offset))
+    const qs = search.toString()
+    return this.requestV2(`/assets/analysis/market-caps${qs ? `?${qs}` : ''}`)
+  }
+
+  // --- V2 Overview Module ---
+  v2GetOverview(assetIdentifier: string, lang: string = 'ko') {
+    return this.requestV2(`/assets/overview/${assetIdentifier}?lang=${lang}`)
+  }
+
+  v2GetOverviewBundle(assetIdentifier: string, lang: string = 'ko') {
+    return this.requestV2(`/assets/overview/${assetIdentifier}/bundle?lang=${lang}`)
+  }
+
+  v2GetStockOverview(assetIdentifier: string) {
+    return this.requestV2(`/assets/overview/${assetIdentifier}/stock`)
+  }
+
+  v2GetCryptoOverview(assetIdentifier: string) {
+    return this.requestV2(`/assets/overview/${assetIdentifier}/crypto`)
+  }
+
+  v2GetEtfOverview(assetIdentifier: string) {
+    return this.requestV2(`/assets/overview/${assetIdentifier}/etf`)
+  }
+
+  v2GetCommonOverview(assetIdentifier: string) {
+    return this.requestV2(`/assets/overview/${assetIdentifier}/common`)
+  }
+
+  // --- V2 Widgets Module ---
+  v2GetTickerSummary(tickers: string[]) {
+    return this.requestV2(`/assets/widgets/ticker-summary?tickers=${tickers.join(',')}`)
+  }
+
+  v2GetMarketMovers(params?: { type_name?: string; direction?: 'gainers' | 'losers'; limit?: number }) {
+    const search = new URLSearchParams()
+    if (params?.type_name) search.append('type_name', params.type_name)
+    if (params?.direction) search.append('direction', params.direction)
+    if (params?.limit) search.append('limit', String(params.limit))
+    const qs = search.toString()
+    return this.requestV2(`/assets/widgets/market-movers${qs ? `?${qs}` : ''}`)
+  }
+
+  v2GetQuickStats() {
+    return this.requestV2('/assets/widgets/quick-stats')
   }
 }
 

@@ -11,9 +11,8 @@ from typing import Optional, List, Dict, Any
 from datetime import date, datetime, timedelta
 import logging
 
-from .....core.database import get_postgres_db
-from .....models import OHLCVData, Asset, AssetType
-from .....schemas.asset import TechnicalIndicatorsResponse, TreemapLiveResponse, TreemapLiveItem
+from app.core.database import get_postgres_db
+from app.models import OHLCVData, Asset, AssetType
 from .shared.resolvers import resolve_asset_identifier, get_asset_type
 from .shared.validators import validate_asset_type_for_endpoint
 from .shared.constants import DATA_SOURCE_PRIORITY
@@ -312,7 +311,7 @@ def get_crypto_metrics_v2(
 # Treemap Endpoint
 # ============================================================================
 
-@router.get("/treemap", response_model=TreemapLiveResponse)
+@router.get("/treemap")
 def get_treemap_v2(
     asset_type_id: Optional[int] = Query(None, description="자산 타입 ID로 필터링"),
     type_name: Optional[str] = Query(None, description="자산 타입 이름으로 필터링"),
@@ -347,30 +346,30 @@ def get_treemap_v2(
         for row in rows:
             row_dict = dict(row._mapping)
             
-            items.append(TreemapLiveItem(
-                asset_id=row_dict.get("asset_id"),
-                ticker=row_dict.get("ticker"),
-                name=row_dict.get("name"),
-                type_name=row_dict.get("type_name"),
-                current_price=float(row_dict.get("current_price")) if row_dict.get("current_price") else None,
-                market_cap=float(row_dict.get("market_cap")) if row_dict.get("market_cap") else None,
-                daily_change_percent=float(row_dict.get("daily_change_percent")) if row_dict.get("daily_change_percent") else None,
-                volume_24h=float(row_dict.get("volume_24h")) if row_dict.get("volume_24h") else None,
-            ))
+            items.append({
+                "asset_id": row_dict.get("asset_id"),
+                "ticker": row_dict.get("ticker"),
+                "name": row_dict.get("name"),
+                "type_name": row_dict.get("type_name"),
+                "current_price": float(row_dict.get("current_price")) if row_dict.get("current_price") else None,
+                "market_cap": float(row_dict.get("market_cap")) if row_dict.get("market_cap") else None,
+                "daily_change_percent": float(row_dict.get("daily_change_percent")) if row_dict.get("daily_change_percent") else None,
+                "volume_24h": float(row_dict.get("volume_24h")) if row_dict.get("volume_24h") else None,
+            })
         
         # 요약 통계
-        total_market_cap = sum(item.market_cap or 0 for item in items)
-        avg_change = sum(item.daily_change_percent or 0 for item in items) / len(items) if items else 0
+        total_market_cap = sum(item.get("market_cap") or 0 for item in items)
+        avg_change = sum(item.get("daily_change_percent") or 0 for item in items) / len(items) if items else 0
         
-        return TreemapLiveResponse(
-            items=items,
-            total_count=len(items),
-            summary={
+        return {
+            "items": items,
+            "total_count": len(items),
+            "summary": {
                 "total_market_cap": total_market_cap,
                 "average_change_percent": round(avg_change, 2),
                 "assets_count": len(items)
             }
-        )
+        }
         
     except HTTPException:
         raise
@@ -397,7 +396,7 @@ def get_market_caps_v2(
     트리맵 API와 동일한 데이터를 다른 포맷으로 반환
     """
     try:
-        from .....models import WorldAssetsRanking
+        from app.models import WorldAssetsRanking
         
         today = datetime.now().date()
         target_data_sources = list(DATA_SOURCE_PRIORITY.keys())

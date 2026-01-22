@@ -93,20 +93,15 @@ const MultipleComparisonChart: React.FC<MultipleComparisonChartProps> = ({
         queries: assets.map(asset => ({
             queryKey: ['ohlcv', asset, selectedInterval],
             queryFn: async () => {
-                if (isIntraday) {
-                    const params = {
-                        asset_identifier: asset,
-                        data_interval: selectedInterval,
-                        limit: getIntradayLimit(selectedInterval)
-                    }
-                    return apiClient.getIntradayOhlcv(params)
-                } else {
-                    return apiClient.getAssetsOhlcv({
-                        asset_identifier: asset,
-                        data_interval: selectedInterval,
-                        limit: getDailyLimit(selectedInterval)
-                    })
-                }
+                const limit = isIntraday 
+                    ? getIntradayLimit(selectedInterval) 
+                    : getDailyLimit(selectedInterval);
+                    
+                // Use v2 API for both intraday and daily
+                return apiClient.v2GetOhlcv(asset, {
+                    data_interval: selectedInterval,
+                    limit: limit
+                })
             },
             staleTime: 60 * 1000,
             retry: 1

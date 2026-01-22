@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from 'react'
 import { TrendingUp, DollarSign, BarChart3, PieChart } from 'lucide-react'
-import { useAssetOverviewBundle } from '@/hooks/assets/useAssetOverviewBundle'
+import { useAssetOverviews } from '@/hooks/assets/useAssetOverviews'
+
 
 interface FinancialData {
   financial_id: number
@@ -55,19 +56,21 @@ export default function FinancialDataBlock({ ticker, assetId, financialData, onS
   const [editing, setEditing] = useState(false)
   const [editData, setEditData] = useState<Partial<FinancialData>>({})
 
-  // useAssetOverviewBundle 훅 사용
-  const { data: assetBundle, loading, error: bundleError } = useAssetOverviewBundle(
-    assetId?.toString() || '',
-    { initialData: undefined }
+  // useAssetOverviews 훅 사용 (v2 API)
+  const { data: overviews, loading, error: bundleError } = useAssetOverviews(
+    assetId?.toString() || ''
   )
 
   useEffect(() => {
-    if (assetBundle?.numeric_overview) {
+    // v2 API 데이터 매핑
+    // 우선 stock 데이터 확인, 없으면 v2Data.numeric_data 확인
+    const numericData = overviews?.stock?.numeric_overview || overviews?.v2Data?.numeric_data
+    
+    if (numericData) {
       // bundle에서 받은 데이터를 FinancialData 형태로 변환
-      const numericData = assetBundle.numeric_overview
       const financialData: FinancialData = {
-        financial_id: 0, // bundle에는 없으므로 0으로 설정
-        asset_id: numericData.asset_id,
+        financial_id: 0, 
+        asset_id: numericData.asset_id || assetId || 0,
         snapshot_date: new Date().toISOString(),
         currency: numericData.currency || null,
         market_cap: numericData.market_cap || null,
@@ -85,8 +88,8 @@ export default function FinancialDataBlock({ ticker, assetId, financialData, onS
         price_to_book_ratio: numericData.price_to_book_ratio || null,
         week_52_high: numericData.week_52_high || null,
         week_52_low: numericData.week_52_low || null,
-        day_50_moving_avg: numericData.day_50_avg || null,
-        day_200_moving_avg: numericData.day_200_avg || null,
+        day_50_moving_avg: numericData.day_50_avg || numericData.day_50_moving_avg || null,
+        day_200_moving_avg: numericData.day_200_avg || numericData.day_200_moving_avg || null,
         updated_at: numericData.updated_at || new Date().toISOString(),
         // 추가 필드들
         book_value: numericData.book_value || null,
@@ -105,7 +108,7 @@ export default function FinancialDataBlock({ ticker, assetId, financialData, onS
       }
       setFinancials(financialData)
     }
-  }, [assetBundle])
+  }, [overviews, assetId])
 
   useEffect(() => {
     if (financials) {

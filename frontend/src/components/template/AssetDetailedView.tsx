@@ -17,6 +17,7 @@ import { useAuth } from '@/hooks/auth/useAuthNew'
 import { Activity, Zap, TrendingUp, TrendingDown } from 'lucide-react'
 import { useRealtimePrices } from '@/hooks/data/useSocket'
 import { useFearAndGreed } from '@/hooks/analysis/useFearAndGreed'
+import { useAssetPriceV2 } from '@/hooks/assets/useAssetV2'
 import BaseTemplateView from './BaseTemplateView'
 
 interface AssetDetailedViewProps {
@@ -53,36 +54,28 @@ const AssetDetailedView: React.FC<AssetDetailedViewProps> = ({ asset, locale }) 
     // 1. WebSocket Live Prices
     const { latestPrice } = useRealtimePrices(identifier);
 
-    // 2. Technical Data Fetching for Header Analysis
+    // 2. Technical Data Fetching using V2 API
     const [techData, setTechData] = useState<any>(null);
 
     useEffect(() => {
         const fetchTechData = async () => {
             try {
-                // Fetch basic asset info
-                const commonData = await apiClient.getAssetInfo(identifier).catch(() => null);
-                const type = commonData?.type_name || '';
-                
-                // Fetch specific technical data based on type
-                let specificData: any = {};
-                let endpoint = `/asset-overviews/stock/${identifier}`;
-                if (type === 'Crypto') endpoint = `/asset-overviews/crypto/${identifier}`;
-                else if (type === 'ETFs' || type === 'Funds') endpoint = `/asset-overviews/etf/${identifier}`;
-
-                const specificRes = await apiClient.request(endpoint, { silentStatusCodes: [404] }).catch(() => null);
-                if (specificRes) {
-                    specificData = {
-                        ...(specificRes.numeric_overview || {}),
-                        ...(specificRes.numeric_overview?.stock_financials_data || {})
-                    };
+                const overviewRes = await apiClient.v2GetOverview(identifier).catch(() => null);
+                if (overviewRes) {
+                    // Extract numeric data from v2 overview
+                    const numericData = overviewRes.numeric_data || overviewRes;
+                    setTechData({ 
+                        ...overviewRes, 
+                        ...numericData,
+                        type_name: overviewRes.asset_type || typeName
+                    });
                 }
-                setTechData({ ...commonData, ...specificData });
             } catch (e) {
                 console.error("Technical data fetch failed", e);
             }
         };
         fetchTechData();
-    }, [identifier]);
+    }, [identifier, typeName]);
 
     // Derived Display values
     // For Stocks and ETFs, if no real-time price is available (market closed), fall back to previous close as requested

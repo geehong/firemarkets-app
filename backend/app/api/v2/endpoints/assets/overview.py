@@ -12,9 +12,9 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 import logging
 
-from .....core.database import get_postgres_db
-from .....models import OHLCVData, Asset, AssetType, Post
-from .....schemas.asset import AssetOverviewResponse
+from app.core.database import get_postgres_db
+from app.models import OHLCVData, Asset, AssetType, Post
+from app.schemas.asset import AssetOverviewResponse
 from .shared.resolvers import resolve_asset_identifier, get_asset_type, get_asset_with_type
 from .shared.constants import VIEW_MAP
 

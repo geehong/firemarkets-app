@@ -28,7 +28,7 @@ def resolve_asset_identifier(db: Session, asset_identifier: str) -> int:
     Raises:
         HTTPException(404): 자산을 찾을 수 없는 경우
     """
-    from .....models import Asset
+    from app.models import Asset
     
     # 숫자인 경우 직접 ID로 사용
     if asset_identifier.isdigit():
@@ -105,7 +105,7 @@ def get_asset_by_ticker(db: Session, ticker: str):
     Returns:
         Asset 객체 또는 None
     """
-    from .....models import Asset
+    from app.models import Asset
     return db.query(Asset).filter(Asset.ticker == ticker).first()
 
 
@@ -120,7 +120,7 @@ def get_asset_with_type(db: Session, asset_id: int):
     Returns:
         (Asset, type_name) 튜플 또는 None
     """
-    from .....models import Asset, AssetType
+    from app.models import Asset, AssetType
     
     result = db.query(Asset, AssetType.type_name) \
         .join(AssetType, Asset.asset_type_id == AssetType.asset_type_id) \

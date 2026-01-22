@@ -25,11 +25,10 @@ const PiCycleChart: React.FC<PiCycleChartProps> = ({
     const [useLogScale, setUseLogScale] = useState(true);
     const [chartType, setChartType] = useState<'line' | 'spline'>('line');
 
-    // Fetch daily OHLCV data for Pi Cycle calculation
+    // Fetch daily OHLCV data for Pi Cycle calculation (using V2 API)
     const { data: ohlcvData, isLoading, error } = useQuery({
         queryKey: ['ohlcv-pi-cycle', assetId],
-        queryFn: () => apiClient.getAssetsOhlcv({
-            asset_identifier: assetId,
+        queryFn: () => apiClient.v2GetOhlcv(assetId, {
             data_interval: '1d',
             limit: 5000
         }),

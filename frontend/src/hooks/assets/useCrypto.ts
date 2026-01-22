@@ -22,26 +22,27 @@ export interface TechnicalIndicator {
   timestamp: string
 }
 
-// Crypto Metrics Hook
+// Crypto Metrics Hook (V2 API)
 export const useCryptoMetrics = (
   assetIdentifier: string,
   queryOptions?: UseQueryOptions
 ) => {
   return useQuery({
     queryKey: ['crypto-metrics', assetIdentifier],
-    queryFn: () => apiClient.getCryptoMetrics(assetIdentifier),
+    queryFn: () => apiClient.v2GetCryptoMetrics(assetIdentifier),
     enabled: !!assetIdentifier,
     staleTime: 1 * 60 * 1000, // 1분
     ...queryOptions,
   })
 }
 
-// Technical Indicators Hook
+// Technical Indicators Hook (V2 API)
 export const useTechnicalIndicators = (
   assetIdentifier: string,
   options?: {
-    indicators?: string[]
-    period?: number
+    indicator_type?: string
+    data_interval?: string
+    limit?: number
   }
 ) => {
   const [data, setData] = useState(null)
@@ -55,7 +56,7 @@ export const useTechnicalIndicators = (
       setLoading(true)
       setError(null)
       try {
-        const result = await apiClient.getTechnicalIndicators(assetIdentifier, options)
+        const result = await apiClient.v2GetTechnicals(assetIdentifier, options)
         setData(result)
       } catch (err) {
         setError(err as any)
@@ -70,41 +71,7 @@ export const useTechnicalIndicators = (
   return { data, loading, error }
 }
 
-// Crypto Market Overview Hook
-export const useCryptoMarketOverview = (
-  options?: {
-    limit?: number
-    sortBy?: string
-    sortOrder?: 'asc' | 'desc'
-  }
-) => {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const result = await apiClient.getCryptoMarketOverview(options)
-        setData(result)
-      } catch (err) {
-        setError(err as any)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
-
-    // 30초마다 자동 갱신
-    const interval = setInterval(fetchData, 30 * 1000)
-    return () => clearInterval(interval)
-  }, [JSON.stringify(options)])
-
-  return { data, loading, error }
-}
 
 // Bitcoin Halving Data 훅
 export const useHalvingData = (period: number, startPrice: number, enabled: boolean = true) => {

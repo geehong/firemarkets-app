@@ -1,3 +1,9 @@
+/**
+ * useAssets - v2 API 기반 Asset 관련 훅
+ * 
+ * All hooks now use v2 API endpoints for better performance and unified responses
+ */
+
 import { useState, useEffect, useCallback } from 'react'
 import { useQuery, UseQueryOptions } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api'
@@ -37,19 +43,20 @@ export interface TreemapLiveResponse {
   total_count: number
 }
 
-// Treemap live data hook for tables
+// Treemap live data hook for tables (V2 API)
 export const useTreemapLive = (
   params?: {
     asset_type_id?: number
     type_name?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
+    limit?: number
   },
   queryOptions?: UseQueryOptions
 ) => {
   return useQuery({
     queryKey: ['treemap-live-table', params],
-    queryFn: () => apiClient.getTreemapLiveData(params),
+    queryFn: () => apiClient.v2GetTreemap(params),
     staleTime: 5 * 60 * 1000,
     refetchInterval: 15 * 60 * 1000,
     ...queryOptions,
@@ -65,7 +72,7 @@ export interface OHLCVData {
   volume: string | number
 }
 
-// Asset Types Hook
+// Asset Types Hook (V2 API)
 export const useAssetTypes = (
   options?: {
     hasData?: boolean
@@ -81,45 +88,9 @@ export const useAssetTypes = (
       setLoading(true)
       setError(null)
       try {
-        const result = await apiClient.getAssetTypes(options)
-        setData(result)
-      } catch (err) {
-        setError(err)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
-  }, [JSON.stringify(options)])
-
-  return { data, loading, error }
-}
-
-// Assets List Hook
-export const useAssets = (
-  options?: {
-    assetTypeId?: number
-    limit?: number
-    offset?: number
-    search?: string
-  }
-) => {
-  const [data, setData] = useState<any>(undefined)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<any>(null)
-
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        // getAssetsList를 사용하여 /assets/assets 엔드포인트 호출 (getAssets는 /assets로 404 발생)
-        const result = await apiClient.getAssetsList({
-          limit: options?.limit,
-          offset: options?.offset,
-          search: options?.search,
-          // assetTypeId는 type_name으로 매핑할 수 없으므로 제외
+        const result = await apiClient.v2GetAssetTypes({
+          has_data: options?.hasData,
+          include_description: options?.includeDescription
         })
         setData(result)
       } catch (err) {
@@ -135,117 +106,14 @@ export const useAssets = (
   return { data, loading, error }
 }
 
-// Asset Detail Hook
-export const useAssetDetail = (
-  assetIdentifier: string
-) => {
-  const [data, setData] = useState<any>(undefined)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<any>(null)
-
-  useEffect(() => {
-    if (!assetIdentifier) return
-
-    const fetchData = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const result = await apiClient.getAssetDetail(assetIdentifier)
-        setData(result)
-      } catch (err) {
-        setError(err)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
-  }, [assetIdentifier])
-
-  return { data, loading, error }
-}
-
-// OHLCV Data Hook
-export const useOhlcvData = (
-  assetIdentifier: string,
-  options?: {
-    dataInterval?: string
-    limit?: number
-    startDate?: string
-    endDate?: string
-  },
-  queryOptions?: UseQueryOptions
-) => {
-  return useQuery({
-    queryKey: ['ohlcv', assetIdentifier, options],
-    queryFn: () => apiClient.getAssetsOhlcv({
-      asset_identifier: assetIdentifier,
-      data_interval: options?.dataInterval,
-      start_date: options?.startDate,
-      end_date: options?.endDate,
-      limit: options?.limit,
-    }),
-    enabled: !!assetIdentifier,
-    staleTime: 1 * 60 * 1000, // 1분
-    ...queryOptions,
-  })
-}
-
-// Asset Price Hook with date range
-export const useAssetPriceWithRange = (
-  assetIdentifier: string,
-  options?: {
-    dataInterval?: string
-    startDate?: string
-    endDate?: string
-    limit?: number
-  },
-  queryOptions?: UseQueryOptions
-) => {
-  return useQuery({
-    queryKey: ['asset-price', assetIdentifier, options],
-    queryFn: () => apiClient.getAssetPrice(assetIdentifier, options),
-    enabled: !!assetIdentifier,
-    staleTime: 1 * 60 * 1000, // 1분
-    ...queryOptions,
-  })
-}
-
-// Asset Price Hook
-export const useAssetPrice = (
-  assetIdentifier: string
-) => {
-  const [data, setData] = useState<any>(undefined)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<any>(null)
-
-  useEffect(() => {
-    if (!assetIdentifier) return
-
-    const fetchData = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const result = await apiClient.getAssetPrice(assetIdentifier)
-        setData(result)
-      } catch (err) {
-        setError(err)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
-  }, [assetIdentifier])
-
-  return { data, loading, error }
-}
-
-// Market Caps Hook
-export const useMarketCaps = (
+// Assets List Hook (V2 API)
+export const useAssets = (
   options?: {
     assetTypeId?: number
+    type_name?: string
     limit?: number
+    offset?: number
+    search?: string
   }
 ) => {
   const [data, setData] = useState<any>(undefined)
@@ -257,7 +125,12 @@ export const useMarketCaps = (
       setLoading(true)
       setError(null)
       try {
-        const result = await apiClient.getMarketCaps(options)
+        const result = await apiClient.v2GetAssets({
+          type_name: options?.type_name,
+          limit: options?.limit,
+          offset: options?.offset,
+          search: options?.search,
+        })
         setData(result)
       } catch (err) {
         setError(err)
@@ -272,13 +145,155 @@ export const useMarketCaps = (
   return { data, loading, error }
 }
 
-// TreeMap Live Data Hook
+// Asset Detail Hook (V2 API - uses overview)
+export const useAssetDetail = (
+  assetIdentifier: string
+) => {
+  const [data, setData] = useState<any>(undefined)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<any>(null)
+
+  useEffect(() => {
+    if (!assetIdentifier) return
+
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.v2GetOverview(assetIdentifier)
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [assetIdentifier])
+
+  return { data, loading, error }
+}
+
+// OHLCV Data Hook (V2 API)
+export const useOhlcvData = (
+  assetIdentifier: string,
+  options?: {
+    dataInterval?: string
+    limit?: number
+    startDate?: string
+    endDate?: string
+  },
+  queryOptions?: UseQueryOptions
+) => {
+  return useQuery({
+    queryKey: ['ohlcv', assetIdentifier, options],
+    queryFn: () => apiClient.v2GetOhlcv(assetIdentifier, {
+      data_interval: options?.dataInterval,
+      start_date: options?.startDate,
+      end_date: options?.endDate,
+      limit: options?.limit,
+    }),
+    enabled: !!assetIdentifier,
+    staleTime: 1 * 60 * 1000, // 1분
+    ...queryOptions,
+  })
+}
+
+// Asset Price Hook with date range (V2 API)
+export const useAssetPriceWithRange = (
+  assetIdentifier: string,
+  options?: {
+    dataInterval?: string
+    startDate?: string
+    endDate?: string
+    limit?: number
+  },
+  queryOptions?: UseQueryOptions
+) => {
+  return useQuery({
+    queryKey: ['asset-price', assetIdentifier, options],
+    queryFn: () => apiClient.v2GetOhlcv(assetIdentifier, {
+      data_interval: options?.dataInterval,
+      start_date: options?.startDate,
+      end_date: options?.endDate,
+      limit: options?.limit,
+    }),
+    enabled: !!assetIdentifier,
+    staleTime: 1 * 60 * 1000, // 1분
+    ...queryOptions,
+  })
+}
+
+// Asset Price Hook (V2 API)
+export const useAssetPrice = (
+  assetIdentifier: string
+) => {
+  const [data, setData] = useState<any>(undefined)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<any>(null)
+
+  useEffect(() => {
+    if (!assetIdentifier) return
+
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.v2GetPrice(assetIdentifier)
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [assetIdentifier])
+
+  return { data, loading, error }
+}
+
+// Market Caps Hook (V2 API)
+export const useMarketCaps = (
+  options?: {
+    type_name?: string
+    limit?: number
+    offset?: number
+  }
+) => {
+  const [data, setData] = useState<any>(undefined)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<any>(null)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await apiClient.v2GetMarketCaps(options)
+        setData(result)
+      } catch (err) {
+        setError(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [JSON.stringify(options)])
+
+  return { data, loading, error }
+}
+
+// TreeMap Live Data Hook (V2 API)
 export const useTreemapLiveData = (
-  params?: { asset_type_id?: number; type_name?: string }
+  params?: { asset_type_id?: number; type_name?: string; limit?: number }
 ) => {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['treemap-live-view', params],
-    queryFn: () => apiClient.getTreemapLiveData(params),
+    queryFn: () => apiClient.v2GetTreemap(params),
     staleTime: 5 * 60 * 1000, // 5분 캐시
     refetchInterval: 15 * 60 * 1000, // 15분마다 자동 갱신
   })
@@ -286,7 +301,7 @@ export const useTreemapLiveData = (
   return { data, loading: isLoading, error, refetch }
 }
 
-// Assets List with Filters Hook (for overviews migration)
+// Assets List with Filters Hook (V2 API)
 export const useAssetsList = (
   options?: {
     type_name?: string
@@ -305,7 +320,7 @@ export const useAssetsList = (
       setLoading(true)
       setError(null)
       try {
-        const result = await apiClient.getAssetsList(options)
+        const result = await apiClient.v2GetAssets(options)
         setData(result)
       } catch (err) {
         setError(err)
@@ -320,8 +335,10 @@ export const useAssetsList = (
   return { data, loading, error }
 }
 
-// Performance TreeMap Hook (for AssetsList component)
-export const usePerformanceTreeMap = () => {
+// Performance TreeMap Hook (V2 API)
+export const usePerformanceTreeMap = (
+  params?: { type_name?: string; limit?: number }
+) => {
   const [data, setData] = useState<any>(undefined)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<any>(null)
@@ -331,7 +348,7 @@ export const usePerformanceTreeMap = () => {
       setLoading(true)
       setError(null)
       try {
-        const result = await apiClient.getPerformanceTreeMap()
+        const result = await apiClient.v2GetTreemap(params)
         setData(result)
       } catch (err) {
         setError(err)
@@ -345,7 +362,7 @@ export const usePerformanceTreeMap = () => {
     // 15분마다 자동 새로고침
     const interval = setInterval(fetchData, 15 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [])
+  }, [JSON.stringify(params)])
 
   return { data, loading, error }
 }

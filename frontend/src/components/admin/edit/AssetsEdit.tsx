@@ -193,13 +193,16 @@ export default function AssetsEdit({
         throw new Error('Asset identifier is required')
       }
 
-      const result = await apiClient.updateAssetOverview(assetIdToUse, data)
-      console.log('Financial data saved:', result)
+      // const result = await apiClient.updateAssetOverview(assetIdToUse, data)
+      console.warn('Update asset overview is currently disabled (API v1 Removed). Data:', data)
+      // const result = { success: false, message: 'API v1 removed' }
+      // console.log('Financial data saved:', result)
 
       // assetInfo는 BaseEdit의 assetData를 사용하므로 별도 업데이트 불필요
       // BaseEdit에서 자동으로 refetch됨
 
-      return result
+      // return result
+      return
     } catch (error) {
       console.error('Failed to save financial data:', error)
       throw error

@@ -11,7 +11,21 @@ from sqlalchemy import func
 from ....core.database import get_postgres_db
 from ....models.asset import OHLCVData, Asset, OnchainMetricsInfo, CryptoMetric
 from ....schemas.asset import PriceDataPoint, PriceResponse
-from ....api.v1.endpoints.assets import resolve_asset_identifier, get_asset_by_ticker
+# from ....api.v1.endpoints.assets import resolve_asset_identifier, get_asset_by_ticker
+
+# Helper functions that were previously imported from metrics
+def get_asset_by_ticker(db: Session, ticker: str):
+    return db.query(Asset).filter(Asset.ticker == ticker).first()
+
+def resolve_asset_identifier(db: Session, asset_identifier: str) -> int:
+    if asset_identifier.isdigit():
+         asset = db.query(Asset).filter(Asset.asset_id == int(asset_identifier)).first()
+         if asset: return asset.asset_id
+    else:
+         asset = get_asset_by_ticker(db, asset_identifier)
+         if asset: return asset.asset_id
+    
+    raise HTTPException(status_code=404, detail=f"Asset not found: {asset_identifier}")
 
 logger = logging.getLogger(__name__)
 

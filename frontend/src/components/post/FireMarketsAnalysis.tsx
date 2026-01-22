@@ -60,38 +60,27 @@ const AssetAnalysisCard: React.FC<AssetAnalysisCardProps> = ({ ticker, locale })
     useEffect(() => {
         const fetchData = async () => {
             try {
-                // 2. Fetch common & specific data (Fundamental/Moving Averages)
-                const commonData = await apiClient.getAssetInfo(ticker).catch(() => null);
-                const typeName = commonData?.type_name || '';
-
-                let specificData: any = {};
-                try {
-                    let endpoint = `/asset-overviews/stock/${ticker}`;
-                    if (typeName === 'Crypto') endpoint = `/asset-overviews/crypto/${ticker}`;
-                    else if (typeName === 'ETFs' || typeName === 'Funds') endpoint = `/asset-overviews/etf/${ticker}`;
-
-                    const specificRes = await apiClient.request(endpoint, { silentStatusCodes: [404] }).catch(() => null);
-                    if (specificRes) {
-                        specificData = {
-                            ...(specificRes.numeric_overview || {}),
-                            ...(specificRes.post_overview || {}),
-                            ...(specificRes.numeric_overview?.stock_financials_data || {})
-                        };
-                    }
-                } catch (e) {}
-
-                // Sync with initial data
-                const initialPrice = commonData?.price || commonData?.current_price || specificData.price;
-                const initialPrevClose = commonData?.prev_close || specificData.prev_close || specificData.previous_close;
+                // V2 API - single unified call
+                const v2Data = await apiClient.v2GetOverview(ticker).catch(() => null);
                 
-                setData({
-                    ...commonData,
-                    ...specificData,
-                    current_price: latestPrice?.price || initialPrice || initialPrevClose,
-                    prev_close: initialPrevClose,
-                    company_name: commonData?.company_name || commonData?.title?.en || commonData?.name || ticker,
-                    price_change_percentage_24h: latestPrice?.changePercent ?? commonData?.price_change_percentage_24h ?? commonData?.daily_change_percent,
-                });
+                if (v2Data) {
+                    const numericData = v2Data.numeric_data || v2Data;
+                    const initialPrice = numericData.current_price || numericData.price || numericData.prev_close;
+                    
+                    setData({
+                        ...numericData,
+                        asset_type: v2Data.asset_type,
+                        type_name: v2Data.asset_type,
+                        current_price: latestPrice?.price || initialPrice,
+                        prev_close: numericData.prev_close || numericData.previous_close,
+                        company_name: numericData.company_name || v2Data.name || ticker,
+                        price_change_percentage_24h: latestPrice?.changePercent ?? numericData.price_change_percentage_24h ?? numericData.daily_change_percent,
+                        day_50_moving_avg: numericData.day_50_moving_avg,
+                        day_200_moving_avg: numericData.day_200_moving_avg,
+                        week_52_high: numericData.week_52_high,
+                        week_52_low: numericData.week_52_low,
+                    });
+                }
             } catch (error) {
                 console.error(`Error for ${ticker}:`, error);
             } finally {

@@ -48,9 +48,8 @@ export const BitcoinMonthlyReturns: React.FC = () => {
             setLoading(true);
             setError(null);
             try {
-                // Fetch monthly data for Bitcoin (limit 300 months ~ 25 years)
-                const response = await apiClient.getAssetsOhlcv({
-                    asset_identifier: 'BTC',
+                // Fetch monthly data for Bitcoin (limit 300 months ~ 25 years) via v2 API
+                const response = await apiClient.v2GetOhlcv('BTC', {
                     data_interval: '1M',
                     limit: 300
                 });

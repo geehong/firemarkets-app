@@ -1,6 +1,11 @@
+/**
+ * useAssetOverviews - v2 API 기반 Asset Overview 훅
+ * 
+ * All methods now use v2 API for unified asset data
+ */
+
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { apiClient } from '@/lib/api'
-import { useAssetDetail } from './useAssets'
 
 // 응답 타입 정의
 export interface StockInfoData {
@@ -167,6 +172,8 @@ export interface AssetOverviewsData {
   crypto?: CryptoInfoData
   etf?: ETFInfoData
   common?: AssetInfoData
+  // v2 unified data
+  v2Data?: any
 }
 
 interface UseAssetOverviewsOptions {
@@ -182,28 +189,17 @@ interface UseAssetOverviewsReturn {
 }
 
 /**
- * 새로운 asset-overviews 엔드포인트를 사용하는 훅
- * 자산 타입에 따라 적절한 엔드포인트를 호출합니다.
+ * V2 API 기반 asset-overviews 훅
+ * 단일 v2GetOverview 호출로 모든 데이터를 가져옵니다.
  */
 export const useAssetOverviews = (
   assetIdentifier: string,
   options: UseAssetOverviewsOptions = {}
 ): UseAssetOverviewsReturn => {
-  const { initialData = null, assetType: providedAssetType } = options
+  const { initialData = null } = options
   const [data, setData] = useState<AssetOverviewsData | null>(initialData)
   const [loading, setLoading] = useState(!initialData)
   const [error, setError] = useState<Error | null>(null)
-
-  // 자산 타입 확인 (제공되지 않았으면 useAssetDetail로 확인)
-  const { data: assetDetail } = useAssetDetail(assetIdentifier || '')
-  const assetType = providedAssetType || assetDetail?.type_name
-
-  const assetDetailKey = useMemo(() => {
-    if (!assetDetail) return null
-    const id = assetDetail.asset_id ?? ''
-    const updated = (assetDetail as any)?.updated_at ?? ''
-    return `${id}-${updated}`
-  }, [assetDetail])
 
   const fetchData = useCallback(async () => {
     if (!assetIdentifier || !assetIdentifier.trim()) {
@@ -212,108 +208,59 @@ export const useAssetOverviews = (
       return
     }
 
-    // assetType이 아직 로드되지 않았으면 대기
-    if (!assetType && !assetDetail) {
-      return
-    }
-
     setLoading(true)
     setError(null)
 
     try {
-      const results: AssetOverviewsData = {}
-
-      // 지원되는 자산 타입 목록
-      const supportedTypes = ['Stocks', 'Crypto', 'ETFs', 'Funds']
-      const isSupportedType = assetType && supportedTypes.includes(assetType)
-
-      // 자산 타입에 따라 해당하는 엔드포인트만 호출
+      // V2 API unified call
+      const v2Overview = await apiClient.v2GetOverview(assetIdentifier)
+      
+      if (!v2Overview) {
+        throw new Error(`No data found for asset: ${assetIdentifier}`)
+      }
+      
+      const assetType = v2Overview.asset_type
+      const numericData = v2Overview.numeric_data || {}
+      
+      // Build results object matching old structure for compatibility
+      const results: AssetOverviewsData = {
+        v2Data: v2Overview,
+        common: {
+          asset_id: v2Overview.asset_id,
+          prev_close: numericData.prev_close,
+          week_52_high: numericData.week_52_high,
+          week_52_low: numericData.week_52_low,
+          volume: numericData.volume,
+          average_vol_3m: numericData.average_vol_3m,
+          market_cap: numericData.market_cap,
+          day_50_moving_avg: numericData.day_50_moving_avg,
+          day_200_moving_avg: numericData.day_200_moving_avg,
+          last_updated: v2Overview.last_updated,
+        }
+      }
+      
+      // Map to type-specific data based on asset_type
       if (assetType === 'Stocks') {
-        try {
-          const stockData = await apiClient.getStockInfo(assetIdentifier)
-          results.stock = stockData as StockInfoData
-        } catch (err) {
-          console.error('❌ useAssetOverviews - Stock info fetch failed:', err)
-          throw err
+        results.stock = {
+          asset_id: v2Overview.asset_id,
+          post_overview: v2Overview.post_overview || {},
+          numeric_overview: numericData,
         }
       } else if (assetType === 'Crypto') {
-        try {
-          const cryptoData = await apiClient.getCryptoInfo(assetIdentifier)
-          results.crypto = cryptoData as CryptoInfoData
-        } catch (err) {
-          console.error('❌ useAssetOverviews - Crypto info fetch failed:', err)
-          throw err
+        results.crypto = {
+          asset_id: v2Overview.asset_id,
+          post_overview: v2Overview.post_overview || {},
+          numeric_overview: numericData,
         }
       } else if (assetType === 'ETFs' || assetType === 'Funds') {
-        try {
-          const etfData = await apiClient.getETFInfo(assetIdentifier)
-          results.etf = etfData as ETFInfoData
-        } catch (err) {
-          console.error('❌ useAssetOverviews - ETF info fetch failed:', err)
-          throw err
-        }
-      } else if (isSupportedType === false && assetType) {
-        // 지원되지 않는 자산 타입 (Commodities, Currencies, Indices, Bonds 등)
-        // post 정보와 common 정보만 사용 (별도 엔드포인트 호출 없음)
-        console.log(`ℹ️ useAssetOverviews - Unsupported asset type: ${assetType}, using basic info only`)
-        // post 정보는 assetDetail에서 가져올 수 있으므로 여기서는 common만 호출
-        // common 정보는 아래에서 항상 호출되므로 여기서는 아무것도 하지 않음
-      } else {
-        // 타입이 없거나 알 수 없는 경우, 모든 타입을 시도 (fallback)
-        console.warn(`⚠️ useAssetOverviews - Unknown asset type: ${assetType}, trying all types`)
-
-        // Stocks 시도
-        try {
-          const stockData = await apiClient.getStockInfo(assetIdentifier)
-          results.stock = stockData as StockInfoData
-        } catch (err) {
-          // 무시
-        }
-
-        // Crypto 시도
-        try {
-          const cryptoData = await apiClient.getCryptoInfo(assetIdentifier)
-          results.crypto = cryptoData as CryptoInfoData
-        } catch (err) {
-          // 무시
-        }
-
-        // ETF 시도
-        try {
-          const etfData = await apiClient.getETFInfo(assetIdentifier)
-          results.etf = etfData as ETFInfoData
-        } catch (err) {
-          // 무시
+        results.etf = {
+          asset_id: v2Overview.asset_id,
+          post_overview: v2Overview.post_overview || {},
+          numeric_overview: numericData,
         }
       }
-
-      // 공통 정보는 항상 호출
-      try {
-        const commonData = await apiClient.getAssetInfo(assetIdentifier)
-        results.common = commonData as AssetInfoData
-        console.log(`✅ useAssetOverviews - Common info loaded for ${assetIdentifier}:`, {
-          hasPrevClose: !!commonData?.prev_close,
-          hasWeek52High: !!commonData?.week_52_high,
-          hasWeek52Low: !!commonData?.week_52_low,
-          hasVolume: !!commonData?.volume,
-          hasDay50MA: !!commonData?.day_50_moving_avg,
-          hasDay200MA: !!commonData?.day_200_moving_avg,
-        })
-      } catch (err) {
-        console.log(`ℹ️ useAssetOverviews - Common info not found for ${assetIdentifier}:`, err)
-        // 지원되지 않는 타입의 경우 common 정보가 없어도 계속 진행
-        if (isSupportedType === false && assetType) {
-          // common 정보가 없어도 assetDetail 정보는 있으므로 계속 진행
-        }
-      }
-
-      // 최소한 하나의 데이터라도 있으면 성공으로 간주
-      // 지원되지 않는 타입의 경우 common 정보가 없어도 assetDetail 정보가 있으면 성공으로 간주
-      if (Object.keys(results).length > 0 || (isSupportedType === false && assetType && assetDetail)) {
-        setData(results)
-      } else {
-        throw new Error(`No data found for asset type: ${assetType || 'unknown'}`)
-      }
+      
+      setData(results)
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Unknown error occurred')
       setError(error)
@@ -321,13 +268,13 @@ export const useAssetOverviews = (
     } finally {
       setLoading(false)
     }
-  }, [assetIdentifier, assetType, assetDetail, assetDetailKey])
+  }, [assetIdentifier])
 
   useEffect(() => {
-    if (!initialData && assetIdentifier && assetIdentifier.trim() && (assetType || assetDetail)) {
+    if (!initialData && assetIdentifier && assetIdentifier.trim()) {
       fetchData()
     }
-  }, [fetchData, initialData, assetIdentifier, assetType, assetDetail, assetDetailKey])
+  }, [fetchData, initialData, assetIdentifier])
 
   return {
     data,
@@ -338,4 +285,3 @@ export const useAssetOverviews = (
 }
 
 export default useAssetOverviews
-
