@@ -119,7 +119,10 @@ class OnchainCollector(BaseCollector):
                 # 기본 30일, 공백이 길면 그만큼 더 많이
                 days_to_fetch = 30
                 if latest_date:
-                    days_gap = (datetime.utcnow().date() - latest_date.date()).days
+                    # latest_date could be a date or datetime object depending on SQLAlchemy version/driver
+                    current_date = datetime.utcnow().date()
+                    target_date = latest_date.date() if hasattr(latest_date, 'date') else latest_date
+                    days_gap = (current_date - target_date).days
                     if days_gap > 30:
                         days_to_fetch = days_gap + 3 # 여유분 추가
                 else:
@@ -245,7 +248,7 @@ class OnchainCollector(BaseCollector):
                         if i == 0 or i == len(items_to_process) - 1:
                             self.logging_helper.log_debug(f"[OnchainCollector] 메트릭 '{metric_name}' 아이템 {i+1}: "
                                                        f"timestamp={converted_item.get('timestamp_utc')}, "
-                                                       f"mvrv_z_score={converted_item.get('mvrv_z_score')}")
+                                                       f"value={converted_item.get(metric_name)}")
                         
                     elif isinstance(item, dict):
                         # 딕셔너리인 경우 - 데이터베이스 스키마에 맞게 변환

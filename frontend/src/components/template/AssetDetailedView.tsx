@@ -85,8 +85,16 @@ const AssetDetailedView: React.FC<AssetDetailedViewProps> = ({ asset, locale }) 
     }, [identifier]);
 
     // Derived Display values
-    const displayPrice = latestPrice?.price || techData?.current_price || asset.current_price;
-    const displayChange = latestPrice?.changePercent ?? techData?.price_change_percentage_24h ?? asset.price_change_percentage_24h;
+    // For Stocks and ETFs, if no real-time price is available (market closed), fall back to previous close as requested
+    const isMarketClosedSensitive = isStock || isETF;
+    const displayPrice = latestPrice?.price || 
+        (isMarketClosedSensitive ? (techData?.prev_close || asset.prev_close) : (techData?.current_price || asset.current_price || techData?.prev_close));
+    
+    // Fallback order: WebSocket -> TechData(Specific % or Common %) -> Asset DB
+    const displayChange = latestPrice?.changePercent ?? 
+        techData?.price_change_percentage_24h ?? 
+        techData?.price_change_percent ?? 
+        asset.price_change_percentage_24h;
 
     // Header Analysis Logic
     const analysis = useMemo(() => {
@@ -251,39 +259,25 @@ const AssetDetailedView: React.FC<AssetDetailedViewProps> = ({ asset, locale }) 
         }] : [])
     ]
 
-    // Header Actions (Analysis Summary View)
-    const headerActions = (
-        <div className="flex flex-col items-end gap-3 relative z-10 w-full max-w-[500px]">
-            <div className="flex items-baseline gap-3">
-                <span className="text-4xl font-black text-white drop-shadow-md">
-                    {formatCurrency(displayPrice)}
-                </span>
-                {displayChange !== undefined && (
-                    <span className={`flex items-center text-lg font-bold px-2.5 py-1 rounded-xl bg-white/10 backdrop-blur-md ${displayChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {displayChange >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />} 
-                        {Math.abs(displayChange).toFixed(2)}%
-                    </span>
-                )}
-            </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 w-full">
-                {[
-                    { label: locale === 'ko' ? '전일 종가' : 'Prev Close', val: formatCurrency(techData?.prev_close || asset.prev_close) },
-                    { label: locale === 'ko' ? '50일 평균' : '50D MA', val: formatCurrency(techData?.day_50_moving_avg), diff: getPercentDiffValue(displayPrice, techData?.day_50_moving_avg) },
-                    { label: locale === 'ko' ? '200일 평균' : '200D MA', val: formatCurrency(techData?.day_200_moving_avg), diff: getPercentDiffValue(displayPrice, techData?.day_200_moving_avg) },
-                    { label: locale === 'ko' ? '52주 최고' : '52W High', val: formatCurrency(techData?.week_52_high), diff: getPercentDiffValue(displayPrice, techData?.week_52_high) },
-                ].map((item, i) => (
-                    <div key={i} className="flex flex-col bg-white/5 p-2 rounded-lg border border-white/10 backdrop-blur-sm">
-                        <span className="text-[9px] font-bold text-white/40 uppercase tracking-tighter mb-0.5">{item.label}</span>
-                        <span className="text-xs font-bold text-white leading-none whitespace-nowrap">{item.val}</span>
-                        {item.diff && (
-                            <span className={`text-[10px] font-medium mt-0.5 ${Number(item.diff) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                {Number(item.diff) > 0 ? '+' : ''}{item.diff}%
-                            </span>
-                        )}
-                    </div>
-                ))}
-            </div>
+    // Header Indicators Grid (Analysis Summary View)
+    const headerIndicators = (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 w-full max-w-[500px]">
+            {[
+                { label: locale === 'ko' ? '전일 종가' : 'Prev Close', val: formatCurrency(techData?.prev_close || asset.prev_close) },
+                { label: locale === 'ko' ? '50일 평균' : '50D MA', val: formatCurrency(techData?.day_50_moving_avg), diff: getPercentDiffValue(displayPrice, techData?.day_50_moving_avg) },
+                { label: locale === 'ko' ? '200일 평균' : '200D MA', val: formatCurrency(techData?.day_200_moving_avg), diff: getPercentDiffValue(displayPrice, techData?.day_200_moving_avg) },
+                { label: locale === 'ko' ? '52주 최고' : '52W High', val: formatCurrency(techData?.week_52_high), diff: getPercentDiffValue(displayPrice, techData?.week_52_high) },
+            ].map((item, i) => (
+                <div key={i} className="flex flex-col bg-white/5 p-2 rounded-lg border border-white/10 backdrop-blur-sm">
+                    <span className="text-[9px] font-bold text-white/40 uppercase tracking-tighter mb-0.5">{item.label}</span>
+                    <span className="text-xs font-bold text-white leading-none whitespace-nowrap">{item.val}</span>
+                    {item.diff && (
+                        <span className={`text-[10px] font-medium mt-0.5 ${Number(item.diff) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {Number(item.diff) > 0 ? '+' : ''}{item.diff}%
+                        </span>
+                    )}
+                </div>
+            ))}
         </div>
     )
 
@@ -319,7 +313,21 @@ const AssetDetailedView: React.FC<AssetDetailedViewProps> = ({ asset, locale }) 
                                     <span className="text-[9px] font-black uppercase tracking-widest text-blue-400">Intelligent Outlook</span>
                                 </div>
                                 <span className="text-2xl md:text-3xl font-black truncate">{formattedTitle}</span>
-                                <div className="flex flex-wrap items-center gap-2 mt-2">
+                                
+                                {/* Price Display in Title Area */}
+                                <div className="flex items-baseline gap-3 mt-3">
+                                    <span className="text-3xl md:text-4xl font-black text-white drop-shadow-md">
+                                        {formatCurrency(displayPrice)}
+                                    </span>
+                                    {displayChange !== undefined && (
+                                        <span className={`flex items-center text-base md:text-lg font-bold px-2.5 py-1 rounded-xl bg-white/10 backdrop-blur-md ${displayChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                            {displayChange >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />} 
+                                            {Math.abs(displayChange).toFixed(2)}%
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-2 mt-4">
                                     {analysis && (
                                         <>
                                             <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${analysis.trend === 'bull' ? 'bg-green-500/20 text-green-400 border-green-500/30' : (analysis.trend === 'bear' ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'bg-gray-500/20 text-gray-400 border-gray-500/30')}`}>
@@ -352,7 +360,7 @@ const AssetDetailedView: React.FC<AssetDetailedViewProps> = ({ asset, locale }) 
                     { label: 'Assets', href: `/${locale}/admin/assets` },
                     { label: assetName, href: '#' }
                 ],
-                actions: headerActions
+                actions: headerIndicators
             }}
             tabs={tabs}
         />

@@ -144,12 +144,12 @@ const BaseTemplateView: React.FC<BaseTemplateViewProps> = ({
                                         </div>
 
                                         {/* H1 Title */}
-                                        <div className="flex justify-between items-start gap-4">
-                                            <h1 className={`text-2xl md:text-3xl font-black leading-tight ${header.headerClassName ? 'text-white' : 'text-gray-900 dark:text-white'}`}>
+                                        <div className="flex flex-col md:flex-row md:justify-between items-start gap-4">
+                                            <h1 className={`w-full md:w-auto text-2xl md:text-3xl font-black leading-tight ${header.headerClassName ? 'text-white' : 'text-gray-900 dark:text-white'}`}>
                                                 {header.title}
                                             </h1>
                                             {header.actions && (
-                                                <div className="flex-shrink-0">
+                                                <div className="w-full md:w-auto flex-shrink-0">
                                                     {header.actions}
                                                 </div>
                                             )}

@@ -701,7 +701,7 @@ class DataRepository:
             all_metric_fields = [
                 # Group A (홀수일)
                 'mvrv_z_score', 'mvrv', 'nupl', 'sopr', 'realized_price',
-                'sth_realized_price', 'lth_realized_price', 'lth_mvrv', 'sth_mvrv', 'lth_nupl',
+                'sth_realized_price', 'lth_mvrv', 'sth_mvrv', 'lth_nupl',
                 'sth_nupl', 'aviv', 'true_market_mean', 'terminal_price',
                 'delta_price_usd', 'market_cap',
                 # Group B (짝수일)
@@ -709,43 +709,10 @@ class DataRepository:
                 'reserve_risk', 'rhodl_ratio', 'nvts', 'nrpl_usd',
                 'utxos_in_profit_pct', 'utxos_in_loss_pct', 'realized_cap',
                 'etf_btc_flow', 'etf_btc_total', 'hodl_waves_supply', 'cdd_90dma',
-                # JSON 필드
-                'hodl_age_distribution', 'open_interest_futures',
-                # Legacy (호환성)
-                'nrpl_btc'
+                'hodl_age_distribution',
             ]
             
             # 2. 데이터 유효성 검사 및 정제
-            valid_pg_data_list = []
-            for item in items:
-                asset_id = item.get('asset_id')
-                ts = item.get('timestamp_utc')
-                
-                if not asset_id or not ts:
-                    continue
-                
-                pg_data = {
-                    'asset_id': asset_id,
-                    'timestamp_utc': ts,
-                    'updated_at': func.now()
-                }
-                
-                # 메트릭 필드 채우기 (값이 있는 것만)
-                has_value = False
-                for field in all_metric_fields:
-                    val = item.get(field)
-                    if val is not None:
-                        if field in ('hodl_age_distribution', 'open_interest_futures'):
-                            pg_data[field] = val  # JSON 필드
-                        else:
-                            pg_data[field] = self._sanitize_number(val)
-                        has_value = True
-                
-                if has_value:
-                    valid_pg_data_list = [pg_data] # 아래에서 배치별로 처리하기 위해 초기화, 하지만 여기서는 전체를 모읍니다
-                    # 실제로는 list에 계속 append해야 함
-            
-            # 위 로직 교정: valid_pg_data_list에 누적
             valid_pg_data_list = []
             for item in items:
                 asset_id = item.get('asset_id')

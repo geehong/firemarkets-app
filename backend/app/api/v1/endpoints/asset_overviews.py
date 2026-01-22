@@ -59,6 +59,9 @@ class AssetInfoResponse(BaseModel):
     """Asset Info 응답 모델 (ohlcv_day_data 기반 계산)"""
     asset_id: int = Field(..., description="Asset ID")
     prev_close: Optional[float] = Field(None, description="이전 종가")
+    current_price: Optional[float] = Field(None, description="현재(최신) 가격")
+    price_change: Optional[float] = Field(None, description="가격 변동폭")
+    price_change_percent: Optional[float] = Field(None, description="가격 변동률 (%)")
     week_52_high: Optional[float] = Field(None, description="52주 최고가")
     week_52_low: Optional[float] = Field(None, description="52주 최저가")
     volume: Optional[int] = Field(None, description="최근 거래량")
@@ -100,18 +103,36 @@ class ETFInfoResponse(BaseModel):
 def calculate_asset_info(db: Session, asset_id: int) -> AssetInfoResponse:
     """ohlcv_day_data 기반으로 asset_info 계산"""
     try:
-        # 1. 최신 OHLCV 데이터 조회
-        latest_ohlcv = db.query(OHLCVData).filter(
+        # 1. 최신 2개의 OHLCV 데이터 조회 (변동률 계산용)
+        ohlcv_latest_two = db.query(OHLCVData).filter(
             OHLCVData.asset_id == asset_id,
             OHLCVData.data_interval.in_(['1d', '1day', None])
-        ).order_by(OHLCVData.timestamp_utc.desc()).first()
+        ).order_by(OHLCVData.timestamp_utc.desc()).limit(2).all()
         
-        if not latest_ohlcv:
+        if not ohlcv_latest_two:
             return AssetInfoResponse(asset_id=asset_id)
         
-        prev_close = float(latest_ohlcv.close_price) if latest_ohlcv.close_price else None
+        latest_ohlcv = ohlcv_latest_two[0]
+        current_price = float(latest_ohlcv.close_price) if latest_ohlcv.close_price else None
         volume = int(latest_ohlcv.volume) if latest_ohlcv.volume else None
         last_updated = latest_ohlcv.timestamp_utc
+        
+        prev_close = None
+        price_change = None
+        price_change_percent = None
+        
+        if len(ohlcv_latest_two) > 1:
+            prev_ohlcv = ohlcv_latest_two[1]
+            prev_close = float(prev_ohlcv.close_price) if prev_ohlcv.close_price else None
+            
+            if current_price is not None and prev_close is not None and prev_close != 0:
+                price_change = current_price - prev_close
+                price_change_percent = (price_change / prev_close) * 100
+        else:
+            # 데이터가 하나뿐이면 prev_close는 현재 가격과 동일하게 보거나 None 유지
+            prev_close = current_price
+            price_change = 0.0
+            price_change_percent = 0.0
         
         # 2. 52주 범위 계산 (약 252 거래일)
         one_year_ago = latest_ohlcv.timestamp_utc - timedelta(days=365)
@@ -199,7 +220,10 @@ def calculate_asset_info(db: Session, asset_id: int) -> AssetInfoResponse:
 
         return AssetInfoResponse(
             asset_id=asset_id,
+            current_price=current_price,
             prev_close=prev_close,
+            price_change=price_change,
+            price_change_percent=price_change_percent,
             week_52_high=week_52_high,
             week_52_low=week_52_low,
             volume=volume,

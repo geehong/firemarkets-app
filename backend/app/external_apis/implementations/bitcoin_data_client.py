@@ -255,7 +255,7 @@ class BitcoinDataClient(OnChainAPIClient):
             size = days if days else 1
             
             async with httpx.AsyncClient() as client:
-                data = await self._fetch_standard(client, endpoint, {'size': size, 'sort': 'unixTs,desc'})
+                data = await self._fetch_standard(client, endpoint, {'size': size})
                 
                 if not data:
                     logger.warning(f"No data returned for {metric_name}")
