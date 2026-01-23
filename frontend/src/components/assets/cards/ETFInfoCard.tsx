@@ -165,12 +165,6 @@ const ETFInfoCard: React.FC<ETFInfoCardProps> = ({ asset, commonData }) => {
                             <span className="text-gray-500 dark:text-gray-400">Updated:</span>
                             <span className="font-medium">{formatDate(asset?.updated_at)}</span>
                         </div>
-                        {asset?.inception_date && (
-                            <div className="flex justify-between">
-                                <span className="text-gray-500 dark:text-gray-400">Inception Date:</span>
-                                <span className="font-medium">{formatDate(asset?.inception_date)}</span>
-                            </div>
-                        )}
                     </div>
                 </div>
 

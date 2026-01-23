@@ -20,6 +20,8 @@ import { useFearAndGreed } from '@/hooks/analysis/useFearAndGreed'
 import { useAssetPriceV2 } from '@/hooks/assets/useAssetV2'
 import BaseTemplateView from './BaseTemplateView'
 
+import { AssetHeaderDetail, AssetHeaderIndicators } from './block/HeaderViews'
+
 interface AssetDetailedViewProps {
     asset: any
     locale: string
@@ -57,33 +59,108 @@ const AssetDetailedView: React.FC<AssetDetailedViewProps> = ({ asset, locale }) 
     // 2. Technical Data Fetching using V2 API
     const [techData, setTechData] = useState<any>(null);
 
+    // Helper to extract nested data reliably
+    const getSafeJson = (data: any) => {
+        if (!data) return {};
+        if (typeof data === 'object') return data;
+        try {
+            return JSON.parse(data);
+        } catch (e) {
+            console.warn("[AssetDetailedView] Failed to parse JSON:", data);
+            return {};
+        }
+    };
+
+    // Helper to find value by multiple possible keys
+    const findFuzzyValue = (obj: any, keys: string[]) => {
+        if (!obj) return null;
+        for (const k of keys) {
+            if (obj[k] !== undefined && obj[k] !== null) return obj[k];
+        }
+        return null;
+    };
+
     useEffect(() => {
         const fetchTechData = async () => {
             try {
-                const overviewRes = await apiClient.v2GetOverview(identifier).catch(() => null);
-                if (overviewRes) {
-                    // Extract numeric data from v2 overview
-                    const numericData = overviewRes.numeric_data || overviewRes;
-                    setTechData({ 
-                        ...overviewRes, 
+                console.log(`[AssetDetailedView] Fetching Profile & Common data for: ${identifier}`);
+                
+                // Fetch both endpoints in parallel for completeness
+                const [overviewRes, commonRes] = await Promise.all([
+                    apiClient.v2GetOverview(identifier).catch((err) => {
+                        console.error(`[AssetDetailedView] V2 Overview API Error:`, err);
+                        return null;
+                    }),
+                    apiClient.v2GetCommonOverview(identifier).catch((err) => {
+                        console.error(`[AssetDetailedView] V2 Common API Error:`, err);
+                        return null;
+                    })
+                ]);
+                
+                if (overviewRes || commonRes) {
+                    const profileData = getSafeJson(overviewRes);
+                    const numericData = getSafeJson(overviewRes?.numeric_data);
+                    const stockFinancials = getSafeJson(overviewRes?.stock_financials_data);
+                    const marketData = getSafeJson(commonRes);
+                    
+                    // Merging Logic: Profile (Base) + Market (Common) + Financials
+                    // We prioritize 'marketData' (Common API) for live values as it is more reliable
+                    const merged = {
+                        ...profileData,
                         ...numericData,
-                        type_name: overviewRes.asset_type || typeName
+                        ...stockFinancials,
+                        ...marketData, // Overwrite with fresh market data from /common
+                        type_name: profileData.asset_type || typeName
+                    };
+
+                    // Fuzzy price keys backup (just in case)
+                    const priceKeys = ['current_price', 'price', 'regular_market_price'];
+                    const prevCloseKeys = ['prev_close', 'previous_close', 'regularMarketPreviousClose'];
+
+                    const current_price = merged.current_price || findFuzzyValue(merged, priceKeys);
+                    const prev_close = merged.prev_close || findFuzzyValue(merged, prevCloseKeys);
+
+                    const finalData = {
+                        ...merged,
+                        current_price,
+                        prev_close
+                    };
+                    
+                    console.log(`[AssetDetailedView] Merged Data:`, {
+                        price: finalData.current_price,
+                        prev: finalData.prev_close,
+                        ma50: finalData.day_50_moving_avg
                     });
+                    
+                    setTechData(finalData);
                 }
             } catch (e) {
-                console.error("Technical data fetch failed", e);
+                console.error("[AssetDetailedView] Catch block error:", e);
             }
         };
         fetchTechData();
     }, [identifier, typeName]);
 
     // Derived Display values
-    // For Stocks and ETFs, if no real-time price is available (market closed), fall back to previous close as requested
-    const isMarketClosedSensitive = isStock || isETF;
-    const displayPrice = latestPrice?.price || 
-        (isMarketClosedSensitive ? (techData?.prev_close || asset.prev_close) : (techData?.current_price || asset.current_price || techData?.prev_close));
+    const isCryptoOrCommodity = isCrypto || isCommodity;
+    const websocketPrice = latestPrice?.price;
+    const apiPrice = Number(techData?.current_price);
+    const apiPrevClose = Number(techData?.prev_close);
+
+    // Heuristic for Market Open (simplified US hours)
+    const now = new Date();
+    const kstHour = now.getHours();
+    const isMarketHours = (kstHour >= 23 || kstHour <= 6); 
+
+    let displayPrice: number | null = null;
+    if (isCryptoOrCommodity) {
+        displayPrice = websocketPrice || apiPrice || apiPrevClose;
+    } else {
+        // For stocks, prefer websocket if available during market hours
+        displayPrice = (isMarketHours && websocketPrice) ? websocketPrice : (apiPrice || apiPrevClose);
+    }
     
-    // Fallback order: WebSocket -> TechData(Specific % or Common %) -> Asset DB
+    // Fallback order for change percentage
     const displayChange = latestPrice?.changePercent ?? 
         techData?.price_change_percentage_24h ?? 
         techData?.price_change_percent ?? 
@@ -91,21 +168,36 @@ const AssetDetailedView: React.FC<AssetDetailedViewProps> = ({ asset, locale }) 
 
     // Header Analysis Logic
     const analysis = useMemo(() => {
-        if (!techData || !displayPrice || !techData.day_50_moving_avg || !techData.day_200_moving_avg) return null;
-        const { day_50_moving_avg: ma50, day_200_moving_avg: ma200 } = techData;
+        const currentPriceNum = Number(displayPrice);
+        const ma50 = Number(techData?.day_50_moving_avg);
+        const ma200 = Number(techData?.day_200_moving_avg);
+
+        // Security check: Never calculate if values are zero or NaN
+        if (!techData || !currentPriceNum || isNaN(currentPriceNum) || currentPriceNum === 0 || isNaN(ma50) || isNaN(ma200) || ma50 === 0 || ma200 === 0) return null;
         
-        const trend = (displayPrice > ma200) ? (displayPrice > ma50 ? 'bull' : 'neutral') : (displayPrice > ma50 ? 'neutral' : 'bear');
+        const trend = (currentPriceNum > ma200) ? (currentPriceNum > ma50 ? 'bull' : 'neutral') : (currentPriceNum > ma50 ? 'neutral' : 'bear');
         
         const signals = [];
         if (ma50 > ma200) signals.push(locale === 'ko' ? '골든크로스' : 'Golden Cross');
-        if (displayPrice > ma200) signals.push(locale === 'ko' ? '장기 추세 상방' : 'Long-term Uptrend');
+        if (currentPriceNum > ma200) signals.push(locale === 'ko' ? '장기 추세 상방' : 'Long-term Uptrend');
         else signals.push(locale === 'ko' ? '장기 추세 하방' : 'Long-term Downtrend');
         
         return { trend, signals };
     }, [techData, displayPrice, locale]);
 
-    const formatCurrency = (val: any) => val ? `$${Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-';
-    const getPercentDiffValue = (target: number, base: number) => base ? ((target - base) / base * 100).toFixed(1) : null;
+    const formatCurrency = (val: any) => {
+        const n = Number(val);
+        if (isNaN(n) || n === 0 || val === null || val === undefined) return '-';
+        return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    };
+
+    const getPercentDiffValue = (target: any, base: any) => {
+        const t = Number(target);
+        const b = Number(base);
+        // Ensure no division by zero or NaN, and ensure target value exists to avoid "-100%" display
+        if (isNaN(t) || isNaN(b) || b === 0 || t === 0) return null;
+        return ((t - b) / b * 100).toFixed(1);
+    };
 
     const contentObj = {
         en: asset.content_en || asset.content,
@@ -252,28 +344,6 @@ const AssetDetailedView: React.FC<AssetDetailedViewProps> = ({ asset, locale }) 
         }] : [])
     ]
 
-    // Header Indicators Grid (Analysis Summary View)
-    const headerIndicators = (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 w-full max-w-[500px]">
-            {[
-                { label: locale === 'ko' ? '전일 종가' : 'Prev Close', val: formatCurrency(techData?.prev_close || asset.prev_close) },
-                { label: locale === 'ko' ? '50일 평균' : '50D MA', val: formatCurrency(techData?.day_50_moving_avg), diff: getPercentDiffValue(displayPrice, techData?.day_50_moving_avg) },
-                { label: locale === 'ko' ? '200일 평균' : '200D MA', val: formatCurrency(techData?.day_200_moving_avg), diff: getPercentDiffValue(displayPrice, techData?.day_200_moving_avg) },
-                { label: locale === 'ko' ? '52주 최고' : '52W High', val: formatCurrency(techData?.week_52_high), diff: getPercentDiffValue(displayPrice, techData?.week_52_high) },
-            ].map((item, i) => (
-                <div key={i} className="flex flex-col bg-white/5 p-2 rounded-lg border border-white/10 backdrop-blur-sm">
-                    <span className="text-[9px] font-bold text-white/40 uppercase tracking-tighter mb-0.5">{item.label}</span>
-                    <span className="text-xs font-bold text-white leading-none whitespace-nowrap">{item.val}</span>
-                    {item.diff && (
-                        <span className={`text-[10px] font-medium mt-0.5 ${Number(item.diff) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            {Number(item.diff) > 0 ? '+' : ''}{item.diff}%
-                        </span>
-                    )}
-                </div>
-            ))}
-        </div>
-    )
-
     const rawCoverImage = asset.cover_image || asset.image
     const finalCoverImage = (rawCoverImage && rawCoverImage !== asset.logo_url && !rawCoverImage.includes('/icons/')) ? rawCoverImage : undefined
     const formattedTitle = identifier.toUpperCase() === assetName.toUpperCase() ? identifier : `${assetName} (${identifier})`;
@@ -289,61 +359,23 @@ const AssetDetailedView: React.FC<AssetDetailedViewProps> = ({ asset, locale }) 
             header={{
                 headerClassName: 'bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white relative',
                 title: (
-                    <div className="flex flex-col gap-4">
-                        <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
-                            <Activity className="w-24 h-24" />
-                        </div>
-                        
-                        <div className="flex items-center gap-4">
-                            {!finalCoverImage && asset.logo_url && (
-                                <div className="p-1 bg-white rounded-xl shadow-lg shrink-0">
-                                    <img src={asset.logo_url} alt={assetName} className="w-10 h-10 md:w-12 md:h-12 object-contain" />
-                                </div>
-                            )}
-                            <div className="flex flex-col overflow-hidden">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <Zap className="w-3 h-3 text-blue-400 fill-blue-400/20" />
-                                    <span className="text-[9px] font-black uppercase tracking-widest text-blue-400">Intelligent Outlook</span>
-                                </div>
-                                <span className="text-2xl md:text-3xl font-black truncate">{formattedTitle}</span>
-                                
-                                {/* Price Display in Title Area */}
-                                <div className="flex items-baseline gap-3 mt-3">
-                                    <span className="text-3xl md:text-4xl font-black text-white drop-shadow-md">
-                                        {formatCurrency(displayPrice)}
-                                    </span>
-                                    {displayChange !== undefined && (
-                                        <span className={`flex items-center text-base md:text-lg font-bold px-2.5 py-1 rounded-xl bg-white/10 backdrop-blur-md ${displayChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                            {displayChange >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />} 
-                                            {Math.abs(displayChange).toFixed(2)}%
-                                        </span>
-                                    )}
-                                </div>
-
-                                <div className="flex flex-wrap items-center gap-2 mt-4">
-                                    {analysis && (
-                                        <>
-                                            <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${analysis.trend === 'bull' ? 'bg-green-500/20 text-green-400 border-green-500/30' : (analysis.trend === 'bear' ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'bg-gray-500/20 text-gray-400 border-gray-500/30')}`}>
-                                                {analysis.trend === 'bull' ? (locale === 'ko' ? '상승' : 'Bullish') : (analysis.trend === 'bear' ? (locale === 'ko' ? '하락' : 'Bearish') : (locale === 'ko' ? '중립' : 'Neutral'))}
-                                            </span>
-                                            {analysis.signals.map((s, idx) => (
-                                                <span key={idx} className="bg-white/5 border border-white/10 px-2.5 py-0.5 rounded text-[10px] font-medium text-white/70 whitespace-nowrap">{s}</span>
-                                            ))}
-                                        </>
-                                    )}
-                                    {isCrypto && fngData && (
-                                        <div className="flex items-center gap-2 bg-white/10 backdrop-blur-md px-2.5 py-0.5 rounded-full border border-white/20">
-                                            <span className="text-[9px] font-bold text-white/50 uppercase tracking-tighter">Mood</span>
-                                            <span className={`text-[11px] font-black ${parseInt(fngData.value) > 60 ? 'text-green-400' : (parseInt(fngData.value) < 40 ? 'text-red-400' : 'text-amber-400')}`}>
-                                                {fngData.value}
-                                            </span>
-                                            <span className="text-[10px] text-white/70 opacity-80 whitespace-nowrap">{fngData.value_classification}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <AssetHeaderDetail 
+                        asset={asset}
+                        techData={techData}
+                        latestPrice={latestPrice}
+                        displayPrice={displayPrice}
+                        displayChange={displayChange}
+                        analysis={analysis}
+                        fngData={fngData}
+                        isCrypto={isCrypto}
+                        locale={locale}
+                        assetName={assetName}
+                        formattedTitle={formattedTitle}
+                        typeName={typeName}
+                        identifier={identifier}
+                        finalCoverImage={finalCoverImage}
+                        formatCurrency={formatCurrency}
+                    />
                 ),
                 category: { name: typeName },
                 author: { name: identifier },
@@ -353,7 +385,16 @@ const AssetDetailedView: React.FC<AssetDetailedViewProps> = ({ asset, locale }) 
                     { label: 'Assets', href: `/${locale}/admin/assets` },
                     { label: assetName, href: '#' }
                 ],
-                actions: headerIndicators
+                actions: (
+                    <AssetHeaderIndicators 
+                        items={[
+                            { label: locale === 'ko' ? '전일 종가' : 'Prev Close', val: formatCurrency(techData?.prev_close || asset.prev_close) },
+                            { label: locale === 'ko' ? '50일 평균' : '50D MA', val: formatCurrency(techData?.day_50_moving_avg), diff: getPercentDiffValue(displayPrice, techData?.day_50_moving_avg) },
+                            { label: locale === 'ko' ? '200일 평균' : '200D MA', val: formatCurrency(techData?.day_200_moving_avg), diff: getPercentDiffValue(displayPrice, techData?.day_200_moving_avg) },
+                            { label: locale === 'ko' ? '52주 최고' : '52W High', val: formatCurrency(techData?.week_52_high), diff: getPercentDiffValue(displayPrice, techData?.week_52_high) },
+                        ]}
+                    />
+                )
             }}
             tabs={tabs}
         />

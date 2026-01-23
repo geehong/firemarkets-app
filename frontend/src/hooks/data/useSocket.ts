@@ -480,12 +480,8 @@ export const useRealtimePrices = (assetIdentifier: string) => {
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    // 연결되지 않았고 소켓이 존재하지 않거나 연결 실패 시 더미 데이터 모드
-    if (!socket || (!isConnected && !(socket && socket.connected))) {
-      setIsUsingDummyData(true)
-    } else {
-      setIsUsingDummyData(false)
-    }
+    const shouldDummy = !socket || (!isConnected && !(socket && socket.connected))
+    setIsUsingDummyData(prev => prev === shouldDummy ? prev : shouldDummy)
   }, [socket, isConnected])
 
   useEffect(() => {
@@ -616,12 +612,8 @@ export const useBroadcastData = () => {
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    // 연결되지 않았고 소켓이 존재하지 않거나 연결 실패 시 더미 데이터 모드
-    if (!socket || (!isConnected && !(socket && socket.connected))) {
-      setIsUsingDummyData(true)
-    } else {
-      setIsUsingDummyData(false)
-    }
+    const shouldDummy = !socket || (!isConnected && !(socket && socket.connected))
+    setIsUsingDummyData(prev => prev === shouldDummy ? prev : shouldDummy)
   }, [socket, isConnected])
 
   useEffect(() => {

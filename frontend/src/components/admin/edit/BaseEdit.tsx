@@ -244,7 +244,8 @@ export default function BaseEdit({
     if (mode === 'edit' && postData) {
       // Prevent overwriting client state if we already have this post loaded
       // This protects against background refetches wiping out user edits
-      if (formData.id === postData.id) return
+      // But we MUST allow updates if the server content has changed (e.g. after AI rewrite)
+      if (formData.id === postData.id && formData.updated_at === postData.updated_at) return
 
       const processMultilingualField = (field: any) => {
         if (typeof field === 'string') return { ko: field, en: field }

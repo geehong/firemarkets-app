@@ -355,11 +355,14 @@ const AppSidebar: React.FC = () => {
   const isActive = useCallback((path: string) => path === pathname, [pathname]);
 
   const hasActiveChild = useCallback((item: NavItem): boolean => {
-    if (item.path && isActive(item.path)) return true;
-    if (item.subItems) {
-      return item.subItems.some(subItem => hasActiveChild(subItem));
-    }
-    return false;
+    const checkRecursive = (currentItem: NavItem): boolean => {
+      if (currentItem.path && isActive(currentItem.path)) return true;
+      if (currentItem.subItems) {
+        return currentItem.subItems.some(subItem => checkRecursive(subItem));
+      }
+      return false;
+    };
+    return checkRecursive(item);
   }, [isActive]);
 
 

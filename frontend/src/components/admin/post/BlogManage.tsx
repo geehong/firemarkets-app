@@ -233,20 +233,75 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
         }
 
         // AI Merge 실행
-        // alert('AI가 병합 작업을 시작합니다. 잠시만 기다려주세요...'); // Removed blocking alert
         setIsMerging(true);
 
         try {
           const newPost = await mergePostsMutation.mutateAsync(selectedPosts);
 
-          // 생성된 초안 편집 페이지로 이동
           if (newPost && newPost.id) {
-              const routePrefix = (typeList.includes('page') || currentPostType === 'page') ? 'page' : 'post';
-              router.push(`/admin/${routePrefix}/edit/${newPost.id}`);
+            // 1. Delete source posts (as requested)
+            // We do this in parallel. If one fails, we still proceed with the new post but alert?
+            // User said "merged 2+ posts are immediately deleted".
+            try {
+              await Promise.all(selectedPosts.map(id => deletePostMutation.mutateAsync(id)));
+              console.log('[BlogManage] Source posts deleted after merge:', selectedPosts);
+            } catch (delErr) {
+              console.error('[BlogManage] Failed to delete source posts:', delErr);
+              alert('병합은 완료되었으나 원본 포스트 삭제 중 오류가 발생했습니다.');
+            }
+
+            // 2. Prepare updates for the New Post
+            // - Slug: English title (auto-generated)
+            // - Status: 'archived'
+            // - Post Type: 'ai_draft_news'
+            
+            // Generate slug
+            let slugTitle = '';
+            // @ts-ignore
+            if (typeof newPost.title === 'string') {
+               // @ts-ignore
+               slugTitle = newPost.title;
+            } else if (newPost.title && typeof newPost.title === 'object') {
+               // @ts-ignore
+               slugTitle = newPost.title.en || newPost.title.ko || '';
+            }
+
+            const cleanSlug = slugTitle
+              .toLowerCase()
+              .replace(/[^a-z0-9\s-]/g, '')
+              .trim()
+              .replace(/\s+/g, '-')
+              .replace(/-+/g, '-');
+            
+            const finalSlug = cleanSlug || `merge-${nanoid(10)}`;
+
+            // Call Update
+            await updatePostMutation.mutateAsync({
+              postId: newPost.id,
+              postData: {
+                slug: finalSlug,
+                status: 'archived',
+                post_type: 'ai_draft_news'
+                // Tickers, keywords, tags are hopefully handled by the backend merge or 
+                // extracted by the 'ai_draft_news' editor logic later. 
+                // If backend merge puts them in post_info, they will be saved.
+              }
+            });
+
+            // 3. Open in New Window
+            const routePrefix = (typeList.includes('page') || currentPostType === 'page') ? 'page' : 'post';
+            window.open(`/admin/${routePrefix}/edit/${newPost.id}`, '_blank');
+            
+            // Refresh current list to remove deleted posts
+            setSelectedPosts([]);
+            refetch();
+
           } else {
-              alert('병합은 완료되었으나 페이지 이동에 실패했습니다.');
-              refetch();
+              alert('병합에 실패했습니다 (결과 없음).');
           }
+        } catch (err) {
+          console.error('[BlogManage] Merge error:', err);
+          alert('병합 작업 중 오류가 발생했습니다.');
         } finally {
           setIsMerging(false);
         }

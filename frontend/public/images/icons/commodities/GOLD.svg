@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <!-- Gold coin main gradient -->
+    <radialGradient id="goldCoinGradient" cx="40%" cy="30%" r="60%">
+      <stop offset="0%" style="stop-color:#FFE55C;stop-opacity:1" />
+      <stop offset="40%" style="stop-color:#FFD700;stop-opacity:1" />
+      <stop offset="80%" style="stop-color:#DAA520;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#B8860B;stop-opacity:1" />
+    </radialGradient>
+    <!-- Gold coin edge gradient -->
+    <linearGradient id="goldEdgeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#DAA520;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#B8860B;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8B6914;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- 3D Edge (bottom ellipse for depth) -->
+  <ellipse cx="32" cy="36" rx="26" ry="6" fill="url(#goldEdgeGradient)"/>
+  
+  <!-- Main Coin Face -->
+  <circle cx="32" cy="32" r="26" fill="url(#goldCoinGradient)" stroke="#B8860B" stroke-width="2"/>
+  
+  <!-- Inner ring -->
+  <circle cx="32" cy="32" r="22" fill="none" stroke="#DAA520" stroke-width="1.5" opacity="0.6"/>
+  
+  <!-- Highlight shine -->
+  <ellipse cx="24" cy="24" rx="10" ry="8" fill="#FFEB3B" opacity="0.35"/>
+  
+  <!-- Letter G -->
+  <text x="32" y="40" font-family="Georgia, serif" font-size="28" font-weight="bold" fill="#8B6914" text-anchor="middle">G</text>
+</svg>

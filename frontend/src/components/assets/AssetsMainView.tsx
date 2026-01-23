@@ -8,7 +8,7 @@ import AssetsList from '@/components/lists/AssetsList'
 import RealtimePriceTable from '@/components/tables/RealtimePriceTable'
 
 interface AssetsTemplateViewProps {
-    locale: string;6
+    locale: string;
 }
 
 const AssetsMainView: React.FC<AssetsTemplateViewProps> = ({ locale }) => {

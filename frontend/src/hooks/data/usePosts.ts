@@ -53,7 +53,7 @@ export interface Post {
   description: { ko: string; en: string }
   excerpt: { ko: string; en: string }
   slug: string
-  status: 'draft' | 'published' | 'private' | 'scheduled'
+  status: 'draft' | 'published' | 'private' | 'scheduled' | 'archived'
   featured: boolean
   post_type: 'post' | 'page' | 'tutorial' | 'news' | 'assets' | 'onchain' | 'raw_news' | 'ai_draft_news' | 'brief_news'
   view_count: number
@@ -114,7 +114,7 @@ export interface PostCreateData {
   description: { ko: string; en: string }
   excerpt: { ko: string; en: string }
   slug: string
-  status: 'draft' | 'published' | 'private' | 'scheduled'
+  status: 'draft' | 'published' | 'private' | 'scheduled' | 'archived'
   featured: boolean
   post_type: 'post' | 'page' | 'tutorial' | 'news' | 'assets' | 'onchain' | 'brief_news' | 'raw_news' | 'ai_draft_news'
   author_id: number | null

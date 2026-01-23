@@ -295,5 +295,6 @@ class NavigationService {
   }
 }
 
-export default new NavigationService();
+const navigationService = new NavigationService();
+export default navigationService;
 

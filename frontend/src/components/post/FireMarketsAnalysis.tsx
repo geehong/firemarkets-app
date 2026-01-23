@@ -8,19 +8,23 @@ import { useRealtimePrices } from '@/hooks/data/useSocket'
 import { TrendingUp, TrendingDown, Minus, Info, Activity, ShieldCheck, Zap } from 'lucide-react'
 
 // --- Formatting Utilities ---
-const formatCurrency = (value: number | undefined | null) => {
-    if (value === undefined || value === null) return '-';
-    return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const formatCurrency = (value: any) => {
+    const n = Number(value);
+    if (isNaN(n) || n === 0 || value === undefined || value === null) return '-';
+    return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-const formatNumber = (value: number | undefined | null) => {
-    if (value === undefined || value === null) return '-';
-    return value.toLocaleString();
+const formatNumber = (value: any) => {
+    const n = Number(value);
+    if (isNaN(n) || value === undefined || value === null) return '-';
+    return n.toLocaleString();
 }
 
-const getPercentDiff = (targetValue: number | undefined | null, baseValue: number | undefined | null) => {
-    if (!targetValue || !baseValue) return null;
-    return ((targetValue - baseValue) / baseValue) * 100;
+const getPercentDiff = (targetValue: any, baseValue: any) => {
+    const t = Number(targetValue);
+    const b = Number(baseValue);
+    if (isNaN(t) || isNaN(b) || b === 0) return null;
+    return ((t - b) / b) * 100;
 };
 
 // --- Sub-components ---
@@ -60,29 +64,82 @@ const AssetAnalysisCard: React.FC<AssetAnalysisCardProps> = ({ ticker, locale })
     useEffect(() => {
         const fetchData = async () => {
             try {
-                // V2 API - single unified call
-                const v2Data = await apiClient.v2GetOverview(ticker).catch(() => null);
+                console.log(`[FireMarketsAnalysis] Fetching Profile & Common data for: ${ticker}`);
                 
-                if (v2Data) {
-                    const numericData = v2Data.numeric_data || v2Data;
-                    const initialPrice = numericData.current_price || numericData.price || numericData.prev_close;
+                // Fetch both endpoints in parallel
+                const [v2Data, commonRes] = await Promise.all([
+                    apiClient.v2GetOverview(ticker).catch((err) => {
+                        console.error(`[FireMarketsAnalysis] V2 Overview Error:`, err);
+                        return null;
+                    }),
+                    apiClient.v2GetCommonOverview(ticker).catch((err) => {
+                        console.error(`[FireMarketsAnalysis] V2 Common Error:`, err);
+                        return null;
+                    })
+                ]);
+                
+                if (v2Data || commonRes) {
+                    const getSafeJson = (d: any) => {
+                        if (!d) return {};
+                        if (typeof d === 'object') return d;
+                        try { return JSON.parse(d); } catch { return {}; }
+                    };
+
+                    const findFuzzyValue = (obj: any, keys: string[]) => {
+                        if (!obj) return null;
+                        for (const k of keys) {
+                            if (obj[k] !== undefined && obj[k] !== null) return obj[k];
+                        }
+                        return null;
+                    };
+
+                    const profileData = getSafeJson(v2Data);
+                    const numericData = getSafeJson(v2Data?.numeric_data);
+                    const stockFinancials = getSafeJson(v2Data?.stock_financials_data);
+                    const marketData = getSafeJson(commonRes);
                     
-                    setData({
+                    // Merge: Profile + Market (Common priority)
+                    const merged = {
+                        ...profileData,
                         ...numericData,
-                        asset_type: v2Data.asset_type,
-                        type_name: v2Data.asset_type,
-                        current_price: latestPrice?.price || initialPrice,
-                        prev_close: numericData.prev_close || numericData.previous_close,
-                        company_name: numericData.company_name || v2Data.name || ticker,
-                        price_change_percentage_24h: latestPrice?.changePercent ?? numericData.price_change_percentage_24h ?? numericData.daily_change_percent,
-                        day_50_moving_avg: numericData.day_50_moving_avg,
-                        day_200_moving_avg: numericData.day_200_moving_avg,
-                        week_52_high: numericData.week_52_high,
-                        week_52_low: numericData.week_52_low,
+                        ...stockFinancials,
+                        ...marketData
+                    };
+
+                    const assetType = (merged.asset_type || '').toLowerCase();
+                    const isCryptoOrCommodity = assetType.includes('crypto') || assetType.includes('commodit');
+                    
+                    // Fuzzy search for prices
+                    const priceKeys = ['current_price', 'price', 'regular_market_price'];
+                    const prevCloseKeys = ['prev_close', 'previous_close', 'regularMarketPreviousClose'];
+
+                    const foundPrice = merged.current_price || findFuzzyValue(merged, priceKeys);
+                    const foundPrevClose = merged.prev_close || findFuzzyValue(merged, prevCloseKeys);
+                    
+                    // Simple market hour heuristic (KST)
+                    const now = new Date();
+                    const kstHour = now.getHours();
+                    const isMarketHours = (kstHour >= 23 || kstHour <= 6);
+
+                    // Initial Price Logic
+                    let displayPriceInit = Number(foundPrice) || Number(foundPrevClose);
+                    if (isCryptoOrCommodity) {
+                        displayPriceInit = Number(latestPrice?.price) || displayPriceInit;
+                    } else if (isMarketHours && latestPrice?.price) {
+                        displayPriceInit = Number(latestPrice.price);
+                    }
+
+                    setData({
+                        ...merged,
+                        current_price: displayPriceInit,
+                        prev_close: foundPrevClose,
+                        is_crypto_or_commodity: isCryptoOrCommodity,
+                        company_name: profileData.name || numericData.company_name || ticker,
+                        price_change_percentage_24h: latestPrice?.changePercent ?? merged.price_change_percent ?? merged.price_change_percentage_24h,
                     });
                 }
             } catch (error) {
-                console.error(`Error for ${ticker}:`, error);
+                console.error(`[FireMarketsAnalysis] Catch block for ${ticker}:`, error);
             } finally {
                 setLoading(false);
             }
@@ -90,20 +147,30 @@ const AssetAnalysisCard: React.FC<AssetAnalysisCardProps> = ({ ticker, locale })
         fetchData();
     }, [ticker, locale]);
 
-    // Update price when socket pushes new data
+    // Update price when socket pushes new data (already handled by displayPriceInit but keep for socket updates)
     useEffect(() => {
         if (latestPrice && data) {
-            setData((prev: any) => prev ? ({
-                ...prev,
-                current_price: latestPrice.price,
-                price_change_percentage_24h: latestPrice.changePercent ?? prev.price_change_percentage_24h
-            }) : prev);
+            const now = new Date();
+            const kstHour = now.getHours();
+            const isMarketHours = (kstHour >= 23 || kstHour <= 6);
+            
+            if (data.is_crypto_or_commodity || isMarketHours) {
+                setData((prev: any) => prev ? ({
+                    ...prev,
+                    current_price: latestPrice.price,
+                    price_change_percentage_24h: latestPrice.changePercent ?? prev.price_change_percentage_24h
+                }) : prev);
+            }
         }
     }, [latestPrice]);
 
     const analysis = useMemo(() => {
-        if (!data || !data.current_price || !data.day_50_moving_avg || !data.day_200_moving_avg) return null;
-        const { current_price: price, day_50_moving_avg: ma50, day_200_moving_avg: ma200 } = data;
+        const price = Number(data?.current_price);
+        const ma50 = Number(data?.day_50_moving_avg);
+        const ma200 = Number(data?.day_200_moving_avg);
+
+        // Security check for zero/NaN to avoid -100% or incorrect analysis
+        if (!data || isNaN(price) || price === 0 || isNaN(ma50) || isNaN(ma200) || ma50 === 0 || ma200 === 0) return null;
 
         const isAbove200 = price > ma200;
         const isAbove50 = price > ma50;
@@ -152,7 +219,7 @@ const AssetAnalysisCard: React.FC<AssetAnalysisCardProps> = ({ ticker, locale })
 
                 <div className="flex items-baseline gap-3 bg-slate-50 dark:bg-gray-900/50 p-3 rounded-xl border border-slate-100 dark:border-gray-800">
                     <span className="text-xl font-black text-slate-900 dark:text-white">{formatCurrency(data.current_price)}</span>
-                    {data.price_change_percentage_24h !== undefined && (
+                    {data.price_change_percentage_24h !== undefined && data.price_change_percentage_24h !== null && (
                         <span className={`text-sm font-bold flex items-center gap-0.5 ${data.price_change_percentage_24h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                             {data.price_change_percentage_24h >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                             {Math.abs(data.price_change_percentage_24h).toFixed(2)}%
@@ -172,7 +239,7 @@ const AssetAnalysisCard: React.FC<AssetAnalysisCardProps> = ({ ticker, locale })
                         <span className="text-[11px] font-semibold text-slate-400 dark:text-gray-500 uppercase tracking-wider">{item.label}</span>
                         <div className="flex items-center gap-2">
                             <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{item.val}</span>
-                            {item.diff !== null && item.diff !== undefined && (
+                            {(item.diff !== null && item.diff !== undefined && !isNaN(item.diff)) && (
                                 <span className={`text-[10px] font-medium ${item.diff >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                                     {item.diff > 0 ? '+' : ''}{item.diff.toFixed(1)}%
                                 </span>
