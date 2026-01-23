@@ -28,7 +28,8 @@ export interface TreemapLiveItem {
   asset_id: number
   ticker: string
   name: string
-  asset_type: string
+  asset_type?: string
+  type_name?: string
   market_cap: number | null
   logo_url?: string
   price_change_percentage_24h: number | null
@@ -41,6 +42,17 @@ export interface TreemapLiveItem {
 export interface TreemapLiveResponse {
   data: TreemapLiveItem[]
   total_count: number
+}
+
+export interface QuickStats {
+  date: string
+  total_assets: number
+  total_market_cap: number
+  by_type: Record<string, {
+    asset_count: number
+    total_market_cap: number
+    avg_change_percent: number
+  }>
 }
 
 // Treemap live data hook for tables (V2 API)
@@ -365,4 +377,16 @@ export const usePerformanceTreeMap = (
   }, [JSON.stringify(params)])
 
   return { data, loading, error }
+}
+
+// Quick Stats Hook (V2 API)
+export const useQuickStats = (
+  queryOptions?: UseQueryOptions<QuickStats>
+) => {
+  return useQuery<QuickStats>({
+    queryKey: ['quick-stats'],
+    queryFn: () => apiClient.v2GetQuickStats<QuickStats>(),
+    staleTime: 5 * 60 * 1000,
+    ...queryOptions as any,
+  })
 }

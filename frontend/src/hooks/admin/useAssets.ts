@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { apiClient } from '@/lib/api'
 
 interface TickerData {
   asset_id: number
@@ -59,26 +60,19 @@ export const useAssets = ({
     setError(null)
 
     try {
-      // 올바른 API 엔드포인트 사용
-      const params = new URLSearchParams({
-        has_ohlcv_data: has_ohlcv_data.toString(),
-        limit: limit.toString(),
-        offset: offset.toString(),
+      const result = await apiClient.v2GetAssets({
+        type_name,
+        has_ohlcv_data,
+        limit,
+        offset
       })
 
-      if (type_name) {
-        params.append('type_name', type_name)
-      }
+      // V2 response adaptive mapping
+      const items = result.data || result.items || result || []
+      const total = result.total_count || result.total || (Array.isArray(items) ? items.length : 0)
 
-      const response = await fetch(`https://backend.firemarkets.net/api/v1/assets/assets?${params}`)
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const result = await response.json()
-      setData(result.data || [])
-      setTotalCount(result.total_count || 0)
+      setData(items)
+      setTotalCount(total)
     } catch (e) {
       setError(e instanceof Error ? e : new Error('Unknown error'))
     } finally {
@@ -102,11 +96,17 @@ export const useAssetTypes = () => {
   useEffect(() => {
     const fetchAssetTypes = async () => {
       try {
-        const response = await fetch('https://backend.firemarkets.net/api/v1/assets/assets?has_ohlcv_data=false&limit=1000&offset=0')
-        if (response.ok) {
-          const result = await response.json()
-          const types = Array.from(new Set(result.data.map((item: TickerData) => item.type_name).filter(Boolean))) as string[]
-          setAssetTypes(types)
+        const result = await apiClient.v2GetAssetTypes({ has_data: false })
+        if (Array.isArray(result)) {
+           // If result is object array (AssetType[]), map to names
+           const types = result.map((t: any) => t.name || t)
+           // Remove duplicates just in case
+           setAssetTypes(Array.from(new Set(types)))
+        } else if (result && Array.isArray(result.data)) {
+           const types = result.data.map((t: any) => t.name || t)
+           setAssetTypes(Array.from(new Set(types)))
+        } else {
+           setAssetTypes([])
         }
       } catch (e) {
         setError(e instanceof Error ? e : new Error('Unknown error'))

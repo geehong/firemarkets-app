@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import { useTreemapLive, TreemapLiveItem } from '@/hooks/assets/useAssets';
+import { useTreemapLive, TreemapLiveItem, useQuickStats } from '@/hooks/assets/useAssets';
 import { useRealtimePrices } from '@/hooks/data/useSocket';
 import { usePosts } from '@/hooks/data/usePosts';
 import Link from 'next/link';
@@ -190,6 +190,7 @@ export const DashBoardPrismHubViewContent = () => {
     const t = useTranslations('Dashboard');
     const [currentChartIndex, setCurrentChartIndex] = useState(0);
 
+    const { data: quickStats } = useQuickStats();
     const { data: treemapData, isLoading, error } = useTreemapLive({
         sort_by: "market_cap",
         sort_order: "desc",
@@ -200,22 +201,37 @@ export const DashBoardPrismHubViewContent = () => {
             return { portfolioStats: null, topAssets: [], assetTypeBreakdown: [] };
         }
         const allAssets: TreemapLiveItem[] = (treemapData as any).data;
-        const totalValue = allAssets.slice(0, 20).reduce((sum, a) => sum + (a.market_cap || 0), 0);
-        const avgChange = allAssets.slice(0, 10).reduce((sum, a) => sum + (a.price_change_percentage_24h || 0), 0) / 10;
-        const typeMap: Record<string, { count: number; totalCap: number }> = {};
-        allAssets.forEach(a => {
-            const type = a.asset_type || 'Other';
-            if (!typeMap[type]) typeMap[type] = { count: 0, totalCap: 0 };
-            typeMap[type].count++;
-            typeMap[type].totalCap += a.market_cap || 0;
-        });
+        
+        // Use global stats if available, fall back to treemap summary or manual sum
+        const totalValue = quickStats?.total_market_cap || (treemapData as any).summary?.total_market_cap || allAssets.reduce((sum, a) => sum + (a.market_cap || 0), 0);
+        const avgChange = (treemapData as any).summary?.average_change_percent || (allAssets.slice(0, 10).reduce((sum, a) => sum + (a.price_change_percentage_24h || 0), 0) / 10);
+        
+        const typeStats = quickStats?.by_type || {};
+        
         const breakdown = [
-            { label: 'Crypto', value: formatLargeNumber(typeMap['Crypto']?.totalCap || typeMap['crypto']?.totalCap), color: 'from-violet-400 to-indigo-500' },
-            { label: 'Stocks', value: formatLargeNumber(typeMap['Stocks']?.totalCap || typeMap['Stock']?.totalCap || typeMap['Common Stock']?.totalCap), color: 'from-pink-400 to-rose-500' },
-            { label: 'ETFs', value: formatLargeNumber(typeMap['ETFs']?.totalCap || typeMap['ETF']?.totalCap), color: 'from-amber-400 to-orange-500' },
+            { 
+                label: 'Crypto', 
+                value: formatLargeNumber(typeStats['Crypto']?.total_market_cap || typeStats['Cryptocurrency']?.total_market_cap), 
+                color: 'from-violet-400 to-indigo-500' 
+            },
+            { 
+                label: 'Stocks', 
+                value: formatLargeNumber(typeStats['Stocks']?.total_market_cap || typeStats['Stock']?.total_market_cap || typeStats['Common Stock']?.total_market_cap), 
+                color: 'from-pink-400 to-rose-500' 
+            },
+            { 
+                label: 'ETFs', 
+                value: formatLargeNumber(typeStats['ETFs']?.total_market_cap || typeStats['ETF']?.total_market_cap), 
+                color: 'from-amber-400 to-orange-500' 
+            },
         ];
-        return { portfolioStats: { totalValue, avgChange }, topAssets: allAssets.slice(0, 4), assetTypeBreakdown: breakdown };
-    }, [treemapData]);
+        
+        return { 
+            portfolioStats: { totalValue, avgChange }, 
+            topAssets: allAssets.slice(0, 4), 
+            assetTypeBreakdown: breakdown 
+        };
+    }, [treemapData, quickStats]);
 
     useEffect(() => {
         if (topAssets.length === 0) return;

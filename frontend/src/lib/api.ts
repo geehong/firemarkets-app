@@ -864,8 +864,8 @@ export class ApiClient {
     return this.requestV2(`/assets/widgets/market-movers${qs ? `?${qs}` : ''}`)
   }
 
-  v2GetQuickStats() {
-    return this.requestV2('/assets/widgets/quick-stats')
+  v2GetQuickStats<T = any>() {
+    return this.requestV2<T>('/assets/widgets/quick-stats')
   }
 }
 

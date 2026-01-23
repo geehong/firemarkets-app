@@ -116,6 +116,37 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
             : (metricId || '');
     })();
 
+    // Latest Value Info Logic
+    const latestValueInfo = (() => {
+        if (isDashboardView || isPriceMetric) return null;
+
+        // 1. Try from dashboard summary first (fastest)
+        const dashboardMetric = dashboardData?.latest_updates?.find((m: any) => m.metric_id === metricId);
+        
+        // 2. Fallback to full onchain data
+        const latestPoint = onchainData?.data && onchainData.data.length > 0 
+            ? onchainData.data[onchainData.data.length - 1] 
+            : null;
+
+        const val = dashboardMetric?.latest_value ?? latestPoint?.value;
+        const rawDate = dashboardMetric?.latest_date ?? latestPoint?.timestamp;
+
+        if (val === undefined || val === null) return null;
+
+        const date = new Date(rawDate);
+        const formattedDate = isNaN(date.getTime()) ? '---' : 
+            `${String(date.getFullYear()).slice(-2)}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}`;
+
+        const formattedValue = val >= 1000 
+            ? val.toLocaleString(undefined, { maximumFractionDigits: 0 }) 
+            : val.toLocaleString(undefined, { maximumFractionDigits: 4 });
+
+        return {
+            value: formattedValue,
+            date: formattedDate
+        };
+    })();
+
     // Description Logic
     const descriptionText = (() => {
         const pData = postData as any;
@@ -530,6 +561,7 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
             description={headerDescription}
             actions={metricSelector}
             tabs={tabs}
+            latestValueInfo={latestValueInfo}
         />
     )
 }

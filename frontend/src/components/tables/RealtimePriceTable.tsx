@@ -286,7 +286,7 @@ export default function RealtimePriceTable({
             assetType: asset.asset_type || asset.type_name || "Asset",
             price: asset.current_price || 0,
             change24h: asset.price_change_percentage_24h || 0,
-            volume: asset.volume || 0,
+            volume: asset.volume_24h || asset.volume || 0,
             marketCap: asset.market_cap || 0,
         }));
     }, [treemapData, isLoading, selectedAssetType, searchQuery]);

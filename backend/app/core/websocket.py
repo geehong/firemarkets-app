@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from app.core.config import GLOBAL_APP_CONFIGS
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.memory import MemoryJobStore
+from collections import defaultdict
 
 # DataProcessor를 모듈 레벨에서 한 번만 임포트하여 재사용합니다.
 try:
@@ -21,8 +22,8 @@ except ImportError:
 sio = socketio.AsyncServer(
     async_mode='asgi',
     cors_allowed_origins="*",  # 모든 도메인 허용
-    logger=True,
-    engineio_logger=True,
+    logger=False,
+    engineio_logger=False,
     ping_timeout=60,
     ping_interval=25,
     max_http_buffer_size=1e6,
@@ -57,15 +58,20 @@ async def disconnect(sid):
     print(f"👥 남은 연결된 클라이언트 수: {connected_clients}")
 
 # (신규) Broadcaster 서비스로부터 이벤트를 받아 처리
+# 통계 집계용 변수
+broadcast_stats = defaultdict(lambda: 0)
+last_stat_log_time = time.time()
+
 @sio.event
+
 async def broadcast_quote(sid, data):
     """websocket_broadcaster 서비스로부터 받은 데이터를 클라이언트에게 브로드캐스트합니다."""
     ticker = data.get('ticker')
     price = data.get('price')
     provider = data.get('data_source', 'unknown')
-    print(f"📢 [BACKEND←BROADCASTER] 수신: {ticker} = ${price} (provider: {provider})")
+    # print(f"📢 [BACKEND←BROADCASTER] 수신: {ticker} = ${price} (provider: {provider})")
     await broadcast_realtime_quote(data)
-    print(f"✅ [BACKEND←BROADCASTER] 브로드캐스트 완료: {ticker}")
+    # print(f"✅ [BACKEND←BROADCASTER] 브로드캐스트 완료: {ticker}")
 
 # 실시간 가격 데이터 구독 이벤트
 @sio.event
@@ -142,7 +148,7 @@ async def broadcast_price_update(symbol, price_data):
             'timestamp_utc': price_data.get('timestamp_utc'),
             'data_source': price_data.get('data_source')
         }, room=f"prices_{symbol}")
-        print(f"Broadcasted price update for {symbol}: ${price_data.get('price')}")
+        # print(f"Broadcasted price update for {symbol}: ${price_data.get('price')}")
     except Exception as e:
         print(f"Failed to broadcast price update for {symbol}: {e}")
 
@@ -176,11 +182,23 @@ async def broadcast_realtime_quote(quote_data):
         # 데이터를 전송할 룸 이름 지정
         target_room = f"prices_{ticker}"
         
-        print(f"🚀 Broadcasting 'realtime_quote' to room '{target_room}': ${price} ({change_percent_str})")
+        # print(f"🚀 Broadcasting 'realtime_quote' to room '{target_room}': ${price} ({change_percent_str})")
         
         # 특정 룸으로만 이벤트 전송
         await sio.emit('realtime_quote', quote_data, room=target_room)
-        print(f"✅ Broadcasted to room '{target_room}' successfully.")
+        # print(f"✅ Broadcasted to room '{target_room}' successfully.")
+        
+        # 통계 집계
+        global last_stat_log_time
+        asset_type = quote_data.get('asset_type', 'Unknown')
+        broadcast_stats[asset_type] += 1
+        
+        current_time = time.time()
+        if current_time - last_stat_log_time >= 60:
+            stats_str = ", ".join([f"{k}: {v}개 성공" for k, v in broadcast_stats.items()])
+            print(f"✅ [WebSocket 통계] 지난 1분간 방송 성공: {stats_str}")
+            broadcast_stats.clear()
+            last_stat_log_time = current_time
         
     except Exception as e:
         print(f"❌ Failed to broadcast realtime quote: {e}")

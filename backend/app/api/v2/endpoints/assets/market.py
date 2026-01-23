@@ -56,7 +56,12 @@ def db_get_ohlcv_data(
     if end_date:
         query = query.filter(OHLCVData.timestamp_utc <= end_date)
     
-    return query.order_by(OHLCVData.timestamp_utc.asc()).limit(limit).all()
+    if start_date:
+        return query.order_by(OHLCVData.timestamp_utc.asc()).limit(limit).all()
+    
+    # start_date가 없으면 최신 데이터 우선 조회 (DESC sorting -> Limit -> ASC resort)
+    rows = query.order_by(OHLCVData.timestamp_utc.desc()).limit(limit).all()
+    return sorted(rows, key=lambda x: x.timestamp_utc)
 
 
 def aggregate_to_weekly(daily_rows: List[OHLCVData]) -> List[Dict]:

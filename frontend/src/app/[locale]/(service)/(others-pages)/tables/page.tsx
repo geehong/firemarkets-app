@@ -6,12 +6,16 @@ import RealtimePriceTable from '@/components/tables/RealtimePriceTable'
 import HistoryTable from '@/components/tables/HistoryTable'
 import SparklineTable from '@/components/tables/SparklineTable'
 import { BriefNewsListTable } from '@/components/tables/BriefNewsListTable'
+import AssetsList from '@/components/lists/AssetsList'
+import AgGridHistoryTable from '@/components/tables/AgGridHistoryTable'
+import SimpleHistoryTable from '@/components/tables/SimpleHistoryTable'
+import BasicTableOne from '@/components/tables/BasicTableOne'
 import { apiClient } from '@/lib/api'
 
 // ...
 
 export default function TablesPage() {
-    const [activeTab, setActiveTab] = useState<'realtime' | 'history' | 'sparkline' | 'brief_news'>('realtime')
+    const [activeTab, setActiveTab] = useState<'realtime' | 'history' | 'sparkline' | 'brief_news' | 'assets_list' | 'ag_grid' | 'simple_history' | 'basic_table'>('realtime')
     const [briefNews, setBriefNews] = useState<any[]>([])
     const [loadingBrief, setLoadingBrief] = useState(false)
 
@@ -50,6 +54,17 @@ export default function TablesPage() {
                         Realtime Prices
                     </button>
                     <button
+                        onClick={() => setActiveTab('assets_list')}
+                        className={`
+              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+              ${activeTab === 'assets_list'
+                                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'}
+            `}
+                    >
+                        Assets List
+                    </button>
+                    <button
                         onClick={() => setActiveTab('history')}
                         className={`
               whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
@@ -59,6 +74,39 @@ export default function TablesPage() {
             `}
                     >
                         Historical Data
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('ag_grid')}
+                        className={`
+              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+              ${activeTab === 'ag_grid'
+                                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'}
+            `}
+                    >
+                        Ag Grid History
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('simple_history')}
+                        className={`
+              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+              ${activeTab === 'simple_history'
+                                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'}
+            `}
+                    >
+                        Simple History
+                    </button>
+                     <button
+                        onClick={() => setActiveTab('basic_table')}
+                        className={`
+              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+              ${activeTab === 'basic_table'
+                                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'}
+            `}
+                    >
+                        Basic Table
                     </button>
                     <button
                         onClick={() => setActiveTab('sparkline')}
@@ -116,6 +164,40 @@ export default function TablesPage() {
                             typeName=""
                             maxRows={20}
                         />
+                    </ComponentCard>
+                )}
+
+                {activeTab === 'assets_list' && (
+                    <ComponentCard title="Assets List Component">
+                        <AssetsList showHeader={true} className="" />
+                    </ComponentCard>
+                )}
+
+                {activeTab === 'ag_grid' && (
+                    <ComponentCard title="AgGrid History Table (BTCUSDT)">
+                        <AgGridHistoryTable
+                            assetIdentifier="BTCUSDT"
+                            dataInterval="1d"
+                            height={600}
+                        />
+                    </ComponentCard>
+                )}
+
+                {activeTab === 'simple_history' && (
+                    <ComponentCard title="Simple History Table (BTCUSDT)">
+                        <SimpleHistoryTable
+                            assetIdentifier="BTCUSDT"
+                            initialInterval="1d"
+                            showVolume={true}
+                            showChangePercent={true}
+                            height={600}
+                        />
+                    </ComponentCard>
+                )}
+
+                {activeTab === 'basic_table' && (
+                    <ComponentCard title="Basic Table Example">
+                        <BasicTableOne />
                     </ComponentCard>
                 )}
 

@@ -65,14 +65,23 @@ export const useIntradayOhlcv = (
   return useQuery({
     queryKey: ['intraday-ohlcv', assetIdentifier, options],
     queryFn: () => {
-      const params = {
-        asset_identifier: assetIdentifier,
-        data_interval: options?.dataInterval, // dataInterval을 data_interval로 매핑
-        days: options?.days,
+      const v2Params: {
+        data_interval?: string
+        start_date?: string
+        limit?: number
+      } = {
+        data_interval: options?.dataInterval,
         limit: options?.limit
       }
-      console.log('[useIntradayOhlcv] Calling API with params:', params)
-      return apiClient.getIntradayOhlcv(params)
+
+      if (options?.days) {
+        const d = new Date()
+        d.setDate(d.getDate() - options.days)
+        v2Params.start_date = d.toISOString().split('T')[0]
+      }
+
+      console.log('[useIntradayOhlcv] Calling V2 API with params:', v2Params)
+      return apiClient.v2GetOhlcv(assetIdentifier, v2Params)
     },
     enabled: !!assetIdentifier,
     staleTime: 30 * 1000, // 30초

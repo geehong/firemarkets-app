@@ -328,13 +328,26 @@ def get_treemap_v2(
         query = "SELECT * FROM treemap_live_view WHERE 1=1"
         params = {}
         
+        # asset_type_id가 제공되면 type_name을 조회하여 필터링 (뷰에 asset_type_id 없음)
         if asset_type_id:
-            query += " AND asset_type_id = :asset_type_id"
-            params["asset_type_id"] = asset_type_id
+            asset_type_obj = db.query(AssetType).filter(AssetType.asset_type_id == asset_type_id).first()
+            if asset_type_obj:
+               query += " AND asset_type = :type_name_from_id"
+               params["type_name_from_id"] = asset_type_obj.type_name
+            else:
+               # 존재하지 않는 ID면 빈 결과 반환
+               return {"items": [], "total_count": 0, "summary": {"total_market_cap": 0, "average_change_percent": 0, "assets_count": 0}}
         
+        # type_name 직접 제공 시 (뷰 컬럼명은 asset_type)
         if type_name:
-            query += " AND type_name = :type_name"
-            params["type_name"] = type_name
+            # ILIKE on view is slow. Resolve canonical name first.
+            resolved_type = db.query(AssetType.type_name).filter(AssetType.type_name.ilike(type_name)).scalar()
+            if resolved_type:
+                query += " AND asset_type = :resolved_type_name"
+                params["resolved_type_name"] = resolved_type
+            else:
+                # Type not found
+                return {"data": [], "total_count": 0, "summary": {"total_market_cap": 0, "average_change_percent": 0, "assets_count": 0}}
         
         query += " ORDER BY market_cap DESC NULLS LAST LIMIT :limit"
         params["limit"] = limit
@@ -348,13 +361,17 @@ def get_treemap_v2(
             
             items.append({
                 "asset_id": row_dict.get("asset_id"),
+                "asset_type_id": row_dict.get("asset_type_id"), # asset_type_id 추가
                 "ticker": row_dict.get("ticker"),
                 "name": row_dict.get("name"),
-                "type_name": row_dict.get("type_name"),
+                "type_name": row_dict.get("asset_type"), # asset_type 컬럼 사용
+                "logo_url": row_dict.get("logo_url"), # logo_url 추가
                 "current_price": float(row_dict.get("current_price")) if row_dict.get("current_price") else None,
                 "market_cap": float(row_dict.get("market_cap")) if row_dict.get("market_cap") else None,
-                "daily_change_percent": float(row_dict.get("daily_change_percent")) if row_dict.get("daily_change_percent") else None,
-                "volume_24h": float(row_dict.get("volume_24h")) if row_dict.get("volume_24h") else None,
+                # daily_change_percent is mapped from price_change_percentage_24h in the view
+                "daily_change_percent": float(row_dict.get("price_change_percentage_24h")) if row_dict.get("price_change_percentage_24h") is not None else None,
+                "price_change_percentage_24h": float(row_dict.get("price_change_percentage_24h")) if row_dict.get("price_change_percentage_24h") is not None else None,
+                "volume_24h": float(row_dict.get("volume")) if row_dict.get("volume") else None, # volume 컬럼 사용 (뷰에서는 od_volume as volume)
             })
         
         # 요약 통계
@@ -362,7 +379,7 @@ def get_treemap_v2(
         avg_change = sum(item.get("daily_change_percent") or 0 for item in items) / len(items) if items else 0
         
         return {
-            "items": items,
+            "data": items,
             "total_count": len(items),
             "summary": {
                 "total_market_cap": total_market_cap,

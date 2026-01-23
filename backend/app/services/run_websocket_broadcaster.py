@@ -66,6 +66,7 @@ sio_client = socketio.AsyncClient(
 # --- Broadcaster 전용 상태 및 캐시 관리 ---
 
 ticker_to_asset_id_cache: Dict[str, int] = {}
+ticker_to_asset_type_cache: Dict[str, str] = {}
 last_asset_cache_refresh: Optional[datetime] = None
 asset_cache_refresh_interval = timedelta(minutes=10)
 
@@ -93,16 +94,22 @@ async def _refresh_asset_cache():
     global ticker_to_asset_id_cache, last_asset_cache_refresh
     logger.debug("🔄 Ticker-AssetID 캐시 갱신 시작...")
     from app.core.database import get_async_session_local
-    from app.models.asset import Asset
+    from app.models.asset import Asset, AssetType
     from sqlalchemy.future import select
 
     session_local = get_async_session_local()
     async with session_local() as session:
         try:
-            result = await session.execute(select(Asset.ticker, Asset.asset_id))
-            ticker_to_asset_id_cache = {ticker: asset_id for ticker, asset_id in result.all()}
+            # Asset과 AssetType을 조인하여 type_name도 함께 조회
+            stmt = select(Asset.ticker, Asset.asset_id, AssetType.type_name).join(AssetType, Asset.asset_type_id == AssetType.asset_type_id)
+            result = await session.execute(stmt)
+            
+            rows = result.all()
+            ticker_to_asset_id_cache = {ticker: asset_id for ticker, asset_id, type_name in rows}
+            ticker_to_asset_type_cache = {ticker: type_name for ticker, asset_id, type_name in rows}
+            
             last_asset_cache_refresh = datetime.now(timezone.utc)
-            logger.info(f"✅ Ticker-AssetID 캐시 갱신 완료: {len(ticker_to_asset_id_cache)}개 자산")
+            logger.info(f"✅ Ticker-AssetID/Type 캐시 갱신 완료: {len(ticker_to_asset_id_cache)}개 자산")
         except Exception as e:
             logger.error(f"❌ Ticker-AssetID 캐시 갱신 실패: {e}")
 
@@ -280,6 +287,7 @@ async def listen_to_redis_and_broadcast():
                             quote_data = {
                                 "asset_id": asset_id,
                                 "ticker": ticker_for_broadcast,  # DB 티커 형식 (예: ETH, BTC)
+                                "asset_type": ticker_to_asset_type_cache.get(ticker_for_broadcast, "Unknown"), # 자산 타입 추가
                                 "timestamp_utc": datetime.now(timezone.utc).isoformat(),
                                 "price": price,
                                 "volume": volume,

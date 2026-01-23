@@ -262,10 +262,10 @@ const VolumeWidget = ({
     (a.ticker || a.asset_identifier) === ticker
   );
 
-  // Volume 결정: realtimeData 사용 시 volume, 없으면 treemap_live_view의 volume을 fallback으로 사용
+  // Volume 결정: realtimeData 사용 시 volume, 없으면 treemap_live_view의 volume_24h 또는 volume을 fallback으로 사용
   const volume = useMiniWidget
-    ? (realtimeData?.volume || treemapAsset?.volume || 0)
-    : (treemapAsset?.volume || 0);
+    ? (realtimeData?.volume || treemapAsset?.volume_24h || treemapAsset?.volume || 0)
+    : (treemapAsset?.volume_24h || treemapAsset?.volume || 0);
 
   if (!volume) return <span className="text-gray-400">-</span>;
 
@@ -635,7 +635,7 @@ export default function SparklineTable({
           price: currentPrice,
           timeline: timeline,
           change24h: asset.price_change_percentage_24h || 0,
-          volume: asset.volume || 0,
+          volume: asset.volume_24h || asset.volume || 0,
           marketCap: asset.market_cap || 0,
           subscriptionStatus: subscriptionStatus as AssetData['subscriptionStatus'],
         } as AssetData;

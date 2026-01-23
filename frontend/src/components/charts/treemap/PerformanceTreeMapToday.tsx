@@ -81,13 +81,12 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
       }
       filteredAssets++
 
-      const category = asset.asset_type || 'Other'
+      const category = asset.type_name || asset.asset_type || 'Other'
       if (!categories[category]) {
         categories[category] = {
           id: category,
           name: category,
           value: 0,
-          children: [],
         }
       }
       let categoryValue = asset.market_cap || 1
@@ -122,7 +121,7 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
       }
       assetsAdded++
 
-      const category = asset.asset_type || 'Other'
+      const category = asset.type_name || asset.asset_type || 'Other'
       const isEtfOrFund = (category.toLowerCase().includes('etf') || category.toLowerCase().includes('fund'))
       const displayName = isEtfOrFund ? (asset.ticker || asset.name) : asset.name
 
@@ -137,12 +136,13 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
         value = value * 1.3
       }
 
-      // 성과 데이터: price_change_percentage_24h 사용
-      const colorValue = asset.price_change_percentage_24h || 0
+      // 성과 데이터: price_change_percentage_24h 또는 daily_change_percent 사용
+      const colorValue = asset.price_change_percentage_24h ?? asset.daily_change_percent ?? 0
 
       const childNode = {
         name: displayName,
-        id: asset.ticker || asset.name,
+        id: asset.ticker || `asset-${asset.asset_id}-${index}`,
+        assetTypeId: asset.asset_type_id,
         value: value,
         parent: category,
         colorValue: colorValue,
@@ -151,17 +151,17 @@ const PerformanceTreeMapToday: React.FC<PerformanceTreeMapTodayProps> = ({
           originalName: asset.name,
           displayTicker: asset.ticker,
           performance: (() => {
-            const perf = asset.price_change_percentage_24h || 0
+            const perf = colorValue
             return (perf < 0 ? '' : '+') + perf.toFixed(2) + '%'
           })(),
           ticker: asset.ticker,
           price: asset.current_price,
-          volume: 0,
-          change_24h: asset.price_change_percentage_24h || 0,
+          volume: asset.volume_24h || 0,
+          change_24h: colorValue,
           country: 'Global',
           rank: undefined,
           category: category,
-          type_name: asset.asset_type,
+          type_name: category,
         },
       }
 

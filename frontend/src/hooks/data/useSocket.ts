@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { io, Socket } from 'socket.io-client'
-import { resolveApiBaseUrl } from '@/lib/api'
+import { resolveApiBaseUrl, apiClient } from '@/lib/api'
 
 // 타입 정의
 interface RealtimePrice {
@@ -207,42 +207,46 @@ export const useSocket = () => {
 /**
  * 전일 종가 가져오기 함수
  */
+// 전일 종가 가져오기 함수
 const fetchLatestChangePercent = async (assetIdentifier: string): Promise<{ previousClose: number | null; changePercent: number | null }> => {
   try {
-    const BACKEND_BASE = resolveApiBaseUrl()
-
-    // 최근 2개 일봉 데이터 조회 (가장 최근 날짜의 change_percent와 전일 종가 확인용)
-    const url = `${BACKEND_BASE}/assets/price/${assetIdentifier}?data_interval=1d&limit=2`
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      signal: AbortSignal.timeout(5000), // 5초 타임아웃
+    // V2 API 사용 (limit=2, 1d interval)
+    // v2GetOhlcv는 Promise<OhlcvResponseV2> 등을 반환하므로 any로 캐스팅하거나 타입을 맞춤
+    const result: any = await apiClient.v2GetOhlcv(assetIdentifier, {
+      data_interval: '1d',
+      limit: 2
     })
 
-    if (!response.ok) {
-      // console.warn(`[useSocket] Failed to fetch latest change percent for ${assetIdentifier}: ${response.status}`)
+    const items = result?.data || result?.items || []
+    
+    if (!items || !Array.isArray(items) || items.length === 0) {
       return { previousClose: null, changePercent: null }
     }
 
-    const data = await response.json()
+    // 최신순 정렬 (V2 응답 순서 불확실성을 대비)
+    const sorted = [...items].sort((a: any, b: any) => 
+      new Date(b.timestamp_utc).getTime() - new Date(a.timestamp_utc).getTime()
+    )
 
-    if (!data?.data || !Array.isArray(data.data) || data.data.length === 0) {
-      return { previousClose: null, changePercent: null }
+    // 오늘 날짜(UTC 기준) 확인
+    const now = new Date();
+    const todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).getTime();
+
+    // 적절한 전일 종가 찾기
+    // 1. sorted[0]의 날짜가 오늘이면 -> sorted[1] (어제) 사용
+    // 2. sorted[0]의 날짜가 어제이거나 그 이전이면 -> sorted[0] 사용
+    let targetData = sorted[0];
+    
+    if (targetData && new Date(targetData.timestamp_utc).getTime() >= todayUTC) {
+      // 오늘의 데이터가 존재하면, 그 다음 데이터(어제)를 사용
+      targetData = sorted.length > 1 ? sorted[1] : null;
     }
 
-    // 가장 최근 데이터 (첫 번째) - 이것이 전일 종가 데이터
-    const latestData = data.data[0]
-
-    // API에서 계산된 change_percent는 무시하고, 전일 종가만 사용
-    // 전일 종가는 가장 최근 데이터의 value (예: 2025-11-05의 종가)
-    const previousClose = latestData?.value && latestData.value > 0
-      ? latestData.value
+    // v2 데이터 매핑 (close_price 사용)
+    const previousClose = targetData?.close_price && targetData.close_price > 0
+      ? targetData.close_price 
       : null
 
-    // change_percent는 사용하지 않음 (실시간 가격과 전일 종가로 직접 계산)
     return { previousClose, changePercent: null }
   } catch (error) {
     // console.warn(`[useSocket] Error fetching latest change percent for ${assetIdentifier}:`, error)
