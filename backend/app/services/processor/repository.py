@@ -314,6 +314,7 @@ class DataRepository:
                     # 필드 매핑 (간소화)
                     pg_data = {
                         'asset_id': asset_id,
+                        'snapshot_date': data.get('snapshot_date') or data.get('date'),
                         'currency': data.get('currency'),
                         'market_cap': data.get('market_cap'),
                         'ebitda': data.get('ebitda'),
