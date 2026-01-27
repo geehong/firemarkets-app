@@ -6,7 +6,7 @@ import { useOhlcvData } from "@/hooks/assets/useAssets";
 import TechnicalIndicators from "@/components/analysis/technical/TechnicalIndicators";
 import TechnicalChart from "@/components/analysis/technical/TechnicalChart";
 
-export default function TechnicalPage() {
+export default function TechnicalAnalysisView() {
   // We'll hardcode BTC ID '1' for now as per original implementation
   const { data: ohlcvData, isLoading } = useOhlcvData("1", { limit: 200, dataInterval: "1d" });
 

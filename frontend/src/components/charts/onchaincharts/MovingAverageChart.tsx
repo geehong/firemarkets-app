@@ -114,7 +114,18 @@ const MovingAverageChart: React.FC<MovingAverageChartProps> = ({
             { name: 'Bitcoin Price', data: priceSeriesData, color: '#1e293b', lineWidth: 1, opacity: 0.5, id: 'price' },
             ...maSeries
         ],
-        rangeSelector: { enabled: true, selected: 4 },
+        rangeSelector: {
+            enabled: true,
+            selected: 5, // Selects 'All' by default (index 5 in the buttons array below)
+            buttons: [
+                { type: 'month', count: 3, text: '3m' },
+                { type: 'month', count: 6, text: '6m' },
+                { type: 'ytd', text: 'YTD' },
+                { type: 'year', count: 1, text: '1y' },
+                { type: 'year', count: 5, text: '5y' },
+                { type: 'all', text: 'All' }
+            ]
+        },
         navigator: { enabled: true }
     };
 
@@ -126,7 +137,7 @@ const MovingAverageChart: React.FC<MovingAverageChartProps> = ({
                     onClick={() => setUseLogScale(!useLogScale)}
                     className={`px-3 py-1 text-xs rounded-md border ${useLogScale ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-gray-50 border-gray-200 text-gray-600'}`}
                 >
-                    Log Scale
+                    LogS
                 </button>
             </div>
             <HighchartsReact

@@ -6,6 +6,7 @@ from datetime import datetime
 
 from app.models.blog import Post
 from app.services.news_ai_agent import NewsAIEditorAgent
+from app.analysis.speculative import sentiment_analyzer
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,17 @@ class NewsIngestionMixin:
             for p in posts_to_process:
                 self._fill_fallback_content(p)
 
+        # 2.5 Calculate Sentiment (Local)
+        for p in posts_to_process:
+            try:
+                # Construct text for analysis (Title + Description)
+                text = f"{p.get('title', '')} {p.get('description', '')}"
+                # Analyze (returns {label: 'positive', score: 0.99})
+                p['sentiment'] = sentiment_analyzer.analyze(text)
+            except Exception as e:
+                logger.warning(f"[{source_name}] Sentiment analysis failed for item: {e}")
+                p['sentiment'] = None
+
         # 3. Save to DB
         saved_count = 0
         try:
@@ -162,7 +174,8 @@ class NewsIngestionMixin:
                         "keywords": p.get("keywords", []),
                         "tags": p.get("tags", []),
                         "image_url": p.get("image_url"),
-                        "author": p.get("author")
+                        "author": p.get("author"),
+                        "sentiment": p.get("sentiment") 
                     },
                     published_at=pub_at
                 )

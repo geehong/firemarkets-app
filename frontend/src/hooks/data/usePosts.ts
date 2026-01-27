@@ -3,29 +3,11 @@
 import { useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
-// API 기본 URL - 클라이언트 사이드에서 올바른 origin 사용
+import { resolveApiBaseUrl } from '@/lib/api'
+
+// API 기본 URL - 공통 로직 사용
 const getApiBase = (): string => {
-  // Server-side에서는 환경 변수 사용
-  const backendBase = process.env.NEXT_PUBLIC_BACKEND_API_BASE || process.env.NEXT_PUBLIC_API_URL
-
-  if (backendBase) {
-    // 이미 절대 URL이면 그대로 사용
-    if (backendBase.startsWith('http://') || backendBase.startsWith('https://')) {
-      return backendBase
-    }
-    // 상대 URL이면 현재 origin 붙이기
-    if (typeof window !== 'undefined') {
-      return `${window.location.origin}/${backendBase.replace(/^\//, '')}`
-    }
-    // SSR 환경에서 상대 URL은 fallback
-    return `https://firemarkets.net/${backendBase.replace(/^\//, '')}`
-  }
-
-  // 기본값
-  if (typeof window !== 'undefined') {
-    return `${window.location.origin}/api/v1`
-  }
-  return 'https://firemarkets.net/api/v1'
+  return resolveApiBaseUrl();
 }
 
 import { tokenService } from '@/services/tokenService'

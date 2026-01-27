@@ -72,7 +72,7 @@ async def test_posts():
 
 
 @router.get("/")
-async def get_posts(
+def get_posts(
     page: int = Query(1, ge=1, description="페이지 번호"),
     page_size: int = Query(20, ge=1, le=1000, description="페이지당 항목 수"),
     post_type: Optional[str] = Query(None, description="포스트 타입 필터"),
@@ -236,7 +236,7 @@ async def get_posts(
 
 
 @router.get("/home")
-async def get_home_post(
+def get_home_post(
     db: Session = Depends(get_postgres_db)
 ):
     """홈 페이지 포스트 조회 (slug가 없거나 빈 문자열인 포스트)"""
@@ -330,7 +330,7 @@ async def get_home_post(
 
 
 @router.get("/popular/")
-async def get_popular_posts(
+def get_popular_posts(
     limit: int = Query(10, ge=1, le=50, description="조회할 포스트 수"),
     db: Session = Depends(get_postgres_db)
 ):
@@ -340,7 +340,7 @@ async def get_popular_posts(
 
 
 @router.get("/recent/")
-async def get_recent_posts(
+def get_recent_posts(
     limit: int = Query(10, ge=1, le=50, description="조회할 포스트 수"),
     db: Session = Depends(get_postgres_db)
 ):
@@ -350,7 +350,7 @@ async def get_recent_posts(
 
 
 @router.get("/stats/overview", response_model=PostStatsResponse)
-async def get_post_stats(
+def get_post_stats(
     db: Session = Depends(get_postgres_db)
 ):
     """포스트 통계 조회"""
@@ -420,7 +420,7 @@ async def get_post_stats(
 
 @router.get("/{post_id}")
 
-async def get_post(
+def get_post(
     post_id: int = Path(..., description="포스트 ID"),
     db: Session = Depends(get_postgres_db)
 ):
@@ -508,7 +508,7 @@ async def get_post(
 
 
 @router.get("/slug/{slug}")
-async def get_post_by_slug(
+def get_post_by_slug(
     slug: str = Path(..., description="포스트 슬러그"),
     db: Session = Depends(get_postgres_db)
 ):

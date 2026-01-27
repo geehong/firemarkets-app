@@ -8,7 +8,7 @@ from app.api.v1.endpoints import (
     realtime, scheduler, collectors, world_assets, crypto, 
     onchain, etf, dashboard, configurations, admin, logs, metrics, 
     open_interest, tickers, navigation, posts,
-    auth, analysis
+    auth, analysis, sentiment_stats
 )
 from app.api.v1 import external_apis
 from app.api.v2.api import api_router as api_v2_router  # v2 API
@@ -100,6 +100,7 @@ app.include_router(tickers.router, prefix="/api/v1/tickers", tags=["tickers"])
 app.include_router(navigation.router, prefix="/api/v1/navigation", tags=["navigation"])
 app.include_router(posts.router, prefix="/api/v1/posts", tags=["posts"])
 # app.include_router(asset_overviews.router, prefix="/api/v1/asset-overviews", tags=["asset-overviews"]) # Removed
+app.include_router(sentiment_stats.router, prefix="/api/v1/analysis/sentiment", tags=["sentiment-stats"])
 app.include_router(analysis.router, prefix="/api/v1/analysis", tags=["analysis"])
 app.include_router(external_apis.router, prefix="/api/v1/external-apis", tags=["external-apis"])
 

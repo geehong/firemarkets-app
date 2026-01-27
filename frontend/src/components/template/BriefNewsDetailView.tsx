@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import TableOfContents from './block/TableOfContents'
 import PostSidebar from '@/components/post/PostSidebar'
+import FireMarketsAnalysis from '@/components/post/FireMarketsAnalysis'
 
 interface BriefNewsDetailViewProps {
     post: any;
@@ -99,6 +100,14 @@ export default function BriefNewsDetailView({
                                     </a>
                                 </div>
                             )}
+
+                             {/* FireMarkets Analysis Section */}
+                             <div className="mt-10">
+                                <FireMarketsAnalysis 
+                                    postInfo={typeof post.post_info === 'string' ? JSON.parse(post.post_info) : (post.post_info || {})} 
+                                    locale={locale} 
+                                />
+                             </div>
 
                             {/* Tags */}
                             {post.tags && post.tags.length > 0 && (

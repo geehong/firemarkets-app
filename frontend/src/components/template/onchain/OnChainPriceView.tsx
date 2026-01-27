@@ -36,6 +36,12 @@ const LiveChart = dynamic(() => import('@/components/charts/live/LiveChart'), { 
 const BitcoinMonthlyReturns = dynamic(() => import('@/components/widgets/BitcoinMonthlyReturns').then(mod => mod.BitcoinMonthlyReturns), { ssr: false })
 const BitcoinPredictionChart = dynamic(() => import('@/components/charts/BitcoinPredictionChart'), { ssr: false })
 
+// Analysis Views
+const TechnicalAnalysisView = dynamic(() => import('@/components/analysis/views/TechnicalAnalysisView'), { ssr: false })
+const FundamentalAnalysisView = dynamic(() => import('@/components/analysis/views/FundamentalAnalysisView'), { ssr: false })
+const QuantitativeAnalysisView = dynamic(() => import('@/components/analysis/views/QuantitativeAnalysisView'), { ssr: false })
+const SpeculativeAnalysisView = dynamic(() => import('@/components/analysis/views/SpeculativeAnalysisView'), { ssr: false })
+
 interface OnChainPriceViewProps {
     locale: string
     metricId: string | null
@@ -110,6 +116,13 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
         if (fullPath.includes('/onchain/price/pi-cycle')) return 'Pi Cycle';
         if (fullPath.toLowerCase().includes('/onchain/price/monthlyreturns')) return 'Monthly Returns';
         if (fullPath.includes('/onchain/price/outlook-2026')) return locale === 'ko' ? '2026년 전망' : '2026 Outlook';
+        
+        // Analysis pages
+        if (metricId === 'analysis-technical') return locale === 'ko' ? '기술적 분석' : 'Technical Analysis';
+        if (metricId === 'analysis-fundamental') return locale === 'ko' ? '기본적 분석' : 'Fundamental Analysis';
+        if (metricId === 'analysis-quantitative') return locale === 'ko' ? '정량적 분석' : 'Quantitative Analysis';
+        if (metricId === 'analysis-speculative') return locale === 'ko' ? '투기적/감성 분석' : 'Speculative Analysis';
+        if (metricId === 'analysis-moving-averages') return locale === 'ko' ? '이동평균선' : 'Moving Averages';
 
         return isDashboardView
             ? (locale === 'ko' ? '온체인 지표 대시보드' : 'On-Chain Metrics Dashboard')
@@ -181,6 +194,9 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
                 ? '주요 기관 및 분석가들의 2026년 비트코인 가격 전망을 종합적으로 시각화했습니다.'
                 : 'Comprehensive visualization of Bitcoin price predictions for 2026 from major institutions and analysts.';
         }
+        if (metricId?.startsWith('analysis-')) {
+            return locale === 'ko' ? '다양한 분석 기법을 통한 심층 시장 분석' : 'In-depth market analysis using various methodologies';
+        }
         return isDashboardView
             ? (locale === 'ko' ? '비트코인 온체인 지표 대시보드' : 'Bitcoin On-chain Metrics Dashboard')
             : `Bitcoin onchain metrics correlation with price movements`;
@@ -245,7 +261,7 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
         >
             <option value="">{locale === 'ko' ? '-- 선택 --' : '-- Select --'}</option>
 
-            {isPriceMetric ? (
+            {isPriceMetric || (metricId && metricId.startsWith('analysis-')) ? (
                 /* PRICE VIEW MENU ONLY */
                 <>
                     <option value="price/live">{locale === 'ko' ? '실시간 가격' : 'Live Price'}</option>
@@ -255,7 +271,13 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
                     <option value="price/ohlcv/intraday">{locale === 'ko' ? 'OHLCV (시간별)' : 'OHLCV (Hourly)'}</option>
                     <option value="price/moving-averages">{locale === 'ko' ? '이동평균선' : 'Moving Averages'}</option>
                     <option value="price/capitalization">{locale === 'ko' ? '시가총액' : 'Capitalization'}</option>
+                    <option value="price/capitalization">{locale === 'ko' ? '시가총액' : 'Capitalization'}</option>
                     <option value="price/pi-cycle">{locale === 'ko' ? '파이 사이클' : 'Pi Cycle'}</option>
+                    <option disabled>──────────</option>
+                    <option value="analysis/technical">{locale === 'ko' ? '기술적 분석' : 'Technical Analysis'}</option>
+                    <option value="analysis/fundamental">{locale === 'ko' ? '기본적 분석' : 'Fundamental Analysis'}</option>
+                    <option value="analysis/quantitative">{locale === 'ko' ? '정량적 분석' : 'Quantitative Analysis'}</option>
+                    <option value="analysis/speculative">{locale === 'ko' ? '투기적/감성 분석' : 'Speculative Analysis'}</option>
                 </>
             ) : (
                 /* METRIC VIEW MENU ONLY (Default) */
@@ -417,128 +439,142 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
                             ) : (
                                 <>
                                     {/* CHARTS */}
-                                    <ComponentCard title={metricConfig.title || (locale === 'ko' ? `${cleanMetricNameValue} 차트` : `${cleanMetricNameValue} Chart`)}>
-                                        {fullPath.includes('/onchain/price/live') ? (
-                                            <LiveChart assetIdentifier="BTCUSDT" height={600} />
-                                        ) : fullPath.includes('/onchain/price/close/daily') ? (
-                                            <ClosePriceChart
-                                                assetId="BTCUSDT"
-                                                interval="1d"
-                                                allowedIntervals={['1d', '1w', '1M']}
-                                                height={600}
-                                            />
-                                        ) : fullPath.includes('/onchain/price/close/intraday') ? (
-                                            <ClosePriceChart
-                                                assetId="BTCUSDT"
-                                                interval="1h"
-                                                allowedIntervals={['1m', '5m', '15m', '30m', '1h', '4h']}
-                                                height={600}
-                                            />
-                                        ) : fullPath.includes('/onchain/price/ohlcv/daily') ? (
-                                            <OHLCVCustomGUIChart
-                                                assetIdentifier="BTCUSDT"
-                                                dataInterval="1d"
-                                                allowedIntervals={['1d', '1w', '1M']}
-                                                height={600}
-                                            />
-                                        ) : fullPath.includes('/onchain/price/ohlcv/intraday') ? (
-                                            <OHLCVCustomGUIChart
-                                                assetIdentifier="BTCUSDT"
-                                                dataInterval="1h"
-                                                allowedIntervals={['1m', '5m', '15m', '30m', '1h', '4h']}
-                                                height={600}
-                                            />
-                                        ) : (fullPath.includes('/onchain/price/moving-averages') || fullPath.includes('/onchain/analysis/moving-averages')) ? (
-                                            <MovingAverageChart assetId="BTCUSDT" height={600} />
-                                        ) : fullPath.includes('/onchain/price/capitalization') ? (
-                                            <CapitalizationChart assetId="BTCUSDT" height={600} />
-                                        ) : fullPath.includes('/onchain/price/pi-cycle') ? (
-                                            <PiCycleChart assetId="BTCUSDT" height={600} />
-                                        ) : fullPath.toLowerCase().includes('/onchain/price/monthlyreturns') ? (
-                                            <BitcoinMonthlyReturns />
-                                        ) : fullPath.includes('/onchain/price/outlook-2026') ? (
-                                            <BitcoinPredictionChart />
-                                        ) : (
-                                            <OnChainChart
-                                                assetId="BTCUSDT"
-                                                title={metricConfig.title || `Bitcoin Price vs ${cleanMetricNameValue} Correlation`}
-                                                height={600}
-                                                showRangeSelector={true}
-                                                showStockTools={false}
-                                                showExporting={true}
-                                                metricId={metricId || undefined}
-                                                metricName={cleanMetricNameValue}
-                                            />
-                                        )}
-                                    </ComponentCard>
-
-                                    {/* ANALYSIS INFO SECTION - Render ONLY if post has no content */}
-                                    {!hasPostContent && (
-                                        <ComponentCard title={locale === 'ko' ? `${cleanMetricNameValue} 분석 정보` : `${cleanMetricNameValue} Analysis Information`}>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                {/* Description */}
-                                                <div>
-                                                    <h4 className="font-medium mb-3 text-gray-900 dark:text-gray-100">
-                                                        {locale === 'ko' ? `${cleanMetricNameValue}란?` : `What is ${cleanMetricNameValue}?`}
-                                                    </h4>
-                                                    <p className="text-sm text-gray-500 leading-relaxed dark:text-gray-400">
-                                                        {descriptionText}
-                                                    </p>
-                                                </div>
-
-                                                {/* Interpretation */}
-                                                <div>
-                                                    {!isPriceMetric && (
+                                    {/* CHARTS & ANALYSIS VIEWS */}
+                                    {metricId?.startsWith('analysis-') && metricId !== 'analysis-moving-averages' ? (
+                                        // Analysis views (Full Page Content)
+                                        <>
+                                            { metricId === 'analysis-technical' && <TechnicalAnalysisView /> }
+                                            { metricId === 'analysis-fundamental' && <FundamentalAnalysisView /> }
+                                            { metricId === 'analysis-quantitative' && <QuantitativeAnalysisView /> }
+                                            { metricId === 'analysis-speculative' && <SpeculativeAnalysisView /> }
+                                        </>
+                                    ) : (
+                                        // Standard Metric/Price View
+                                        <>
+                                            <ComponentCard title={metricConfig.title || (locale === 'ko' ? `${cleanMetricNameValue} 차트` : `${cleanMetricNameValue} Chart`)}>
+                                                {fullPath.includes('/onchain/price/live') ? (
+                                                    <LiveChart assetIdentifier="BTCUSDT" height={600} />
+                                                ) : fullPath.includes('/onchain/price/close/daily') ? (
+                                                    <ClosePriceChart
+                                                        assetId="BTCUSDT"
+                                                        interval="1d"
+                                                        allowedIntervals={['1d', '1w', '1M']}
+                                                        height={600}
+                                                    />
+                                                ) : fullPath.includes('/onchain/price/close/intraday') ? (
+                                                    <ClosePriceChart
+                                                        assetId="BTCUSDT"
+                                                        interval="1h"
+                                                        allowedIntervals={['1m', '5m', '15m', '30m', '1h', '4h']}
+                                                        height={600}
+                                                    />
+                                                ) : fullPath.includes('/onchain/price/ohlcv/daily') ? (
+                                                    <OHLCVCustomGUIChart
+                                                        assetIdentifier="BTCUSDT"
+                                                        dataInterval="1d"
+                                                        allowedIntervals={['1d', '1w', '1M']}
+                                                        height={600}
+                                                    />
+                                                ) : fullPath.includes('/onchain/price/ohlcv/intraday') ? (
+                                                    <OHLCVCustomGUIChart
+                                                        assetIdentifier="BTCUSDT"
+                                                        dataInterval="1h"
+                                                        allowedIntervals={['1m', '5m', '15m', '30m', '1h', '4h']}
+                                                        height={600}
+                                                    />
+                                                ) : (fullPath.includes('/onchain/price/moving-averages') || fullPath.includes('/onchain/analysis/moving-averages')) ? (
+                                                    <MovingAverageChart assetId="BTCUSDT" height={600} />
+                                                ) : fullPath.includes('/onchain/price/capitalization') ? (
+                                                    <CapitalizationChart assetId="BTCUSDT" height={600} />
+                                                ) : fullPath.includes('/onchain/price/pi-cycle') ? (
+                                                    <PiCycleChart assetId="BTCUSDT" height={600} />
+                                                ) : fullPath.toLowerCase().includes('/onchain/price/monthlyreturns') ? (
+                                                    <BitcoinMonthlyReturns />
+                                                ) : fullPath.includes('/onchain/price/outlook-2026') ? (
+                                                    <BitcoinPredictionChart />
+                                                ) : (
+                                                    <OnChainChart
+                                                        assetId="BTCUSDT"
+                                                        title={metricConfig.title || `Bitcoin Price vs ${cleanMetricNameValue} Correlation`}
+                                                        height={600}
+                                                        showRangeSelector={true}
+                                                        showStockTools={false}
+                                                        showExporting={true}
+                                                        metricId={metricId || undefined}
+                                                        metricName={cleanMetricNameValue}
+                                                    />
+                                                )}
+                                            </ComponentCard>
+        
+                                            {/* ANALYSIS INFO SECTION - Render ONLY if post has no content */}
+                                            {!hasPostContent && (
+                                                <ComponentCard title={locale === 'ko' ? `${cleanMetricNameValue} 분석 정보` : `${cleanMetricNameValue} Analysis Information`}>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                        {/* Description */}
                                                         <div>
                                                             <h4 className="font-medium mb-3 text-gray-900 dark:text-gray-100">
-                                                                {locale === 'ko' ? '상관관계 해석' : 'Correlation Interpretation'}
+                                                                {locale === 'ko' ? `${cleanMetricNameValue}란?` : `What is ${cleanMetricNameValue}?`}
                                                             </h4>
-                                                            <div className="space-y-2 text-sm">
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                                                                    <span className="text-gray-700 dark:text-gray-300">
-                                                                        <strong>{locale === 'ko' ? '강한 양의 상관 (0.7-1.0):' : 'Strong Positive (0.7-1.0):'}</strong>
-                                                                        {locale === 'ko' ? ' 높은 상관관계' : ' High correlation'}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
+                                                            <p className="text-sm text-gray-500 leading-relaxed dark:text-gray-400">
+                                                                {descriptionText}
+                                                            </p>
                                                         </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </ComponentCard>
-                                    )}
-
-                                    {/* Correlation Score */}
-                                    {(!isPriceMetric && (onchainData as any)?.correlation) && (
-                                        <ComponentCard title="Current Correlation">
-                                            <div className="text-center">
-                                                <div className="text-4xl font-bold mb-2">
-                                                    {(onchainData as any).correlation > 0 ? (
-                                                        <span className="text-green-600 dark:text-green-400">+{(onchainData as any).correlation.toFixed(3)}</span>
-                                                    ) : (
-                                                        <span className="text-red-600 dark:text-red-400">{(onchainData as any).correlation.toFixed(3)}</span>
-                                                    )}
-                                                </div>
-                                                <p className="text-gray-500 dark:text-gray-400">
-                                                    Correlation between Bitcoin price and {cleanMetricNameValue}
-                                                </p>
-                                            </div>
-                                        </ComponentCard>
-                                    )}
-
-                                    {/* About Section (Post Content) - Render if content exists */}
-                                    {hasPostContent && (
-                                        <ComponentCard title={parseLocalized((postData as any).title, locale) || cleanMetricNameValue}>
-                                            <div
-                                                className="prose prose-sm dark:prose-invert max-w-none"
-                                                dangerouslySetInnerHTML={{
-                                                    __html: locale === 'ko'
-                                                        ? ((postData as any).content_ko || (postData as any).content)
-                                                        : ((postData as any).content || (postData as any).content_ko)
-                                                }}
-                                            />
-                                        </ComponentCard>
+        
+                                                        {/* Interpretation */}
+                                                        <div>
+                                                            {!isPriceMetric && (
+                                                                <div>
+                                                                    <h4 className="font-medium mb-3 text-gray-900 dark:text-gray-100">
+                                                                        {locale === 'ko' ? '상관관계 해석' : 'Correlation Interpretation'}
+                                                                    </h4>
+                                                                    <div className="space-y-2 text-sm">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                                                                            <span className="text-gray-700 dark:text-gray-300">
+                                                                                <strong>{locale === 'ko' ? '강한 양의 상관 (0.7-1.0):' : 'Strong Positive (0.7-1.0):'}</strong>
+                                                                                {locale === 'ko' ? ' 높은 상관관계' : ' High correlation'}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </ComponentCard>
+                                            )}
+        
+                                            {/* Correlation Score */}
+                                            {(!isPriceMetric && (onchainData as any)?.correlation) && (
+                                                <ComponentCard title="Current Correlation">
+                                                    <div className="text-center">
+                                                        <div className="text-4xl font-bold mb-2">
+                                                            {(onchainData as any).correlation > 0 ? (
+                                                                <span className="text-green-600 dark:text-green-400">+{(onchainData as any).correlation.toFixed(3)}</span>
+                                                            ) : (
+                                                                <span className="text-red-600 dark:text-red-400">{(onchainData as any).correlation.toFixed(3)}</span>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-gray-500 dark:text-gray-400">
+                                                            Correlation between Bitcoin price and {cleanMetricNameValue}
+                                                        </p>
+                                                    </div>
+                                                </ComponentCard>
+                                            )}
+        
+                                            {/* About Section (Post Content) - Render if content exists */}
+                                            {hasPostContent && (
+                                                <ComponentCard title={parseLocalized((postData as any).title, locale) || cleanMetricNameValue}>
+                                                    <div
+                                                        className="prose prose-sm dark:prose-invert max-w-none"
+                                                        dangerouslySetInnerHTML={{
+                                                            __html: locale === 'ko'
+                                                                ? ((postData as any).content_ko || (postData as any).content)
+                                                                : ((postData as any).content || (postData as any).content_ko)
+                                                        }}
+                                                    />
+                                                </ComponentCard>
+                                            )}
+                                        </>
                                     )}
                                 </>
                             )}

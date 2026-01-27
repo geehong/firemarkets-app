@@ -4,10 +4,9 @@
 import React, { useEffect, useState } from "react";
 import QuantitativeCorrelation from "@/components/analysis/quantitative/QuantitativeCorrelation";
 import QuantitativePairTrading from "@/components/analysis/quantitative/QuantitativePairTrading";
-
 import { useCorrelation } from "@/hooks/analysis/useCorrelation";
 
-export default function QuantitativePage() {
+export default function QuantitativeAnalysisView() {
   const defaultTickers = "BTCUSDT,ETHUSDT,SPY,QQQ,GLD"; 
   const { data, loading } = useCorrelation(defaultTickers);
 

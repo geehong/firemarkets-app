@@ -45,6 +45,11 @@ export function resolveApiBaseUrl(): string {
   const envApiBase = process.env.NEXT_PUBLIC_BACKEND_API_BASE;
   const isClient = typeof window !== 'undefined';
 
+  // [Server Side] Docker/Internal Network Priority
+  if (!isClient && process.env.BACKEND_API_BASE) {
+     return process.env.BACKEND_API_BASE;
+  }
+
   // 1. 클라이언트 사이드 (브라우저) 환경 - 동적 감지 (Firemarkets.net 우선 처리)
   if (isClient && window.location && window.location.hostname) {
     const hostname = window.location.hostname;
@@ -70,19 +75,9 @@ export function resolveApiBaseUrl(): string {
   }
 
   // 1. 클라이언트 사이드 (브라우저) 환경 - 나머지 케이스
-  if (isClient && window.location && window.location.hostname) {
-    const hostname = window.location.hostname;
-    // console.log('[resolveApiBaseUrl] Client detected:', hostname);
-
-    // 로컬 개발 환경
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      // console.log('[resolveApiBaseUrl] Using Localhost API');
-      return 'http://localhost:8001/api/v1';
-    }
-
-    // 그 외 환경 (자동 감지) -> Localhost로 fallback 강제
-    // console.log('[resolveApiBaseUrl] Unknown hostname, defaulting to http://localhost:8001');
-    return 'http://localhost:8001/api/v1';
+  if (isClient) {
+    // console.log('[resolveApiBaseUrl] Client default: /api/v1');
+    return '/api/v1';
   }
 
   // 2. 서버 사이드 (SSR) 환경 - Docker 내부 통신 우선
@@ -93,8 +88,8 @@ export function resolveApiBaseUrl(): string {
     return internalUrl;
   }
 
-  // 최후의 수단
-  return 'http://localhost:8001/api/v1';
+  // 최후의 수단 (Internal Fallback)
+  return 'http://backend:8000/api/v1';
 }
 
 
@@ -742,14 +737,14 @@ export class ApiClient {
   }
 
   // --- V2 Market Module ---
-  v2GetOhlcv(assetIdentifier: string, params?: { data_interval?: string; start_date?: string; end_date?: string; limit?: number }) {
+  v2GetOhlcv(assetIdentifier: string, params?: { data_interval?: string; start_date?: string; end_date?: string; limit?: number }, options?: RequestInit & { silentStatusCodes?: number[] }) {
     const search = new URLSearchParams()
     if (params?.data_interval) search.append('data_interval', params.data_interval)
     if (params?.start_date) search.append('start_date', params.start_date)
     if (params?.end_date) search.append('end_date', params.end_date)
     if (params?.limit) search.append('limit', String(params.limit))
     const qs = search.toString()
-    return this.requestV2(`/assets/market/${assetIdentifier}/ohlcv${qs ? `?${qs}` : ''}`)
+    return this.requestV2(`/assets/market/${assetIdentifier}/ohlcv${qs ? `?${qs}` : ''}`, options)
   }
 
   v2GetPrice(assetIdentifier: string) {
@@ -826,8 +821,8 @@ export class ApiClient {
   }
 
   // --- V2 Overview Module ---
-  v2GetOverview(assetIdentifier: string, lang: string = 'ko') {
-    return this.requestV2(`/assets/overview/${assetIdentifier}?lang=${lang}`)
+  v2GetOverview(assetIdentifier: string, lang: string = 'ko', options?: RequestInit & { silentStatusCodes?: number[] }) {
+    return this.requestV2(`/assets/overview/${assetIdentifier}?lang=${lang}`, options)
   }
 
   v2GetOverviewBundle(assetIdentifier: string, lang: string = 'ko') {
@@ -846,8 +841,8 @@ export class ApiClient {
     return this.requestV2(`/assets/overview/${assetIdentifier}/etf`)
   }
 
-  v2GetCommonOverview(assetIdentifier: string) {
-    return this.requestV2(`/assets/overview/${assetIdentifier}/common`)
+  v2GetCommonOverview(assetIdentifier: string, options?: RequestInit & { silentStatusCodes?: number[] }) {
+    return this.requestV2(`/assets/overview/${assetIdentifier}/common`, options)
   }
 
   // --- V2 Widgets Module ---

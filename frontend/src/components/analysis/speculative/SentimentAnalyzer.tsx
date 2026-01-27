@@ -57,7 +57,7 @@ export default function SentimentAnalyzer() {
   return (
     <>
       <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center justify-center">
-        <h3 className="text-lg font-bold mb-2 text-gray-800 dark:text-gray-100 w-full text-left">AI News Sentiment Gauge</h3>
+        <h3 className="text-lg font-bold mb-2 text-gray-800 dark:text-gray-100 w-full text-left">AI 감성 분석 결과</h3>
         <div id="gauge-chart" className="relative">
             <ReactApexChart options={sentimentChartOptions} series={[sentimentScore]} type="radialBar" height={350} />
         </div>
@@ -65,7 +65,7 @@ export default function SentimentAnalyzer() {
             <div className={`text-2xl font-bold mt-[-20px] ${getSentimentColor(result.label)}`}>
                 {result.label.toUpperCase()}
                 <span className="text-sm text-gray-500 block text-center font-normal mt-1">
-                    Confidence: {(result.score * 100).toFixed(1)}%
+                    신뢰도: {(result.score * 100).toFixed(1)}%
                 </span>
             </div>
         )}
@@ -73,14 +73,14 @@ export default function SentimentAnalyzer() {
 
       {/* Input Section */}
       <div className="col-span-1 lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-        <h3 className="text-lg font-bold mb-4 text-gray-800 dark:text-gray-100">AI Market News Analyzer</h3>
+        <h3 className="text-lg font-bold mb-4 text-gray-800 dark:text-gray-100">당신의 뉴스의 감성지수를 알아보세요!</h3>
         <p className="text-gray-500 text-sm mb-4">
-            Enter any market news, rumors, or social media text below. The local AI agent will analyze the sentiment polarity in real-time.
+            시장 뉴스, 루머, 혹은 소셜 미디어 텍스트를 입력하면 AI 에이전트가 실시간으로 감성을 분석해드립니다. (익명 보장)
         </p>
         
         <textarea
             className="w-full h-32 p-4 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-            placeholder="e.g., Apple announced record-breaking quarterly earnings, beating expectations by 15%..."
+            placeholder="예: 이번 분기 애플의 실적이 예상치를 상회하며 기술주 전반에 긍정적인 영향을 미치고 있다..."
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
         />

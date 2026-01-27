@@ -27,7 +27,7 @@ export function useMovingAverages(ticker: string = "BTCUSDT") {
       try {
         setLoading(true);
         setError(null);
-        const url = `/api/v1/analysis/technical/ma?ticker=${ticker}&periods=${periods}&days=1500`;
+        const url = `/api/v1/analysis/technical/ma?ticker=${ticker}&periods=${periods}&days=10000`;
         const response = await fetch(url);
         const result = await response.json();
         

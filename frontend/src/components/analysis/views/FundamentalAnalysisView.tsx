@@ -5,10 +5,9 @@ import React, { useEffect, useState } from "react";
 import TreasuryYields from "@/components/analysis/fundamental/TreasuryYields";
 import YieldCurveSpread from "@/components/analysis/fundamental/YieldCurveSpread";
 import MacroIndicators from "@/components/analysis/fundamental/MacroIndicators";
-
 import { useMacroData } from "@/hooks/analysis/useMacroData";
 
-export default function FundamentalPage() {
+export default function FundamentalAnalysisView() {
   const { data, loading } = useMacroData();
 
   if (loading) return <div className="p-10 text-center">Loading Macro Data...</div>;

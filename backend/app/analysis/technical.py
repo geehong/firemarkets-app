@@ -30,7 +30,12 @@ def calculate_moving_averages(
         max_period = max(periods) if periods else 200
         start_date = datetime.utcnow().date() - timedelta(days=days + max_period) 
         
-        ohlcvs = crud_ohlcv.get_ohlcv_data(db, asset_id=asset.asset_id, start_date=start_date)
+        ohlcvs = crud_ohlcv.get_ohlcv_data(
+            db, 
+            asset_id=asset.asset_id, 
+            start_date=start_date,
+            limit=days + max_period + 100 
+        )
         
         if not ohlcvs or len(ohlcvs) < max_period:
              return {"error": f"Insufficient data for {ticker}. Need at least {max_period} days."}

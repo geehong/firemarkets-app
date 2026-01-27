@@ -43,8 +43,12 @@ const getSocketURL = () => {
   }
 
   // 그 외 환경 (자동 감지 시도)
-  // 기본적으로 현재 호스트의 백엔드 포트(보통 8000/8001) 또는 API 서브도메인 가정
-  return `${protocol}//backend.${hostname}`
+  // 도메인/IP 접속 시, 기본적으로 Origin 사용 (Nginx Proxy 가정)
+  // return `${protocol}//backend.${hostname}` // 기존 로직은 서브도메인 가정이라 위험
+  if (typeof window !== 'undefined') {
+      return window.location.origin;
+  }
+  return 'http://localhost:8001';
 }
 
 // 전역 Socket 인스턴스 관리 (클라이언트 측에서만)
@@ -215,7 +219,7 @@ const fetchLatestChangePercent = async (assetIdentifier: string): Promise<{ prev
     const result: any = await apiClient.v2GetOhlcv(assetIdentifier, {
       data_interval: '1d',
       limit: 2
-    })
+    }, { silentStatusCodes: [404] })
 
     const items = result?.data || result?.items || []
     

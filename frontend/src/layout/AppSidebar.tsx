@@ -117,10 +117,9 @@ const AppSidebar: React.FC = () => {
           icon: <GridIcon />,
           subItems: [
             { name: t('movingAverages'), path: "/onchain/analysis/moving-averages", icon: dotIcon },
-            /* { name: "Technical", path: "/onchain/analysis/technical", icon: dotIcon },
             { name: "Quantitative", path: "/onchain/analysis/quantitative", icon: dotIcon },
             { name: "Fundamental", path: "/onchain/analysis/fundamental", icon: dotIcon },
-            { name: "Speculative", path: "/onchain/analysis/speculative", icon: dotIcon }, */
+            { name: "Speculative", path: "/onchain/analysis/speculative", icon: dotIcon },
           ],
         },
         {

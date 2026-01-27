@@ -49,6 +49,8 @@ const OnChainMainView: React.FC<OnChainMainViewProps> = ({ className, initialMet
             calculatedMetricId = 'ohlcv-daily';
         } else if (pathname.includes('/onchain/price/ohlcv/intraday')) {
             calculatedMetricId = 'ohlcv-intraday';
+        } else if (pathname.includes('/onchain/analysis/')) {
+            calculatedMetricId = 'analysis-' + lastPart;
         } else if (pathname.includes('/onchain/price/')) {
             // New price sub-items (live, moving-averages, capitalization, pi-cycle)
             calculatedMetricId = lastPart;
