@@ -698,6 +698,9 @@ class DataRepository:
         
         pg_db = next(get_postgres_db())
         try:
+            # Debug: Check known columns
+            # logger.info(f"DEBUG: CryptoMetric columns: {CryptoMetric.__table__.columns.keys()}")
+
             # 1. 수집 가능한 모든 필드 정의 (Group A + Group B 전체)
             all_metric_fields = [
                 # Group A (홀수일)
