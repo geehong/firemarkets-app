@@ -55,7 +55,7 @@ def analyze_news_sentiment(
 @router.get("/correlation", response_model=Any)
 def get_asset_correlation(
     tickers: List[str] = Query(..., description="List of tickers to correlate, e.g. BTC,ETH,SPY"),
-    days: int = Query(90, ge=30, le=365),
+    days: int = Query(90, ge=30, le=10000),
     db: Session = Depends(deps.get_current_db)
 ):
     """

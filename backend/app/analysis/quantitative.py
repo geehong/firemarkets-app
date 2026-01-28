@@ -19,12 +19,16 @@ def calculate_correlation_matrix(db: Session, tickers: List[str], days: int = 90
     end_date = datetime.utcnow().date()
     start_date = end_date - timedelta(days=days + 30) 
 
+    excluded = []
+    asset_info = {}
+    
     try:
         valid_tickers = []
 
         for ticker in tickers:
             asset = crud_asset.get_by_ticker(db, ticker)
             if not asset:
+                excluded.append({"ticker": ticker, "reason": "not_found", "available": 0})
                 continue
             
             ohlcvs = crud_ohlcv.get_ohlcv_data(
@@ -34,7 +38,12 @@ def calculate_correlation_matrix(db: Session, tickers: List[str], days: int = 90
                 limit=days + 20
             )
             
-            if not ohlcvs or len(ohlcvs) < days * 0.7:
+            if not ohlcvs or len(ohlcvs) < days * 0.6:
+                 excluded.append({
+                     "ticker": ticker, 
+                     "reason": "insufficient_data", 
+                     "available": len(ohlcvs) if ohlcvs else 0
+                 })
                  continue
 
             ohlcvs_sorted = sorted(ohlcvs, key=lambda x: x.timestamp_utc)
@@ -45,16 +54,36 @@ def calculate_correlation_matrix(db: Session, tickers: List[str], days: int = 90
             series = series[~series.index.duplicated(keep='last')]
             
             data[ticker] = series
+            # Store asset info for frontend (exclude same group logic)
+            # Ensure asset.asset_type is loaded
+            asset_type_name = asset.asset_type.type_name if asset.asset_type else "Unknown"
+
+            asset_info[ticker] = {
+                "name": asset.name,
+                "type": asset_type_name
+            }
             valid_tickers.append(ticker)
 
         if len(valid_tickers) < 2:
-            return {"error": "Not enough valid assets", "matrix": [], "heatmap_data": []}
+            return {
+                "error": "Not enough valid assets", 
+                "matrix": [], 
+                "heatmap_data": [], 
+                "excluded": excluded,
+                "asset_info": {}
+            }
 
         df = pd.DataFrame(data)
         df = df.dropna()
 
         if df.empty:
-             return {"error": "No overlapping data", "matrix": [], "heatmap_data": []}
+             return {
+                 "error": "No overlapping data", 
+                 "matrix": [], 
+                 "heatmap_data": [], 
+                 "excluded": excluded,
+                 "asset_info": {}
+             }
         
         pct_change = df.pct_change().dropna()
         correlation_matrix = pct_change.corr(method='pearson')
@@ -75,7 +104,9 @@ def calculate_correlation_matrix(db: Session, tickers: List[str], days: int = 90
         return {
             "tickers": valid_tickers,
             "matrix": matrix_dict,
-            "heatmap_data": heatmap_data
+            "heatmap_data": heatmap_data,
+            "excluded": excluded,
+            "asset_info": asset_info
         }
     except Exception as e:
         logger.error(f"Error calculating correlation matrix: {e}", exc_info=True)
@@ -98,9 +129,14 @@ def calculate_spread_analysis(db: Session, ticker_a: str, ticker_b: str, days: i
             if not asset:
                 raise HTTPException(status_code=404, detail=f"Asset not found: {t}")
             
-            ohlcvs = crud_ohlcv.get_ohlcv_data(db, asset_id=asset.asset_id, start_date=start_date)
-            if not ohlcvs or len(ohlcvs) < days * 0.7:
-                 raise HTTPException(status_code=400, detail=f"Insufficient data for {t}")
+            ohlcvs = crud_ohlcv.get_ohlcv_data(
+                db, 
+                asset_id=asset.asset_id, 
+                start_date=start_date,
+                limit=days + 365 # Ensure we get full history (default is 1000)
+            )
+            if not ohlcvs or len(ohlcvs) < 30: # Minimal check for rolling window
+                 raise HTTPException(status_code=400, detail=f"Insufficient data for {t} (Need at least 30 days)")
                  
             # Create Series
             # Helper to convert to series

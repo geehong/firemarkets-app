@@ -161,7 +161,7 @@ const OHLCVVolumeChart: React.FC<OHLCVVolumeChartProps> = ({
     const dailyLimit = getDailyLimit(selectedInterval)
 
     // intraday 데이터 (분봉, 시봉)
-    const intradayOptions = { dataInterval: selectedInterval, days: 1, limit: intradayLimit }
+    const intradayOptions = { dataInterval: selectedInterval, limit: intradayLimit }
 
     // 로그: 실제 전달되는 옵션 확인
     useEffect(() => {
@@ -193,7 +193,7 @@ const OHLCVVolumeChart: React.FC<OHLCVVolumeChartProps> = ({
                 selectedInterval,
                 isIntradayInterval,
                 enabled: !!assetIdentifier && isIntradayInterval,
-                intradayOptions: { dataInterval: selectedInterval, days: 1, limit: intradayLimit },
+                intradayOptions: { dataInterval: selectedInterval, limit: intradayLimit },
                 isLoading: timeLoading,
                 hasData: !!timeData,
                 error: timeError

@@ -41,7 +41,7 @@ export const BitcoinMonthlyReturns: React.FC = () => {
     const [data, setData] = useState<OHLCVData[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'heatmap' | 'cards' | 'workflow'>('heatmap');
+    const [activeTab, setActiveTab] = useState<'heatmap' | 'workflow'>('heatmap');
 
     useEffect(() => {
         const fetchData = async () => {
@@ -137,19 +137,6 @@ export const BitcoinMonthlyReturns: React.FC = () => {
             });
     }, [data]);
 
-    // Flat list of Yearly data for Workflow View
-    const flatYearlyData = useMemo(() => {
-        if (!processedData) return [];
-        return processedData.map(row => {
-            // Find last non-null month for close price
-            const lastValidMonth = [...row.months].reverse().find(m => m !== null);
-            return {
-                year: row.year,
-                yearClosePrice: lastValidMonth ? lastValidMonth.price : 0,
-                totalReturn: row.totalReturn
-            };
-        });
-    }, [processedData]);
 
 
     if (loading) {
@@ -177,15 +164,6 @@ export const BitcoinMonthlyReturns: React.FC = () => {
                             }`}
                     >
                         Heatmap
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('cards')}
-                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'cards'
-                            ? 'bg-[#363a45] text-white shadow'
-                            : 'text-gray-400 hover:text-white'
-                            }`}
-                    >
-                        Cards
                     </button>
                     <button
                         onClick={() => setActiveTab('workflow')}
@@ -282,28 +260,8 @@ export const BitcoinMonthlyReturns: React.FC = () => {
                         </div>
                     </div>
                 </div>
-            ) : activeTab === 'cards' ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar">
-                    {flatMonthlyData.map((item, index) => {
-                        const dateStr = `${item.year}-${String(item.month).padStart(2, '0')}`;
-                        return (
-                            <CryptoPriceCard
-                                key={`${item.timestamp_utc}-${index}`}
-                                symbol="BTC"
-                                name={dateStr}
-                                price={item.close_price}
-                                change24h={item.change_percent}
-                                showIcon={false}
-                                size="small"
-                                className="border border-gray-700"
-                                customBackgroundColor={interpolateColor(item.change_percent)}
-                                textColor='text-white'
-                            />
-                        )
-                    })}
-                </div>
             ) : (
-                <MonthlyReturnsFlow data={flatYearlyData} />
+                <MonthlyReturnsFlow data={flatMonthlyData} />
             )}
         </div>
     );

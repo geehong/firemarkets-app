@@ -11,6 +11,8 @@ from .asset import (
     
     # Stock models
     OHLCVData,
+    OHLCVIntradayData,
+    RealtimeQuoteTimeDelay,
     StockProfile,
     StockFinancial,
     StockAnalystEstimate,
@@ -88,6 +90,8 @@ __all__ = [
     
     # Stock models
     "OHLCVData",
+    "OHLCVIntradayData",
+    "RealtimeQuoteTimeDelay",
     "StockProfile",
     "StockFinancial",
     "StockAnalystEstimate",

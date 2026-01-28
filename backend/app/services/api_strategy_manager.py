@@ -1627,15 +1627,20 @@ class ApiStrategyManager:
             # 간격별 limit 계산 (1m, 5m은 고정값 사용)
             def _get_interval_limit(interval: str, days: int) -> int:
                 if interval == '1m':
-                    return 4320  # 3일치
+                    return 1000  # Binance limit (was 4320)
                 elif interval == '5m':
-                    return 8640  # 30일치
+                    return 1000  # Aligning with 1m for safety (was 8640)
+                elif interval == '15m':
+                    return 2016  # 3주 
+                elif interval == '30m':
+                    return 1440  # 30일
                 elif interval == '1h':
-                    return days * 24
+                    return 720   # 30일
                 elif interval == '4h':
-                    return days * 6
-                else:
-                    return days + 5
+                    return 500   # 80일
+                elif interval == '1d':
+                    return 365   # 1년
+                return 500
             
             # Case 1: No data at all. Perform initial backfill.
             if not newest_ts:

@@ -148,7 +148,7 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
     const dailyLimit = getDailyLimit(selectedInterval)
 
     // Intraday data
-    const intradayOptions = { dataInterval: selectedInterval, days: 1, limit: intradayLimit }
+    const intradayOptions = { dataInterval: selectedInterval, limit: intradayLimit }
 
     // Ensure we use the correct structure for useIntradayOhlcv 
     const { data: timeData, isLoading: timeLoading, error: timeError } = useIntraday(

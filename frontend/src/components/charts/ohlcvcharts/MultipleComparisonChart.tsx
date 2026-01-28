@@ -3,6 +3,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api'
+import ChartControls from '@/components/common/ChartControls'
+import { getColorMode } from '@/constants/colorModes'
 
 interface MultipleComparisonChartProps {
     assets?: string[]
@@ -21,6 +23,13 @@ const MultipleComparisonChart: React.FC<MultipleComparisonChartProps> = ({
     const [Highcharts, setHighcharts] = useState<any>(null)
     const [selectedInterval, setSelectedInterval] = useState<string>(interval)
     const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+    // Chart Control functionality
+    const [chartType, setChartType] = useState<'line' | 'spline' | 'area' | 'areaspline'>('line')
+    const [useLogScale, setUseLogScale] = useState(false)
+    const [isAreaMode, setIsAreaMode] = useState(false)
+    const [colorMode, setColorMode] = useState<'dark' | 'vivid' | 'high-contrast' | 'simple'>('vivid')
+    const [showFlags, setShowFlags] = useState(false)
 
     // Load Highcharts
     useEffect(() => {
@@ -67,10 +76,10 @@ const MultipleComparisonChart: React.FC<MultipleComparisonChartProps> = ({
 
     const getDailyLimit = (intv: string) => {
         switch (intv) {
-            case '1d': return 1000 // approx 3 years
-            case '1w': return 260  // approx 5 years
-            case '1M': return 60   // approx 5 years
-            default: return 1000
+            case '1d': return 7500 // roughly 20+ years
+            case '1w': return 1000  // approx 20 years
+            case '1M': return 240   // approx 20 years
+            default: return 7500
         }
     }
 
@@ -139,9 +148,15 @@ const MultipleComparisonChart: React.FC<MultipleComparisonChartProps> = ({
             .filter((p): p is number[] => p !== null && p[0] > 0)
             .sort((a, b) => a[0] - b[0])
 
+        if (data.length === 0) return null
+        
+        // Normalize to 100
+        const startPrice = data[0][1]
+        const normalizedData = data.map(p => [p[0], (p[1] / startPrice) * 100])
+
         return {
             name: assetName,
-            data
+            data: normalizedData
         }
     })
 
@@ -176,26 +191,38 @@ const MultipleComparisonChart: React.FC<MultipleComparisonChartProps> = ({
             const options = {
                 chart: { height },
                 rangeSelector: {
-                    selected: 4
+                    selected: 5, // Select 'All' or '10y' by default if possible? 5 often map to 'All' depending on buttons
+                    buttons: [
+                        { type: 'month', count: 1, text: '1m' },
+                        { type: 'month', count: 3, text: '3m' },
+                        { type: 'month', count: 6, text: '6m' },
+                        { type: 'ytd', text: 'YTD' },
+                        { type: 'year', count: 1, text: '1y' },
+                        { type: 'year', count: 5, text: '5y' },
+                        { type: 'year', count: 10, text: '10y' },
+                        { type: 'year', count: 20, text: '20y' },
+                        { type: 'all', text: 'All' }
+                    ]
                 },
                 yAxis: {
+                    type: useLogScale ? 'logarithmic' : 'linear',
                     labels: {
-                        format: '{#if (gt value 0)}+{/if}{value}%'
+                        format: '{value}'
                     },
                     plotLines: [{
-                        value: 0,
+                        value: 100,
                         width: 2,
-                        color: 'silver'
+                        color: 'silver',
+                        dashStyle: 'dot'
                     }]
                 },
                 plotOptions: {
                     series: {
-                        compare: 'percent',
                         showInNavigator: true
                     }
                 },
                 tooltip: {
-                    pointFormat: '<span style="color:{series.color}">{series.name}</span>: <b>{point.y}</b> ({point.change}%)<br/>',
+                    pointFormat: '<span style="color:{series.color}">{series.name}</span>: <b>{point.y:.2f}</b><br/>',
                     valueDecimals: 2,
                     split: true
                 },
@@ -231,27 +258,93 @@ const MultipleComparisonChart: React.FC<MultipleComparisonChartProps> = ({
     // Existing charts often destroy/recreate.
 
 
+
+    const handleChartTypeChange = (type: 'line' | 'spline' | 'area' | 'areaspline') => {
+        setChartType(type)
+        if (chartRef.current) {
+            chartRef.current.update({
+                chart: { type: type },
+                plotOptions: { series: { type: type } }
+            })
+        }
+    }
+
+    const handleLogScaleToggle = (checked: boolean) => {
+        setUseLogScale(checked)
+        if (chartRef.current) {
+            chartRef.current.yAxis[0].update({
+                type: checked ? 'logarithmic' : 'linear'
+            })
+        }
+    }
+
+    // Effect to update chart options when state changes
+    useEffect(() => {
+        if (!chartRef.current) return
+        
+        // Update Chart Type
+        const currentSeries = chartRef.current.series
+        if (currentSeries && currentSeries.length > 0) {
+           currentSeries.forEach((s: any) => {
+               // Only update main series, not navigator
+               if (s.options.showInNavigator) {
+                   s.update({ type: chartType }, false)
+               }
+           })
+           chartRef.current.redraw()
+        }
+
+        // Update Log Scale
+        chartRef.current.yAxis[0].update({
+            type: useLogScale ? 'logarithmic' : 'linear'
+        })
+        
+    }, [chartType, useLogScale])
+
     if (!isClient) return <div className="h-full flex items-center justify-center">Loading Library...</div>
     if (isLoading) return <div className="h-full flex items-center justify-center">Loading Data...</div>
     if (errorMessage) return <div className="h-full flex items-center justify-center text-red-500">{errorMessage}</div>
 
     const intervalOptions = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1M']
 
+
+
     return (
         <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
             <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100">
-                <h3 className="text-lg font-semibold text-gray-800">Multiple Comparison</h3>
-                <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-500">Interval:</span>
-                    <select
-                        value={selectedInterval}
-                        onChange={(e) => setSelectedInterval(e.target.value)}
-                        className="text-sm border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
-                    >
-                        {intervalOptions.map(opt => (
-                            <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                    </select>
+                <h3 className="text-lg font-semibold text-gray-800">Price Comparison (Normalized)</h3>
+                
+                <div className="flex items-center gap-4">
+                     <ChartControls
+                        chartType={chartType}
+                        onChartTypeChange={setChartType}
+                        isAreaMode={isAreaMode}
+                        onAreaModeToggle={() => {
+                            const newMode = !isAreaMode
+                            setIsAreaMode(newMode)
+                            setChartType(newMode ? 'area' : 'line')
+                        }}
+                        useLogScale={useLogScale}
+                        onLogScaleToggle={setUseLogScale}
+                        colorMode={colorMode}
+                        onColorModeChange={setColorMode}
+                        showFlags={showFlags}
+                        onFlagsToggle={() => setShowFlags(!showFlags)}
+                        showFlagsButton={false}
+                    />
+
+                    <div className="flex items-center gap-2 border-l pl-4">
+                        <span className="text-sm text-gray-500">Interval:</span>
+                        <select
+                            value={selectedInterval}
+                            onChange={(e) => setSelectedInterval(e.target.value)}
+                            className="text-sm border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
+                        >
+                            {intervalOptions.map(opt => (
+                                <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
             </div>
             <div id="container" ref={chartContainerRef} style={{ height: `${height}px` }} />

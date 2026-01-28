@@ -1,7 +1,11 @@
 
 import { useState, useEffect } from "react";
 
-export function useSpreadAnalysis(initialTickerA: string = "BTCUSDT", initialTickerB: string = "ETHUSDT") {
+export function useSpreadAnalysis(
+    initialTickerA: string = "BTCUSDT", 
+    initialTickerB: string = "ETHUSDT",
+    days: number = 7500 // 20.5 years roughly
+) {
   const [tickerA, setTickerA] = useState(initialTickerA);
   const [tickerB, setTickerB] = useState(initialTickerB);
   const [spreadData, setSpreadData] = useState<any>(null);
@@ -13,7 +17,7 @@ export function useSpreadAnalysis(initialTickerA: string = "BTCUSDT", initialTic
         try {
             setLoading(true);
             setError(null);
-            const url = `/api/v1/analysis/spread?ticker1=${tickerA}&ticker2=${tickerB}&days=90`;
+            const url = `/api/v1/analysis/spread?ticker1=${tickerA}&ticker2=${tickerB}&days=${days}`;
             const response = await fetch(url);
             const result = await response.json();
             
@@ -31,7 +35,7 @@ export function useSpreadAnalysis(initialTickerA: string = "BTCUSDT", initialTic
         }
     }
     fetchSpread();
-  }, [tickerA, tickerB]);
+  }, [tickerA, tickerB, days]);
 
   return { spreadData, loading, error, tickerA, setTickerA, tickerB, setTickerB };
 }
