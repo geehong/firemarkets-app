@@ -146,14 +146,13 @@ services:
     networks:
       - app_network
       - shared-network
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
-    # 개발 모드에서 추가 설정
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     stdin_open: true
     tty: true
     logging:
@@ -203,11 +202,18 @@ services:
     command: ["python", "-m", "app.services.run_scheduler"]
     healthcheck:
       disable: true
-    mem_limit: 512m
-    memswap_limit: 512m
+    mem_limit: 1.5g
+    memswap_limit: 1.5g
     networks:
       - app_network
       - shared-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     logging:
       driver: "json-file"
       options:
