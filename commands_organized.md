@@ -305,6 +305,8 @@ docker-compose logs scheduler --tail=200 -f | grep --line-buffered -E --color=al
 docker-compose logs data_processor --since=15m | grep -E --color=always '✅|DB 저장 성공|macrotrends_financials 저장 완료'
 cd /home/geehong/firemarkets-app && docker-compose logs data_processor --since 30m 2>&1 | grep -E "(ohlcv_day_data|daily=True|1d.*저장)" | tail -20
 
+docker-compose logs data_processor --since 2h 2>&1 | grep -Ei "(onchain|Onchain|collection|job|ERROR|Exception|Traceback)"
+
 ```
 
 ### 웹소켓 오케스트레이터 로그

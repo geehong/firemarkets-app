@@ -202,36 +202,82 @@ export const DashBoardPrismHubViewContent = () => {
         }
         const allAssets: TreemapLiveItem[] = (treemapData as any).data;
         
-        // Use global stats if available, fall back to treemap summary or manual sum
-        const totalValue = quickStats?.total_market_cap || (treemapData as any).summary?.total_market_cap || allAssets.reduce((sum, a) => sum + (a.market_cap || 0), 0);
-        const avgChange = (treemapData as any).summary?.average_change_percent || (allAssets.slice(0, 10).reduce((sum, a) => sum + (a.price_change_percentage_24h || 0), 0) / 10);
-        
-        const typeStats = quickStats?.by_type || {};
-        
+        // Manual Aggregation by Type
+        const statsByType: Record<string, number> = {
+            'Crypto': 0,
+            'Stocks': 0,
+            'ETFs': 0,
+            'Commodities': 0,
+            'Forex': 0,
+            'Bonds': 0,
+            'Other': 0
+        };
+
+        let totalRealMarketCap = 0;
+        let totalChangeWeighted = 0; // For average change calculation if needed
+        let totalWeight = 0;
+
+        allAssets.forEach(asset => {
+            // Normalize Type
+            const rawType = (asset.type_name || asset.asset_type || 'Other').toLowerCase();
+            let typeKey = 'Other';
+
+            if (rawType.includes('crypto')) typeKey = 'Crypto';
+            else if (rawType.includes('stock') || rawType.includes('equity')) typeKey = 'Stocks';
+            else if (rawType.includes('etf') || rawType.includes('fund')) typeKey = 'ETFs';
+            else if (rawType.includes('commodit') || rawType.includes('metal') || rawType.includes('gold') || rawType.includes('silver')) typeKey = 'Commodities';
+            else if (rawType.includes('forex') || rawType.includes('currency')) typeKey = 'Forex';
+            else if (rawType.includes('bond') || rawType.includes('rate')) typeKey = 'Bonds';
+
+            const mcap = asset.market_cap || 0;
+            
+            // Skip if no market cap (optional, but keeps data clean)
+            // if (mcap <= 0) return; 
+
+            statsByType[typeKey] += mcap;
+            totalRealMarketCap += mcap;
+
+            // Weighted Change Calculation (Change * MarketCap)
+            // Using absolute price for weight might be better if mcap is missing, but here we use mcap
+            // If mcap is 0, it doesn't contribute to weighted average
+            if (mcap > 0) {
+                 totalChangeWeighted += (asset.price_change_percentage_24h || 0) * mcap;
+                 totalWeight += mcap;
+            }
+        });
+
+        // Calculate weighted average change
+        const avgChange = totalWeight > 0 ? (totalChangeWeighted / totalWeight) : 0;
+
         const breakdown = [
             { 
-                label: 'Crypto', 
-                value: formatLargeNumber(typeStats['Crypto']?.total_market_cap || typeStats['Cryptocurrency']?.total_market_cap), 
-                color: 'from-violet-400 to-indigo-500' 
-            },
-            { 
                 label: 'Stocks', 
-                value: formatLargeNumber(typeStats['Stocks']?.total_market_cap || typeStats['Stock']?.total_market_cap || typeStats['Common Stock']?.total_market_cap), 
+                value: formatLargeNumber(statsByType['Stocks']), 
                 color: 'from-pink-400 to-rose-500' 
             },
             { 
+                label: 'Crypto', 
+                value: formatLargeNumber(statsByType['Crypto']), 
+                color: 'from-violet-400 to-indigo-500' 
+            },
+            { 
+                label: 'Commodities', 
+                value: formatLargeNumber(statsByType['Commodities']), 
+                color: 'from-yellow-400 to-amber-600' 
+            },
+            { 
                 label: 'ETFs', 
-                value: formatLargeNumber(typeStats['ETFs']?.total_market_cap || typeStats['ETF']?.total_market_cap), 
+                value: formatLargeNumber(statsByType['ETFs']), 
                 color: 'from-amber-400 to-orange-500' 
             },
-        ];
+        ].filter(item => item.value !== '---' && item.value !== '$0.00'); // Filter out empty categories if needed, or keep to show 0
         
         return { 
-            portfolioStats: { totalValue, avgChange }, 
+            portfolioStats: { totalValue: totalRealMarketCap, avgChange }, 
             topAssets: allAssets.slice(0, 4), 
             assetTypeBreakdown: breakdown 
         };
-    }, [treemapData, quickStats]);
+    }, [treemapData]);
 
     useEffect(() => {
         if (topAssets.length === 0) return;
@@ -269,18 +315,20 @@ export const DashBoardPrismHubViewContent = () => {
                         </div>
                     </div>
 
-                    {assetTypeBreakdown.map((s, i) => (
-                        <div key={i} className="col-span-4 md:col-span-2 bg-white dark:bg-gray-800 rounded-2xl shadow-lg shadow-slate-200/50 dark:shadow-none p-4 border border-slate-100 dark:border-gray-700 relative overflow-hidden">
-                            <div className={`absolute -top-4 -right-4 w-16 h-16 bg-gradient-to-br ${s.color} opacity-20 rounded-full blur-xl`}></div>
-                            <div className="text-slate-400 text-xs">{s.label}</div>
-                            <div className="text-slate-800 dark:text-white font-bold text-lg">{s.value}</div>
-                        </div>
-                    ))}
+                    <div className="col-span-12 md:col-span-7 grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {assetTypeBreakdown.map((s, i) => (
+                            <div key={i} className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg shadow-slate-200/50 dark:shadow-none p-4 border border-slate-100 dark:border-gray-700 relative overflow-hidden flex flex-col justify-center">
+                                <div className={`absolute -top-4 -right-4 w-16 h-16 bg-gradient-to-br ${s.color} opacity-20 rounded-full blur-xl`}></div>
+                                <div className="text-slate-400 text-xs">{s.label}</div>
+                                <div className="text-slate-800 dark:text-white font-bold text-lg">{s.value}</div>
+                            </div>
+                        ))}
+                    </div>
 
-                    <div className="col-span-12 md:col-span-1 bg-gradient-to-br from-violet-500 to-purple-600 rounded-2xl shadow-lg p-3 flex flex-col items-center justify-center text-white">
+                    {/* <div className="col-span-12 md:col-span-1 bg-gradient-to-br from-violet-500 to-purple-600 rounded-2xl shadow-lg p-3 flex flex-col items-center justify-center text-white">
                         <div className="w-4 h-4 rounded-full bg-white/30 animate-ping mb-1"></div>
                         <span className="text-xs font-bold">LIVE</span>
-                    </div>
+                    </div> */}
 
                     <div className="col-span-12 md:col-span-8 bg-gray-900 rounded-2xl shadow-xl shadow-slate-200/50 dark:shadow-none overflow-hidden border border-slate-100 dark:border-gray-700 relative">
                         {topAssets.length > 0 && (

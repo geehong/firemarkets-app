@@ -168,8 +168,13 @@ class SessionService {
   private async checkAndRefreshToken(): Promise<void> {
     try {
       // 토큰이 만료되었거나 곧 만료될 예정인지 확인
+      // 토큰이 만료되었거나 곧 만료될 예정인지 확인
       if (tokenService.isTokenExpired()) {
-        await this.handleTokenExpired()
+        console.log('Token expired during check, attempting refresh...')
+        const success = await this.refreshToken()
+        if (!success) {
+          await this.handleTokenExpired()
+        }
         return
       }
 

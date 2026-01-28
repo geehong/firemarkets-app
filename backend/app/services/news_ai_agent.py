@@ -216,11 +216,15 @@ class NewsAIEditorAgent:
         
         try:
             if provider == 'groq':
-                return await self._call_groq(prompt, **kwargs)
+                return await asyncio.wait_for(self._call_groq(prompt, **kwargs), timeout=60)
             elif provider == 'gemma':
-                return await self._call_gemma(prompt, **kwargs)
+                return await asyncio.wait_for(self._call_gemma(prompt, **kwargs), timeout=60)
             else:
-                return await self._call_gemini(prompt, **kwargs)
+                return await asyncio.wait_for(self._call_gemini(prompt, **kwargs), timeout=60)
+        except asyncio.TimeoutError:
+            logger.error(f"Provider {provider} timed out after 60s")
+            # If timeout, try fallback or re-raise
+            raise Exception(f"AI Provider {provider} timeout")
         except Exception as e:
             logger.error(f"Primary provider {provider} failed: {e}")
             

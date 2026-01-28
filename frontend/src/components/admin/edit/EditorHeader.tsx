@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { Layout, Check, ChevronDown } from 'lucide-react'
+import { Layout, Check, ChevronDown, Eye, Trash2 } from 'lucide-react'
 
 export interface EditorBlockVisibility {
     publishing: boolean
@@ -28,6 +28,8 @@ interface EditorHeaderProps {
     saving: boolean
     onSave: (status: string) => void
     onCancel: () => void
+    onDelete?: () => void
+    onPreview?: () => void
     blockVisibility: EditorBlockVisibility
     onToggleBlock: (blockKey: keyof EditorBlockVisibility) => void
 }
@@ -44,6 +46,8 @@ export default function EditorHeader({
     saving,
     onSave,
     onCancel,
+    onDelete,
+    onPreview,
     blockVisibility,
     onToggleBlock
 }: EditorHeaderProps) {
@@ -189,21 +193,30 @@ export default function EditorHeader({
 
                     <div className="h-6 w-px bg-gray-300 hidden sm:block mx-2"></div>
 
-                    <button
-                        type="button"
-                        onClick={onCancel}
-                        className="px-4 py-2 text-gray-600 border border-gray-300 rounded hover:bg-gray-50 text-sm font-medium"
-                    >
-                        취소
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => onSave('draft')}
-                        disabled={saving}
-                        className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 disabled:opacity-50 text-sm font-medium"
-                    >
-                        {saving ? '저장 중...' : '임시저장'}
-                    </button>
+                    {/* Delete (Trash) Button - Only in Edit mode */}
+                    {mode === 'edit' && onDelete && (
+                         <button
+                            type="button"
+                            onClick={onDelete}
+                            title="삭제"
+                            className="p-2 text-red-600 border border-transparent hover:bg-red-50 rounded transition-colors"
+                        >
+                            <Trash2 className="w-5 h-5" />
+                        </button>
+                    )}
+
+                    {/* Preview Button (Icon) */}
+                    {onPreview && (
+                         <button
+                            type="button"
+                            onClick={onPreview}
+                            title="미리보기"
+                            className="p-2 text-gray-600 border border-transparent hover:bg-gray-100 rounded transition-colors"
+                        >
+                            <Eye className="w-5 h-5" />
+                        </button>
+                    )}
+
                     <button
                         type="button"
                         onClick={() => {

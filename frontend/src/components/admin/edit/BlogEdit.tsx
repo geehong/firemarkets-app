@@ -120,6 +120,36 @@ export default function BlogEdit({
     }
   }
 
+  // 미리보기 핸들러
+  const handlePreview = () => {
+    console.log('🔍 Preview button clicked. FormData:', formData)
+    
+    if (!formData.slug) {
+      alert('슬러그가 없습니다. 저장 후 다시 시도해주세요.')
+      return
+    }
+
+    let prefix = '/blog'
+    if (formData.post_type === 'news' || formData.post_type === 'raw_news' || formData.post_type === 'ai_draft_news') {
+      prefix = '/news'
+    } else if (formData.post_type === 'brief_news') {
+      prefix = '/briefnews'
+    } else if (formData.post_type === 'onchain') {
+      prefix = '/onchain'
+    } else if (formData.post_type === 'assets') {
+      prefix = '/blog' 
+    }
+
+    const url = `/ko${prefix}/${formData.slug}`
+    console.log('🔗 Opening preview URL:', url)
+    
+    // Attempt to open
+    const newWindow = window.open(url, '_blank')
+    if (!newWindow) {
+      alert('팝업 차단이 감지되었습니다. 팝업을 허용해주세요.')
+    }
+  }
+
   return (
     <BaseEdit
       postId={postId}
@@ -132,18 +162,9 @@ export default function BlogEdit({
       onFormDataChange={setFormData}
       onRegisterUpdateFormData={handleUpdateFormData}
       initialData={props.initialData}
+      onPreview={handlePreview}
       {...props}
     >
-      {/* 퍼블리싱 블럭 */}
-      <PublishingBlock
-        status={formData.status}
-        onStatusChange={(status) => updateFormDataField('status', status)}
-        publishedAt={formData.published_at}
-        onPublishedAtChange={(date) => updateFormDataField('published_at', date)}
-        onPreview={() => console.log('미리보기')}
-        onSave={stableHandleSave}
-        saving={baseEditSaving}
-      />
 
       {/* 작성내용 블럭 */}
       <ContentBlock

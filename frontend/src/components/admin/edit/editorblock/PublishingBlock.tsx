@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { Eye } from 'lucide-react'
 
 interface PublishingBlockProps {
   status: 'draft' | 'published' | 'private' | 'scheduled' | 'archived'
@@ -84,9 +85,10 @@ export default function PublishingBlock({
         <button
           type="button"
           onClick={onPreview}
-          className="flex-1 px-3 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors font-medium text-sm"
+          title="미리보기"
+          className="px-3 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors font-medium text-sm flex items-center justify-center"
         >
-          미리보기
+          <Eye className="w-4 h-4" />
         </button>
         <button
           type="button"
@@ -103,15 +105,6 @@ export default function PublishingBlock({
           {saving ? '처리 중...' : (status === 'scheduled' ? '예약 발행' : (mode === 'edit' ? '저장' : '발행하기'))}
         </button>
       </div>
-
-      <button
-        type="button"
-        onClick={() => onSave('draft')}
-        disabled={saving}
-        className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50 transition-colors text-sm font-medium"
-      >
-        {saving ? '저장 중...' : '임시저장'}
-      </button>
     </div>
   )
 }

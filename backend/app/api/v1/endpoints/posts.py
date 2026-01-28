@@ -17,6 +17,7 @@ from app.models.asset import User
 from app.dependencies.auth_deps import get_current_user, get_current_user_optional, get_current_active_superuser
 from app.services.posts_service import posts_service
 from app.services.news_ai_agent import NewsAIEditorAgent
+from app.analysis.speculative import sentiment_analyzer
 from fastapi import Body
 import logging
 import time
@@ -825,6 +826,43 @@ async def update_post(
                 # Note: post_data.post_info가 있다면 거기에 병합해야 함. 여기서는 DB object 직접 수정은 지양하고 post_data 조작
                 # 그러나 post_data는 Optional 필드들이라 복잡함.
                 # 그냥 삭제만 수행해도 무방. DB 트리거 롤백 등을 위해선 트랜잭션 관리 필요하나 여기선 단순 수행.
+
+    # Auto-calculate sentiment if content changed or publishing
+    # We check if content is being updated to something non-empty
+    target_content = post_data.content if post_data.content is not None else post_obj.content
+    
+    should_calc_sentiment = False
+    # Condition 1: Content changed
+    if post_data.content is not None and post_data.content != post_obj.content:
+        should_calc_sentiment = True
+    # Condition 2: Status changed to published (and we have content)
+    elif post_data.status == 'published' and post_obj.status != 'published':
+        should_calc_sentiment = True
+    # Condition 3: Sentiment is missing (force calculation)
+    elif post_obj.post_info is None or 'sentiment' not in post_obj.post_info:
+        should_calc_sentiment = True
+        
+    if should_calc_sentiment and target_content and len(target_content.strip()) > 10:
+        try:
+            logger.info(f"Auto-calculating sentiment for post {post_id}")
+            sentiment_result = sentiment_analyzer.analyze(target_content)
+            
+            # Prepare post_info
+            # Use provided post_info update or existing one
+            current_info = post_data.post_info if post_data.post_info is not None else (post_obj.post_info or {})
+            
+            # Ensure it's a dict (in case it was None or stored weirdly)
+            if current_info is None:
+                current_info = {}
+            elif not isinstance(current_info, dict):
+                # Should not happen given Pydantic model, but safe check
+                current_info = {}
+                
+            current_info['sentiment'] = sentiment_result
+            post_data.post_info = current_info
+            
+        except Exception as e:
+            logger.error(f"Failed to auto-calculate sentiment: {e}")
 
     post_obj = post.update(db=db, db_obj=post_obj, obj_in=post_data)
     return post_obj

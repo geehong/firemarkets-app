@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import dynamic from 'next/dynamic'
-import { usePost, useCreatePost, useUpdatePost, useRegeneratePost, Post, PostCreateData, PostUpdateData } from '@/hooks/data/usePosts'
+import { usePost, useCreatePost, useUpdatePost, useRegeneratePost, useDeletePost, Post, PostCreateData, PostUpdateData } from '@/hooks/data/usePosts'
+import { useRouter } from 'next/navigation'
 import { useAssetOverviews } from '@/hooks/assets/useAssetOverviews'
 import { useAssetDetail } from '@/hooks/assets/useAssets'
 
@@ -43,6 +44,7 @@ export interface BaseEditProps {
   showAssetInfo?: boolean
   assetIdentifier?: string
   // Legacy props compatibility
+  onPreview?: () => void
   onHandleSave?: (handleSave: (status: 'draft' | 'published') => Promise<void>) => void
   onSavingChange?: (saving: boolean) => void
   onFormDataChange?: (formData: PostFormState) => void
@@ -59,6 +61,7 @@ export default function BaseEdit({
   postType,
   onSave,
   onCancel,
+  onPreview,
   showFinancialData = false,
   financialTicker,
   financialAssetId,
@@ -81,6 +84,8 @@ export default function BaseEdit({
   const createPostMutation = useCreatePost()
   const updatePostMutation = useUpdatePost()
   const regeneratePostMutation = useRegeneratePost()
+  const deletePostMutation = useDeletePost()
+  const router = useRouter()
 
   const handleAiRewrite = async () => {
     if (!postId) return
@@ -92,6 +97,20 @@ export default function BaseEdit({
     } catch (e) {
       console.error(e)
       alert('AI 분석 중 오류가 발생했습니다.')
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!postId) return
+    if (!confirm('이 포스트를 정말 삭제하시겠습니까? 삭제된 포스트는 복구할 수 없습니다.')) return
+
+    try {
+      await deletePostMutation.mutateAsync(postId)
+      alert('포스트가 삭제되었습니다.')
+      router.push('/admin/post/list')
+    } catch (e) {
+      console.error(e)
+      alert('삭제 중 오류가 발생했습니다.')
     }
   }
 
@@ -507,7 +526,7 @@ export default function BaseEdit({
             }}
             publishedAt={formData.published_at as string}
             onPublishedAtChange={(val) => handleUpdate('published_at', val)}
-            onPreview={() => { }} // TODO: Implement preview
+            onPreview={onPreview || (() => {})}
             onSave={handleSave}
             mode={mode}
             saving={saving}
@@ -707,6 +726,8 @@ export default function BaseEdit({
         onCancel={onCancel || (() => { })}
         blockVisibility={blockVisibility}
         onToggleBlock={(key) => setBlockVisibility(prev => ({ ...prev, [key]: !prev[key] }))}
+        onDelete={handleDelete}
+        onPreview={onPreview}
       />
 
       <div className="w-full py-4 lg:py-6">
@@ -719,7 +740,7 @@ export default function BaseEdit({
           </div>
 
           {/* Sidebar Column */}
-          <div className="w-full lg:w-96 space-y-4">
+          <div className="w-full lg:w-80 space-y-4">
             {sideBlockOrder.map((blockId, index) =>
               renderBlock(blockId, index, index === 0, index === sideBlockOrder.length - 1)
             )}
