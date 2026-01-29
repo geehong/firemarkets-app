@@ -9,6 +9,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from .endpoints.assets import router as assets_router
+from .endpoints.fred import router as fred_router
 
 
 class ApiV2RootResponse(BaseModel):
@@ -45,5 +46,6 @@ async def api_v2_root():
 
 # Assets 라우터 등록 (prefix: /assets)
 api_router.include_router(assets_router, prefix="/assets")
+api_router.include_router(fred_router, prefix="/fred")
 
 __all__ = ["api_router"]

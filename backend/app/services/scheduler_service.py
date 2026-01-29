@@ -34,6 +34,7 @@ from app.collectors.rss_collector import RSSCollector
 from app.services.news_clustering_service import NewsClusteringService
 from app.services.news_ai_agent import NewsAIEditorAgent
 from app.models.blog import Post
+from app.collectors.fred_collector import FredCollector
 
 
 class SchedulerService:
@@ -52,6 +53,7 @@ class SchedulerService:
         "CommodityOHLCVAggregator": {"class": CommodityOHLCVAggregatorCollector, "config_key": "is_ohlcv_collection_enabled"},
         "News": {"class": NewsCollector, "config_key": "is_news_collection_enabled"},
         "RSS": {"class": RSSCollector, "config_key": "is_rss_collection_enabled"},
+        "Fred": {"class": FredCollector, "config_key": "is_fred_collection_enabled"},
     }
     
     # Maps temp.json collector keys to actual job configurations
@@ -134,6 +136,10 @@ class SchedulerService:
         },
         "rss_collector_job": {
             "job_key": "RSS",
+            "config": {}
+        },
+        "fred_clients": {
+            "job_key": "Fred",
             "config": {}
         }
     }
@@ -528,7 +534,9 @@ class SchedulerService:
                                                 "etf_clients": ["ETFInfo"],
                                                 "world_assets_clients": ["WorldAssets"],
                                                 "commodity_ohlcv_aggregator_intraday": ["CommodityOHLCVAggregator"],
+                                                "commodity_ohlcv_aggregator_intraday": ["CommodityOHLCVAggregator"],
                                                 "commodity_ohlcv_aggregator_daily": ["CommodityOHLCVAggregator"],
+                                                "fred_clients": ["Fred"],
                                             }
                                             job_names = mapping.get(group_name, [])
                                             for job_name in job_names:

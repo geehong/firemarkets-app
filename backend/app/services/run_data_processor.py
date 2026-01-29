@@ -11,9 +11,15 @@ from app.utils.redis_queue_manager import RedisQueueManager
 
 # Initialize logging
 import logging
-# logging.basicConfig(level=logging.INFO)
+from app.utils.logger import setup_logger
+
 # Force DEBUG for data processor troubleshooting
+# Configure standard logging first (handlers, etc.)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+# Configure structlog to hook into standard logging
+setup_logger(level="DEBUG")
+
 logger = logging.getLogger("app.services.data_processor")
 logger.setLevel(logging.DEBUG)
 logging.getLogger("app.services.processor.repository").setLevel(logging.DEBUG)

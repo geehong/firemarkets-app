@@ -209,7 +209,7 @@ class BitcoinDataClient(OnChainAPIClient):
         try:
             # Map metric_name to API endpoint and response field
             metric_map = {
-                'mvrv_z_score': {'endpoint': 'mvrv-zscore', 'field': ['mvrvZScore', 'mvrv_z_score', 'mvrv']},
+                'mvrv_z_score': {'endpoint': 'mvrv-zscore', 'field': ['mvrvZscore', 'mvrvZScore', 'mvrv_z_score', 'mvrv']},
                 'nupl': {'endpoint': 'nupl', 'field': ['nupl']},
                 'sopr': {'endpoint': 'sopr', 'field': ['sopr']},
                 'hashrate': {'endpoint': 'hashrate', 'field': ['hashrate']},

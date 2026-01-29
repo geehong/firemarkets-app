@@ -235,6 +235,13 @@ class ConfigManager:
         
     def is_world_assets_collection_enabled(self) -> bool:
         return self._get_config("ENABLE_WORLD_ASSETS_COLLECTION", True, _str_to_bool)
+        
+    def get_fred_api_key(self) -> Optional[str]:
+        # Check env var first
+        env_key = os.getenv("FRED_API_KEY")
+        if env_key:
+            return env_key
+        return self._get_config("FRED_API_KEY", None, str)
 
     # --- OHLCV Specific Settings ---
     def get_historical_days_per_run(self) -> int:

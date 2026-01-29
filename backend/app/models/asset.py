@@ -651,18 +651,44 @@ class TechnicalIndicator(Base):
 class EconomicIndicator(Base):
     """경제 지표 데이터 테이블"""
     __tablename__ = 'economic_indicators'
+    __table_args__ = (
+        UniqueConstraint('indicator_code', 'timestamp', name='uq_economic_indicator_code_timestamp'),
+        {'extend_existing': True}
+    )
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    indicator_name = Column(String(100), nullable=False, index=True)
-    country = Column(String(50), nullable=True)
-    value = Column(Float, nullable=False)
+    indicator_id = Column(Integer, primary_key=True, autoincrement=True)
+    indicator_name = Column(String(100), nullable=True)
+    indicator_code = Column(String(50), nullable=True, index=True)
+    timestamp = Column(Date, nullable=False, index=True)
+    value = Column(DECIMAL(20, 10), nullable=True)
     unit = Column(String(20), nullable=True)
-    period = Column(String(20), nullable=True)  # Q1, Q2, Monthly, etc.
-    release_date = Column(Date, nullable=False, index=True)
-    source = Column(String(100), nullable=True)
+    description = Column(Text, nullable=True)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
     
     def __repr__(self):
-        return f"<EconomicIndicator(id={self.id}, name='{self.indicator_name}', value={self.value})>"
+        return f"<EconomicIndicator(id={self.indicator_id}, code='{self.indicator_code}', value={self.value})>"
+
+
+class M2Data(Base):
+    """M2 통화량 데이터 테이블"""
+    __tablename__ = 'm2_data'
+    __table_args__ = (
+        UniqueConstraint('timestamp_utc', name='uq_m2_data_timestamp'),
+        {'extend_existing': True}
+    )
+
+    m2_data_id = Column(BigInteger, primary_key=True, autoincrement=True)
+    timestamp_utc = Column(Date, nullable=False, index=True)
+    m2_supply = Column(DECIMAL(30, 2), nullable=True)
+    m2_growth_yoy = Column(DECIMAL(14, 6), nullable=True)
+    source = Column(String(100), nullable=True)
+    notes = Column(String(255), nullable=True)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+    def __repr__(self):
+        return f"<M2Data(id={self.m2_data_id}, date='{self.timestamp_utc}', supply={self.m2_supply})>"
 
 
 class SystemMetrics(Base):
