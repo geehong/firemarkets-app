@@ -10,12 +10,20 @@ interface MultipleComparisonChartProps {
     assets?: string[]
     interval?: string
     height?: number
+    title?: string
+    independentAxes?: boolean
+    externalSeries?: { name: string, data: number[][], yAxis?: number }[]
+    normalizeData?: boolean
 }
 
 const MultipleComparisonChart: React.FC<MultipleComparisonChartProps> = ({
     assets = ['BTCUSDT', 'SPY', 'GSUSD'],
     interval = '1d',
-    height = 650
+    height = 650,
+    title = 'Price Comparison',
+    independentAxes = false,
+    externalSeries,
+    normalizeData = true
 }) => {
     const chartContainerRef = useRef<HTMLDivElement>(null)
     const chartRef = useRef<any>(null)
@@ -99,7 +107,7 @@ const MultipleComparisonChart: React.FC<MultipleComparisonChartProps> = ({
 
     // Data Fetching with useQueries
     const assetQueries = useQueries({
-        queries: assets.map(asset => ({
+        queries: (externalSeries ? [] : assets).map(asset => ({
             queryKey: ['ohlcv', asset, selectedInterval],
             queryFn: async () => {
                 const limit = isIntraday 
@@ -117,11 +125,11 @@ const MultipleComparisonChart: React.FC<MultipleComparisonChartProps> = ({
         }))
     })
 
-    const isLoading = assetQueries.some(q => q.isLoading)
-    const hasError = assetQueries.some(q => q.isError)
+    const isLoading = !externalSeries && assetQueries.some(q => q.isLoading)
+    const hasError = !externalSeries && assetQueries.some(q => q.isError)
 
     // Prepare Series Data
-    const seriesData = assetQueries.map((query, index) => {
+    const seriesData = externalSeries || assetQueries.map((query, index) => {
         const assetName = assets[index]
         if (!query.data) return null
 
@@ -150,13 +158,17 @@ const MultipleComparisonChart: React.FC<MultipleComparisonChartProps> = ({
 
         if (data.length === 0) return null
         
-        // Normalize to 100
-        const startPrice = data[0][1]
-        const normalizedData = data.map(p => [p[0], (p[1] / startPrice) * 100])
+        // Normalize to 100 (Only if normalizeData is true)
+        let finalData = data;
+        if (normalizeData) {
+             const startPrice = data[0][1]
+             finalData = data.map(p => [p[0], (p[1] / startPrice) * 100])
+        }
 
         return {
             name: assetName,
-            data: normalizedData
+            data: finalData,
+            yAxis: 0
         }
     })
 
@@ -188,10 +200,56 @@ const MultipleComparisonChart: React.FC<MultipleComparisonChartProps> = ({
                 tooltip: { backgroundColor: 'rgba(255, 255, 255, 0.95)', style: { color: '#333333' } }
             })
 
+            // Dynamic Y-Axis generation if independentAxes is enabled
+            let chartYAxes: any[] = [];
+            let chartSeries: any[] = [];
+            
+            if (independentAxes) {
+                 // Create a separate Y-axis for each series
+                 chartYAxes = validSeries.map((s, i) => ({
+                    labels: { enabled: false }, // Hide labels to avoid clutter
+                    title: { text: null },
+                    height: '100%',
+                    top: '0%',
+                    offset: 0,
+                    className: `highcharts-color-${i}`, // Match series color
+                    opposite: i % 2 !== 0 // Alternate sides if we were showing labels, but useful for structure
+                }));
+                
+                chartSeries = validSeries.map((s: any, i: number) => ({
+                    ...s,
+                    yAxis: i
+                }));
+            } else {
+                // Default Dual-Axis or Single Axis logic
+                 chartYAxes = [{
+                    // Primary Y-Axis (Left)
+                    labels: { align: 'right', x: -3 },
+                    title: { text: 'Primary' },
+                    height: '100%',
+                    lineWidth: 2,
+                    resize: { enabled: true }
+                }, {
+                    // Secondary Y-Axis (Right)
+                    labels: { align: 'left', x: 3 },
+                    title: { text: 'Secondary' },
+                    top: '0%',
+                    height: '100%',
+                    offset: 0,
+                    lineWidth: 2,
+                    opposite: true
+                }];
+                
+                chartSeries = validSeries.map((s: any) => ({
+                    ...s,
+                    yAxis: s.yAxis ?? 0
+                }));
+            }
+
             const options = {
                 chart: { height },
                 rangeSelector: {
-                    selected: 5, // Select 'All' or '10y' by default if possible? 5 often map to 'All' depending on buttons
+                    selected: 8, // 'All' index (0-based: 1m, 3m, 6m, YTD, 1y, 5y, 10y, 20y, All)
                     buttons: [
                         { type: 'month', count: 1, text: '1m' },
                         { type: 'month', count: 3, text: '3m' },
@@ -204,29 +262,13 @@ const MultipleComparisonChart: React.FC<MultipleComparisonChartProps> = ({
                         { type: 'all', text: 'All' }
                     ]
                 },
-                yAxis: {
-                    type: useLogScale ? 'logarithmic' : 'linear',
-                    labels: {
-                        format: '{value}'
-                    },
-                    plotLines: [{
-                        value: 100,
-                        width: 2,
-                        color: 'silver',
-                        dashStyle: 'dot'
-                    }]
-                },
-                plotOptions: {
-                    series: {
-                        showInNavigator: true
-                    }
-                },
+                yAxis: chartYAxes,
                 tooltip: {
-                    pointFormat: '<span style="color:{series.color}">{series.name}</span>: <b>{point.y:.2f}</b><br/>',
+                    pointFormat: '<span style="color:{series.color}">{series.name}</span>: <b>{point.y:,.2f}</b><br/>',
                     valueDecimals: 2,
                     split: true
                 },
-                series: validSeries
+                series: chartSeries
             }
 
             chartRef.current = Highcharts.stockChart(chartContainerRef.current, options)
@@ -312,7 +354,7 @@ const MultipleComparisonChart: React.FC<MultipleComparisonChartProps> = ({
     return (
         <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
             <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100">
-                <h3 className="text-lg font-semibold text-gray-800">Price Comparison (Normalized)</h3>
+                <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
                 
                 <div className="flex items-center gap-4">
                      <ChartControls

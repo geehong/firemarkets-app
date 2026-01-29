@@ -35,7 +35,9 @@ export default function YieldCurveSpread({ data }: YieldCurveSpreadProps) {
                     contentStyle={{ backgroundColor: isDark ? '#1F2937' : '#fff', borderColor: isDark ? '#374151' : '#e5e7eb' }}
             />
             <Legend />
-            <Line type="monotone" dataKey="spread" stroke="#ff7300" name="Spread (10Y-2Y)" dot={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="year10" stroke="#8884d8" name="10 Year" dot={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="year2" stroke="#82ca9d" name="2 Year" dot={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="spread" stroke="#ff7300" name="Spread (10Y-2Y)" dot={false} strokeWidth={3} />
             {/* Zero Line Reference */}
             <Line type="monotone" dataKey="zero" stroke="#999" strokeDasharray="3 3" dot={false} strokeWidth={1} />
             </LineChart>

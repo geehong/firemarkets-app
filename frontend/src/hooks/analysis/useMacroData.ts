@@ -10,8 +10,8 @@ export function useMacroData() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        // type=all includes yield_spread now
-        const response = await fetch(`/api/v1/analysis/macro?type=all`);
+        // type=all includes treasury, indicators, yield_spread
+        const response = await fetch(`/api/v2/fred/indicators?type=all`);
         const result = await response.json();
         setData(result);
       } catch (e) {

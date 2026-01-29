@@ -28,8 +28,9 @@ class FredCollector(BaseCollector):
             'PPIFIS': {'name': 'Producer Price Index by Commodity: Final Demand', 'unit': 'Index Nov 2009=100', 'table': 'economic'},
             # Interest Rates
             'DFF': {'name': 'Federal Funds Effective Rate', 'unit': 'Percent', 'table': 'economic'},
-            'GS10': {'name': 'Market Yield on U.S. Treasury Securities at 10-Year Constant Maturity', 'unit': 'Percent', 'table': 'economic'},
-            'GS2': {'name': 'Market Yield on U.S. Treasury Securities at 2-Year Constant Maturity', 'unit': 'Percent', 'table': 'economic'},
+            'DGS10': {'name': 'Market Yield on U.S. Treasury Securities at 10-Year Constant Maturity', 'unit': 'Percent', 'table': 'economic'},
+            'DGS2': {'name': 'Market Yield on U.S. Treasury Securities at 2-Year Constant Maturity', 'unit': 'Percent', 'table': 'economic'},
+            'DGS1': {'name': 'Market Yield on U.S. Treasury Securities at 1-Year Constant Maturity', 'unit': 'Percent', 'table': 'economic'},
             'T10Y2Y': {'name': '10-Year Treasury Constant Maturity Minus 2-Year Treasury Constant Maturity', 'unit': 'Percent', 'table': 'economic'}, # Calculated or direct series
             'MORTGAGE30US': {'name': '30-Year Fixed Rate Mortgage Average in the United States', 'unit': 'Percent', 'table': 'economic'},
             # Labor Market
