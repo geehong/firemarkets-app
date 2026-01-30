@@ -469,6 +469,8 @@ class BinanceWSConsumer(BaseWSConsumer):
             logger.debug(f"💾 [BINANCE→REDIS] 저장 시도: {symbol} = ${price} (stream: {stream_key})")
             await r.xadd(stream_key, entry, maxlen=100000, approximate=True)
             logger.debug(f"✅ [BINANCE→REDIS] 저장 완료: {symbol} = ${price}")
+        except redis.exceptions.BusyLoadingError:
+            logger.warning(f"⚠️ [BINANCE] Redis loading, skipping storage for {data.get('symbol')}")
         except Exception as e:
             logger.error(f"❌ {self.client_name} redis store error: {e}")
             import traceback

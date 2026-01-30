@@ -347,6 +347,8 @@ class PolygonWSConsumer(BaseWSConsumer):
             await r.xadd(stream_key, entry, maxlen=100000, approximate=True)
             logger.debug(f"💾 {self.client_name} stored to redis: {data.get('symbol')} = ${data.get('price')}")
             
+        except redis.exceptions.BusyLoadingError:
+            logger.warning(f"⚠️ [{self.client_name.upper()}] Redis loading, skipping storage for {entry.get('symbol')}")
         except Exception as e:
             logger.error(f"❌ {self.client_name} redis store error: {e}")
     

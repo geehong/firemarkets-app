@@ -494,6 +494,8 @@ class CoinbaseWSConsumer(BaseWSConsumer):
                 'type': str(data.get('type', 'trade'))
             }
             await r.xadd(stream_key, entry)
+        except redis.exceptions.BusyLoadingError:
+            logger.warning(f"⚠️ [{self.client_name.upper()}] Redis loading, skipping storage for {entry.get('symbol')}")
         except Exception as e:
             logger.error(f"❌ {self.client_name} redis store error: {e}")
     

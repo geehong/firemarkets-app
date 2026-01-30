@@ -127,6 +127,15 @@ docker-compose logs db_postgres --tail 50 -f
 
 docker-compose logs frontend --tail 50 -f
 docker-compose logs adminer --tail 50 -f
+
+
+docker-compose logs data_processor --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | tail -50
+docker-compose logs websocket_orchestrator --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | tail -50
+docker-compose logs backend --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | tail -50
+docker-compose logs db_postgres --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | tail -50
+docker-compose logs frontend --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | tail -50
+docker-compose logs websocket_broadcaster --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | tail -50
+
         
 ```
 docker-compose exec backend python scripts/delete_empty_news.py
@@ -290,7 +299,12 @@ cd /home/geehong/firemarkets-app && docker-compose logs data_processor --since 3
 cd /home/geehong/firemarkets-app && docker-compose logs data_processor --since 30m 2>&1 | grep -E "ohlcv_day_data.*저장 완료|ohlcv_day_data.*upserted" | wc -l
 cd /home/geehong/firemarkets-app && docker-compose logs data_processor --since 1h 2>&1 | grep -E "ohlcv_day_data.*저장 완료|ohlcv_day_data.*upserted|daily=True" | tail -30
 cd /home/geehong/firemarkets-app && docker-compose logs data_processor --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | grep -i "ohlcv" | tail -20
-cd /home/geehong/firemarkets-app && docker-compose logs data_processor --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | tail -20
+cd /home/geehong/firemarkets-app && docker-compose logs data_processor --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | tail -50
+
+docker-compose logs scheduler --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | tail -50
+
+
+
 docker-compose logs backend --tail 50 -f | grep -Ei "(실패|오류|error|success)"
 docker-compose logs data_processor --tail 50 -f | grep -Ei "(onchain|Onchain|collection|job|ERROR|WARNING|Exception|Traceback)"
 
