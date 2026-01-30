@@ -228,9 +228,11 @@ const fetchLatestChangePercent = async (assetIdentifier: string): Promise<{ prev
     }
 
     // 최신순 정렬 (V2 응답 순서 불확실성을 대비)
-    const sorted = [...items].sort((a: any, b: any) => 
-      new Date(b.timestamp_utc).getTime() - new Date(a.timestamp_utc).getTime()
-    )
+    const sorted = [...items].sort((a: any, b: any) => {
+      const timeA = new Date(a.timestamp_utc.endsWith('Z') ? a.timestamp_utc : a.timestamp_utc + 'Z').getTime()
+      const timeB = new Date(b.timestamp_utc.endsWith('Z') ? b.timestamp_utc : b.timestamp_utc + 'Z').getTime()
+      return timeB - timeA
+    })
 
     // 오늘 날짜(UTC 기준) 확인
     const now = new Date();
@@ -241,9 +243,12 @@ const fetchLatestChangePercent = async (assetIdentifier: string): Promise<{ prev
     // 2. sorted[0]의 날짜가 어제이거나 그 이전이면 -> sorted[0] 사용
     let targetData = sorted[0];
     
-    if (targetData && new Date(targetData.timestamp_utc).getTime() >= todayUTC) {
-      // 오늘의 데이터가 존재하면, 그 다음 데이터(어제)를 사용
-      targetData = sorted.length > 1 ? sorted[1] : null;
+    if (targetData) {
+      const targetTime = new Date(targetData.timestamp_utc.endsWith('Z') ? targetData.timestamp_utc : targetData.timestamp_utc + 'Z').getTime()
+      if (targetTime >= todayUTC) {
+        // 오늘의 데이터가 존재하면, 그 다음 데이터(어제)를 사용
+        targetData = sorted.length > 1 ? sorted[1] : null;
+      }
     }
 
     // v2 데이터 매핑 (close_price 사용)

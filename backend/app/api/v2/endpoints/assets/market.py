@@ -34,6 +34,82 @@ def get_latest_ohlcv(db: Session, asset_id: int) -> Optional[OHLCVData]:
     ).order_by(OHLCVData.timestamp_utc.desc()).first()
 
 
+def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
+    """
+    모든 테이블(실시간/분봉/일봉/랭킹)을 조회하여 가장 최신 데이터 1건을 반환
+    """
+    stmt = text("""
+        WITH latest_prices AS (
+            -- 1. Realtime Quotes (15m delay)
+            SELECT 
+                data_interval,
+                price as close_price, 
+                price as open_price,
+                price as high_price,
+                price as low_price,
+                volume,
+                change_percent,
+                timestamp_utc 
+            FROM realtime_quotes_time_delay 
+            WHERE asset_id = :asset_id
+            
+            UNION ALL
+            
+            -- 2. Intraday Data
+            SELECT 
+                data_interval,
+                close_price, 
+                open_price,
+                high_price,
+                low_price,
+                volume,
+                change_percent,
+                timestamp_utc 
+            FROM ohlcv_intraday_data 
+            WHERE asset_id = :asset_id
+            
+            UNION ALL
+            
+            -- 3. Daily Data
+            SELECT 
+                COALESCE(data_interval, '1d'),
+                close_price, 
+                open_price,
+                high_price,
+                low_price,
+                volume,
+                change_percent,
+                timestamp_utc 
+            FROM ohlcv_day_data 
+            WHERE asset_id = :asset_id
+            AND (data_interval = '1d' OR data_interval = '1day' OR data_interval IS NULL)
+
+            UNION ALL
+            
+            -- 4. Ranking Data
+            SELECT 
+                '1d' as data_interval,
+                price_usd as close_price, 
+                price_usd as open_price,
+                price_usd as high_price,
+                price_usd as low_price,
+                0 as volume,
+                daily_change_percent as change_percent,
+                CAST(ranking_date AS TIMESTAMP) as timestamp_utc
+            FROM world_assets_ranking 
+            WHERE asset_id = :asset_id
+        )
+        SELECT *
+        FROM latest_prices
+        ORDER BY timestamp_utc DESC
+        LIMIT 1
+    """)
+    result = db.execute(stmt, {"asset_id": asset_id}).fetchone()
+    if result:
+        return dict(result._mapping)
+    return None
+
+
 def db_get_ohlcv_data(
     db: Session, 
     asset_id: int, 
@@ -111,10 +187,36 @@ def db_get_delay_data(
     rows = query.order_by(RealtimeQuoteTimeDelay.timestamp_utc.desc()).limit(limit).all()
     return sorted(rows, key=lambda x: x.timestamp_utc)
 
+def _fill_missing_change_percent(data_list: List[Dict]) -> List[Dict]:
+    """리스트 내의 Dict 데이터에서 change_percent가 없는 경우 이전 종가(prev_close)를 기준으로 계산하여 채움"""
+    # Sort just in case, though usually already sorted
+    sorted_data = sorted(data_list, key=lambda x: x['timestamp_utc'])
+    
+    prev_close = None
+    
+    for row in sorted_data:
+        close_p = row.get('close_price')
+        change_p = row.get('change_percent')
+        
+        # Calculate if missing
+        if change_p is None and prev_close is not None and prev_close > 0 and close_p is not None:
+             # Calculate and update in place
+             change_p = round(((close_p - prev_close) / prev_close) * 100, 4)
+             row['change_percent'] = change_p
+        
+        # Update prev_close
+        if close_p is not None:
+            prev_close = close_p
+            
+    return sorted_data
+
 def _format_ohlcv_rows(rows):
+    # Ensure rows are sorted by timestamp for correct change_percent calculation
+    sorted_rows = sorted(rows, key=lambda x: x.timestamp_utc)
+    
     res = []
-    for row in rows:
-        # RealtimeQuoteTimeDelay has 'price' instead of OHLCV
+    
+    for row in sorted_rows:
         if isinstance(row, RealtimeQuoteTimeDelay):
             res.append({
                 'timestamp_utc': row.timestamp_utc,
@@ -137,7 +239,11 @@ def _format_ohlcv_rows(rows):
                 'change_percent': float(row.change_percent) if row.change_percent else None,
                 'data_interval': row.data_interval or '1d'
             })
-    return res
+            
+    # Use helper to fill any missing change_percent (though _format_ohlcv_rows usually handles raw data, this is safe)
+    # Note: The previous logic inside here was removing the need for this, but to be consistent with 
+    # the new plan where we do it at the end, we can use the helper here too for simple calls.
+    return _fill_missing_change_percent(res)
 
 
     return aggregated
@@ -183,7 +289,8 @@ def get_daily_data_combined(db, asset_id, start_date, end_date, limit):
         if ts not in unique_final:
             unique_final[ts] = d
     
-    return sorted(unique_final.values(), key=lambda x: x['timestamp_utc'])
+    merged_data = sorted(unique_final.values(), key=lambda x: x['timestamp_utc'])
+    return _fill_missing_change_percent(merged_data)
 
 
 def aggregate_to_weekly_v2(daily_data: List[Dict]) -> List[Dict]:
@@ -375,10 +482,33 @@ def get_ohlcv_data_v2(
                     "data": aggregated
                 }
         
-        # 2. 일봉 (1d)
         if interval_upper in ['1D', '1DAY']:
              data = get_daily_data_combined(db, asset_id, start_date, end_date, limit)
              
+             # Fallback: if 'today' KST is not present, check unified latest data
+             # Simple Logic: If last candle is old (>24h or so), try to attach latest synthesized candle
+             if data:
+                 last_ts = data[-1]['timestamp_utc']
+             else:
+                 last_ts = datetime(2000,1,1) # dummy
+            
+             latest_unified = get_latest_unified_data(db, asset_id)
+             
+             if latest_unified and latest_unified['timestamp_utc'] > last_ts:
+                 ts = latest_unified['timestamp_utc']
+                 logger.info(f"[OHLCV] '{asset_identifier}' 1d: attaching unified latest {ts} (Price: {latest_unified['close_price']})")
+                 
+                 data.append({
+                     'timestamp_utc': ts,
+                     'open_price': float(latest_unified['open_price']) if latest_unified['open_price'] else None,
+                     'high_price': float(latest_unified['high_price']) if latest_unified['high_price'] else None,
+                     'low_price': float(latest_unified['low_price']) if latest_unified['low_price'] else None,
+                     'close_price': float(latest_unified['close_price']) if latest_unified['close_price'] else None,
+                     'volume': float(latest_unified['volume']) if latest_unified['volume'] else 0,
+                     'change_percent': float(latest_unified['change_percent']) if latest_unified['change_percent'] else None,
+                     'data_interval': '1d' # marked as 1d
+                 })
+
         # 3. 리샘플링/합성 (15m, 30m, 1h, 4h)
         elif data_interval in ['15m', '30m', '1h', '4h']:
             interval_map = {'15m': 15, '30m': 30, '1h': 60, '4h': 240}
@@ -409,6 +539,7 @@ def get_ohlcv_data_v2(
                     unique_final[ts] = d
             
             data = sorted(unique_final.values(), key=lambda x: x['timestamp_utc'])
+            data = _fill_missing_change_percent(data)
 
         # 4. 그 외 (1m 등)
         else:
@@ -450,11 +581,27 @@ def get_price_data_v2(
     try:
         asset_id = resolve_asset_identifier(db, asset_identifier)
         
-        # 최신 데이터 조회
-        latest = get_latest_ohlcv(db, asset_id)
+        # Unified Logic for latest price
+        latest_unified = get_latest_unified_data(db, asset_id)
         
+        if latest_unified:
+            logger.info(f"[Price] '{asset_identifier}' Returning unified latest: {latest_unified['close_price']} at {latest_unified['timestamp_utc']}")
+            return {
+                "asset_id": asset_id,
+                "current_price": float(latest_unified['close_price']) if latest_unified['close_price'] else None,
+                "open_price": float(latest_unified['open_price']) if latest_unified['open_price'] else None,
+                "high_price": float(latest_unified['high_price']) if latest_unified['high_price'] else None,
+                "low_price": float(latest_unified['low_price']) if latest_unified['low_price'] else None,
+                "prev_close": None, # Should fetch yesterday's close separately if needed for logic, but unified covers current
+                "change_percent_24h": float(latest_unified['change_percent']) if latest_unified['change_percent'] else None,
+                "volume_24h": float(latest_unified['volume']) if latest_unified['volume'] else None,
+                "last_updated": latest_unified['timestamp_utc'],
+                "data_source": "unified"
+            }
+            
+        # Fallback (Old logic) if unified fails or returns nothing (unlikely if assets exist)
+        latest = get_latest_ohlcv(db, asset_id)
         if not latest:
-            # 실시간 데이터 또는 WorldAssetsRanking에서 폴백
             from app.models import WorldAssetsRanking
             world_asset = db.query(WorldAssetsRanking).filter(
                 WorldAssetsRanking.asset_id == asset_id
@@ -469,7 +616,7 @@ def get_price_data_v2(
                     "last_updated": world_asset.ranking_date,
                     "data_source": "world_assets_ranking"
                 }
-            
+
             raise HTTPException(status_code=404, detail="Price data not found")
         
         # 이전 종가 조회 (변동률 계산용)
@@ -565,3 +712,113 @@ def get_price_history_v2(
     except Exception as e:
         logger.exception(f"Failed to get price history for {asset_identifier}")
         raise HTTPException(status_code=500, detail=f"Failed to get price history: {str(e)}")
+
+
+# ============================================================================
+# Batch Latest Price Endpoint
+# ============================================================================
+
+@router.get("/latest-prices/batch")
+def get_batch_latest_prices_v2(
+    tickers: str = Query(..., description="Comma-separated tickers (e.g. AAPL,BTC,TSLA)"),
+    db: Session = Depends(get_postgres_db)
+):
+    """
+    여러 티커의 최신 가격 일괄 조회
+    """
+    try:
+        logger.info(f"[BatchPrice] Request for tickers: {tickers}")
+        
+        if not tickers:
+            return {"data": []}
+            
+        ticker_list = [t.strip().upper() for t in tickers.split(',') if t.strip()]
+        
+        # 1. Get Asset IDs
+        assets = db.query(Asset.asset_id, Asset.ticker).filter(
+            Asset.ticker.in_(ticker_list)
+        ).all()
+        
+        logger.info(f"[BatchPrice] Found {len(assets)} assets for tickers: {[a.ticker for a in assets]}")
+        
+        if not assets:
+            return {"data": []}
+            
+        asset_map = {a.asset_id: a.ticker for a in assets}
+        asset_ids = list(asset_map.keys())
+        
+        # 2. Get Max Date per Asset (optimized UNION ALL)
+        # Check Realtime (delay), Intraday, and Daily tables
+        # Priority: Timestamp DESC
+        
+        stmt = text("""
+            WITH latest_prices AS (
+                -- 1. Realtime Quotes (15m delay)
+                SELECT 
+                    asset_id, 
+                    price as close_price, 
+                    timestamp_utc 
+                FROM realtime_quotes_time_delay 
+                WHERE asset_id = ANY(:asset_ids)
+                
+                UNION ALL
+                
+                -- 2. Intraday Data
+                SELECT 
+                    asset_id, 
+                    close_price, 
+                    timestamp_utc 
+                FROM ohlcv_intraday_data 
+                WHERE asset_id = ANY(:asset_ids)
+                
+                UNION ALL
+                
+                -- 3. Daily Data
+                SELECT 
+                    asset_id, 
+                    close_price, 
+                    timestamp_utc 
+                FROM ohlcv_day_data 
+                WHERE asset_id = ANY(:asset_ids) 
+                AND (data_interval = '1d' OR data_interval = '1day' OR data_interval IS NULL)
+
+                UNION ALL
+                
+                -- 4. World Assets Ranking (Daily Snapshot)
+                SELECT 
+                    asset_id, 
+                    price_usd as close_price, 
+                    CAST(ranking_date AS TIMESTAMP) as timestamp_utc
+                FROM world_assets_ranking 
+                WHERE asset_id = ANY(:asset_ids)
+            )
+            SELECT DISTINCT ON (asset_id) 
+                asset_id, 
+                close_price, 
+                timestamp_utc 
+            FROM latest_prices
+            ORDER BY asset_id, timestamp_utc DESC
+        """)
+        
+        rows = db.execute(stmt, {"asset_ids": asset_ids}).fetchall()
+        
+        logger.info(f"[BatchPrice] DB Query Result: {len(rows)} rows fetched")
+        
+        data = []
+        for row in rows:
+            mapped = dict(row._mapping)
+            t_ticker = asset_map.get(mapped['asset_id'])
+            if t_ticker:
+                logger.debug(f"[BatchPrice] {t_ticker} -> {mapped['close_price']} at {mapped['timestamp_utc']}")
+                data.append({
+                    "ticker": t_ticker,
+                    "price": float(mapped['close_price']) if mapped['close_price'] else None,
+                    "last_updated": mapped['timestamp_utc']
+                })
+                
+        logger.info(f"[BatchPrice] Returning {len(data)} items: {[d['ticker'] for d in data]}")
+        return {"data": data}
+
+    except Exception as e:
+        logger.exception("Failed to get batch latest prices")
+        raise HTTPException(status_code=500, detail=f"Failed: {str(e)}")

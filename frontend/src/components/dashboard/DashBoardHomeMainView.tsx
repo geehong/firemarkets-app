@@ -22,6 +22,11 @@ const SparklineTable = dynamic(
     { ssr: false, loading: () => <div className="h-64 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse"></div> }
 );
 
+const MultipleComparisonChart = dynamic(
+    () => import('@/components/charts/ohlcvcharts/MultipleComparisonChart'),
+    { ssr: false, loading: () => <div className="h-96 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse"></div> }
+);
+
 // --- Sub Components ---
 
 const LatestPostSection = ({ title, postType, linkUrl }: { title: string; postType: string; linkUrl: string }) => {
@@ -228,6 +233,22 @@ const DashBoardHomeMainView = () => {
                         href="/assets"
                         color="from-pink-500 to-rose-400"
                         icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+                    />
+                </div>
+                
+                {/* Global Assets Chart */}
+                <div className="hidden md:block bg-white dark:bg-gray-800 rounded-2xl shadow-xl shadow-slate-200/50 dark:shadow-none p-6 border border-slate-100 dark:border-gray-700">
+                    <div className="flex justify-between items-center mb-6">
+                         <h3 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-transparent flex items-center gap-2">
+                             Global Assets Comparison (YTD)
+                         </h3>
+                    </div>
+                     <MultipleComparisonChart
+                        assets={['GCUSD', 'BTCUSDT', 'SPY', 'QQQ']}
+                        height={500}
+                        compareMode="percent"
+                        title=""
+                        startDate="2025-01-01"
                     />
                 </div>
 

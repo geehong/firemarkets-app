@@ -42,7 +42,7 @@ const ClosePriceChart: React.FC<ClosePriceChartProps> = ({
     // Intraday logic
     const { data: timeData, isLoading: timeLoading } = useIntraday(
         assetId,
-        { dataInterval: selectedInterval, limit: 2000 },
+        { dataInterval: selectedInterval, limit: 50000 },
         // @ts-ignore
         { enabled: isIntradayInterval, staleTime: 60_000 }
     )

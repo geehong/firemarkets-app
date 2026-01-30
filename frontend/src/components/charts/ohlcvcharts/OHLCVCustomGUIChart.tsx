@@ -125,12 +125,12 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
     // Limit calculation
     const getIntradayLimit = (interval: string): number => {
         switch (interval) {
-            case '1m': return 1440 * 2
-            case '5m': return 288 * 7
-            case '15m': return 96 * 14
-            case '30m': return 48 * 30
-            case '1h': return 24 * 120
-            case '4h': return 6 * 360
+            case '1m': return 50000;
+            case '5m': return 50000;
+            case '15m': return 50000;
+            case '30m': return 50000;
+            case '1h': return 50000;
+            case '4h': return 50000;
             default: return 1000
         }
     }

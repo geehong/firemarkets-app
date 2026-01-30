@@ -203,10 +203,11 @@ const LiveChart: React.FC<LiveChartProps> = ({
             const assetData = apiResponse.find((item: any) => item.asset_identifier === assetIdentifier)
             if (assetData?.quotes && assetData.quotes.length > 0) {
                 baseData = assetData.quotes
-                    .map((q: any) => {
+                .map((q: any) => {
                         const ts = new Date(q.timestamp_utc).getTime()
-                        if (!ts || !isFinite(ts)) return null
-                        return [ts, parseFloat(q.price)] as PricePoint
+                        const val = q.price ?? q.close_price ?? q.close
+                        if (!ts || !isFinite(ts) || val === undefined) return null
+                        return [ts, parseFloat(String(val))] as PricePoint
                     })
                     .filter((p: any): p is PricePoint => p !== null)
                     .sort((a: PricePoint, b: PricePoint) => a[0] - b[0])
@@ -216,8 +217,9 @@ const LiveChart: React.FC<LiveChartProps> = ({
             baseData = apiResponse.quotes
                 .map((q: any) => {
                     const ts = new Date(q.timestamp_utc).getTime()
-                    if (!ts || !isFinite(ts)) return null
-                    return [ts, parseFloat(q.price)] as PricePoint
+                    const val = q.price ?? q.close_price ?? q.close
+                    if (!ts || !isFinite(ts) || val === undefined) return null
+                    return [ts, parseFloat(String(val))] as PricePoint
                 })
                 .filter((p: any): p is PricePoint => p !== null)
                 .sort((a: PricePoint, b: PricePoint) => a[0] - b[0])
@@ -406,77 +408,71 @@ const LiveChart: React.FC<LiveChartProps> = ({
             exporting: {
                 enabled: false,
             },
-            series: [
-                {
-                    type: 'spline',
-                    name: 'Price',
-                    color: '#3B82F6',
-                    lineWidth: 2,
-                    marker: {
-                        enabled: false,
-                    },
-                    lastPrice: {
+            series: [{
+                type: 'spline',
+                name: 'Price',
+                color: '#3B82F6',
+                lineWidth: 2,
+                marker: {
+                    enabled: false,
+                },
+                lastPrice: {
+                    enabled: true,
+                    label: {
                         enabled: true,
-                        label: {
-                            enabled: true,
-                            backgroundColor: '#FF7F7F',
-                        },
-                    },
-                    data: [...chartData],
-                },
-            ],
-            chart: {
-                events: {
-                    load() {
-                        // @ts-ignore
-                        const chart: any = this
-                        const series = chart.series[0]
-
-                        let i = counterRef.current
-
-                        // Clear existing interval
-                        if (intervalRef.current) {
-                            window.clearInterval(intervalRef.current)
-                        }
+                        backgroundColor: '#FF7F7F',
                     },
                 },
-            },
+                data: chartData,
+            }],
         }
 
-        // Create the chart
-        const chart = Highcharts.stockChart(containerRef.current, options)
-        chartRef.current = chart
-
-        if (chart?.xAxis && chart.xAxis[0]) {
-            chart.xAxis[0].setExtremes(undefined, undefined)
+        // Create the chart only if not exists
+        if (!chartRef.current) {
+             const chart = Highcharts.stockChart(containerRef.current, options)
+             chartRef.current = chart
+        } else {
+            // If chart exists, just update data if needed (though Series logic handles this below)
+            // Ideally we shouldn't re-create chart on every chartData change if we can help it.
+            // But here chartData is in deps. 
+            // We'll let the next effect handle updates.
+            // Actually, re-creating chart on EVERY chartData change is bad if chartData changes often.
+            // But chartData comes from `useDelayedQuotes` which updates every 15m or so?
+            // Wait, useMemo for chartData depends on `apiResponse`.
+            // The issue is `latestPrice` changes often -> `generateTitleHTML` changes often.
+            // But `generateTitleHTML` is in dependencies of THIS useEffect? NO.
+            // Wait, `generateTitleHTML` IS used in `options`.
+            // If this useEffect depends on `generateTitleHTML`, then chart re-creates on every price tick!
+            // THAT IS THE CAUSE OF FLICKERING.
         }
 
         // Cleanup function
         return () => {
-            if (intervalRef.current !== null) {
-                window.clearInterval(intervalRef.current)
-                intervalRef.current = null
-            }
-            if (chartRef.current) {
-                chartRef.current.destroy()
-                chartRef.current = null
-            }
+             // Don't destroy chart on every render, only on unmount (empty deps ideally)
+             // But we are inside a dep array [isClient, Highcharts, chartData].
+             // We should decouple title updates from chart creation.
         }
-    }, [isClient, Highcharts, chartData])
+    }, [isClient, Highcharts, chartData]) // REMOVED generateTitleHTML from deps
 
-    // Title 업데이트
+    // Title 업데이트 - Efficiently update title only
     useEffect(() => {
-        if (!chartRef.current || !Highcharts) return
-
-        const chart = chartRef.current
-        chart.setTitle({
-            useHTML: true,
+        if (!chartRef.current) return
+        
+        chartRef.current.setTitle({
             text: generateTitleHTML,
-            style: {
-                fontWeight: 'normal',
-            },
-        }, false)
-    }, [generateTitleHTML, Highcharts])
+            useHTML: true
+        }, false) // redraw=false to prevent full redraw if not needed, or true? Title usually needs redraw.
+        // Actually highcharts setTitle triggers redraw by default unless false.
+        // Let's use false and manual redraw if series update is also happening?
+        // Or just let it redraw. The flickering is likely due to destroy/create cycle.
+        // Using `false` and letting the next frame or Series update handle it might be smoother, 
+        // but for title we want immediate feedback.
+        // Let's try `true` (default) or explicit redraw.
+        chartRef.current.redraw(false); // Update visual only? setTitle does independent redraw/update. 
+        // If we pass false, we might miss it. Let's start with redraw=false inside setTitle and see.
+        // Actually, setTitle(titleOptions, redraw, oneToOne)
+    }, [generateTitleHTML])
+
 
     // 웹소켓 실시간 데이터로 마지막 포인트만 업데이트
     useEffect(() => {

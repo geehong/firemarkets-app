@@ -66,3 +66,8 @@ else
 fi
 
 log_message "=== Git 커밋 스크립트 종료 ==="
+
+# Docker cleanup
+log_message "5. Docker 시스템 정리 중..."
+docker system prune -a -f --volumes >> "$LOG_FILE" 2>&1
+log_message "✓ Docker 시스템 정리 완료"

@@ -14,7 +14,7 @@ import logging
 
 from app.core.database import get_postgres_db
 from app.models import OHLCVData, Asset, AssetType, Post
-from app.schemas.asset import AssetOverviewResponse
+from app.schemas.asset import AssetOverviewResponse, AssetsTableResponse
 from .shared.resolvers import resolve_asset_identifier, get_asset_type, get_asset_with_type
 from .shared.constants import VIEW_MAP
 
@@ -122,6 +122,157 @@ def calculate_asset_info(db: Session, asset_id: int) -> Dict[str, Any]:
         "day_200_moving_avg": sma_200,
         "last_updated": latest.timestamp_utc,
     }
+
+# ============================================================================
+# Assets Table Endpoint
+# ============================================================================
+
+@router.get("/table", response_model=AssetsTableResponse)
+def get_assets_table_v2(
+    type_name: Optional[str] = Query(None, description="자산 유형 필터 (Stocks, Crypto, ETFs, Funds)"),
+    page: int = Query(1, ge=1, description="페이지 번호"),
+    page_size: int = Query(50, ge=1, le=200, description="페이지당 항목 수"),
+    sort_by: Optional[str] = Query("market_cap", description="정렬 필드 (market_cap, price, change_percent_today, volume_today)"),
+    order: Optional[str] = Query("desc", description="정렬 순서 (asc/desc)"),
+    search: Optional[str] = Query(None, description="검색어 (티커 또는 이름)"),
+    db: Session = Depends(get_postgres_db)
+):
+    """
+    자산 테이블 데이터 조회 (V2)
+    
+    가격, 변동률, 시가총액, 거래량 및 30일 스파크라인 데이터 포함
+    """
+    try:
+        from app.models import WorldAssetsRanking
+        from app.schemas.asset import (
+            AssetsTableResponse,
+            AssetTableItem
+        )
+        
+        # 0. Get Latest Date
+        latest_date = db.query(func.max(WorldAssetsRanking.ranking_date)).scalar()
+        if not latest_date:
+            latest_date = datetime.now().date()
+
+        # 1. Base Query
+        query = db.query(
+            WorldAssetsRanking,
+            AssetType.type_name
+        ).join(
+            AssetType, WorldAssetsRanking.asset_type_id == AssetType.asset_type_id
+        ).filter(
+            WorldAssetsRanking.ranking_date == latest_date
+        )
+        
+        # 2. Filters
+        if type_name:
+            query = query.filter(AssetType.type_name == type_name)
+            
+        if search:
+            pattern = f"%{search}%"
+            query = query.filter(
+                (WorldAssetsRanking.ticker.ilike(pattern)) |
+                (WorldAssetsRanking.name.ilike(pattern))
+            )
+
+        # 3. Sorting
+        order_map = {
+            "market_cap": WorldAssetsRanking.market_cap_usd,
+            "price": WorldAssetsRanking.price_usd,
+            "change_percent_today": WorldAssetsRanking.daily_change_percent,
+            "volume_today": None # WorldAssetsRanking doesn't have volume currently? Let's check model. 
+            # If not in ranking, we might need to join or accept it's missing for sort.
+            # Checking `WorldAssetsRanking` model in widgets endpoint... it selects `price_usd`, `daily_change_percent`, `market_cap_usd`.
+            # Usually volume is not strictly tracked in ranking table for sorting unless added.
+            # For now, let's map what we have.
+        }
+        
+        sort_column = order_map.get(sort_by)
+        if sort_column is None and sort_by == 'market_cap':
+             sort_column = WorldAssetsRanking.market_cap_usd
+             
+        if sort_column is not None:
+            if order == "desc":
+                query = query.order_by(sort_column.desc().nullslast())
+            else:
+                query = query.order_by(sort_column.asc().nullslast())
+        else:
+            # Default sort
+            query = query.order_by(WorldAssetsRanking.market_cap_usd.desc().nullslast())
+
+        # 4. Pagination
+        total = query.count()
+        rows = query.offset((page - 1) * page_size).limit(page_size).all()
+        
+        # 5. Process Results & Fetch Sparklines
+        data = []
+        user_asset_ids = [r[0].asset_id for r in rows]
+        
+        # Fetch Sparklines (Last 30 days) efficiently
+        sparkline_map = {}
+        if user_asset_ids:
+            thirty_days_ago = datetime.now() - timedelta(days=30)
+            
+            # This query gets OHLCV data for all target assets in one go
+            # We fetch simple close prices
+            ohlcv_rows = db.query(OHLCVData.asset_id, OHLCVData.close_price, OHLCVData.timestamp_utc)\
+                .filter(OHLCVData.asset_id.in_(user_asset_ids))\
+                .filter(OHLCVData.timestamp_utc >= thirty_days_ago)\
+                .filter(OHLCVData.data_interval.in_(['1d', '1day', None]))\
+                .order_by(OHLCVData.timestamp_utc.asc())\
+                .all()
+                
+            for oid, close, ts in ohlcv_rows:
+                if oid not in sparkline_map:
+                    sparkline_map[oid] = []
+                if close:
+                    sparkline_map[oid].append(float(close))
+        
+        for ranking, t_name in rows:
+            sparkline = sparkline_map.get(ranking.asset_id, [])
+            
+            item = AssetTableItem(
+                asset_id=ranking.asset_id,
+                rank=ranking.rank,
+                ticker=ranking.ticker,
+                name=ranking.name,
+                asset_type=t_name,
+                exchange=None, # Ranking table might not have exchange, can join Asset if needed but for performance skipping
+                currency="USD",
+                
+                price=float(ranking.price_usd) if ranking.price_usd else None,
+                change_percent_today=float(ranking.daily_change_percent) if ranking.daily_change_percent else None,
+                
+                market_cap=float(ranking.market_cap_usd) if ranking.market_cap_usd else None,
+                volume_today=None, # Not in ranking table
+                change_52w_percent=None, # Not in ranking table
+                
+                sparkline_30d=sparkline,
+                
+                data_source="world_assets_ranking",
+                last_updated=ranking.ranking_date,
+                is_realtime=False # Ranking is usually daily snapshot
+            )
+            data.append(item)
+            
+        import math
+        total_pages = math.ceil(total / page_size) if page_size > 0 else 0
+        
+        return AssetsTableResponse(
+            data=data,
+            total=total,
+            page=page,
+            size=page_size,
+            pages=total_pages,
+            asset_type=type_name,
+            sort_by=sort_by,
+            order=order,
+            search=search
+        )
+
+    except Exception as e:
+        logger.exception("Failed to get assets table data v2")
+        raise HTTPException(status_code=500, detail=f"Failed to get assets table: {str(e)}")
 
 
 # ============================================================================

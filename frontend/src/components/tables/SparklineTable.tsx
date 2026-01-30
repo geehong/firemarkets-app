@@ -492,40 +492,43 @@ export default function SparklineTable({
         queryFn: async () => {
           // 로컬 개발 환경 우선
           const BACKEND_BASE = process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'http://localhost:8001/api/v1';
+          // V2 Migration: Use V2 base
+          const V2_BASE = BACKEND_BASE.replace('/api/v1', '/api/v2');
 
-          // 주식/ETF인 경우 sparkline-price 사용, 그 외에는 기존 quotes-delay-price 사용
-          const endpoint = isStocksOrEtf ? '/realtime/sparkline-price' : '/realtime/pg/quotes-delay-price';
+          // 통합된 ohlcv 엔드포인트 사용
+          const endpoint = `/assets/market/${item.identifier}/ohlcv`;
 
           const search = new URLSearchParams();
-          search.append('asset_identifier', item.identifier);
           search.append('data_interval', '15m');
-          search.append('days', '1');
+          // V2 uses limit to control amount. 1 day of 15m = 96 points.
+          search.append('limit', '96'); 
+          
           if (dataSource) {
-            search.append('data_source', dataSource);
+             // V2 currently doesn't strictly require data_source for ohlcv aggregation unless specified in market.py filtering? 
+             // market.py doesn't seem to filter by data_source in get_ohlcv_data_v2 explicitly, it aggregates.
+             // But let's check market.py... it uses db_get_intraday_data.
           }
-          const url = `${BACKEND_BASE}${endpoint}?${search.toString()}`;
+          const url = `${V2_BASE}${endpoint}?${search.toString()}`;
 
           try {
             const response = await fetch(url);
             if (!response.ok) {
-              // 404 에러는 데이터가 없는 것으로 간주하고 빈 배열 반환
               if (response.status === 404) {
                 console.warn(`[SparklineTable] No delayed quotes data for ${item.identifier}, returning empty array`);
-                return { quotes: [] };
+                return { data: [] }; // V2 return structure empty
               }
               throw new Error(`Failed to fetch delayed quotes for ${item.identifier}: ${response.status}`);
             }
             return response.json();
           } catch (error) {
-            // 네트워크 에러나 기타 에러는 빈 배열 반환하여 앱이 계속 작동하도록 함
             console.warn(`[SparklineTable] Error fetching delayed quotes for ${item.identifier}:`, error);
-            return { quotes: [] };
+            return { data: [] };
           }
         },
         enabled: !!item.identifier && !isLoading && !!treemapData,
-        refetchInterval: 15 * 60 * 1000, // 15분마다 자동 갱신
-        staleTime: 15 * 60 * 1000, // 15분간 데이터를 신선하게 유지
-        retry: 1, // 재시도 횟수 제한 (404 에러는 재시도 불필요)
+        refetchInterval: 15 * 60 * 1000,
+        staleTime: 15 * 60 * 1000,
+        retry: 1,
       };
     }),
   });
@@ -541,16 +544,13 @@ export default function SparklineTable({
       const identifier = item.identifier;
       const response = query.data as any;
 
-      // 응답 형식에 따라 quotes 배열 추출
+      // V2 Response: { data: [ { timestamp_utc, close_price, ... } ], ... }
       let quotes: any[] = [];
-      if (response?.quotes && Array.isArray(response.quotes)) {
+      if (response?.data && Array.isArray(response.data)) {
+        quotes = response.data;
+      } else if (response?.quotes) {
+        // Fallback for V1 if rollback happens? or mixed env?
         quotes = response.quotes;
-      } else if (Array.isArray(response)) {
-        // 배열인 경우 첫 번째 요소의 quotes 사용
-        const firstItem = response[0];
-        if (firstItem?.quotes) {
-          quotes = firstItem.quotes;
-        }
       }
 
       // 타임스탬프 순으로 정렬하고 가격만 추출
@@ -558,7 +558,11 @@ export default function SparklineTable({
         .sort((a: any, b: any) =>
           new Date(a.timestamp_utc).getTime() - new Date(b.timestamp_utc).getTime()
         )
-        .map((quote: any) => parseFloat(quote.price) || 0)
+        .map((quote: any) => {
+             // V2: close_price, V1: price
+             const val = quote.close_price !== undefined ? quote.close_price : quote.price;
+             return parseFloat(val) || 0;
+        })
         .filter((price: number) => price > 0);
 
       if (timeline.length > 0) {

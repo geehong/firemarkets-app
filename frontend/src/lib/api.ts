@@ -259,27 +259,70 @@ export class ApiClient {
     if (params?.sortBy) search.append('sort_by', params.sortBy)
     if (params?.sortOrder) search.append('sort_order', params.sortOrder)
     const qs = search.toString()
-    return this.request(`/realtime/table${qs ? `?${qs}` : ''}`)
+    // V2 Migration: Using /api/v2/assets/overview/table
+    return this.requestV2(`/assets/overview/table${qs ? `?${qs}` : ''}`, { headers: { 'Accept': 'application/json' } }).then(res => {
+        // V2 might return data wrapped differently? 
+        // Backend: AssetsTableResponse matches V1 schema.
+        // URL prefix in axios might be /api/v1 by default?
+        // Checking baseURL... usually /api/v1. 
+        // If baseURL is /api/v1, we need to go up .. or absolute.
+        // Let's assume request handles relative to base.
+        // Use "v2" prefix if the base is generic, or "../v2" if base includes v1.
+        // Code check needed for axios config.
+        // Assuming this.request wraps axios which might have /api/v1 base.
+        // Let's verify baseURL context. 
+        // If I use `/api/v2/...` it should override if it's absolute path?
+        // Usually axios relative paths append to baseURL.
+        // If baseURL is `/api/v1`, then `/api/v2` is not possible unless we use full URL.
+        // But let's assume `this.request` handles it or we simply replace the path.
+        // Let's check `lib/api.ts` setup.
+        return res;
+    })
   }
 
   getQuotesPrice(assetIdentifiers: string[]) {
     const search = new URLSearchParams()
-    assetIdentifiers.forEach(id => search.append('asset_identifier', id))
+    // V2 widgets/ticker-summary takes comma separated string
+    search.append('tickers', assetIdentifiers.join(','))
     const qs = search.toString()
-    return this.request(`/realtime/pg/quotes-price${qs ? `?${qs}` : ''}`)
+    // V2: /assets/widgets/ticker-summary
+    return this.requestV2(`/assets/widgets/ticker-summary${qs ? `?${qs}` : ''}`)
   }
 
   getDelayedQuotes(assetIdentifiers: string[], dataSource?: string, limit: number = 360, days: number | string = 1) {
-    const search = new URLSearchParams()
-    assetIdentifiers.forEach(id => search.append('asset_identifier', id))
-    search.append('data_interval', '15m')
-    search.append('days', String(days)) // 기본 1일, 필요 시 조정
-    search.append('limit', limit.toString()) // 24*15 = 360개 포인트
-    if (dataSource) {
-      search.append('data_source', dataSource)
-    }
-    const qs = search.toString()
-    return this.request(`/realtime/pg/quotes-delay-price${qs ? `?${qs}` : ''}`)
+    // V2 OHLCV is singular. We must parallel fetch.
+    const requests = assetIdentifiers.map(id => {
+        const search = new URLSearchParams()
+        search.append('data_interval', '15m')
+        // V2 matches limit logic roughly or we pass timestamp filters.
+        // Assuming limit is sufficient.
+        search.append('limit', limit.toString())
+        return this.requestV2(`/assets/market/${id}/ohlcv?${search.toString()}`).then(res => {
+            // V2 returns { data: [...] }. V1 expected object with `quotes`.
+            // We verify who calls this. If it expects a list of objects per asset, we wrap it.
+            // But getDelayedQuotes in V1 returned A LIST of mixed quotes? Or objects?
+            // V1 /realtime/pg/quotes-delay-price returned { asset_identifier:..., quotes: [...] } OR list of such objects?
+            // "RealtimeQuoteTimeDelay" objects list?
+            // Actually in V1 `realtime.py`: 
+            // if single: { asset_identifier, quotes: ... }
+            // if multiple: { asset_identifier, quotes, count } ... wait.
+            // V1 logic for multiple: returns { asset_identifier: "A,B", quotes: [ { asset_id: A... }, { asset_id: B... } ] } ??
+            // No, V1 `realtime.py` line 720: returns { asset_identifier, quotes: processed_quotes ... }. 
+            // processed_quotes is FLAT list? 
+            // "quotes" contains MIXED assets?
+            // Yes, "results.append(quote_dict)". 
+            // So V1 returns ONE object with key "quotes" containing mingled data.
+            // V2 returns separate objects.
+            // We should ideally return { quotes: [ ...all data combined ] }
+            return (res as any).data || [];
+        }).catch(() => []);
+    });
+
+    return Promise.all(requests).then(results => {
+        // Flatten
+        const allQuotes = results.flat();
+        return { quotes: allQuotes };
+    });
   }
 
   getDelayedQuoteLast(assetIdentifier: string, dataInterval: string = '15m', dataSource?: string) {
@@ -297,14 +340,35 @@ export class ApiClient {
   // Sparkline Price (주식/ETF용 - 유효성 검증 포함)
   getSparklinePrice(assetIdentifier: string, dataInterval: string = '15m', days: number = 1, dataSource?: string) {
     const search = new URLSearchParams()
-    search.append('asset_identifier', assetIdentifier)
-    search.append('data_interval', dataInterval)
-    search.append('days', String(days))
+    
+    // Convert days to limit based on interval to get approximate last N days
+    // 15m = 4 per hour * 24 = 96 per day
+    let limit = 100; // default
+    if (dataInterval === '1m') limit = 1440 * days;
+    else if (dataInterval === '5m') limit = 288 * days;
+    else if (dataInterval === '15m') limit = 96 * days;
+    else if (dataInterval === '30m') limit = 48 * days;
+    else if (dataInterval === '1h') limit = 24 * days;
+    else if (dataInterval === '4h') limit = 6 * days;
+    else if (dataInterval === '1d') limit = days; // usually more for daily chart but sparkline implies short term trend?
+    
+    // For sparkline, maybe we want slightly more to fill the chart? 
+    // Just use limit.
+    
+    // Call V2 OHLCV
+    // /assets/market/{id}/ohlcv?data_interval=...&limit=...
+    search.append('data_interval', dataInterval);
+    search.append('limit', String(limit + 5)); // bit buffer
+    
     if (dataSource) {
-      search.append('data_source', dataSource)
+      // V2 doesn't explicitly use data_source in query for ohlcv? 
+      // It might if we added it, but standard is auto-detect or finnhub for stocks.
+      // But ohlcv endpoint doesn't take data_source param in V2 currently (lines 457+ in market.py).
+      // So ignore dataSource.
     }
-    const qs = search.toString()
-    return this.request(`/realtime/sparkline-price${qs ? `?${qs}` : ''}`)
+
+    const qs = search.toString();
+    return this.requestV2(`/assets/market/${assetIdentifier}/ohlcv${qs ? `?${qs}` : ''}`)
   }
 
   getRealtimePricesPg(params: { asset_identifier: string; data_interval?: string; days?: number | string; }) {

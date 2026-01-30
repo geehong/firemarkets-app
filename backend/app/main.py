@@ -105,7 +105,7 @@ app.include_router(analysis.router, prefix="/api/v1/analysis", tags=["analysis"]
 app.include_router(external_apis.router, prefix="/api/v1/external-apis", tags=["external-apis"])
 
 # v2 API 엔드포인트 (모듈화된 자산 API)
-app.include_router(api_v2_router, prefix="/api/v2", tags=["v2"])
+app.include_router(api_v2_router, prefix="/api/v2")
 
 @app.get("/")
 async def root():

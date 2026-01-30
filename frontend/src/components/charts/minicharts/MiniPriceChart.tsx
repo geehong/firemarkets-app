@@ -213,19 +213,34 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
         baseData = assetData.quotes
           .map((q: any) => {
             const ts = new Date(q.timestamp_utc).getTime()
-            if (!ts || !isFinite(ts)) return null
-            return [ts, parseFloat(q.price)] as [number, number]
+            const val = q.price ?? q.close_price ?? q.close
+            if (!ts || !isFinite(ts) || val === undefined) return null
+            return [ts, parseFloat(String(val))] as [number, number]
           })
           .filter((p: any): p is [number, number] => p !== null)
           .sort((a: [number, number], b: [number, number]) => a[0] - b[0])
       }
     } else if (apiResponse?.quotes && apiResponse.quotes.length > 0) {
-      // apiResponse가 단일 객체인 경우
+      // apiResponse가 단일 객체인 경우 (V1)
       baseData = apiResponse.quotes
         .map((q: any) => {
           const ts = new Date(q.timestamp_utc).getTime()
-          if (!ts || !isFinite(ts)) return null
-          return [ts, parseFloat(q.price)] as [number, number]
+          const val = q.price ?? q.close_price ?? q.close
+          if (!ts || !isFinite(ts) || val === undefined) return null
+          return [ts, parseFloat(String(val))] as [number, number]
+        })
+        .filter((p: any): p is [number, number] => p !== null)
+        .sort((a: [number, number], b: [number, number]) => a[0] - b[0])
+    } else if (apiResponse?.data && Array.isArray(apiResponse.data)) {
+      // apiResponse가 V2 포맷인 경우 ({ data: [...] })
+      baseData = apiResponse.data
+        .map((q: any) => {
+           // V2: timestamp_utc or date? OHLCV usually timestamp_utc
+           const rawTs = q.timestamp_utc || q.date;
+           const ts = new Date(rawTs).getTime();
+           const val = q.price ?? q.close_price ?? q.close ?? q.value;
+           if (!ts || !isFinite(ts) || val === undefined) return null;
+           return [ts, parseFloat(String(val))] as [number, number];
         })
         .filter((p: any): p is [number, number] => p !== null)
         .sort((a: [number, number], b: [number, number]) => a[0] - b[0])
@@ -461,6 +476,29 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
             formatter: function (this: any) {
               const val = Number(this.y)
               if (!isFinite(val)) return ""
+              
+              // 1. 소켓 업데이트로 받은 changePercent/Amount 우선 사용
+              // this.point.options를 통해 원본 객체 접근
+              const opts = this.point?.options as any;
+              const customPct = opts?.changePercent;
+              const customAmt = opts?.changeAmount;
+              
+              if (typeof customPct === 'number' && isFinite(customPct)) {
+                  const sign = customPct > 0 ? "+" : customPct < 0 ? "-" : "";
+                  // customAmt가 숫자가 아니거나 유효하지 않으면 fallback
+                  let diff = typeof customAmt === 'number' ? customAmt : 0;
+                  
+                  // 만약 customAmt가 없으면 prevClosePrice로 역산 시도
+                  if (customAmt === undefined || customAmt === null) {
+                       if (isFiniteNumber(prevClosePrice) && prevClosePrice !== 0) {
+                           diff = val - prevClosePrice;
+                       }
+                  }
+                  
+                  return `$${val.toFixed(2)} (${sign}${Math.abs(customPct).toFixed(2)}%, ${sign}$${Math.abs(diff).toFixed(2)})`
+              }
+
+              // 2. Fallback: 로컬 prevClosePrice 계산
               if (isFiniteNumber(prevClosePrice) && prevClosePrice !== 0) {
                 const diff = val - prevClosePrice
                 const pct = (diff / prevClosePrice) * 100
@@ -590,13 +628,48 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
     try {
       // 전일 종가 대비 상승/하락/보합 판단 및 컬러 결정
       let isRising: boolean | null = null
-      if (isFiniteNumber(realtimePoint[1]) && isFiniteNumber(prevClosePrice)) {
+      let effectiveChangePercent: number | null = null
+      let effectiveChangeAmount: number | null = null
+
+      // 1. 변화율/변화액 로직 (LiveChart와 동일하게 맞춤)
+      if (typeof latestPrice.changePercent === 'number') {
+        // 소켓에서 제공하는 공식 변화율 사용
+        effectiveChangePercent = latestPrice.changePercent
+        
+        // 변화액 계산
+        if (isFiniteNumber(prevClosePrice) && prevClosePrice !== 0) {
+           effectiveChangeAmount = realtimePoint[1] - prevClosePrice
+        } else {
+           effectiveChangeAmount = realtimePoint[1] * (effectiveChangePercent / 100)
+        }
+      } else if (isFiniteNumber(realtimePoint[1]) && isFiniteNumber(prevClosePrice) && prevClosePrice !== 0) {
+        // 소켓 정보 없으면 전일 종가 기반 계산
+        effectiveChangeAmount = realtimePoint[1] - prevClosePrice
+        effectiveChangePercent = (effectiveChangeAmount / prevClosePrice) * 100
+      }
+
+      // 상승/하락 색상 결정 (변화율 기준)
+      if (effectiveChangePercent !== null) {
+          if (effectiveChangePercent > 0) isRising = true
+          else if (effectiveChangePercent < 0) isRising = false
+          else isRising = null
+      } else if (isFiniteNumber(realtimePoint[1]) && isFiniteNumber(prevClosePrice)) {
+        // 변화율 없으면 단순 가격 차이로 (fallback)
         const diff = realtimePoint[1] - prevClosePrice
         if (diff > 0) isRising = true
         else if (diff < 0) isRising = false
         else isRising = null
       }
+
       const lineColor = isRising === null ? '#999999' : (isRising ? '#18c58f' : '#ff4d4f')
+
+      // 포인트에 메타데이터 추가 (changePercent, changeAmount)
+      const pointOptions = {
+          x: realtimePoint[0],
+          y: realtimePoint[1],
+          changePercent: effectiveChangePercent,
+          changeAmount: effectiveChangeAmount
+      }
 
       // 메인 라인 시리즈 업데이트: 마지막 포인트와 이어지도록 동작
       const lineSeries = chartInstanceRef.current.series[0]
@@ -604,15 +677,15 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
         const lastPointObject = lineSeries.data && lineSeries.data.length > 0 ? lineSeries.data[lineSeries.data.length - 1] : null
         if (!lastPointObject) {
           // 첫 번째 포인트인 경우
-          lineSeries.addPoint(realtimePoint, false, false, false)
+          lineSeries.addPoint(pointOptions, false, false, false)
         } else {
           // 동일 버킷 판정: 1분(60000ms) 이내면 업데이트, 초과 시 새 포인트 추가
           const isSameBucket = Math.abs(realtimePoint[0] - lastPointObject.x) < (60 * 1000)
           if (isSameBucket) {
-            // x, y 모두 업데이트하여 라인 끝과 마커가 동일 시각으로 정렬되도록 함
-            lastPointObject.update(realtimePoint, false)
+            // x, y 및 메타데이터 업데이트
+            lastPointObject.update(pointOptions, false)
           } else {
-            lineSeries.addPoint(realtimePoint, false, false, false)
+            lineSeries.addPoint(pointOptions, false, false, false)
           }
         }
       }
@@ -654,19 +727,17 @@ const MiniPriceChart: React.FC<MiniPriceChartProps> = ({
         // 포인트가 있으면 해당 포인트만 업데이트, 없으면 setData
         if (markerSeries.points && markerSeries.points.length > 0) {
           const point = markerSeries.points[0];
-          // 값이나 색상이 다를 때만 업데이트
-          if (point.y !== realtimePoint[1] || point.color !== lineColor) {
-            point.update({
-              x: realtimePoint[0],
-              y: realtimePoint[1],
-              color: lineColor,
-              dataLabels: {
-                style: { color: lineColor }
-              }
-            }, false);
-          }
+          
+          point.update({
+             ...pointOptions, // 포함: x, y, changePercent, changeAmount
+             color: lineColor,
+             dataLabels: {
+               style: { color: lineColor }
+             }
+          }, false);
+          
         } else {
-          markerSeries.setData([realtimePoint], false);
+          markerSeries.setData([pointOptions], false);
         }
 
         // 시리즈 전체 옵션 업데이트는 색상이 실제로 변경되었을 때만 수행하도록 체크하면 좋지만,

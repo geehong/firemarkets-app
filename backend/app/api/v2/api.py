@@ -46,6 +46,6 @@ async def api_v2_root():
 
 # Assets 라우터 등록 (prefix: /assets)
 api_router.include_router(assets_router, prefix="/assets")
-api_router.include_router(fred_router, prefix="/fred")
+api_router.include_router(fred_router, prefix="/fred", tags=["assets-fred-economic-indicators"])
 
 __all__ = ["api_router"]

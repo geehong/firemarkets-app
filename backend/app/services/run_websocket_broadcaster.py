@@ -202,7 +202,7 @@ async def listen_to_redis_and_broadcast():
                                 for message_id, message_data in messages:
                                     symbol = message_data.get(b'symbol', b'').decode('utf-8').upper()
                                     price = message_data.get(b'price', b'').decode('utf-8')
-                                    logger.info(f"📥 [BROADCASTER←REDIS] 메시지 처리: {symbol} = ${price}")
+                                    logger.debug(f"📥 [BROADCASTER←REDIS] 메시지 처리: {symbol} = ${price}")
                         if stream_data:
                             # (stream_name, messages) 튜플을 리스트에 추가
                             all_messages.extend(stream_data)
@@ -295,7 +295,7 @@ async def listen_to_redis_and_broadcast():
                             }
 
                             if sio_client.connected:
-                                logger.info(f"📤 [BROADCASTER→BACKEND] 전송 시도: {symbol} = ${price} (asset_id: {asset_id})")
+                                logger.debug(f"📤 [BROADCASTER→BACKEND] 전송 시도: {symbol} = ${price} (asset_id: {asset_id})")
                                 await sio_client.emit('broadcast_quote', quote_data)
                                 logger.debug(f"✅ [BROADCASTER→BACKEND] 전송 완료: {symbol} = ${price}")
                             else:

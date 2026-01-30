@@ -104,11 +104,9 @@ docker-compose --profile processing stop backend && docker-compose --profile pro
 
 docker-compose restart scheduler
 docker-compose restart backend
-
 docker-compose restart frontend
 docker-compose up -d --build frontend
 npm run build
-
 docker-compose restart nginx-proxy-manager
 docker-compose restart data_processor
 docker-compose restart websocket_orchestrator
@@ -116,11 +114,9 @@ docker-compose restart websocket_broadcaster
 docker-compose restart adminer
 
 
-
-
-
 docker-compose logs data_processor --tail 50 -f
 docker-compose logs websocket_orchestrator --tail 50 -f
+docker-compose logs websocket_broadcaster --tail 50 -f
 docker-compose logs scheduler --tail 50 -f
 docker-compose logs backend --tail 50 -f
 docker-compose logs db_postgres --tail 50 -f

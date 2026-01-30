@@ -184,9 +184,9 @@ export default function ChartsPage() {
                     <ComponentCard title="Multiple Asset Comparison">
                         <div className="h-[650px]">
                             <MultipleComparisonChart
-                                assets={['BTCUSDT', 'SPY', 'GSUSD']}
-                                interval="1d"
-                                height={650}
+                                assets={['MSFT', 'AAPL', 'GOOG']}
+                                compareMode="percent"
+                                height={600}
                             />
                         </div>
                     </ComponentCard>
