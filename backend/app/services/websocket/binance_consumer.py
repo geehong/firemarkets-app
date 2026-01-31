@@ -36,6 +36,11 @@ class BinanceWSConsumer(BaseWSConsumer):
         self.subscribed_tickers = []  # 구독 순서 보장을 위해 List 사용
         self._is_subscribed = False  # 구독 상태 추적
         self._pending_subscription_id = None  # 대기 중인 구독 요청 ID
+        # Throttling: 티커별 마지막 저장 시간 (CPU 절약용)
+        self._last_save_times: dict = {}  # {symbol: timestamp}
+        # Redis 저장 주기 (기본 1초 - 실시간 유지, CPU만 절약)
+        # DB 저장 throttle은 data_processor에서 처리
+        self._save_interval = float(os.getenv("WEBSOCKET_REDIS_SAVE_INTERVAL", "1"))
     
     @property
     def client_name(self) -> str:
@@ -371,65 +376,70 @@ class BinanceWSConsumer(BaseWSConsumer):
             logger.error(f"❌ [BINANCE→HANDLE] 오류 상세: {traceback.format_exc()}")
     
     async def _process_trade(self, trade_data: dict):
-        """거래 데이터 처리"""
+        """거래 데이터 처리 (throttling 적용)"""
         try:
             symbol = trade_data.get('s')
             price = trade_data.get('p')
             quantity = trade_data.get('q')
             trade_time = trade_data.get('T')
             
-            logger.debug(f"🔍 [BINANCE] trade 데이터 수신: symbol={symbol}, price={price}, qty={quantity}")
+            if not symbol or not price:
+                return
             
-            if symbol and price:
-                logger.debug(f"📈 [BINANCE→PROCESS] {symbol}: ${price} (Vol: {quantity})")
-                # Redis에 데이터 저장
-                await self._store_to_redis({
-                    'symbol': symbol,
-                    'price': price,
-                    'volume': quantity,
-                    'timestamp': trade_time,
-                    'provider': self.client_name
-                })
-                
-                logger.debug(f"✅ [BINANCE→PROCESS] 처리 완료: {symbol}: ${price}")
-            else:
-                logger.warning(f"⚠️ [BINANCE→PROCESS] 데이터 누락: symbol={symbol}, price={price}")
+            # Throttling: 티커별 저장 주기 제한 (CPU 절약)
+            current_time = time.time()
+            last_save = self._last_save_times.get(symbol, 0)
+            if current_time - last_save < self._save_interval:
+                return  # 저장 간격 내에 있으면 건너뜀
+            
+            self._last_save_times[symbol] = current_time
+            
+            logger.debug(f"📈 [BINANCE→PROCESS] {symbol}: ${price} (Vol: {quantity})")
+            # Redis에 데이터 저장
+            await self._store_to_redis({
+                'symbol': symbol,
+                'price': price,
+                'volume': quantity,
+                'timestamp': trade_time,
+                'provider': self.client_name
+            })
                 
         except Exception as e:
             logger.error(f"❌ {self.client_name} trade processing error: {e}")
-            import traceback
-            logger.error(f"❌ [BINANCE→PROCESS] 오류 상세: {traceback.format_exc()}")
     
     async def _process_ticker(self, ticker_data: dict):
-        """24시간 티커 데이터 처리"""
+        """24시간 티커 데이터 처리 (throttling 적용 - trade와 별도 키 사용)"""
         try:
             symbol = ticker_data.get('s')
             last_price = ticker_data.get('c')
             volume = ticker_data.get('v')
             event_time = ticker_data.get('E')
             
-            logger.debug(f"🔍 [BINANCE] ticker 데이터 수신: symbol={symbol}, price={last_price}, vol={volume}")
+            if not symbol or not last_price:
+                return
             
-            if symbol and last_price:
-                logger.debug(f"📈 [BINANCE→PROCESS] {symbol}: ${last_price} (Vol24h: {volume})")
-                # Redis에 데이터 저장
-                await self._store_to_redis({
-                    'symbol': symbol,
-                    'price': last_price,
-                    'volume': volume,
-                    'timestamp': event_time,
-                    'provider': self.client_name,
-                    'type': 'ticker'
-                })
-                
-                logger.debug(f"✅ [BINANCE→PROCESS] 처리 완료: {symbol}: ${last_price}")
-            else:
-                logger.warning(f"⚠️ [BINANCE→PROCESS] 데이터 누락: symbol={symbol}, price={last_price}")
+            # Throttling: 티커별 저장 주기 제한 (ticker 이벤트용 별도 키)
+            ticker_key = f"{symbol}:ticker"
+            current_time = time.time()
+            last_save = self._last_save_times.get(ticker_key, 0)
+            if current_time - last_save < self._save_interval:
+                return  # 저장 간격 내에 있으면 건너뜀
+            
+            self._last_save_times[ticker_key] = current_time
+            
+            logger.debug(f"📈 [BINANCE→PROCESS] {symbol}: ${last_price} (Vol24h: {volume})")
+            # Redis에 데이터 저장
+            await self._store_to_redis({
+                'symbol': symbol,
+                'price': last_price,
+                'volume': volume,
+                'timestamp': event_time,
+                'provider': self.client_name,
+                'type': 'ticker'
+            })
                 
         except Exception as e:
             logger.error(f"❌ {self.client_name} ticker processing error: {e}")
-            import traceback
-            logger.error(f"❌ [BINANCE→PROCESS] 오류 상세: {traceback.format_exc()}")
     
     def _get_next_id(self) -> int:
         """다음 요청 ID 생성"""

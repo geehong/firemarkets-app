@@ -474,7 +474,7 @@ class WebSocketOrchestrator:
                         _filter_by_type(available_consumers),
                         asset_type,
                         provider_filters={
-                            'alpaca': (lambda t: False),  # Alpaca는 ETF만
+                            'alpaca': (lambda t: True),  # Alpaca도 주식 지원 허용 (Finnhub 가득 찼을 때 대비)
                             'finnhub': (lambda t: finnhub_filter(t) and (t in finnhub_allowed))
                         }
                     )

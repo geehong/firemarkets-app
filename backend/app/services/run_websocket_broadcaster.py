@@ -168,55 +168,51 @@ async def listen_to_redis_and_broadcast():
                     logger.debug("[Broadcaster] Refreshing asset cache...")
                     await _refresh_asset_cache()
 
-                # 각 스트림을 순회하며 데이터 읽기
-                all_messages = []
-                for stream_name, group_name in realtime_streams.items():
-                    try:
-                        # 연결 확인 및 대기 로직 추가
-                        if not sio_client.connected:
-                            logger.warning("⚠️ 백엔드와 연결되지 않음. 재연결 대기 중... (메시지 처리 일시 중지)")
-                            while not sio_client.connected:
-                                await asyncio.sleep(1)
-                            logger.info("✅ 백엔드 재연결 완료! 메시지 처리 재개.")
+                # 연결 확인 및 대기 로직
+                if not sio_client.connected:
+                    logger.warning("⚠️ 백엔드와 연결되지 않음. 재연결 대기 중... (메시지 처리 일시 중지)")
+                    while not sio_client.connected:
+                        await asyncio.sleep(1)
+                    logger.info("✅ 백엔드 재연결 완료! 메시지 처리 재개.")
 
-                        # 스트림 존재 여부 확인
-                        stream_exists = await redis_client.exists(stream_name)
-                        if not stream_exists:
-                            logger.debug(f"📭 스트림 '{stream_name}'이 존재하지 않음, 건너뜀")
+                # 모든 스트림에서 데이터 읽기 (CPU 최적화)
+                # block=1000으로 최대 1초 대기, 메시지 없으면 다음 스트림으로
+                all_messages = []
+                try:
+                    for stream_name, group_name in realtime_streams.items():
+                        try:
+                            stream_data = await redis_client.xreadgroup(
+                                groupname=group_name,
+                                consumername="broadcaster",
+                                streams={stream_name: ">"},
+                                count=1000,  # 배치 크기 증가
+                                block=1000  # 1초 대기 (메시지 있으면 즉시 반환)
+                            )
+                            if stream_data:
+                                for stream_name_bytes, messages in stream_data:
+                                    stream_name_str = stream_name_bytes.decode('utf-8') if isinstance(stream_name_bytes, bytes) else str(stream_name_bytes)
+                                    logger.debug(f"📥 [BROADCASTER←REDIS] 스트림 '{stream_name_str}'에서 {len(messages)}개 메시지 수신")
+                                all_messages.extend(stream_data)
+                        except exceptions.ResponseError as e:
+                            if "NOGROUP" in str(e):
+                                logger.warning(f"⚠️ Consumer Group '{group_name}'가 스트림 '{stream_name}'에 존재하지 않음. 재생성 시도...")
+                                try:
+                                    await redis_client.xgroup_create(name=stream_name, groupname=group_name, id="$", mkstream=True)
+                                    logger.info(f"✅ Consumer Group '{group_name}' 재생성 완료 (최신 위치에서 시작)")
+                                except Exception as recreate_error:
+                                    logger.error(f"❌ Consumer Group 재생성 실패: {recreate_error}")
+                            else:
+                                logger.error(f"스트림 '{stream_name}' 읽기 오류: {e}")
                             continue
-                            
-                        logger.debug(f"[Broadcaster] XREADGROUP from '{stream_name}' as '{group_name}'...")
-                        # 각 스트림에서 개별적으로 데이터 읽기
-                        stream_data = await redis_client.xreadgroup(
-                            groupname=group_name,
-                            consumername="broadcaster",
-                            streams={stream_name: ">"},
-                            count=100,
-                            block=10  # 짧은 블로킹 시간
-                        )
-                        logger.debug(f"[Broadcaster] XREADGROUP result for '{stream_name}': {len(stream_data) if stream_data else 0} batches")
-                        if stream_data:
-                            for stream_name_bytes, messages in stream_data:
-                                stream_name_str = stream_name_bytes.decode('utf-8') if isinstance(stream_name_bytes, bytes) else str(stream_name_bytes)
-                                logger.debug(f"📥 [BROADCASTER←REDIS] 스트림 '{stream_name_str}'에서 {len(messages)}개 메시지 수신")
-                                for message_id, message_data in messages:
-                                    symbol = message_data.get(b'symbol', b'').decode('utf-8').upper()
-                                    price = message_data.get(b'price', b'').decode('utf-8')
-                                    logger.debug(f"📥 [BROADCASTER←REDIS] 메시지 처리: {symbol} = ${price}")
-                        if stream_data:
-                            # (stream_name, messages) 튜플을 리스트에 추가
-                            all_messages.extend(stream_data)
-                    except exceptions.ResponseError as e:
-                        if "NOGROUP" in str(e):
-                            logger.warning(f"⚠️ Consumer Group '{group_name}'가 스트림 '{stream_name}'에 존재하지 않음. 재생성 시도...")
-                            try:
-                                await redis_client.xgroup_create(name=stream_name, groupname=group_name, id="0", mkstream=True)
-                                logger.info(f"✅ Consumer Group '{group_name}' 재생성 완료")
-                            except Exception as recreate_error:
-                                logger.error(f"❌ Consumer Group 재생성 실패: {recreate_error}")
-                        else:
-                            logger.error(f"스트림 '{stream_name}' 읽기 오류: {e}", exc_info=True)
-                        continue
+                except Exception as read_error:
+                    logger.error(f"스트림 읽기 중 오류: {read_error}")
+                    await asyncio.sleep(2)
+                    continue
+
+                # 메시지가 없으면 짧게 대기 후 계속 (block=1000이므로 이미 대기함)
+                if not all_messages:
+                    await asyncio.sleep(0.1)  # 짧은 대기 후 다음 루프
+                    continue
 
                 for stream_name_bytes, messages in all_messages:
                     stream_name = stream_name_bytes.decode('utf-8') if isinstance(stream_name_bytes, bytes) else stream_name_bytes

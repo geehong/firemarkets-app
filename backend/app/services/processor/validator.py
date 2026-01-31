@@ -12,62 +12,26 @@ class DataValidator:
     """
     def __init__(self):
         self.price_ranges = self._initialize_price_ranges()
+        self._ticker_cache: Dict[int, str] = {}
 
     def _initialize_price_ranges(self) -> Dict[str, tuple]:
         """자산별 가격 범위 초기화 (최소값, 최대값)"""
-        return {
-            # ETF
-            'QQQ': (400, 800),      # QQQ: 400-800달러
-            'SPY': (300, 700),      # SPY: 300-700달러
-            'IWM': (150, 300),      # IWM: 150-300달러
-            'VTI': (200, 300),      # VTI: 200-300달러
-            
-            # Tech Stocks
-            'AAPL': (100, 300),     # AAPL: 100-300달러
-            'MSFT': (200, 500),     # MSFT: 200-500달러
-            'GOOGL': (100, 200),    # GOOGL: 100-200달러
-            'AMZN': (100, 200),     # AMZN: 100-200달러
-            'META': (200, 500),     # META: 200-500달러
-            'NVDA': (100, 1000),    # NVDA: 100-1000달러
-            'TSLA': (100, 500),     # TSLA: 100-500달러
-            'NFLX': (300, 800),     # NFLX: 300-800달러
-            
-            # Financial
-            'JPM': (100, 200),      # JPM: 100-200달러
-            'BAC': (20, 50),        # BAC: 20-50달러
-            'WFC': (30, 80),        # WFC: 30-80달러
-            
-            # Healthcare
-            'JNJ': (140, 200),      # JNJ: 140-200달러
-            'PFE': (20, 60),        # PFE: 20-60달러
-            'UNH': (400, 600),      # UNH: 400-600달러
-            
-            # Energy
-            'XOM': (80, 150),       # XOM: 80-150달러
-            'CVX': (100, 200),      # CVX: 100-200달러
-            
-            # Consumer
-            'WMT': (120, 200),      # WMT: 120-200달러
-            'PG': (130, 180),       # PG: 130-180달러
-            'KO': (50, 80),         # KO: 50-80달러
-            
-            # Crypto (USD 기준)
-            'BTC': (20000, 100000), # BTC: 20K-100K달러
-            'ETH': (1000, 10000),   # ETH: 1K-10K달러
-            
-            # Commodities
-            'GOLD': (1800, 2500),   # GOLD: 1800-2500달러
-            'SILVER': (20, 50),     # SILVER: 20-50달러
-        }
+        return {}
 
     def _get_asset_ticker(self, asset_id: int) -> Optional[str]:
-        """자산 ID로 티커 조회"""
+        """자산 ID로 티커 조회 (캐시 적용)"""
+        if asset_id in self._ticker_cache:
+            return self._ticker_cache[asset_id]
+
         try:
             # PostgreSQL에서 직접 조회
             pg_db = next(get_postgres_db())
             try:
                 asset = pg_db.query(Asset).filter(Asset.asset_id == asset_id).first()
-                return asset.ticker if asset else None
+                if asset:
+                    self._ticker_cache[asset_id] = asset.ticker
+                    return asset.ticker
+                return None
             finally:
                 pg_db.close()
         except Exception as e:
@@ -111,6 +75,7 @@ class DataValidator:
         try:
             asset_id = record_data.get('asset_id')
             price = record_data.get('price')
+            ticker = record_data.get('ticker')
             data_source = record_data.get('data_source', 'unknown')
             
             # 기본 데이터 검증
@@ -119,10 +84,10 @@ class DataValidator:
                 return False
             
             # 가격 범위 검증
-            if not self.validate_price_range(asset_id, price):
+            if not self.validate_price_range(asset_id, price, ticker=ticker):
                 return False
             
-            logger.debug(f"✅ 실시간 인용 검증 통과: asset_id={asset_id}, price={price:.2f}, source={data_source}")
+            logger.debug(f"✅ 실시간 인용 검증 통과: asset_id={asset_id}, ticker={ticker}, price={price:.2f}, source={data_source}")
             return True
             
         except Exception as e:

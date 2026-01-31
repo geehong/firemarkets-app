@@ -35,6 +35,11 @@ class FinnhubWSConsumer(BaseWSConsumer):
         # 재연결을 위한 원래 티커 목록 저장
         self.original_tickers = set()
         self.subscribed_tickers = []  # 구독 순서 보장을 위해 List 사용
+        # Throttling: 티커별 마지막 저장 시간 (CPU 절약용)
+        self._last_save_times: dict = {}  # {symbol: timestamp}
+        # Redis 저장 주기 (기본 1초 - 실시간 유지, CPU만 절약)
+        # DB 저장 throttle은 data_processor에서 처리
+        self._save_interval = float(os.getenv("WEBSOCKET_REDIS_SAVE_INTERVAL", "1"))
     
     @property
     def client_name(self) -> str:
@@ -227,7 +232,7 @@ class FinnhubWSConsumer(BaseWSConsumer):
                 logger.debug(f"➡️  {self.client_name} send subscribe payload: {subscribe_msg}")
                 await self.websocket.send(json.dumps(subscribe_msg))
                 self.subscribed_tickers.append(norm)  # List로 순서 보장
-                logger.debug(f"📋 {self.client_name} subscribed to {norm}")
+                logger.info(f"📋 {self.client_name} subscribed to {norm}")
                 sent_count += 1
             
             logger.info(f"✅ {self.client_name} subscribe done: sent={sent_count}, unique_now={len(set(self.subscribed_tickers))}")
@@ -360,14 +365,13 @@ class FinnhubWSConsumer(BaseWSConsumer):
     async def _handle_message(self, data: dict):
         """메시지 처리 - 주기적 저장 필터링"""
         try:
-            # 저장 주기 체크
-            current_time = time.time()
-            if current_time - self.last_save_time < self.consumer_interval:
-                # 아직 저장 시간이 되지 않았으면 메시지만 받고 저장하지 않음
-                return
+            # 저장 주기 체크 로직 제거 - 모든 메시지 처리
+            # current_time = time.time()
+            # if current_time - self.last_save_time < self.consumer_interval:
+            #     return
             
-            # 저장 시간이 되었으면 데이터 처리
-            self.last_save_time = current_time
+            # 모든 메시지 처리
+            self.last_save_time = time.time()
             
             if data.get('type') == 'trade':
                 # 거래 데이터 처리
@@ -413,24 +417,35 @@ class FinnhubWSConsumer(BaseWSConsumer):
             # 메시지 처리 오류가 발생해도 연결은 유지
     
     async def _process_trade(self, trade: dict):
-        """거래 데이터 처리"""
+        """거래 데이터 처리 (throttling 적용)"""
         try:
             symbol = trade.get('s')
             price = trade.get('p')
             volume = trade.get('v')
             timestamp = trade.get('t')
             
-            if symbol and price:
-                # Redis에 데이터 저장
-                await self._store_to_redis({
-                    'symbol': symbol,
-                    'price': price,
-                    'volume': volume,
-                    'timestamp': timestamp,
-                    'provider': self.client_name
-                })
-                
-                logger.debug(f"📈 {self.client_name} {symbol}: ${price} (Vol: {volume})")
+            if not symbol or not price:
+                return
+            
+            # Throttling: 티커별 저장 주기 제한 (CPU 절약)
+            current_time = time.time()
+            last_save = self._last_save_times.get(symbol, 0)
+            if current_time - last_save < self._save_interval:
+                return  # 저장 간격 내에 있으면 건너뜀
+            
+            self._last_save_times[symbol] = current_time
+            
+            # Redis에 데이터 저장
+            await self._store_to_redis({
+                'symbol': symbol,
+                'price': price,
+                'volume': volume,
+                'timestamp': timestamp,
+                'provider': self.client_name
+            })
+            
+            if symbol in ['MSFT', 'NVDA', 'AAPL', 'GOOG', 'PLTR', 'LLY', 'V', 'MA', 'AMX', 'BIDU']:
+                logger.info(f"📈 [DEBUG-FH-RECV] {self.client_name} {symbol}: ${price} (Vol: {volume})")
                 
         except Exception as e:
             logger.error(f"❌ {self.client_name} trade processing error: {e}")

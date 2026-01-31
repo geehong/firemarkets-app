@@ -15,13 +15,14 @@ class StreamConsumer:
         self.repository = repository
         self.batch_size = batch_size
         self.realtime_streams = {
-            # High priority: Active WebSocket streams with frequent updates
+            # Highest priority: Stocks (Finnhub)
+            "finnhub:realtime": "finnhub_group",
+            "alpaca:realtime": "alpaca_group",
+            # Crypto
             "binance:realtime": "binance_group",
             "coinbase:realtime": "coinbase_group",
+            # FX/Other
             "swissquote:realtime": "swissquote_group",
-            # Lower priority: May have timeouts or less frequent updates
-            "alpaca:realtime": "alpaca_group",
-            "finnhub:realtime": "finnhub_group",
         }
 
     async def connect(self) -> bool:
@@ -78,32 +79,26 @@ class StreamConsumer:
 
             # 각 스트림별로 개별 처리 (각 스트림마다 다른 consumer group 사용)
             # 고우선순위 스트림(binance, coinbase)은 짧은 blocking으로 처리
-            high_priority_streams = {"binance:realtime", "coinbase:realtime"}
             for stream_name, group_name in self.realtime_streams.items():
                 try:
-                    # 고우선순위 스트림은 50ms blocking, 나머지는 non-blocking
-                    block_time = 50 if stream_name in high_priority_streams else 0
+                    # Use a consistent blocking time for all streams for efficiency
+                    block_time = 100 
                     
-                    # Timeout 보호 (최대 500ms)
-                    new_data = await asyncio.wait_for(
-                        self.redis_client.xreadgroup(
-                            groupname=group_name,
-                            consumername="processor_worker",
-                            streams={stream_name: ">"},
-                            count=self.batch_size,
-                            block=block_time
-                        ),
-                        timeout=0.5
+                    new_data = await self.redis_client.xreadgroup(
+                        groupname=group_name,
+                        consumername="processor_worker",
+                        streams={stream_name: ">"},
+                        count=self.batch_size,
+                        block=block_time
                     )
+                    
                     if new_data:
                         total_messages = sum(len(msgs) for _, msgs in new_data)
                         if total_messages > 0:
                             logger.info(f"📨 스트림 {stream_name}에서 {total_messages}개 메시지 읽음")
                         await self._process_messages(new_data, records_to_save, ack_items)
-                except asyncio.TimeoutError:
-                    logger.warning(f"스트림 {stream_name} 읽기 timeout")
                 except Exception as stream_error:
-                    # 에러 발생해도 다음 스트림 처리 계속
+                    # Log error and continue to next stream
                     logger.warning(f"스트림 {stream_name} 읽기 실패: {stream_error}")
             
             # 데이터가 없으면 추가 대기로 CPU 부하 완화
@@ -114,7 +109,8 @@ class StreamConsumer:
 
             # DB 저장
             if records_to_save:
-                logger.info(f"💾 DB 저장 시도: {len(records_to_save)}개 레코드")
+                tickers_in_batch = [r.get('ticker') for r in records_to_save]
+                logger.info(f"💾 DB 저장 시도: {len(records_to_save)}개 레코드 (Tickers: {tickers_in_batch[:10]}{'...' if len(tickers_in_batch) > 10 else ''})")
                 success = await self.repository.bulk_save_realtime_quotes(records_to_save)
                 if success:
                     processed_count = len(records_to_save)
@@ -167,6 +163,12 @@ class StreamConsumer:
                             ack_items.append((stream_name, group_name, message_id))
                             continue
                         
+                        # Ticker resolution tracing
+                        if ticker in ['MSFT', 'NVDA', 'AAPL', 'TSLA', 'META', 'GOOG', 'PLTR', 'BIDU', 'AMX', 'LLY', 'V', 'MA', 'WMT', 'NFLX', 'JPM']:
+                             in_map = ticker in self.ticker_to_asset_id
+                             mapped_id = self.ticker_to_asset_id.get(ticker) if in_map else "None"
+                             logger.info(f"🧐 [DP-TRACE] Resolving {ticker}: In Map? {in_map}, ID: {mapped_id}")
+
                         # Ticker normalization: try original first, then try without USDT suffix
                         asset_id = None
                         if hasattr(self, 'ticker_to_asset_id'):
@@ -208,6 +210,7 @@ class StreamConsumer:
                                     self._missing_ticker_counts = {}
                                 count = self._missing_ticker_counts.get(ticker, 0) + 1
                                 self._missing_ticker_counts[ticker] = count
+                                
                                 if count == 1 or count % 100 == 0:
                                     logger.warning(f"⚠️ Asset ID를 찾을 수 없음. Ticker: {ticker} (맵 크기: {len(self.ticker_to_asset_id)}, 발생: {count}회)")
                             # ACK는 해야 하나? 실패한 메시지는 ACK해서 넘어가야 함.

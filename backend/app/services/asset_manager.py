@@ -27,6 +27,7 @@ class Asset:
     has_etf_info: bool = False
     # WebSocket consumer preferences
     preferred_websocket_consumer: Optional[str] = None
+    is_preferred: bool = False
     
     @property
     def asset_type(self) -> AssetType:
@@ -76,7 +77,8 @@ class AssetManager:
                         a.is_active,
                         a.collection_settings->>'websocket_consumer' as preferred_websocket_consumer,
                         EXISTS(SELECT 1 FROM stock_financials sf WHERE sf.asset_id = a.asset_id) AS has_financials,
-                        EXISTS(SELECT 1 FROM etf_info ei WHERE ei.asset_id = a.asset_id) AS has_etf_info
+                        EXISTS(SELECT 1 FROM etf_info ei WHERE ei.asset_id = a.asset_id) AS has_etf_info,
+                        COALESCE(a.collection_settings->>'is_preferred', 'false') as is_preferred
                     FROM assets a
                     WHERE a.is_active = TRUE
                       AND (
@@ -92,11 +94,14 @@ class AssetManager:
 
                 assets: List[Asset] = []
                 for row in rows:
-                    ticker, name, asset_type_id, data_source, exchange, currency, is_active, preferred_websocket_consumer, has_financials, has_etf_info = row
+                    ticker, name, asset_type_id, data_source, exchange, currency, is_active, preferred_websocket_consumer, has_financials, has_etf_info, is_preferred = row
                     # ETF는 안전하게 has_etf_info를 True로 보정 (테이블 누락 대비)
                     inferred_has_etf_info = bool(has_etf_info)
                     if asset_type_id == 5 and not inferred_has_etf_info:
                         inferred_has_etf_info = True
+                    
+                    # Convert 'true' string to boolean True, else False
+                    is_preferred_bool = str(is_preferred).lower() in ('true', '1', 'yes')
 
                     assets.append(Asset(
                         ticker=ticker,
@@ -108,9 +113,13 @@ class AssetManager:
                         is_active=bool(is_active),
                         has_financials=bool(has_financials),
                         has_etf_info=inferred_has_etf_info,
-                        preferred_websocket_consumer=preferred_websocket_consumer
+                        preferred_websocket_consumer=preferred_websocket_consumer,
+                        is_preferred=is_preferred_bool
                     ))
 
+                # Sort assets: Preferred first, then alphabetical
+                assets.sort(key=lambda x: (not x.is_preferred, x.ticker))
+                
                 # 캐시 저장
                 self._cache[cache_key] = assets
                 logger.info(f"Loaded {len(assets)} active assets from database")

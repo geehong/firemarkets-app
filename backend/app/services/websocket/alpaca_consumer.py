@@ -41,6 +41,7 @@ class AlpacaWSConsumer(BaseWSConsumer):
         self._run_lock = asyncio.Lock()
         self._recv_lock = asyncio.Lock()
         self._is_running_task = False
+        self.last_save_time = 0
     
     @property
     def client_name(self) -> str:
@@ -123,8 +124,15 @@ class AlpacaWSConsumer(BaseWSConsumer):
                     websockets.connect(self.ws_url, ping_interval=20, ping_timeout=20),
                     timeout=60.0  # 60초 타임아웃
                 )
+                
+                # Consume welcome message: [{"T":"success","msg":"connected"}]
+                welcome_msg = await asyncio.wait_for(self._ws.recv(), timeout=10)
+                logger.debug(f"Alpaca welcome message: {welcome_msg}")
+                
                 # 인증 전송
                 await self._ws.send(json.dumps({"action": "auth", "key": self.api_key, "secret": self.secret_key}))
+                
+                # Read auth response: [{"T":"success","msg":"authenticated"}]
                 resp = await asyncio.wait_for(self._ws.recv(), timeout=10)
                 try:
                     auth_msg = json.loads(resp)
@@ -132,7 +140,17 @@ class AlpacaWSConsumer(BaseWSConsumer):
                     auth_msg = resp
                 
                 # 인증 실패 확인
-                if isinstance(auth_msg, dict) and auth_msg.get('T') == 'error':
+                # Alpaca auth response can be a list or a dict
+                is_auth_success = False
+                if isinstance(auth_msg, list) and len(auth_msg) > 0:
+                    first_msg = auth_msg[0]
+                    if first_msg.get('T') == 'success' and first_msg.get('msg') == 'authenticated':
+                        is_auth_success = True
+                elif isinstance(auth_msg, dict):
+                    if auth_msg.get('T') == 'success' and auth_msg.get('msg') == 'authenticated':
+                        is_auth_success = True
+                
+                if not is_auth_success:
                     logger.error(f"❌ Alpaca authentication failed: {auth_msg}")
                     failed_key = self.current_key_info.get('key', 'unknown') if self.current_key_info else "unknown"
                     self.api_key_manager.mark_key_failed(self.current_key_info)
@@ -263,7 +281,6 @@ class AlpacaWSConsumer(BaseWSConsumer):
             
             # 수신 주기 설정 (기본 15초)
             self.consumer_interval = int(GLOBAL_APP_CONFIGS.get("WEBSOCKET_CONSUMER_INTERVAL_SECONDS", 15))
-            self.last_save_time = time.time()
             logger.info(f"⏰ {self.client_name} 저장 주기: {self.consumer_interval}초")
             
             max_reconnect_attempts = 5
@@ -348,11 +365,11 @@ class AlpacaWSConsumer(BaseWSConsumer):
             subscribe_msg = {
                 "action": "subscribe", 
                 "trades": tickers,
-                "quotes": tickers,
-                "bars": tickers
+                "quotes": tickers
+                # bars is removed for stability in free tier
             }
             await self._ws.send(json.dumps(subscribe_msg))
-            logger.info(f"📋 {self.client_name} subscribed trades/quotes/bars: {tickers}")
+            logger.info(f"📋 {self.client_name} subscribed trades/quotes: {tickers}")
         except Exception as e:
             logger.warning(f"❌ subscribe send failed: {e}")
     
@@ -364,18 +381,18 @@ class AlpacaWSConsumer(BaseWSConsumer):
             return
         
         # 폐장 시간 디버깅을 위한 로깅 추가
-        logger.debug(f"📨 {self.client_name} received message: {msg}")
+        logger.info(f"📨 {self.client_name} received message: {msg}")
         
         # 저장 주기 체크
         current_time = time.time()
         if current_time - self.last_save_time < self.consumer_interval:
             # 아직 저장 시간이 되지 않았으면 메시지만 받고 저장하지 않음
-            logger.debug(f"⏰ {self.client_name} skipping message due to interval ({current_time - self.last_save_time:.1f}s < {self.consumer_interval}s)")
+            # logger.debug(f"⏰ {self.client_name} skipping message due to interval ({current_time - self.last_save_time:.1f}s < {self.consumer_interval}s)")
             return
         
         # 저장 시간이 되었으면 데이터 처리
         self.last_save_time = current_time
-        logger.debug(f"✅ {self.client_name} processing message after interval")
+        logger.info(f"✅ {self.client_name} processing message after interval")
         
         # 메시지는 리스트 형태로 배달되는 경우가 많음
         if isinstance(msg, list):
@@ -441,7 +458,7 @@ class AlpacaWSConsumer(BaseWSConsumer):
                     'timestamp': ts_ms,
                     'provider': self.client_name,
                 })
-                logger.debug(f"💾 {self.client_name} stored: {symbol} = ${price}")
+                logger.info(f"💾 {self.client_name} stored: {symbol} = ${price}")
             else:
                 logger.debug(f"⚠️ {self.client_name} invalid data: symbol={symbol}, price={price}")
                 

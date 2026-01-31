@@ -158,9 +158,13 @@ class DataProcessor:
                 stream_count = await self.stream_consumer.process_streams()
                 if stream_count > 0:
                     self.stats["processed_count"] += stream_count
-                    logger.info(f"📈 실시간 데이터 처리: {stream_count}개 레코드")
-                # 스트림 처리 간격 (process_streams 내부에서 이미 대기하므로 짧게)
-                await asyncio.sleep(0.1)
+                    # log every 100th success to reduce spam
+                    if self.stats["processed_count"] % 100 == 0:
+                         logger.info(f"📈 실시간 데이터 처리: {stream_count}개 레코드 (총 {self.stats['processed_count']})")
+                    # Don't sleep if we processed data!
+                else:
+                    # 스트림 처리 간격 (process_streams 내부에서 이미 대기하므로 짧게)
+                    await asyncio.sleep(0.01)
             except asyncio.CancelledError:
                 logger.info("📡 실시간 스트림 처리 루프 종료")
                 break
@@ -183,6 +187,15 @@ class DataProcessor:
             try:
                 assets = pg_db.query(Asset.ticker, Asset.asset_id).all()
                 asset_map = {ticker: asset_id for ticker, asset_id in assets}
+                
+                # Verify specific mappings for debugging
+                check_tickers = ['BIDU', 'WMT', 'NFLX', 'AAPL', 'NVDA', 'GOOG']
+                for t in check_tickers:
+                    if t in asset_map:
+                        logger.info(f"📍 [MAP-VERIFY] {t} -> {asset_map[t]}")
+                    else:
+                        logger.warning(f"📍 [MAP-VERIFY] {t} is MISSING in map!")
+                
                 self.stream_consumer.set_asset_map(asset_map)
                 logger.info(f"자산 맵 갱신 완료: {len(asset_map)}개")
             finally:

@@ -26,8 +26,7 @@ services:
       - app_network
       - shared-network
     healthcheck:
-      test:
-        ["CMD-SHELL", "pg_isready -U ${DB_USERNAME_PG} -d ${DB_DATABASE_PG}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USERNAME_PG} -d ${DB_DATABASE_PG}" ]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -37,7 +36,7 @@ services:
   adminer:
     image: adminer:latest
     container_name: fire_markets_adminer
-    restart: unless-stopped
+    restart: unless-stoppede
     ports:
       - "5054:8080"
     environment:
@@ -69,7 +68,7 @@ services:
       - app_network
       - shared-network
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      test: [ "CMD-SHELL", "redis-cli ping | grep PONG" ]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -118,7 +117,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -129,30 +128,19 @@ services:
     tmpfs:
       - /app/logs
     # 개발 모드에서 자동 리로드 활성화
-    command:
-      [
-        "uvicorn",
-        "app.main:app",
-        "--host",
-        "0.0.0.0",
-        "--port",
-        "8000",
-        "--reload",
-        "--log-level",
-        "info",
-      ]
+    command: [ "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--log-level", "info" ]
     mem_limit: 1.5g
     memswap_limit: 1.5g
     networks:
       - app_network
       - shared-network
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     stdin_open: true
     tty: true
     logging:
@@ -163,7 +151,7 @@ services:
 
   # --- 독립 스케줄러 서비스 추가 ---
   scheduler:
-    profiles: ["processing"]
+    profiles: [ "processing" ]
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -199,7 +187,7 @@ services:
       - ./backend:/app:delegated
     tmpfs:
       - /app/logs
-    command: ["python", "-m", "app.services.run_scheduler"]
+    command: [ "python", "-m", "app.services.run_scheduler" ]
     healthcheck:
       disable: true
     mem_limit: 1.5g
@@ -207,13 +195,13 @@ services:
     networks:
       - app_network
       - shared-network
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     logging:
       driver: "json-file"
       options:
@@ -222,7 +210,7 @@ services:
 
   # --- 데이터 프로세서 (Processing 프로필) ---
   data_processor:
-    profiles: ["processing"]
+    profiles: [ "processing" ]
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -247,7 +235,7 @@ services:
       - ./backend:/app:delegated
     tmpfs:
       - /app/logs
-    command: ["python", "-m", "app.services.run_data_processor"]
+    command: [ "python", "-m", "app.services.run_data_processor" ]
     healthcheck:
       disable: true
     mem_limit: 512m
@@ -263,7 +251,7 @@ services:
 
   # --- WebSocket 오케스트레이터 (Processing 프로필) ---
   websocket_orchestrator:
-    profiles: ["processing"]
+    profiles: [ "processing" ]
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -297,6 +285,7 @@ services:
       WEBSOCKET_BINANCE_ENABLED: "1"
       WEBSOCKET_TIINGO_ENABLED: "0"
       WEBSOCKET_FINNHUB_ENABLED: "1"
+      WEBSOCKET_ALPACA_ENABLED: "0" # Disabled due to Free tier symbol limits
     depends_on:
       redis:
         condition: service_healthy
@@ -305,12 +294,7 @@ services:
       - ./backend:/app
     tmpfs:
       - /app/logs
-    command:
-      [
-        "sh",
-        "-c",
-        "cd /app && python -m app.services.run_websocket_orchestrator",
-      ]
+    command: [ "sh", "-c", "cd /app && python -m app.services.run_websocket_orchestrator" ]
     healthcheck:
       disable: true
     mem_limit: 512m
@@ -326,7 +310,7 @@ services:
 
   # --- (신규) WebSocket 브로드캐스터 ---
   websocket_broadcaster:
-    profiles: ["processing"]
+    profiles: [ "processing" ]
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -352,7 +336,7 @@ services:
       - ./backend:/app
     tmpfs:
       - /app/logs
-    command: ["python", "-m", "app.services.run_websocket_broadcaster"]
+    command: [ "python", "-m", "app.services.run_websocket_broadcaster" ]
     healthcheck:
       disable: true
     mem_limit: 512m
