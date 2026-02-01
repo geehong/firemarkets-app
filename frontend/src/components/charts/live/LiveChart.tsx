@@ -203,7 +203,7 @@ const LiveChart: React.FC<LiveChartProps> = ({
             const assetData = apiResponse.find((item: any) => item.asset_identifier === assetIdentifier)
             if (assetData?.quotes && assetData.quotes.length > 0) {
                 baseData = assetData.quotes
-                .map((q: any) => {
+                    .map((q: any) => {
                         const ts = new Date(q.timestamp_utc).getTime()
                         const val = q.price ?? q.close_price ?? q.close
                         if (!ts || !isFinite(ts) || val === undefined) return null
@@ -429,35 +429,27 @@ const LiveChart: React.FC<LiveChartProps> = ({
 
         // Create the chart only if not exists
         if (!chartRef.current) {
-             const chart = Highcharts.stockChart(containerRef.current, options)
-             chartRef.current = chart
+            const chart = Highcharts.stockChart(containerRef.current, options)
+            chartRef.current = chart
         } else {
-            // If chart exists, just update data if needed (though Series logic handles this below)
-            // Ideally we shouldn't re-create chart on every chartData change if we can help it.
-            // But here chartData is in deps. 
-            // We'll let the next effect handle updates.
-            // Actually, re-creating chart on EVERY chartData change is bad if chartData changes often.
-            // But chartData comes from `useDelayedQuotes` which updates every 15m or so?
-            // Wait, useMemo for chartData depends on `apiResponse`.
-            // The issue is `latestPrice` changes often -> `generateTitleHTML` changes often.
-            // But `generateTitleHTML` is in dependencies of THIS useEffect? NO.
-            // Wait, `generateTitleHTML` IS used in `options`.
-            // If this useEffect depends on `generateTitleHTML`, then chart re-creates on every price tick!
-            // THAT IS THE CAUSE OF FLICKERING.
+            // Update data if chart exists
+            if (chartRef.current.series && chartRef.current.series[0]) {
+                chartRef.current.series[0].setData(chartData, true)
+            }
         }
 
         // Cleanup function
         return () => {
-             // Don't destroy chart on every render, only on unmount (empty deps ideally)
-             // But we are inside a dep array [isClient, Highcharts, chartData].
-             // We should decouple title updates from chart creation.
+            // Don't destroy chart on every render, only on unmount (empty deps ideally)
+            // But we are inside a dep array [isClient, Highcharts, chartData].
+            // We should decouple title updates from chart creation.
         }
     }, [isClient, Highcharts, chartData]) // REMOVED generateTitleHTML from deps
 
     // Title 업데이트 - Efficiently update title only
     useEffect(() => {
         if (!chartRef.current) return
-        
+
         chartRef.current.setTitle({
             text: generateTitleHTML,
             useHTML: true
