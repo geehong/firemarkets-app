@@ -36,7 +36,7 @@ services:
   adminer:
     image: adminer:latest
     container_name: fire_markets_adminer
-    restart: unless-stoppede
+    restart: unless-stopped
     ports:
       - "5054:8080"
     environment:
@@ -128,9 +128,8 @@ services:
     tmpfs:
       - /app/logs
     # 개발 모드에서 자동 리로드 활성화
-    command: [ "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--log-level", "info" ]
-    mem_limit: 1.5g
-    memswap_limit: 1.5g
+    mem_limit: 2.5g
+    memswap_limit: 2.5g
     networks:
       - app_network
       - shared-network
@@ -140,7 +139,7 @@ services:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
+              capabilities: [ gpu ]
     stdin_open: true
     tty: true
     logging:
@@ -201,7 +200,7 @@ services:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
+              capabilities: [ gpu ]
     logging:
       driver: "json-file"
       options:

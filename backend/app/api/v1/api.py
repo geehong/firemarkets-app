@@ -20,7 +20,10 @@ from .endpoints import (
     auth,
     auth,
     analysis,
-    sentiment_stats
+    auth,
+    analysis,
+    sentiment_stats,
+    posts
 )
 from .external_apis import router as external_apis_router
 from app.schemas.common import ApiV1RootResponse
@@ -54,7 +57,7 @@ api_router.include_router(crypto.router, tags=["crypto"])
 api_router.include_router(dashboard.router, tags=["dashboard"])
 api_router.include_router(etf.router, tags=["etf"])
 api_router.include_router(logs.router, tags=["logs"])
-api_router.include_router(onchain.router, tags=["onchain"])
+api_router.include_router(onchain.router, prefix="/onchain", tags=["onchain"])
 api_router.include_router(scheduler.router, tags=["scheduler"])
 api_router.include_router(collectors.router, tags=["collectors"])
 api_router.include_router(admin.router, tags=["admin"])
@@ -64,6 +67,7 @@ api_router.include_router(realtime.router, prefix="/realtime", tags=["realtime"]
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(sentiment_stats.router, prefix="/sentiment-check", tags=["sentiment-stats"])
 api_router.include_router(analysis.router, prefix="/analysis", tags=["analysis"])
+api_router.include_router(posts.router, prefix="/posts", tags=["posts"])
 
 
 # External APIs router

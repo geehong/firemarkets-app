@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import auth
 from app.api.v1.api import api_router as api_v1_router
+from app.api.v2.api import api_router as api_v2_router
 from app.core.database import engine
 from app.models.asset import User, UserSession, TokenBlacklist, AuditLog
 from app.core.cache import setup_cache
@@ -53,6 +54,7 @@ async def startup_event():
 # 라우터 등록
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(api_v1_router, prefix="/api/v1")
+app.include_router(api_v2_router, prefix="/api/v2")
 
 @app.get("/")
 async def root():

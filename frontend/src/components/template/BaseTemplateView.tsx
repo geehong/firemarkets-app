@@ -71,9 +71,7 @@ const BaseTemplateView: React.FC<BaseTemplateViewProps> = ({
     // Default to first tab
     const [activeTab, setActiveTab] = useState<string>(tabs[0]?.id || '')
 
-    if (header) {
-        console.log('[BaseTemplateView Debug] header:', header);
-    }
+
 
     return (
         <div className="space-y-6">

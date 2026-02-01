@@ -216,7 +216,13 @@ def _format_ohlcv_rows(rows):
     
     res = []
     
+    seen_timestamps = set()
+    
     for row in sorted_rows:
+        if row.timestamp_utc in seen_timestamps:
+            continue
+        seen_timestamps.add(row.timestamp_utc)
+
         if isinstance(row, RealtimeQuoteTimeDelay):
             res.append({
                 'timestamp_utc': row.timestamp_utc,
@@ -455,6 +461,17 @@ def get_ohlcv_data_v2(
     - **limit**: 최대 반환 개수
     """
     try:
+        # Data Interval Normalization
+        norm_int = data_interval.lower().strip()
+        if norm_int in ['1m', '1month', '1mo']:
+            data_interval = '1M'
+        elif norm_int in ['min', '1min']:
+            data_interval = '1m'
+        elif norm_int in ['1d', '1day']:
+            data_interval = '1d'
+        elif norm_int in ['1w', '1week']:
+            data_interval = '1W'
+
         asset_id = resolve_asset_identifier(db, asset_identifier)
         interval_upper = data_interval.upper()
         
@@ -494,20 +511,39 @@ def get_ohlcv_data_v2(
             
              latest_unified = get_latest_unified_data(db, asset_id)
              
-             if latest_unified and latest_unified['timestamp_utc'] > last_ts:
-                 ts = latest_unified['timestamp_utc']
-                 logger.info(f"[OHLCV] '{asset_identifier}' 1d: attaching unified latest {ts} (Price: {latest_unified['close_price']})")
+             if latest_unified:
+                 unified_ts = latest_unified['timestamp_utc']
+                 # 1d normalization: Force to 00:00:00
+                 ts_normalized = unified_ts.replace(hour=0, minute=0, second=0, microsecond=0)
                  
-                 data.append({
-                     'timestamp_utc': ts,
+                 # Logic: If data is empty OR last data is older than normalized unified, APPEND
+                 # If last data is SAME date as normalized unified, UPDATE (replace) with unified (more recent info)
+                 
+                 unified_candle = {
+                     'timestamp_utc': ts_normalized,
                      'open_price': float(latest_unified['open_price']) if latest_unified['open_price'] else None,
                      'high_price': float(latest_unified['high_price']) if latest_unified['high_price'] else None,
                      'low_price': float(latest_unified['low_price']) if latest_unified['low_price'] else None,
                      'close_price': float(latest_unified['close_price']) if latest_unified['close_price'] else None,
                      'volume': float(latest_unified['volume']) if latest_unified['volume'] else 0,
                      'change_percent': float(latest_unified['change_percent']) if latest_unified['change_percent'] else None,
-                     'data_interval': '1d' # marked as 1d
-                 })
+                     'data_interval': '1d'
+                 }
+
+                 if not data:
+                     data.append(unified_candle)
+                 else:
+                     last_ts = data[-1]['timestamp_utc']
+                     # Ensure last_ts is also normalized (it should be from get_daily_data_combined)
+                     last_ts_norm = last_ts.replace(hour=0, minute=0, second=0, microsecond=0)
+                     
+                     if ts_normalized > last_ts_norm:
+                         logger.info(f"[OHLCV] '{asset_identifier}' 1d: attaching NEW unified latest {ts_normalized} (Price: {unified_candle['close_price']})")
+                         data.append(unified_candle)
+                     elif ts_normalized == last_ts_norm:
+                         # Update existing today's candle with latest info
+                         logger.info(f"[OHLCV] '{asset_identifier}' 1d: UPDATING existing latest {ts_normalized} (Price: {unified_candle['close_price']})")
+                         data[-1] = unified_candle
 
         # 3. 리샘플링/합성 (15m, 30m, 1h, 4h)
         elif data_interval in ['15m', '30m', '1h', '4h']:
