@@ -193,7 +193,7 @@ class BitcoinDataClient(OnChainAPIClient):
         """
         return None
 
-    async def get_metric(self, metric_name: str, days: int = None, asset_id: int = None) -> Optional[List[CryptoMetricsData]]:
+    async def get_metric(self, metric_name: str, days: int = None, asset_id: int = None, start_date: str = None) -> Optional[List[CryptoMetricsData]]:
         """
         Fetch a specific onchain metric.
         Used by OnchainCollector via ApiStrategyManager.
@@ -202,6 +202,8 @@ class BitcoinDataClient(OnChainAPIClient):
             metric_name: Name of the metric (snake_case)
             days: Number of days to fetch (defaults to 1 for latest)
             asset_id: Asset ID for the resulting data models
+            start_date: Optional start date (YYYY-MM-DD) to fetch data from. 
+                       If provided, acts as pagination to fetch data strictly AFTER this date.
         
         Returns:
             List of CryptoMetricsData objects
@@ -223,7 +225,7 @@ class BitcoinDataClient(OnChainAPIClient):
                 'lth_realized_price': {'endpoint': 'lth-realized-price', 'field': ['lthRealizedPrice', 'lth_realized_price']},
                 'etf_btc_flow': {'endpoint': 'etf-flow-btc', 'field': ['etfFlow']},
                 'etf_btc_total': {'endpoint': 'etf-btc-total', 'field': ['etfBtcTotal', 'etf_btc_total']},
-                'hodl_waves_supply': {'endpoint': 'hodl-waves-supply', 'field': ['hodlWavesSupply', 'hodl_waves_supply']},
+                'hodl_waves_supply': {'endpoint': 'hodl-waves-supply', 'field': []},  # Field is distribution object
                 'cdd_90dma': {'endpoint': 'cdd-90dma', 'field': ['cdd90dma', 'cdd_90dma']},
                 # New metrics for expanded collection
                 'mvrv': {'endpoint': 'mvrv', 'field': ['mvrv']},
@@ -250,12 +252,29 @@ class BitcoinDataClient(OnChainAPIClient):
             info = metric_map[metric_name]
             endpoint = info['endpoint']
             
-            # Default to fetching latest 1 record if days not specified
-            # The API 'size' parameter controls how many records to fetch (descending sort by default)
-            size = days if days else 1
+            # Prepare query parameters
+            query_params = {}
             
+            # Use start_date if provided (this helps to skip massive amount of old data)
+            # The API supports 'startday' parameter (YYYY-MM-DD)
+            if start_date:
+                query_params['startday'] = start_date
+                # When using startday, we might still want to limit result size, but 'days' logic 
+                # usually meant "last N days". If start_date is used, 'days' might be confusing.
+                # Let's set a reasonable high limit if not specified, or use days as limit if provided.
+                query_params['size'] = days if days else 2000 
+                logger.info(f"Fetching {metric_name} with start_date={start_date} (size={query_params['size']})")
+            else:
+                # Default behavior: fetch last N records
+                # By default the API returns data in descending order OR ascending depending on endpoint
+                # For endpoints that return ascending (oldest first), fetching last N requires careful logic
+                # unless API supports sorting. We assume 'size' usually gets us what we want 
+                # or we just get what we get.
+                size = days if days else 1
+                query_params['size'] = size
+
             async with httpx.AsyncClient() as client:
-                data = await self._fetch_standard(client, endpoint, {'size': size})
+                data = await self._fetch_standard(client, endpoint, query_params)
                 
                 if not data:
                     logger.warning(f"No data returned for {metric_name}")
@@ -286,19 +305,41 @@ class BitcoinDataClient(OnChainAPIClient):
                         if not ts:
                             continue
                         
-                        # Find the value
+                        # Special handling for hodl_waves_supply (Distribution Object)
+                        if metric_name == 'hodl_waves_supply':
+                             # Extract all age_* keys and format as distribution dict
+                             hodl_dist = {}
+                             for k, v in item.items():
+                                 if k.startswith('age_'):
+                                     # Remove 'age_' prefix to match expected schema (e.g. '0d_1d')
+                                     key_name = k.replace('age_', '')
+                                     try:
+                                         if v is not None:
+                                            hodl_dist[key_name] = float(v)
+                                     except (ValueError, TypeError):
+                                         pass
+                             
+                             if hodl_dist:
+                                 # Create metrics object with distribution
+                                 metric_obj = CryptoMetricsData(
+                                     asset_id=safe_asset_id,
+                                     timestamp_utc=ts,
+                                     hodl_age_distribution=hodl_dist,
+                                     # Also set a scalar value if needed, but likely we just want the dist.
+                                     # The schema has hodl_waves_supply as float, but it's actually a concept.
+                                     # We will leave hodl_waves_supply scalar as None or 0.
+                                     hodl_waves_supply=0.0 
+                                 )
+                                 metrics_list.append(metric_obj)
+                             continue
+
+                        # Standard scalar value extraction
                         val = None
                         for f in info['field']:
                             if f in item and item[f] is not None:
                                 val = item[f]
                                 break
                         
-                        # Handle special case for open_interest_futures (dict/JSON)
-                        if metric_name == 'open_interest_futures' and val is None:
-                             # For this one, the item itself might be the container or fields are top level
-                             # But let's assume standard structure. If not found, skip.
-                             pass
-
                         if val is None:
                             # Try generic value keys if specific keys not found
                             val = item.get('value') or item.get('v')
@@ -306,7 +347,6 @@ class BitcoinDataClient(OnChainAPIClient):
                                 continue
                         
                         # Construct data model
-                        # We only populate the specific field for this metric
                         kwargs = {
                             'asset_id': safe_asset_id,
                             'timestamp_utc': ts,

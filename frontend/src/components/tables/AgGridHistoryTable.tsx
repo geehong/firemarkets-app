@@ -79,7 +79,7 @@ export default function AgGridHistoryTable({ assetIdentifier = 'BTCUSDT', dataIn
   }, [baseRows, startDate, endDate])
 
   const columnDefs = useMemo(() => ([
-    { field: 'Date', headerName: 'Date', minWidth: 120, sort: 'desc', valueFormatter: (p: any) => p.value ? new Date(p.value).toISOString().split('T')[0] : '' },
+    { field: 'Date', headerName: 'Date', minWidth: 120, sort: 'desc', valueFormatter: (p: any) => p.value ? p.value.split('T')[0] : '' },
     { field: 'Price', headerName: 'Price', minWidth: 120, valueFormatter: (p: any) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(p.value) },
     { field: 'Change_Percent', headerName: 'Change', minWidth: 120, valueFormatter: (p: any) => p.value == null ? '' : `${p.value >= 0 ? '+' : ''}${Number(p.value).toFixed(2)}%`, cellStyle: (p: any) => ({ color: p.value >= 0 ? '#007c32' : '#d91400', fontWeight: 700 }) },
     { field: 'Open', headerName: 'Open', minWidth: 120, valueFormatter: (p: any) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(p.value) },

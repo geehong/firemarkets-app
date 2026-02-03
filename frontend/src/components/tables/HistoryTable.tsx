@@ -143,7 +143,11 @@ export default function HistoryTable({
                 Volume: Number(item.volume) || 0,
             }
             // AG Grid takes care of sorting, but sorting here ensures consistency before merge
-        }).sort((a: OhlcvRow, b: OhlcvRow) => new Date(b.Date).getTime() - new Date(a.Date).getTime())
+        }).sort((a: OhlcvRow, b: OhlcvRow) => {
+            const dateA = new Date(a.Date.endsWith('Z') ? a.Date : a.Date + 'Z').getTime();
+            const dateB = new Date(b.Date.endsWith('Z') ? b.Date : b.Date + 'Z').getTime();
+            return dateB - dateA;
+        })
     }, [data])
 
     // 히스토리(API) + 오늘(todayRow)을 합친 최종 rows
@@ -162,7 +166,7 @@ export default function HistoryTable({
             const tDate = todayDateStr.split('T')[0]
 
             if (latestRowDate === tDate) {
-                // Update latest row with real-time data
+                // Update latest row with real-time data if timestamps match (same day)
                 return [todayRow, ...baseRows.slice(1)]
             } else {
                 // Append today's data
@@ -214,9 +218,11 @@ export default function HistoryTable({
                 minWidth: 120,
                 sort: 'desc', // Default sort
                 comparator: (valueA, valueB) => {
-                    return new Date(valueA).getTime() - new Date(valueB).getTime();
+                    const dateA = new Date(valueA.endsWith('Z') ? valueA : valueA + 'Z').getTime();
+                    const dateB = new Date(valueB.endsWith('Z') ? valueB : valueB + 'Z').getTime();
+                    return dateA - dateB;
                 },
-                valueFormatter: (p: any) => p.value ? new Date(p.value).toISOString().split('T')[0].replace(/-/g, '.') : ''
+                valueFormatter: (p: any) => p.value ? p.value.split('T')[0].replace(/-/g, '.') : ''
             },
             {
                 field: 'Price',

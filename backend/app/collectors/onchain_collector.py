@@ -118,10 +118,17 @@ class OnchainCollector(BaseCollector):
                 # 수집할 일수(days) 계산
                 # 기본 30일, 공백이 길면 그만큼 더 많이
                 days_to_fetch = 30
+                start_date_str = None
+                
                 if latest_date:
                     # latest_date could be a date or datetime object depending on SQLAlchemy version/driver
                     current_date = datetime.utcnow().date()
                     target_date = latest_date.date() if hasattr(latest_date, 'date') else latest_date
+                    
+                    # Calculate start date (target_date + 1 day)
+                    next_date = target_date + timedelta(days=1)
+                    start_date_str = next_date.strftime('%Y-%m-%d')
+                    
                     days_gap = (current_date - target_date).days
                     if days_gap > 30:
                         days_to_fetch = days_gap + 3 # 여유분 추가
@@ -131,10 +138,10 @@ class OnchainCollector(BaseCollector):
                 # API 최대 `size` 제한 고려 (보통 1000~수천 가능하지만 적절히 제한)
                 if days_to_fetch > 2000: days_to_fetch = 2000
 
-                self.logging_helper.log_info(f"Smart Collection for {metric_name}: Last data {latest_date}, fetching {days_to_fetch} days.")
+                self.logging_helper.log_info(f"Smart Collection for {metric_name}: Last data {latest_date}, fetching {days_to_fetch} days. Start date: {start_date_str}")
 
                 result = await self.process_with_semaphore(
-                    self._fetch_and_enqueue_for_metric(metric_name, days=days_to_fetch)
+                    self._fetch_and_enqueue_for_metric(metric_name, days=days_to_fetch, start_date=start_date_str)
                 )
                 results.append(result)
                 
@@ -167,19 +174,20 @@ class OnchainCollector(BaseCollector):
             self.logging_helper.log_error(f"Error finding Bitcoin asset ID: {e}")
             return None
 
-    async def _fetch_and_enqueue_for_metric(self, metric_name: str, days: int = None) -> Dict[str, Any]:
+    async def _fetch_and_enqueue_for_metric(self, metric_name: str, days: int = None, start_date: str = None) -> Dict[str, Any]:
         """
         Fetches data for a single onchain metric and enqueues it.
         """
         try:
-            self.logging_helper.log_info(f"[OnchainCollector] 메트릭 '{metric_name}' 수집 시작 (asset_id: {self.bitcoin_asset_id}, days: {days})")
+            self.logging_helper.log_info(f"[OnchainCollector] 메트릭 '{metric_name}' 수집 시작 (asset_id: {self.bitcoin_asset_id}, days: {days}, start_date: {start_date})")
             
             # 3. 데이터 가져오라고 시키기 (ApiStrategyManager 사용)
             # 동적 Limit 시스템 사용 (다른 클라이언트들과 동일)
             metric_data: List[OnchainMetricDataPoint] = await self.api_manager.get_onchain_metric(
                 metric_name=metric_name,
                 asset_id=self.bitcoin_asset_id,
-                days=days  # Smart Collection에서 계산된 days 전달
+                days=days,  # Smart Collection에서 계산된 days 전달
+                start_date=start_date
             )
 
             if not metric_data:

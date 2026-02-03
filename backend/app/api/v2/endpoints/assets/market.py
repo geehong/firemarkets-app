@@ -187,8 +187,8 @@ def db_get_delay_data(
     rows = query.order_by(RealtimeQuoteTimeDelay.timestamp_utc.desc()).limit(limit).all()
     return sorted(rows, key=lambda x: x.timestamp_utc)
 
-def _fill_missing_change_percent(data_list: List[Dict]) -> List[Dict]:
-    """리스트 내의 Dict 데이터에서 change_percent가 없는 경우 이전 종가(prev_close)를 기준으로 계산하여 채움"""
+def _recalculate_change_percent(data_list: List[Dict]) -> List[Dict]:
+    """리스트 내의 Dict 데이터의 change_percent를 이전 종가(prev_close)를 기준으로 강제 재계산함 (DB 값 무시)"""
     # Sort just in case, though usually already sorted
     sorted_data = sorted(data_list, key=lambda x: x['timestamp_utc'])
     
@@ -196,10 +196,9 @@ def _fill_missing_change_percent(data_list: List[Dict]) -> List[Dict]:
     
     for row in sorted_data:
         close_p = row.get('close_price')
-        change_p = row.get('change_percent')
         
-        # Calculate if missing
-        if change_p is None and prev_close is not None and prev_close > 0 and close_p is not None:
+        # Always calculate if prev_close exists (ignore DB value)
+        if prev_close is not None and prev_close > 0 and close_p is not None:
              # Calculate and update in place
              change_p = round(((close_p - prev_close) / prev_close) * 100, 4)
              row['change_percent'] = change_p
@@ -249,7 +248,7 @@ def _format_ohlcv_rows(rows):
     # Use helper to fill any missing change_percent (though _format_ohlcv_rows usually handles raw data, this is safe)
     # Note: The previous logic inside here was removing the need for this, but to be consistent with 
     # the new plan where we do it at the end, we can use the helper here too for simple calls.
-    return _fill_missing_change_percent(res)
+    return _recalculate_change_percent(res)
 
 
     return aggregated
@@ -296,7 +295,7 @@ def get_daily_data_combined(db, asset_id, start_date, end_date, limit):
             unique_final[ts] = d
     
     merged_data = sorted(unique_final.values(), key=lambda x: x['timestamp_utc'])
-    return _fill_missing_change_percent(merged_data)
+    return _recalculate_change_percent(merged_data)
 
 
 def aggregate_to_weekly_v2(daily_data: List[Dict]) -> List[Dict]:
@@ -575,7 +574,7 @@ def get_ohlcv_data_v2(
                     unique_final[ts] = d
             
             data = sorted(unique_final.values(), key=lambda x: x['timestamp_utc'])
-            data = _fill_missing_change_percent(data)
+            data = _recalculate_change_percent(data)
 
         # 4. 그 외 (1m 등)
         else:

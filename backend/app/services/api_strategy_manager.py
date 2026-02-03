@@ -1410,13 +1410,13 @@ class ApiStrategyManager:
             self.logger.error(f"All API clients failed to fetch crypto info for {ticker}. No specific error information available. Last error: {last_exception}")
         return None
 
-    async def get_onchain_metric(self, metric_name: str, asset_id: int = None, days: int = None) -> Optional[Dict[str, Any]]:
+    async def get_onchain_metric(self, metric_name: str, asset_id: int = None, days: int = None, start_date: str = None) -> Optional[Dict[str, Any]]:
         """
         온체인 메트릭 데이터를 가져오는 메서드 (수집기용)
         동적 Limit 시스템 사용 (다른 클라이언트들과 동일)
         """
-        # days가 None이면 동적으로 계산
-        if days is None:
+        # days가 None이면 동적으로 계산 (start_date가 없는 경우에만)
+        if days is None and start_date is None:
             # DB 설정에서 historical_days 가져오기
             from app.models import AppConfiguration, CryptoMetric
             from app.core.database import get_postgres_db
@@ -1464,16 +1464,25 @@ class ApiStrategyManager:
                     self.logger.info(f"Using dynamic limit for onchain metric {metric_name}: {days} days")
             finally:
                 db.close()
-
         
+        # start_date가 있으면 days는 None이어도 상관없거나, 혹은 days가 있으면 limit으로 쓰일 수도 있음.
+        # BitcoinDataClient는 days를 limit으로, start_date를 startday 파라미터로 처리하도록 구현 예정.
+
         for i, client in enumerate(self.onchain_clients):
             try:
-                self.logger.info(f"Attempting to fetch onchain metric {metric_name} using {client.__class__.__name__} (attempt {i+1}/{len(self.onchain_clients)}) with {days} days")
+                self.logger.info(f"Attempting to fetch onchain metric {metric_name} using {client.__class__.__name__} (attempt {i+1}/{len(self.onchain_clients)}) with days={days}, start_date={start_date}")
                 if hasattr(client, 'get_metric'):
-                    data = await client.get_metric(metric_name, days=days, asset_id=asset_id)
+                    # start_date 인자 추가
+                    if 'start_date' in client.get_metric.__code__.co_varnames:
+                        data = await client.get_metric(metric_name, days=days, asset_id=asset_id, start_date=start_date)
+                    else:
+                        data = await client.get_metric(metric_name, days=days, asset_id=asset_id)
 
                 elif hasattr(client, 'get_onchain_metric'):
-                    data = await client.get_onchain_metric(metric_name, days=days)
+                    if 'start_date' in client.get_onchain_metric.__code__.co_varnames:
+                        data = await client.get_onchain_metric(metric_name, days=days, start_date=start_date)
+                    else:
+                        data = await client.get_onchain_metric(metric_name, days=days)
                 else:
                     self.logger.warning(f"{client.__class__.__name__} has no onchain metric method")
                     continue
