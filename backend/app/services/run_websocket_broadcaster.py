@@ -24,33 +24,46 @@ import socketio
 project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from app.core.config import GLOBAL_APP_CONFIGS, load_and_set_global_configs
-from app.utils.helpers import safe_float
+from dotenv import load_dotenv
 
-# 로깅 설정 (환경변수로 상세 로그 제어)
+# Project root setup
+project_root = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+# Load .env
+load_dotenv(dotenv_path=project_root / '.env')
+
+# Helpers
+def safe_float(value):
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
+
+# Configuration
 verbose = os.getenv("BROADCASTER_VERBOSE", "false").lower() == "true"
 log_level = logging.DEBUG if verbose else logging.INFO
 
 logging.basicConfig(level=log_level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
-import sys
-_sh = logging.StreamHandler(sys.stdout)
-_sh.setLevel(log_level)
-_sh.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
-root_logger = logging.getLogger()
-root_logger.handlers = []
-root_logger.addHandler(_sh)
-root_logger.setLevel(log_level)
+# Setup StreamHandler for root logger if needed (often config.py did this)
+# ... skipped complex logging setup for simplicity, basicConfig is often enough ...
 
 logger = logging.getLogger("WebSocketBroadcaster")
 logger.setLevel(log_level)
 
-# 전역 설정 로드
-try:
-    load_and_set_global_configs()
-    logger.info("✅ Global configurations loaded.")
-except Exception as e:
-    logger.error(f"❌ Failed to load global configurations: {e}")
+# Configs
+REDIS_HOST = os.getenv("REDIS_HOST", "redis")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+REDIS_DB = int(os.getenv("REDIS_DB", 0))
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
+
+GLOBAL_APP_CONFIGS = {
+    "REDIS_HOST": REDIS_HOST,
+    "REDIS_PORT": REDIS_PORT,
+    "REDIS_DB": REDIS_DB,
+    "REDIS_PASSWORD": REDIS_PASSWORD
+}
 
 # Socket.IO 클라이언트 설정 (백엔드 서버에 연결)
 # reconnection=True, reconnection_attempts=0 (무한), reconnection_delay=1 (1초)
@@ -71,7 +84,7 @@ last_asset_cache_refresh: Optional[datetime] = None
 asset_cache_refresh_interval = timedelta(minutes=10)
 
 # REALTIME_STREAMS 설정이 없을 경우를 대비한 기본값
-default_streams = ["binance:realtime", "coinbase:realtime", "finnhub:realtime", "alpaca:realtime", "swissquote:realtime"]
+default_streams = ["binance:realtime", "coinbase:realtime", "finnhub:realtime", "alpaca:realtime", "swissquote:realtime", "kis:realtime"]
 stream_names = GLOBAL_APP_CONFIGS.get("REALTIME_STREAMS", default_streams)
 realtime_streams = {
     stream: f"{stream.split(':')[0]}_broadcaster_group" for stream in stream_names
@@ -90,28 +103,27 @@ async def disconnect():
 
 
 async def _refresh_asset_cache():
-    """DB에서 Ticker -> Asset ID 맵을 가져와 캐시합니다."""
-    global ticker_to_asset_id_cache, last_asset_cache_refresh
-    logger.debug("🔄 Ticker-AssetID 캐시 갱신 시작...")
-    from app.core.database import get_async_session_local
-    from app.models.asset import Asset, AssetType
-    from sqlalchemy.future import select
-
-    session_local = get_async_session_local()
-    async with session_local() as session:
-        try:
-            # Asset과 AssetType을 조인하여 type_name도 함께 조회
-            stmt = select(Asset.ticker, Asset.asset_id, AssetType.type_name).join(AssetType, Asset.asset_type_id == AssetType.asset_type_id)
-            result = await session.execute(stmt)
-            
-            rows = result.all()
-            ticker_to_asset_id_cache = {ticker: asset_id for ticker, asset_id, type_name in rows}
-            ticker_to_asset_type_cache = {ticker: type_name for ticker, asset_id, type_name in rows}
-            
-            last_asset_cache_refresh = datetime.now(timezone.utc)
-            logger.info(f"✅ Ticker-AssetID/Type 캐시 갱신 완료: {len(ticker_to_asset_id_cache)}개 자산")
-        except Exception as e:
-            logger.error(f"❌ Ticker-AssetID 캐시 갱신 실패: {e}")
+    """DB Dependecy removed. Using Static/Mock Cache."""
+    global ticker_to_asset_id_cache, last_asset_cache_refresh, ticker_to_asset_type_cache
+    
+    # Mock/Static Data
+    # Ideally this list mimics what's in the DB
+    mock_assets = [
+        ("BTCUSDT", 1, "Crypto"), ("ETHUSDT", 2, "Crypto"), ("SOL", 3, "Crypto"),
+        ("AAPL", 10, "Stock"), ("TSLA", 11, "Stock"), ("NVDA", 12, "Stock"),
+        # KIS Targets
+        ("005930", 1001, "Stock"), ("Samsung Electronics", 1001, "Stock"),
+        ("600519", 1002, "Stock"), ("Kweichow Moutai", 1002, "Stock"),
+        ("300750", 1003, "Stock"), ("CATL", 1003, "Stock"),
+        ("00700", 1004, "Stock"), ("Tencent", 1004, "Stock"),
+        ("7203", 1005, "Stock"), ("Toyota", 1005, "Stock")
+    ]
+    
+    ticker_to_asset_id_cache = {ticker: asset_id for ticker, asset_id, type_name in mock_assets}
+    ticker_to_asset_type_cache = {ticker: type_name for ticker, asset_id, type_name in mock_assets}
+    
+    last_asset_cache_refresh = datetime.now(timezone.utc)
+    logger.info(f"✅ [MOCK] Ticker-AssetID Cache initialized: {len(ticker_to_asset_id_cache)} entries")
 
 
 
@@ -325,7 +337,8 @@ async def listen_to_redis_and_broadcast():
 
 async def main():
     """서비스 시작점"""
-    backend_url = "http://backend:8000"  # Docker 네트워크 내부 통신
+    # Docker uses backend:8000, Host uses localhost:8001
+    backend_url = os.getenv("BACKEND_URL", "http://backend:8000")
 
     # 백엔드에 연결 시도
     while not sio_client.connected:

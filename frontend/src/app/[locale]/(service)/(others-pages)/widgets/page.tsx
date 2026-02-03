@@ -77,7 +77,7 @@ const WidgetsPage: React.FC = () => {
     const sampleTickers = ['BTCUSDT', 'ETHUSDT', 'SOL', 'NVDA', 'AAPL', 'TSLA'];
 
     return (
-        <div className="mx-auto max-w-none">
+        <div className="w-full">
             <Breadcrumb className="mb-6">
                 <BreadcrumbList>
                     <BreadcrumbItem>
@@ -213,7 +213,19 @@ const WidgetsPage: React.FC = () => {
                     </div>
                 </section>
 
-                {/* 5. Widget Grids */}
+                {/* 5. Asian Market Data */}
+                <section>
+                    <h2 className="text-2xl font-bold mb-6 text-black dark:text-white border-b pb-2">Asian Market Real-time (KIS)</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                        <RealtimePriceWidget ticker="005930" title="삼성전자005930" variant="stocks" />
+                        <RealtimePriceWidget ticker="600519" title="Moutai (CN)" variant="stocks" />
+                        <RealtimePriceWidget ticker="300750" title="CATL (CN)" variant="stocks" />
+                        <RealtimePriceWidget ticker="00700" title="Tencent (HK)" variant="stocks" />
+                        <RealtimePriceWidget ticker="7203" title="Toyota (JP)" variant="stocks" />
+                    </div>
+                </section>
+
+                {/* 6. Widget Grids */}
                 <section>
                     <h2 className="text-2xl font-bold mb-6 text-black dark:text-white border-b pb-2">Responsive Widget Grids</h2>
                     <WidgetGrid

@@ -122,13 +122,6 @@ export const TickerTapeWidget: React.FC = () => {
             {/* Main container: Full height with overflow control and center alignment */}
             <div
                 className="h-full overflow-hidden flex items-center min-w-0 relative"
-                style={{
-                    contain: 'layout style paint',
-                    overflow: 'hidden',
-                    isolation: 'isolate',
-                    clipPath: 'inset(0)',
-                    WebkitClipPath: 'inset(0)'
-                }}
             >
                 {/* Marquee container */}
                 <div

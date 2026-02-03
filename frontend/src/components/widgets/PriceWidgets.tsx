@@ -10,6 +10,7 @@ import ComponentCard from '@/components/common/ComponentCard';
 
 interface RealtimePriceWidgetProps {
     ticker: string;
+    title?: string;
     showVolume?: boolean;
     showTimestamp?: boolean;
     size?: 'small' | 'medium' | 'large';
@@ -19,6 +20,7 @@ interface RealtimePriceWidgetProps {
 
 export const RealtimePriceWidget: React.FC<RealtimePriceWidgetProps> = ({
     ticker,
+    title,
     showVolume = true,
     showTimestamp = false,
     size = 'medium',
@@ -117,7 +119,7 @@ export const RealtimePriceWidget: React.FC<RealtimePriceWidgetProps> = ({
             {/* Header */}
             <div className="flex justify-between items-center mb-2">
                 <h3 className={`${currentSize.title} ${currentVariant.title}`}>
-                    {ticker}
+                    {title || ticker}
                 </h3>
                 <span className={`${currentSize.status} ${getStatusColor()}`}>
                     {getStatusText()}

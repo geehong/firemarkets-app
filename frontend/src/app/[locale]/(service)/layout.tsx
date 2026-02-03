@@ -30,12 +30,12 @@ export default function ServiceLayout({
       <Backdrop />
       {/* Main Content Area */}
       <div
-        className={`flex flex-col flex-1 transition-all duration-300 ease-in-out ${mainContentMargin}`}
+        className={`flex flex-col flex-1 min-w-0 overflow-x-hidden transition-all duration-300 ease-in-out ${mainContentMargin}`}
       >
         {/* Header */}
         <AppHeader />
         {/* Page Content */}
-        <div className="p-4 mx-auto md:p-6 lg:px-[5%] max-w-none w-full flex-1">
+        <div className="p-4 md:p-6 w-full flex-1">
           {children}
         </div>
         <AppFooter />

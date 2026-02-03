@@ -8,9 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional, List, Dict, Any
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, time
 from collections import defaultdict
 import logging
+import pytz
 
 from app.core.database import get_postgres_db
 from app.models import OHLCVData, Asset, OHLCVIntradayData, RealtimeQuoteTimeDelay
@@ -49,7 +50,8 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
                 price as low_price,
                 volume,
                 change_percent,
-                timestamp_utc 
+                timestamp_utc,
+                'realtime' as source_table
             FROM realtime_quotes_time_delay 
             WHERE asset_id = :asset_id
             
@@ -64,7 +66,8 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
                 low_price,
                 volume,
                 change_percent,
-                timestamp_utc 
+                timestamp_utc,
+                'intraday' as source_table
             FROM ohlcv_intraday_data 
             WHERE asset_id = :asset_id
             
@@ -79,7 +82,8 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
                 low_price,
                 volume,
                 change_percent,
-                timestamp_utc 
+                timestamp_utc,
+                'daily' as source_table
             FROM ohlcv_day_data 
             WHERE asset_id = :asset_id
             AND (data_interval = '1d' OR data_interval = '1day' OR data_interval IS NULL)
@@ -95,7 +99,8 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
                 price_usd as low_price,
                 0 as volume,
                 daily_change_percent as change_percent,
-                CAST(ranking_date AS TIMESTAMP) as timestamp_utc
+                CAST(ranking_date AS TIMESTAMP) as timestamp_utc,
+                'ranking' as source_table
             FROM world_assets_ranking 
             WHERE asset_id = :asset_id
         )
@@ -511,38 +516,60 @@ def get_ohlcv_data_v2(
              latest_unified = get_latest_unified_data(db, asset_id)
              
              if latest_unified:
-                 unified_ts = latest_unified['timestamp_utc']
-                 # 1d normalization: Force to 00:00:00
-                 ts_normalized = unified_ts.replace(hour=0, minute=0, second=0, microsecond=0)
+                 # === Filter Off-Market Data Logic ===
+                 # Filter if Asset is NOT Crypto (8) AND NOT Commodity (3)
+                 # AND source is 'ranking' or 'intraday'
+                 # AND KST time is within closed window (07:00 ~ 22:30 approx, simplified logic)
+                 # Actually, user said: "If today KST is closed time"
                  
-                 # Logic: If data is empty OR last data is older than normalized unified, APPEND
-                 # If last data is SAME date as normalized unified, UPDATE (replace) with unified (more recent info)
+                 asset_obj = db.query(Asset).filter(Asset.asset_id == asset_id).first()
+                 should_filter = False
                  
-                 unified_candle = {
-                     'timestamp_utc': ts_normalized,
-                     'open_price': float(latest_unified['open_price']) if latest_unified['open_price'] else None,
-                     'high_price': float(latest_unified['high_price']) if latest_unified['high_price'] else None,
-                     'low_price': float(latest_unified['low_price']) if latest_unified['low_price'] else None,
-                     'close_price': float(latest_unified['close_price']) if latest_unified['close_price'] else None,
-                     'volume': float(latest_unified['volume']) if latest_unified['volume'] else 0,
-                     'change_percent': float(latest_unified['change_percent']) if latest_unified['change_percent'] else None,
-                     'data_interval': '1d'
-                 }
+                 if asset_obj and asset_obj.asset_type_id not in [3, 8]: # Not Commodity(3), Not Crypto(8)
+                     source_table = latest_unified.get('source_table')
+                     if source_table in ['ranking', 'intraday', 'realtime']:
+                         # Check KST time
+                         kst = pytz.timezone('Asia/Seoul')
+                         now_kst = datetime.now(kst)
+                         current_hour = now_kst.hour
+                         
+                         if 9 <= current_hour <= 18: # 09:00 AM to 06:00 PM KST
+                             logger.info(f"[OHLCV] Filtering {asset_identifier} data from {source_table} during KST closed hours ({now_kst})")
+                             should_filter = True
 
-                 if not data:
-                     data.append(unified_candle)
-                 else:
-                     last_ts = data[-1]['timestamp_utc']
-                     # Ensure last_ts is also normalized (it should be from get_daily_data_combined)
-                     last_ts_norm = last_ts.replace(hour=0, minute=0, second=0, microsecond=0)
+                 if not should_filter:
+                     unified_ts = latest_unified['timestamp_utc']
+                     # 1d normalization: Force to 00:00:00
+                     ts_normalized = unified_ts.replace(hour=0, minute=0, second=0, microsecond=0)
                      
-                     if ts_normalized > last_ts_norm:
-                         logger.info(f"[OHLCV] '{asset_identifier}' 1d: attaching NEW unified latest {ts_normalized} (Price: {unified_candle['close_price']})")
+                     # Logic: If data is empty OR last data is older than normalized unified, APPEND
+                     # If last data is SAME date as normalized unified, UPDATE (replace) with unified (more recent info)
+                     
+                     unified_candle = {
+                         'timestamp_utc': ts_normalized,
+                         'open_price': float(latest_unified['open_price']) if latest_unified['open_price'] else None,
+                         'high_price': float(latest_unified['high_price']) if latest_unified['high_price'] else None,
+                         'low_price': float(latest_unified['low_price']) if latest_unified['low_price'] else None,
+                         'close_price': float(latest_unified['close_price']) if latest_unified['close_price'] else None,
+                         'volume': float(latest_unified['volume']) if latest_unified['volume'] else 0,
+                         'change_percent': float(latest_unified['change_percent']) if latest_unified['change_percent'] else None,
+                         'data_interval': '1d'
+                     }
+
+                     if not data:
                          data.append(unified_candle)
-                     elif ts_normalized == last_ts_norm:
-                         # Update existing today's candle with latest info
-                         logger.info(f"[OHLCV] '{asset_identifier}' 1d: UPDATING existing latest {ts_normalized} (Price: {unified_candle['close_price']})")
-                         data[-1] = unified_candle
+                     else:
+                         last_ts = data[-1]['timestamp_utc']
+                         # Ensure last_ts is also normalized (it should be from get_daily_data_combined)
+                         last_ts_norm = last_ts.replace(hour=0, minute=0, second=0, microsecond=0)
+                         
+                         if ts_normalized > last_ts_norm:
+                             logger.info(f"[OHLCV] '{asset_identifier}' 1d: attaching NEW unified latest {ts_normalized} (Price: {unified_candle['close_price']})")
+                             data.append(unified_candle)
+                         elif ts_normalized == last_ts_norm:
+                             # Update existing today's candle with latest info
+                             logger.info(f"[OHLCV] '{asset_identifier}' 1d: UPDATING existing latest {ts_normalized} (Price: {unified_candle['close_price']})")
+                             data[-1] = unified_candle
 
         # 3. 리샘플링/합성 (15m, 30m, 1h, 4h)
         elif data_interval in ['15m', '30m', '1h', '4h']:

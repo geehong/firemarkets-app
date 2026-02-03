@@ -67,8 +67,14 @@ from .asset import (
 from .asset import (
     UserSession,
     TokenBlacklist,
+    TokenBlacklist,
     AuditLog,
 )
+
+# KIS models
+from .kis_master import KisKwMaster
+from .kis_overseas_master import KisOverseasMaster
+from .kis_foreign_index_master import KisForeignIndexMaster
 
 # Post models
 from .blog import (
@@ -138,7 +144,11 @@ __all__ = [
     # Session models
     "UserSession",
     "TokenBlacklist",
+    "TokenBlacklist",
     "AuditLog",
+    "KisKwMaster",
+    "KisOverseasMaster",
+    "KisForeignIndexMaster",
     
     # Post models
     "Post",

@@ -16,7 +16,7 @@ from app.external_apis.implementations import (
     FMPClient, TiingoClient,
     AlphaVantageClient, PolygonClient, TwelveDataClient,
     BinanceClient, CoinbaseClient, CoinGeckoClient, CoinMarketCapClient,
-    BitcoinDataClient, FinnhubClient
+    BitcoinDataClient, FinnhubClient, KisClient
 )
 from app.external_apis.implementations.goldapi_client import GoldAPIClient
 from app.external_apis.implementations.macrotrends_client import MacrotrendsClient
@@ -40,6 +40,7 @@ class ApiStrategyManager:
             TwelveDataClient(),   # 4순위
             FMPClient(),          # 5순위
             AlphaVantageClient(), # 6순위
+            KisClient(),          # KIS (Domestic Korean Stocks)
         ]
         
         # 2. 인트라데이 OHLCV 클라이언트 (4h, 1h 등)
@@ -394,6 +395,8 @@ class ApiStrategyManager:
             return 'twelvedata'
         elif 'AlphaVantage' in class_name:
             return 'alpha_vantage'
+        elif 'Kis' in class_name:
+            return 'kis'
         elif 'Binance' in class_name:
             return 'binance'
         elif 'Coinbase' in class_name:
@@ -626,7 +629,8 @@ class ApiStrategyManager:
                 'binance': 'binance',
                 'coinbase': 'coinbase',
                 'alpha_vantage': 'alpha_vantage',
-                'alphavantage': 'alpha_vantage'
+                'alphavantage': 'alpha_vantage',
+                'kis': 'kis'
             }
             
             preferred_api_name = data_source_to_client.get(preferred_data_source_lower)
