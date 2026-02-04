@@ -62,8 +62,8 @@ services:
     restart: unless-stopped
     command: >
       redis-server --maxmemory 1gb --maxmemory-policy allkeys-lru --appendonly no --save 900 1 --save 300 100 --save 60 100000
-    mem_limit: 512m
-    memswap_limit: 512m
+    mem_limit: 1g
+    memswap_limit: 1g
     networks:
       - app_network
       - shared-network
@@ -160,6 +160,10 @@ services:
       - .env
     environment:
       POSTGRES_DATABASE_URL: postgresql+psycopg2://${DB_USERNAME_PG}:${DB_PASSWORD_PG}@db_postgres:5432/${DB_DATABASE_PG}
+      # Redis 설정 (내부 네트워크 사용)
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       SECRET_KEY: ${SECRET_KEY}
       ALPHA_VANTAGE_API_KEY_1: ${ALPHA_VANTAGE_API_KEY_1}
       FMP_API_KEY: ${FMP_API_KEY}
@@ -219,6 +223,10 @@ services:
       - .env
     environment:
       POSTGRES_DATABASE_URL: postgresql+psycopg2://${DB_USERNAME_PG}:${DB_PASSWORD_PG}@db_postgres:5432/${DB_DATABASE_PG}
+      # Redis 설정 (내부 네트워크 사용)
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       TZ: Asia/Seoul
       DISABLE_FILE_LOGS: "true"
       DISABLE_WEBSOCKET_FILE_LOGS: "true"
@@ -320,9 +328,13 @@ services:
     environment:
       # POSTGRES_DATABASE_URL 등 다른 서비스와 동일한 환경변수 설정
       POSTGRES_DATABASE_URL: postgresql+psycopg2://${DB_USERNAME_PG}:${DB_PASSWORD_PG}@db_postgres:5432/${DB_DATABASE_PG}
+      # Redis 설정 (내부 네트워크 사용)
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       PYTHONPATH: /app
       TZ: Asia/Seoul
-      BROADCASTER_VERBOSE: "false"
+      BROADCASTER_VERBOSE: "true"
       DISABLE_FILE_LOGS: "true"
       PYTHONUNBUFFERED: "1"
     depends_on:
