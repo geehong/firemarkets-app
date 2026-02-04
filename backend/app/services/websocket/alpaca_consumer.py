@@ -152,8 +152,17 @@ class AlpacaWSConsumer(BaseWSConsumer):
                 
                 if not is_auth_success:
                     logger.error(f"❌ Alpaca authentication failed: {auth_msg}")
-                    failed_key = self.current_key_info.get('key', 'unknown') if self.current_key_info else "unknown"
+                    failed_key = self.current_key_info.get('key', 'unknown') if self.current_key_info and isinstance(self.current_key_info, dict) else "unknown"
                     self.api_key_manager.mark_key_failed(self.current_key_info)
+                    
+                    # 에러 메시지 추출
+                    error_detail = "Unknown error"
+                    if isinstance(auth_msg, list) and len(auth_msg) > 0:
+                        error_detail = auth_msg[0].get('msg', 'Unknown error')
+                    elif isinstance(auth_msg, dict):
+                        error_detail = auth_msg.get('msg', 'Unknown error')
+                    elif isinstance(auth_msg, str):
+                        error_detail = auth_msg
                     
                     # API 키 fallback 로그
                     from app.services.websocket_orchestrator import log_api_key_fallback, log_consumer_connection_attempt
@@ -161,9 +170,9 @@ class AlpacaWSConsumer(BaseWSConsumer):
                         self.client_name, 
                         failed_key, 
                         "fallback_attempt", 
-                        f"Authentication failed: {auth_msg.get('msg', 'Unknown error')}"
+                        f"Authentication failed: {error_detail}"
                     )
-                    log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries, f"Authentication failed: {auth_msg.get('msg', 'Unknown error')}")
+                    log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries, f"Authentication failed: {error_detail}")
                     
                     retry_count += 1
                     continue

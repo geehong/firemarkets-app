@@ -20,6 +20,27 @@
         "features": ["OHLC(x)", "Company Profile", "Financials As Reported"]
       }
     },
+    "alpaca": {
+      "free_plan": {
+        "calls_per_minute": 200,
+        "calls_per_hour": null,
+        "calls_per_day": null,
+        "calls_per_month": null,
+        "history_available": true,
+        "history_limit": "15 min delay or recent 15 min",
+        "websocket": {
+          "limit": "1 connection",
+          "ticker_limit": 30
+        },
+        "time_delay": "IEX Real-time (SIP 15m delay)"
+      },
+      "paid_plan": {
+        "price": "$9/month (Data) or $99/month (Trading)",
+        "calls_per_minute": null,
+        "history_available": true,
+        "features": ["SIP Real-time", "Unlimited Subscriptions"]
+      }
+    },
     "fmp": {
       "free_plan": {
         "calls_per_minute": 5,
@@ -207,4 +228,3 @@
     "calls_per_*": "API 호출 제한 (무료 플랜 기준)"
   }
 }
-

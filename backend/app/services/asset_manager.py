@@ -78,15 +78,19 @@ class AssetManager:
                         a.collection_settings->>'websocket_consumer' as preferred_websocket_consumer,
                         EXISTS(SELECT 1 FROM stock_financials sf WHERE sf.asset_id = a.asset_id) AS has_financials,
                         EXISTS(SELECT 1 FROM etf_info ei WHERE ei.asset_id = a.asset_id) AS has_etf_info,
-                        COALESCE(a.collection_settings->>'is_preferred', 'false') as is_preferred
+                        COALESCE(a.collection_settings->>'is_preferred', 'false') as is_preferred,
+                        COALESCE(sp.market_cap, ei.net_assets, cd.market_cap, 0) as market_cap
                     FROM assets a
+                    LEFT JOIN stock_profiles sp ON a.asset_id = sp.asset_id
+                    LEFT JOIN etf_info ei ON a.asset_id = ei.asset_id
+                    LEFT JOIN crypto_data cd ON a.asset_id = cd.asset_id
                     WHERE a.is_active = TRUE
                       AND (
                         (a.asset_type_id = 8 AND a.asset_id IN (SELECT asset_id FROM crypto_data))
                         OR
                         (a.asset_type_id <> 8 AND COALESCE(a.collection_settings->>'collect_price', 'true') = 'true')
                       )
-                    ORDER BY a.ticker
+                    ORDER BY market_cap DESC, a.ticker ASC
                     """
                 )
                 result = await session.execute(query)
@@ -94,7 +98,7 @@ class AssetManager:
 
                 assets: List[Asset] = []
                 for row in rows:
-                    ticker, name, asset_type_id, data_source, exchange, currency, is_active, preferred_websocket_consumer, has_financials, has_etf_info, is_preferred = row
+                    ticker, name, asset_type_id, data_source, exchange, currency, is_active, preferred_websocket_consumer, has_financials, has_etf_info, is_preferred, market_cap = row
                     # ETF는 안전하게 has_etf_info를 True로 보정 (테이블 누락 대비)
                     inferred_has_etf_info = bool(has_etf_info)
                     if asset_type_id == 5 and not inferred_has_etf_info:
@@ -117,8 +121,8 @@ class AssetManager:
                         is_preferred=is_preferred_bool
                     ))
 
-                # Sort assets: Preferred first, then alphabetical
-                assets.sort(key=lambda x: (not x.is_preferred, x.ticker))
+                # Preference still takes precedence if explicit, otherwise cap order applies from SQL
+                assets.sort(key=lambda x: (not x.is_preferred))
                 
                 # 캐시 저장
                 self._cache[cache_key] = assets

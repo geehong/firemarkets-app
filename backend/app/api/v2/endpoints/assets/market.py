@@ -41,6 +41,22 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
     """
     stmt = text("""
         WITH latest_prices AS (
+            -- 0. Realtime Quotes (Finnhub/Alpaca)
+            SELECT 
+                'realtime' as data_interval,
+                price as close_price, 
+                price as open_price,
+                price as high_price,
+                price as low_price,
+                volume,
+                change_percent,
+                timestamp_utc,
+                'realtime' as source_table
+            FROM realtime_quotes 
+            WHERE asset_id = :asset_id
+
+            UNION ALL
+
             -- 1. Realtime Quotes (15m delay)
             SELECT 
                 data_interval,
@@ -51,7 +67,7 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
                 volume,
                 change_percent,
                 timestamp_utc,
-                'realtime' as source_table
+                'realtime_delay' as source_table
             FROM realtime_quotes_time_delay 
             WHERE asset_id = :asset_id
             
@@ -106,7 +122,15 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
         )
         SELECT *
         FROM latest_prices
-        ORDER BY timestamp_utc DESC
+        ORDER BY timestamp_utc DESC, 
+                 CASE source_table 
+                    WHEN 'realtime_delay' THEN 1 
+                    WHEN 'realtime' THEN 2 
+                    WHEN 'intraday' THEN 3
+                    WHEN 'daily' THEN 4
+                    WHEN 'ranking' THEN 5
+                    ELSE 9 
+                 END ASC
         LIMIT 1
     """)
     result = db.execute(stmt, {"asset_id": asset_id}).fetchone()
@@ -527,14 +551,31 @@ def get_ohlcv_data_v2(
                  
                  if asset_obj and asset_obj.asset_type_id not in [3, 8]: # Not Commodity(3), Not Crypto(8)
                      source_table = latest_unified.get('source_table')
-                     if source_table in ['ranking', 'intraday', 'realtime']:
-                         # Check KST time
-                         kst = pytz.timezone('Asia/Seoul')
-                         now_kst = datetime.now(kst)
-                         current_hour = now_kst.hour
-                         
-                         if 9 <= current_hour <= 18: # 09:00 AM to 06:00 PM KST
-                             logger.info(f"[OHLCV] Filtering {asset_identifier} data from {source_table} during KST closed hours ({now_kst})")
+                     
+                     # Market Closed Filtering
+                     # US Stocks (NASDAQ, NYSE) Closed: KST 06:00 ~ 22:30 (approx)
+                     # KR Stocks (KRX) Closed: KST 15:30 ~ 09:00
+                     
+                     exchange = asset_obj.exchange.upper() if asset_obj.exchange else ""
+                     kst = pytz.timezone('Asia/Seoul')
+                     now_kst = datetime.now(kst)
+                     time_val = now_kst.hour + now_kst.minute / 60.0
+                     
+                     is_market_closed = False
+                     if "NASDAQ" in exchange or "NYSE" in exchange:
+                         if 6.0 <= time_val <= 22.5: # 06:00 to 22:30 KST
+                             is_market_closed = True
+                     elif "KRX" in exchange:
+                         if time_val > 15.5 or time_val < 9.0: # 15:30 to 09:00 KST
+                             is_market_closed = True
+                     else:
+                         if 18.0 < time_val or time_val < 9.0: # Default 9 to 18
+                             is_market_closed = True
+                             
+                     if is_market_closed:
+                         # During closed hours, only allow Daily data. Filter out intraday/ranking/temporary sources.
+                         if source_table in ['ranking', 'intraday', 'realtime_delay', 'realtime']:
+                             logger.info(f"[OHLCV] Filtering {asset_identifier} data from {source_table} during {exchange} market-closed (KST {now_kst})")
                              should_filter = True
 
                  if not should_filter:

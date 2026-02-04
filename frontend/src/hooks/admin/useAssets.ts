@@ -99,11 +99,11 @@ export const useAssetTypes = () => {
         const result = await apiClient.v2GetAssetTypes({ has_data: false })
         if (Array.isArray(result)) {
            // If result is object array (AssetType[]), map to names
-           const types = result.map((t: any) => t.name || t)
+           const types = result.map((t: any) => t.name || t.type_name || t)
            // Remove duplicates just in case
            setAssetTypes(Array.from(new Set(types)))
         } else if (result && Array.isArray(result.data)) {
-           const types = result.data.map((t: any) => t.name || t)
+           const types = result.data.map((t: any) => t.name || t.type_name || t)
            setAssetTypes(Array.from(new Set(types)))
         } else {
            setAssetTypes([])

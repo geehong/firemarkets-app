@@ -127,6 +127,7 @@ docker-compose logs adminer --tail 50 -f
 
 docker-compose logs data_processor --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | tail -50
 docker-compose logs websocket_orchestrator --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | tail -50
+
 docker-compose logs backend --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | tail -50
 docker-compose logs db_postgres --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | tail -50
 docker-compose logs frontend --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | tail -50
@@ -296,6 +297,7 @@ cd /home/geehong/firemarkets-app && docker-compose logs data_processor --since 3
 cd /home/geehong/firemarkets-app && docker-compose logs data_processor --since 1h 2>&1 | grep -E "ohlcv_day_data.*저장 완료|ohlcv_day_data.*upserted|daily=True" | tail -30
 cd /home/geehong/firemarkets-app && docker-compose logs data_processor --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | grep -i "ohlcv" | tail -20
 cd /home/geehong/firemarkets-app && docker-compose logs data_processor --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | tail -50
+cd /home/geehong/firemarkets-app && docker-compose logs websocket_orchestrator --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | tail -50
 
 docker-compose logs scheduler --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | tail -50
 
@@ -328,7 +330,7 @@ docker-compose logs data_processor --since 2h 2>&1 | grep -Ei "(onchain|Onchain|
 docker logs --tail 400 fire_markets_backend | grep -E "AAPL|MSFT|NVDA|META|GOOG|AMZN|SPY|QQQ|prices_" -n || true
 # Binance 관련 로그
 docker-compose logs websocket_orchestrator --tail 50 -f | grep -Ei "connection failed|error|ERROR|fail|FAIL"
-docker-compose logs websocket_orchestrator --tail 50 -f | grep -Ei "binance"
+docker-compose logs websocket_orchestrator --tail 50 -f | grep -Ei "alpaca"
 
 # 연결 실패 로그
 docker logs fire_markets_websocket_orchestrator --tail 20 | grep -A 5 -B 5 "connection failed"

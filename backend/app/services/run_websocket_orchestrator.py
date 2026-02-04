@@ -13,6 +13,9 @@ from pathlib import Path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
+from dotenv import load_dotenv
+load_dotenv(project_root.parent.parent.parent / '.env') # Correct path to project root .env
+
 from app.services.websocket_orchestrator import WebSocketOrchestrator
 from app.core.config import load_and_set_global_configs
 

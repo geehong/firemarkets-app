@@ -52,7 +52,7 @@ async def api_v1_root():
 # api_router.include_router(assets.router, tags=["assets"]) # Removed
 api_router.include_router(world_assets.router, tags=["world-assets"])
 api_router.include_router(tickers.router, tags=["tickers"])
-api_router.include_router(configurations.router, tags=["configurations"])
+api_router.include_router(configurations.router, prefix="/configurations", tags=["configurations"])
 api_router.include_router(crypto.router, prefix="/crypto", tags=["crypto"])
 api_router.include_router(dashboard.router, tags=["dashboard"])
 api_router.include_router(etf.router, tags=["etf"])
