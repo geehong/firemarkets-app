@@ -312,8 +312,19 @@ class WebSocketOrchestrator:
         """특정 자산 타입의 자산들을 Consumer에 할당 (선호 Consumer 우선, Fallback 순서 적용)"""
         
         # 1. 선호 Consumer가 있는 자산들을 먼저 처리
-        preferred_assets = [asset for asset in assets if asset.preferred_websocket_consumer]
-        default_assets = [asset for asset in assets if not asset.preferred_websocket_consumer]
+        preferred_assets = []
+        default_assets = []
+        
+        for asset in assets:
+            if asset.preferred_websocket_consumer:
+                # 사용자의 요청에 따라 Polygon에서 VTI, AGG는 선호를 무시하고 일반 ETF 할당 순서(fallback)를 따르게 함
+                if asset.preferred_websocket_consumer == 'polygon' and asset.ticker.upper() in ['VTI', 'AGG']:
+                    default_assets.append(asset)
+                else:
+                    preferred_assets.append(asset)
+            else:
+                default_assets.append(asset)
+
         
         # 선호 Consumer가 있는 자산들 처리
         if preferred_assets:
@@ -439,6 +450,11 @@ class WebSocketOrchestrator:
                 if t == 'BRK.B':
                     return True
                 return not any(t.endswith(sfx) for sfx in foreign_suffixes)
+            
+            def polygon_filter(t: str) -> bool:
+                # VTI, AGG 제외 (사용자 요청: 429 에러 방지)
+                return t.upper() not in ['VTI', 'AGG']
+
 
             if asset_type == AssetType.STOCK and any(name == 'alpaca' for name, _, _ in available_consumers):
                 alpaca_allowed = {a.ticker for a in assets if getattr(a, 'has_etf_info', False)}
@@ -463,9 +479,11 @@ class WebSocketOrchestrator:
                         asset_type,
                         provider_filters={
                             'alpaca': (lambda t: True),  # etf_tickers만 전달되므로 True
-                            'finnhub': (lambda t: finnhub_filter(t) and (t in finnhub_allowed))
+                            'finnhub': (lambda t: finnhub_filter(t) and (t in finnhub_allowed)),
+                            'polygon': (lambda t: polygon_filter(t))
                         }
                     )
+
 
                 # 2) 비-ETF는 원래 순서(일반적으로 finnhub 우선)로 배정
                 if non_etf_tickers:
@@ -475,9 +493,11 @@ class WebSocketOrchestrator:
                         asset_type,
                         provider_filters={
                             'alpaca': (lambda t: True),  # Alpaca도 주식 지원 허용 (Finnhub 가득 찼을 때 대비)
-                            'finnhub': (lambda t: finnhub_filter(t) and (t in finnhub_allowed))
+                            'finnhub': (lambda t: finnhub_filter(t) and (t in finnhub_allowed)),
+                            'polygon': (lambda t: polygon_filter(t))
                         }
                     )
+
             else:
                 # Alpaca가 없거나 주식 외 타입: 기본 필터만 적용하여 배정
                 await self._assign_tickers_fallback_order_with_filters(
@@ -485,9 +505,11 @@ class WebSocketOrchestrator:
                     _filter_by_type(available_consumers),
                     asset_type,
                     provider_filters={
-                        'finnhub': (lambda t: finnhub_filter(t) if asset_type == AssetType.STOCK else True)
+                        'finnhub': (lambda t: finnhub_filter(t) if asset_type == AssetType.STOCK else True),
+                        'polygon': (lambda t: polygon_filter(t))
                     }
                 )
+
         
         # 할당 결과 요약
         for provider_name, assignment in self.assignments.items():
@@ -626,11 +648,28 @@ class WebSocketOrchestrator:
             # 실패한 Consumer 정리
             await self._cleanup_failed_consumer(failed_consumer_name, old_assignment.consumer)
         
-        # 티커들의 자산 타입 확인 (암호화폐로 가정)
+        # 티커들의 자산 타입 확인
         from app.services.websocket.base_consumer import AssetType
         
+        # 기본적으로 STOCK으로 가정하거나, 첫 번째 티커의 타입을 추정
+        # 더 정확하려면 AssetManager 등을 통해 각 티커의 실제 타입을 조회해야 함
+        # 여기서는 실패한 Consumer가 지원하던 주요 타입을 사용하거나 기본값 사용
+        fallback_asset_type = AssetType.STOCK
+        if failed_consumer_name in ['coinbase', 'binance']:
+            fallback_asset_type = AssetType.CRYPTO
+        elif failed_consumer_name in ['alpaca', 'polygon']:
+            # ETF 또는 STOCK일 가능성이 높음. 
+            # Alpaca 실패 시 대부분 ETF/STOCK이므로 STOCK fallback을 사용
+            fallback_asset_type = AssetType.STOCK 
+            if failed_tickers and any(t in ['VTI', 'AGG', 'SPY', 'QQQ'] for t in failed_tickers):
+                fallback_asset_type = AssetType.ETF
+        elif failed_consumer_name == 'twelvedata':
+            fallback_asset_type = AssetType.STOCK
+
         # Fallback 순서에서 실패한 Consumer 제외하고 재할당
-        fallback_order = WebSocketConfig.ASSET_TYPE_FALLBACK.get(AssetType.CRYPTO, [])
+        fallback_order = WebSocketConfig.ASSET_TYPE_FALLBACK.get(fallback_asset_type, [])
+
+
         remaining_consumers = [name for name in fallback_order if name != failed_consumer_name]
         
         logger.info(f"🔄 재할당 대상 Consumer: {remaining_consumers}")
@@ -665,13 +704,14 @@ class WebSocketOrchestrator:
                 continue
                 
             config = WebSocketConfig.get_provider_config(provider_name)
-            if config and config.max_subscriptions > 0 and AssetType.CRYPTO in config.supported_asset_types:
+            if config and config.max_subscriptions > 0 and fallback_asset_type in config.supported_asset_types:
                 consumer = self.consumers[provider_name]
                 available_consumers.append((provider_name, consumer, config))
                 logger.debug(f"✅ {provider_name} available for reallocation (max: {config.max_subscriptions})")
             else:
                 unsupported_consumers.append(provider_name)
-                logger.warning(f"⚠️ {provider_name} not suitable for crypto reallocation")
+                logger.warning(f"⚠️ {provider_name} not suitable for {fallback_asset_type.value} reallocation")
+
         
         # 상세한 Consumer 상태 로그
         log_to_websocket_orchestrator_logs(
@@ -683,7 +723,8 @@ class WebSocketOrchestrator:
         if available_consumers:
             # Fallback 순서로 재할당
             logger.info(f"🔄 Starting reallocation to {len(available_consumers)} available consumers")
-            await self._assign_tickers_fallback_order(failed_tickers, available_consumers, AssetType.CRYPTO)
+            await self._assign_tickers_fallback_order(failed_tickers, available_consumers, fallback_asset_type)
+
             
             # 재할당된 Consumer들 시작
             logger.info(f"🚀 Starting reallocated consumers")

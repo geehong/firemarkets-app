@@ -19,8 +19,14 @@ from app.external_apis.utils.helpers import safe_float, safe_date_parse
 logger = logging.getLogger(__name__)
 
 
+import threading
+
 class TwelveDataClient(TradFiAPIClient):
     """Twelve Data API client"""
+
+    # Class-level shared state for rate limiting across all instances and threads
+    _rl_times = deque(maxlen=16)
+    _rl_lock = threading.Lock()
 
     def __init__(self):
         super().__init__()
@@ -31,22 +37,29 @@ class TwelveDataClient(TradFiAPIClient):
         if not self.api_key:
             logger.warning("TWELVEDATA_API_KEY is not configured.")
 
-        # Simple per-process rate limiter: 8 requests per 60 seconds
-        if not hasattr(TwelveDataClient, "_rl_times"):
-            TwelveDataClient._rl_times = deque(maxlen=16)
-        self._rl_lock = asyncio.Lock()
-
     async def _rate_limit(self):
-        # Ensure <=8 calls in last 60 seconds
-        async with self._rl_lock:
-            now = time.monotonic()
-            # Remove old entries
-            while TwelveDataClient._rl_times and (now - TwelveDataClient._rl_times[0]) > 60:
-                TwelveDataClient._rl_times.popleft()
-            if len(TwelveDataClient._rl_times) >= 8:
-                wait_for = 60 - (now - TwelveDataClient._rl_times[0])
-                await asyncio.sleep(max(0.05, wait_for))
-            TwelveDataClient._rl_times.append(time.monotonic())
+        """
+        Enforce rate limiting (<= 8 calls per 60 seconds).
+        Uses a threading.Lock to ensure thread-safety across multiple event loops in the same process.
+        """
+        while True:
+            wait_for = 0
+            with TwelveDataClient._rl_lock:
+                now = time.monotonic()
+                # Remove old entries
+                while TwelveDataClient._rl_times and (now - TwelveDataClient._rl_times[0]) > 60:
+                    TwelveDataClient._rl_times.popleft()
+                
+                if len(TwelveDataClient._rl_times) < 8:
+                    TwelveDataClient._rl_times.append(now)
+                    return
+                else:
+                    # Need to wait until the oldest request is older than 60s
+                    wait_for = 60 - (now - TwelveDataClient._rl_times[0]) + 0.1 # Slight buffer
+            
+            if wait_for > 0:
+                logger.info(f"TwelveData: Rate limit reached. Waiting {wait_for:.2f}s...")
+                await asyncio.sleep(wait_for)
 
     async def _request(self, path: str, params: Dict[str, Any]) -> Any:
         """Internal helper to perform GET requests with api key injected."""

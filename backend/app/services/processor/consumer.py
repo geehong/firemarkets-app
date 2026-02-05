@@ -23,6 +23,9 @@ class StreamConsumer:
             "coinbase:realtime": "coinbase_group",
             # FX/Other
             "swissquote:realtime": "swissquote_group",
+            "polygon:realtime": "polygon_group",
+            "twelvedata:realtime": "twelvedata_group",
+            "kis:realtime": "kis_group",
         }
 
     async def connect(self) -> bool:

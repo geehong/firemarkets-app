@@ -360,14 +360,8 @@ Return ONLY a JSON object with the following structure:
             # Unified Call
             text_response = await self._generate_content(prompt, task_type="collection")
             
-            # JSON 파싱
-            # Basic cleanup if markdown backticks are present
-            if "```json" in text_response:
-                text_response = text_response.replace("```json", "").replace("```", "")
-            elif "```" in text_response:
-                text_response = text_response.replace("```", "")
-                
-            result = json.loads(text_response.strip())
+            # Use robust JSON parsing
+            result = self._parse_json_response(text_response)
             return result
             
         except Exception as e:
@@ -437,13 +431,16 @@ RETURN ONLY JSON. NO MARKDOWN WRAPPERS."""
         try:
             text_response = await self._generate_content(prompt, task_type="collection")
             
-            # Clean generic markdown wrappers
-            if "```json" in text_response:
-                text_response = text_response.replace("```json", "").replace("```", "")
-            elif "```" in text_response:
-                text_response = text_response.replace("```", "")
+            # Use robust JSON parsing
+            translated_list = self._parse_json_response(text_response)
             
-            translated_list = json.loads(text_response.strip())
+            if not isinstance(translated_list, list):
+                if isinstance(translated_list, dict):
+                    # Sometimes AI returns a single object instead of a list
+                    translated_list = [translated_list]
+                else:
+                    logger.error(f"AI response is not a list: {type(translated_list)}")
+                    return items
             
             # Create a map for O(1) lookup
             trans_map = {str(t['id']): t for t in translated_list}

@@ -46,15 +46,15 @@ export default function DatePicker({
     <div>
       {label && <Label htmlFor={id}>{label}</Label>}
 
-      <div className="relative">
+      <div className="relative group flex items-center justify-center">
         <input
           id={id}
           placeholder={placeholder}
-          className={`h-11 w-full rounded-lg border appearance-none px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:outline-hidden focus:ring-3  dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30  bg-transparent text-gray-800 border-gray-300 focus:border-brand-300 focus:ring-brand-500/20 dark:border-gray-700  dark:focus:border-brand-800 ${className || ''}`}
+          className={`h-11 w-full rounded-lg border appearance-none px-0 py-0 text-sm shadow-theme-xs placeholder:text-gray-400 focus:outline-hidden focus:ring-3  dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30  bg-transparent text-gray-800 border-gray-300 focus:border-brand-300 focus:ring-brand-500/20 dark:border-gray-700  dark:focus:border-brand-800 cursor-pointer ${className || ''}`}
         />
 
-        <span className="absolute text-gray-500 -translate-y-1/2 pointer-events-none right-3 top-1/2 dark:text-gray-400">
-          <CalenderIcon className="size-6" />
+        <span className="absolute text-gray-500 pointer-events-none left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 dark:text-gray-400 group-focus-within:text-brand-500 flex items-center justify-center">
+          <CalenderIcon className="size-5" />
         </span>
       </div>
     </div>

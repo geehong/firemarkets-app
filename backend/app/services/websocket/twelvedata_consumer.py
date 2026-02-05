@@ -286,7 +286,7 @@ class TwelveDataWSConsumer(BaseWSConsumer):
     
     def get_supported_asset_types(self) -> List[AssetType]:
         """지원하는 자산 타입 반환"""
-        return [AssetType.COMMODITY]
+        return [AssetType.STOCK, AssetType.ETF, AssetType.COMMODITY]
     
     def get_max_subscriptions(self) -> int:
         """최대 구독 수 반환"""

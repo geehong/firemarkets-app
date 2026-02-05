@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useId } from 'react';
 import DatePicker from '@/components/form/date-picker';
 
 interface DateRangePickerProps {
@@ -12,15 +12,15 @@ interface DateRangePickerProps {
 }
 
 const DateRangePicker: React.FC<DateRangePickerProps> = ({ numberOfMonths, variant, onStartDate, onEndDate, label, placeholder, className }) => {
-    const handleChange = (selectedDates: Date[], dateStr: string) => {
+    const handleChange = useCallback((selectedDates: Date[], dateStr: string) => {
         if (variant === 'start' && onStartDate) {
             onStartDate(dateStr || null);
         } else if (variant === 'end' && onEndDate) {
             onEndDate(dateStr || null);
         }
-    };
+    }, [variant, onStartDate, onEndDate]);
 
-    const id = `date-picker-${variant}-${Math.random().toString(36).substr(2, 9)}`;
+    const id = useId();
 
     // Determine label text: use prop if provided (even if empty string), otherwise fallback
     const labelText = label !== undefined ? label : (variant === 'start' ? 'Start' : 'End');
@@ -28,8 +28,12 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ numberOfMonths, varia
     // Determine placeholder text
     const placeholderText = placeholder !== undefined ? placeholder : (variant === 'start' ? 'Start Date' : 'End Date');
 
+    // w-40 should only be default if no width class is provided
+    const hasWidthClass = className?.split(' ').some(cls => cls.startsWith('w-'));
+    const widthClass = hasWidthClass ? '' : 'w-40';
+
     return (
-        <div className={`w-40 ${className?.includes('w-') ? '' : 'w-40'}`}>
+        <div className={`inline-flex ${widthClass}`}>
             <DatePicker
                 id={id}
                 mode="single"

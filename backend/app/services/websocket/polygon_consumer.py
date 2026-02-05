@@ -255,8 +255,9 @@ class PolygonWSConsumer(BaseWSConsumer):
         # 1분 이전의 요청 기록 제거
         self._request_times = [t for t in self._request_times if now - t < 60]
         
-        # 분당 2회 제한 체크 (매우 보수적)
-        max_requests = min(self._max_requests_per_minute, 2)
+        # 분당 5회 제한 체크
+        max_requests = self._max_requests_per_minute
+
         if len(self._request_times) >= max_requests:
             wait_time = 60 - (now - self._request_times[0]) + 10  # 10초 여유 추가
             if wait_time > 0:

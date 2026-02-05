@@ -18,8 +18,14 @@ from app.external_apis.utils.helpers import safe_float, safe_date_parse
 logger = logging.getLogger(__name__)
 
 
+import threading
+
 class PolygonClient(TradFiAPIClient):
     """Polygon.io API client for financial data"""
+
+    # Class-level shared state for rate limiting across all instances and threads
+    _rl_times = []
+    _rl_lock = threading.Lock()
 
     def __init__(self):
         super().__init__()
@@ -34,40 +40,38 @@ class PolygonClient(TradFiAPIClient):
         
         # 직접 환경 변수에서 읽기
         import os
-        self.api_key = os.getenv(self.api_key_env, "tUWX3e7_Z_ppi90QUsiogmxTbwuWnpa_")
+        self.api_key = os.getenv(self.api_key_env, "")
         if not self.api_key:
-            logger.warning(f"{self.api_key_env} is not configured.")
-        
-        # Rate limiting을 위한 변수
-        self.request_times = []
+            logger.warning(f"{self.api_key_env} is not configured. Requests will likely fail.")
     
     async def _enforce_rate_limit(self):
         """Enforce rate limiting for Polygon API (무료 플랜: 분당 5회 제한)"""
-        current_time = time.time()
-        
-        # 1분 이전의 요청 기록 제거
-        self.request_times = [t for t in self.request_times if current_time - t < 60]
-        
-        # 분당 제한 체크
-        if len(self.request_times) >= self.calls_per_minute:
-            wait_time = 60 - (current_time - self.request_times[0]) + 2  # 2초 여유 추가
-            if wait_time > 0:
-                logger.info(f"⏳ Polygon rate limit reached ({len(self.request_times)}/{self.calls_per_minute}), waiting {wait_time:.1f}s")
-                await asyncio.sleep(wait_time)
-                # 대기 후 다시 정리
+        while True:
+            wait_time = 0
+            with PolygonClient._rl_lock:
                 current_time = time.time()
-                self.request_times = [t for t in self.request_times if current_time - t < 60]
-        
-        # 최소 요청 간격 보장
-        if self.request_times:
-            time_since_last = current_time - self.request_times[-1]
-            if time_since_last < self.min_delay_between_requests:
-                wait_time = self.min_delay_between_requests - time_since_last
-                logger.debug(f"Polygon minimum delay: waiting {wait_time:.1f}s")
+                
+                # 1분 이전의 요청 기록 제거
+                PolygonClient._rl_times = [t for t in PolygonClient._rl_times if current_time - t < 60]
+                
+                # 분당 제한 체크
+                if len(PolygonClient._rl_times) >= self.calls_per_minute:
+                    wait_time = 60 - (current_time - PolygonClient._rl_times[0]) + 1.0 # 1초 여유 추가
+                
+                # 최소 요청 간격 보장
+                if not wait_time and PolygonClient._rl_times:
+                    time_since_last = current_time - PolygonClient._rl_times[-1]
+                    if time_since_last < self.min_delay_between_requests:
+                        wait_time = self.min_delay_between_requests - time_since_last
+                
+                if not wait_time:
+                    # 현재 요청 시간 기록
+                    PolygonClient._rl_times.append(time.time())
+                    return
+            
+            if wait_time > 0:
+                logger.debug(f"⏳ Polygon rate limit delay: waiting {wait_time:.1f}s")
                 await asyncio.sleep(wait_time)
-        
-        # 현재 요청 시간 기록
-        self.request_times.append(time.time())
 
     async def _request(self, path: str, params: Dict[str, Any] = None) -> Any:
         """Internal helper to perform GET requests with api key injected."""

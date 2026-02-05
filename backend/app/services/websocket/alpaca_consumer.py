@@ -390,18 +390,10 @@ class AlpacaWSConsumer(BaseWSConsumer):
             return
         
         # 폐장 시간 디버깅을 위한 로깅 추가
-        logger.info(f"📨 {self.client_name} received message: {msg}")
-        
-        # 저장 주기 체크
-        current_time = time.time()
-        if current_time - self.last_save_time < self.consumer_interval:
-            # 아직 저장 시간이 되지 않았으면 메시지만 받고 저장하지 않음
-            # logger.debug(f"⏰ {self.client_name} skipping message due to interval ({current_time - self.last_save_time:.1f}s < {self.consumer_interval}s)")
-            return
-        
-        # 저장 시간이 되었으면 데이터 처리
-        self.last_save_time = current_time
-        logger.info(f"✅ {self.client_name} processing message after interval")
+        if isinstance(msg, list) and msg and msg[0].get('T') == 'subscription':
+             logger.info(f"📨 {self.client_name} subscription confirmation received")
+        else:
+             logger.info(f"📨 {self.client_name} received message: {msg}")
         
         # 메시지는 리스트 형태로 배달되는 경우가 많음
         if isinstance(msg, list):

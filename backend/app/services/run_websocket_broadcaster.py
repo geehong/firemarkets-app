@@ -24,6 +24,9 @@ import socketio
 project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+from app.core.database import SessionLocal
+from app.models.asset import Asset, AssetType
+
 from dotenv import load_dotenv
 
 # Project root setup
@@ -84,7 +87,7 @@ last_asset_cache_refresh: Optional[datetime] = None
 asset_cache_refresh_interval = timedelta(minutes=10)
 
 # REALTIME_STREAMS 설정이 없을 경우를 대비한 기본값
-default_streams = ["binance:realtime", "coinbase:realtime", "finnhub:realtime", "alpaca:realtime", "swissquote:realtime", "kis:realtime"]
+default_streams = ["binance:realtime", "coinbase:realtime", "finnhub:realtime", "alpaca:realtime", "swissquote:realtime", "kis:realtime", "polygon:realtime", "twelvedata:realtime"]
 stream_names = GLOBAL_APP_CONFIGS.get("REALTIME_STREAMS", default_streams)
 realtime_streams = {
     stream: f"{stream.split(':')[0]}_broadcaster_group" for stream in stream_names
@@ -103,27 +106,36 @@ async def disconnect():
 
 
 async def _refresh_asset_cache():
-    """DB Dependecy removed. Using Static/Mock Cache."""
+    """DB에서 실제 자산 목록을 가져와 캐시를 갱신합니다."""
     global ticker_to_asset_id_cache, last_asset_cache_refresh, ticker_to_asset_type_cache
     
-    # Mock/Static Data
-    # Ideally this list mimics what's in the DB
-    mock_assets = [
-        ("BTCUSDT", 1, "Crypto"), ("ETHUSDT", 2, "Crypto"), ("SOL", 3, "Crypto"),
-        ("AAPL", 10, "Stock"), ("TSLA", 11, "Stock"), ("NVDA", 12, "Stock"),
-        # KIS Targets
-        ("005930", 1001, "Stock"), ("Samsung Electronics", 1001, "Stock"),
-        ("600519", 1002, "Stock"), ("Kweichow Moutai", 1002, "Stock"),
-        ("300750", 1003, "Stock"), ("CATL", 1003, "Stock"),
-        ("00700", 1004, "Stock"), ("Tencent", 1004, "Stock"),
-        ("7203", 1005, "Stock"), ("Toyota", 1005, "Stock")
-    ]
-    
-    ticker_to_asset_id_cache = {ticker: asset_id for ticker, asset_id, type_name in mock_assets}
-    ticker_to_asset_type_cache = {ticker: type_name for ticker, asset_id, type_name in mock_assets}
-    
-    last_asset_cache_refresh = datetime.now(timezone.utc)
-    logger.info(f"✅ [MOCK] Ticker-AssetID Cache initialized: {len(ticker_to_asset_id_cache)} entries")
+    try:
+        # 동기 세션 사용
+        db = SessionLocal()
+        try:
+            # 모든 활성 자산 가져오기
+            assets = db.query(Asset.ticker, Asset.asset_id, AssetType.type_name)\
+                .join(AssetType, Asset.asset_type_id == AssetType.asset_type_id)\
+                .filter(Asset.is_active == True)\
+                .all()
+            
+            new_id_cache = {}
+            new_type_cache = {}
+            
+            for ticker, asset_id, type_name in assets:
+                new_id_cache[ticker.upper()] = asset_id
+                new_type_cache[ticker.upper()] = type_name
+            
+            ticker_to_asset_id_cache = new_id_cache
+            ticker_to_asset_type_cache = new_type_cache
+            
+            last_asset_cache_refresh = datetime.now(timezone.utc)
+            logger.info(f"✅ Ticker-AssetID Cache updated from DB: {len(ticker_to_asset_id_cache)} entries")
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"❌ Failed to refresh asset cache from DB: {e}")
+        # 실패하더라도 기존 캐시는 유지 (또는 초기화 방지)
 
 
 
@@ -263,6 +275,12 @@ async def listen_to_redis_and_broadcast():
                                 if not any(symbol.endswith(suffix) for suffix in ['USDT', 'BUSD', 'BTC', 'ETH']):
                                     symbol = f"{symbol}USDT"
                                     logger.debug(f"🔄 Binance 티커 변환: {original_symbol} -> {symbol}")
+                            elif provider == 'swissquote':
+                                # Swissquote 심볼 역정규화 (XAU/USD -> GCUSD)
+                                mapping = {'XAU/USD': 'GCUSD', 'XAG/USD': 'SIUSD'}
+                                if symbol in mapping:
+                                    symbol = mapping[symbol]
+                                    logger.debug(f"🔄 Swissquote 티커 변환: {original_symbol} -> {symbol}")
 
                             # 먼저 전체 심볼로 검색
                             asset_id = ticker_to_asset_id_cache.get(symbol)

@@ -119,7 +119,7 @@ export default function AgGridHistoryTable({ assetIdentifier = 'BTCUSDT', dataIn
               variant="start"
               label=""
               placeholder=""
-              className="w-12 px-0 text-transparent" // Hide text, make narrow
+              className="!w-10 !h-10 rounded-full !px-0 !py-0 text-transparent bg-gray-50 border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition-all shadow-sm"
               onStartDate={(s) => {
                 const v = s || ''
                 console.log('[AgGridHistoryTable] start single change', v)
@@ -133,7 +133,7 @@ export default function AgGridHistoryTable({ assetIdentifier = 'BTCUSDT', dataIn
               variant="end"
               label=""
               placeholder=""
-              className="w-12 px-0 text-transparent" // Hide text, make narrow
+              className="!w-10 !h-10 rounded-full !px-0 !py-0 text-transparent bg-gray-50 border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition-all shadow-sm"
               onEndDate={(e) => {
                 const v = e || ''
                 console.log('[AgGridHistoryTable] end single change', v)

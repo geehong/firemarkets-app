@@ -18,23 +18,50 @@ class RedisQueueManager:
         self.dlq_key = "dead_letter_queue"
 
     async def _ensure_client(self) -> redis.Redis:
+        """
+        Ensures a Redis client is available and attached to the current event loop.
+        In a multi-threaded scheduler environment, different jobs may run in different event loops.
+        """
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+
         if self.redis_client is not None:
-            return self.redis_client
+            # Check if the client is still valid for the current loop
+            try:
+                # If we have a client but no loop info, or the loop changed, we should reconnect
+                if not hasattr(self, "_attached_loop") or self._attached_loop != current_loop:
+                    logger.info(f"Event loop changed or mismatch in RedisQueueManager ({getattr(self, '_attached_loop', 'None')} -> {current_loop}). Reconnecting...")
+                    # Note: We don't necessarily need to aclose() if the old loop is already closed or inaccessible,
+                    # but it's good practice if possible. However, aclose() itself might fail if the loop is wrong.
+                    try:
+                        await self.redis_client.ping()
+                    except (RuntimeError, Exception):
+                        # Loop mismatch often causes RuntimeError when trying to use the client
+                        self.redis_client = None
+                    
+                    if self.redis_client:
+                         await self.redis_client.aclose()
+                         self.redis_client = None
+                else:
+                    return self.redis_client
+            except Exception as e:
+                logger.warning(f"Error checking Redis client loop: {e}. Reconnecting...")
+                self.redis_client = None
         
         # ConfigManager에서 Redis 설정 가져오기
         host = self.config_manager._get_config("REDIS_HOST", "redis", str)
         port = int(self.config_manager._get_config("REDIS_PORT", 6379, int))
         db = int(self.config_manager._get_config("REDIS_DB", 0, int))
-        password = self.config_manager._get_config("REDIS_PASSWORD", None, str)
-        # Redis 비밀번호가 빈 문자열이면 None으로 설정
-        if password == "":
-            password = None
         
-        # Redis 연결을 비밀번호 없이 시도
+        # Redis 연결 시도
         url = f"redis://{host}:{port}/{db}"
         self.redis_client = await redis.from_url(url)
         await self.redis_client.ping()
-        logger.info(f"RedisQueueManager connected to {host}:{port} db={db}")
+        self._attached_loop = current_loop
+        
+        logger.info(f"RedisQueueManager connected to {host}:{port} db={db} on loop {current_loop}")
         return self.redis_client
 
     async def push_batch_task(self, task_type: str, payload: dict) -> None:
