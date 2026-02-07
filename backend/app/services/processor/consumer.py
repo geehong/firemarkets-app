@@ -2,6 +2,7 @@ import logging
 import asyncio
 import redis.asyncio as redis
 from typing import Dict, List, Any, Optional
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -27,35 +28,73 @@ class StreamConsumer:
             "twelvedata:realtime": "twelvedata_group",
             "kis:realtime": "kis_group",
         }
+        self.last_heartbeat = 0
+        self.consecutive_errors = 0
 
     async def connect(self) -> bool:
         """Redis 연결 초기화"""
         try:
             if self.redis_client:
-                await self.redis_client.ping()
-                return True
+                try:
+                    await self.redis_client.ping()
+                    return True
+                except Exception:
+                    logger.warning("Existing Redis connection failed ping, closing...")
+                    await self.close()
                 
-            self.redis_client = await redis.from_url(self.redis_url)
+            self.redis_client = await redis.from_url(
+                self.redis_url, 
+                decode_responses=False, # We handle decoding manually for robustness
+                socket_connect_timeout=5,
+                socket_keepalive=True,
+                retry_on_timeout=True
+            )
             await self.redis_client.ping()
-            logger.info(f"Redis 연결 성공: {self.redis_url}")
+            logger.info(f"✅ Redis 연결 성공: {self.redis_url}")
+            self.consecutive_errors = 0
             return True
         except Exception as e:
-            logger.error(f"Redis 연결 실패: {e}")
+            logger.error(f"❌ Redis 연결 실패: {e}")
             return False
+
+    async def close(self):
+        """Redis 연결 종료"""
+        if self.redis_client:
+            try:
+                await self.redis_client.close()
+            except Exception:
+                pass
+            self.redis_client = None
+
+    async def _reconnect(self):
+        """재연결 시도"""
+        logger.info("🔄 Redis 재연결 시도...")
+        await self.close()
+        await asyncio.sleep(1) # 잠시 대기
+        return await self.connect()
 
     async def process_streams(self) -> int:
         """실시간 스트림 데이터 처리"""
+        # 연결 확인
         if not self.redis_client:
-            return 0
+            if not await self.connect():
+                return 0
 
         processed_count = 0
         records_to_save = []
         ack_items = []
 
         try:
+            # Heartbeat logging (every 60s)
+            now = time.time()
+            if now - self.last_heartbeat > 60:
+                logger.info(f"💓 StreamConsumer Heartbeat - Connected: {bool(self.redis_client)}")
+                self.last_heartbeat = now
+
             # Consumer Group 생성
             for stream_name, group_name in self.realtime_streams.items():
                 try:
+                    # mkstream=True ensures stream exists
                     await self.redis_client.xgroup_create(
                         name=stream_name, groupname=group_name, id="0", mkstream=True
                     )
@@ -73,18 +112,19 @@ class StreamConsumer:
                             consumername="processor_worker",
                             streams={stream_name: "0"},
                             count=min(self.batch_size, pending_info['pending']),
-                            block=0  # Non-blocking to prevent infinite wait
+                            block=0 
                         )
                         if pending_data:
                             await self._process_messages(pending_data, records_to_save, ack_items)
                 except Exception as e:
-                    logger.error(f"Pending 처리 실패 {stream_name}: {e}")
+                    # Connection errors should propagate to trigger reconnect
+                    if "Connection" in str(e) or "reset by peer" in str(e):
+                        raise e
+                    logger.debug(f"Pending 처리 실패 {stream_name}: {e}")
 
-            # 각 스트림별로 개별 처리 (각 스트림마다 다른 consumer group 사용)
-            # 고우선순위 스트림(binance, coinbase)은 짧은 blocking으로 처리
+            # 각 스트림별로 개별 처리
             for stream_name, group_name in self.realtime_streams.items():
                 try:
-                    # Use a consistent blocking time for all streams for efficiency
                     block_time = 100 
                     
                     new_data = await self.redis_client.xreadgroup(
@@ -98,26 +138,29 @@ class StreamConsumer:
                     if new_data:
                         total_messages = sum(len(msgs) for _, msgs in new_data)
                         if total_messages > 0:
-                            logger.info(f"📨 스트림 {stream_name}에서 {total_messages}개 메시지 읽음")
+                            # logger.info(f"📨 스트림 {stream_name}에서 {total_messages}개 메시지 읽음")
+                            pass
                         await self._process_messages(new_data, records_to_save, ack_items)
+                        
                 except Exception as stream_error:
-                    # Log error and continue to next stream
-                    logger.warning(f"스트림 {stream_name} 읽기 실패: {stream_error}")
+                    if "Connection" in str(stream_error) or "reset by peer" in str(stream_error):
+                        raise stream_error
+                    logger.debug(f"스트림 {stream_name} 읽기 실패: {stream_error}")
             
             # 데이터가 없으면 추가 대기로 CPU 부하 완화
             if not records_to_save:
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(0.1)
             else:
                 logger.debug(f"📥 처리할 레코드: {len(records_to_save)}개")
 
             # DB 저장
             if records_to_save:
                 tickers_in_batch = [r.get('ticker') for r in records_to_save]
-                logger.info(f"💾 DB 저장 시도: {len(records_to_save)}개 레코드 (Tickers: {tickers_in_batch[:10]}{'...' if len(tickers_in_batch) > 10 else ''})")
+                logger.info(f"💾 DB 저장 시도: {len(records_to_save)}개 레코드 (Tickers: {tickers_in_batch[:5]}...)")
                 success = await self.repository.bulk_save_realtime_quotes(records_to_save)
                 if success:
                     processed_count = len(records_to_save)
-                    logger.info(f"✅ DB 저장 성공: {processed_count}개")
+                    # logger.info(f"✅ DB 저장 성공: {processed_count}개")
                 else:
                     logger.error("❌ DB 저장 실패")
 
@@ -129,8 +172,19 @@ class StreamConsumer:
                     except Exception as e:
                         logger.warning(f"ACK 실패 {stream_name}:{message_id}: {e}")
 
+            # 성공적으로 실행되면 에러 카운트 리셋
+            self.consecutive_errors = 0
+
         except Exception as e:
-            logger.error(f"스트림 처리 중 오류: {e}")
+            self.consecutive_errors += 1
+            logger.error(f"스트림 처리 중 오류 (시도 {self.consecutive_errors}): {e}")
+            
+            # 재연결 로직
+            if self.consecutive_errors >= 3 or "Connection" in str(e) or "reset by peer" in str(e):
+                logger.warning("⚠️ 연속 에러 또는 연결 에러 감지, 재연결 시도...")
+                await self._reconnect()
+                
+            await asyncio.sleep(1)
 
         return processed_count
 
@@ -145,83 +199,62 @@ class StreamConsumer:
 
             for message_id, message_data in messages:
                 try:
+                    # Adapter expects raw bytes (it handles decoding internally)
                     parsed_data = adapter.parse_message(message_data)
                     if parsed_data:
-                        # asset_id 조회 로직이 필요함. 
-                        # 현재 Adapter는 ticker만 반환하므로, 여기서 asset_id를 매핑해야 함.
-                        # 성능을 위해 캐싱된 매핑을 사용하는 것이 좋음.
-                        # 하지만 리팩토링 단계에서는 일단 DB에서 조회하거나 캐시를 주입받아야 함.
-                        # 여기서는 임시로 asset_id를 None으로 두고 Repository나 Validator에서 처리하게 하거나,
-                        # DataProcessor가 가지고 있던 ticker_to_asset_id 맵을 주입받아야 함.
-                        
-                        # TODO: Resolve asset_id efficiently. 
-                        # For now, let's assume we can get it from a cache passed in or similar.
-                        # Or better, let the repository handle it if it caches?
-                        # No, repository saves. Validator validates.
-                        # Let's add a method to inject asset_map.
-                        
                         ticker = parsed_data.get('ticker')
                         if not ticker:
-                            logger.warning(f"⚠️ Ticker가 없는 메시지: {stream_name}:{message_id}")
+                            # 메시지 ID는 ACK하여 스킵
                             ack_items.append((stream_name, group_name, message_id))
                             continue
                         
-                        # Ticker resolution tracing
-                        if ticker in ['MSFT', 'NVDA', 'AAPL', 'TSLA', 'META', 'GOOG', 'PLTR', 'BIDU', 'AMX', 'LLY', 'V', 'MA', 'WMT', 'NFLX', 'JPM']:
-                             in_map = ticker in self.ticker_to_asset_id
-                             mapped_id = self.ticker_to_asset_id.get(ticker) if in_map else "None"
-                             logger.info(f"🧐 [DP-TRACE] Resolving {ticker}: In Map? {in_map}, ID: {mapped_id}")
-
-                        # Ticker normalization: try original first, then try without USDT suffix
+                        # Ticker resolution logic
                         asset_id = None
                         if hasattr(self, 'ticker_to_asset_id'):
-                            # Try original ticker first (e.g., BTCUSDT, ETH, SOL-USD)
+                            # 1. Exact match
                             if ticker in self.ticker_to_asset_id:
                                 asset_id = self.ticker_to_asset_id[ticker]
-                            # If not found and has USDT suffix, try without it (e.g., SOLUSDT -> SOL)
+                            # 2. Try removing 'USDT' (e.g. BTCUSDT -> BTC)
                             elif ticker.endswith('USDT') and len(ticker) > 4:
-                                normalized_ticker = ticker[:-4]  # Remove 'USDT'
-                                if normalized_ticker in self.ticker_to_asset_id:
-                                    asset_id = self.ticker_to_asset_id[normalized_ticker]
-                            # Coinbase format: SOL-USD -> SOL
+                                normalized = ticker[:-4]
+                                if normalized in self.ticker_to_asset_id:
+                                    asset_id = self.ticker_to_asset_id[normalized]
+                             # 3. Try removing '-USD' (e.g. SOL-USD -> SOL)
                             elif ticker.endswith('-USD') and len(ticker) > 4:
-                                normalized_ticker = ticker[:-4]  # Remove '-USD'
-                                if normalized_ticker in self.ticker_to_asset_id:
-                                    asset_id = self.ticker_to_asset_id[normalized_ticker]
-                            # Some exchanges use XXX-USDT format (e.g., BTC-USDT -> BTC)
+                                normalized = ticker[:-4]
+                                if normalized in self.ticker_to_asset_id:
+                                    asset_id = self.ticker_to_asset_id[normalized]
+                            # 4. Try removing '-USDT' (e.g. BTC-USDT -> BTC)
                             elif ticker.endswith('-USDT') and len(ticker) > 5:
-                                normalized_ticker = ticker[:-5]  # Remove '-USDT'
-                                if normalized_ticker in self.ticker_to_asset_id:
-                                    asset_id = self.ticker_to_asset_id[normalized_ticker]
-                            # Swissquote format: XAU/USD -> XAU
+                                normalized = ticker[:-5]
+                                if normalized in self.ticker_to_asset_id:
+                                    asset_id = self.ticker_to_asset_id[normalized]
+                            # 5. Handle slash (e.g. XAU/USD -> XAU)
                             elif '/USD' in ticker:
-                                normalized_ticker = ticker.split('/')[0]
-                                if normalized_ticker in self.ticker_to_asset_id:
-                                    asset_id = self.ticker_to_asset_id[normalized_ticker]
+                                normalized = ticker.split('/')[0]
+                                if normalized in self.ticker_to_asset_id:
+                                    asset_id = self.ticker_to_asset_id[normalized]
                         
                         if asset_id is not None:
                             parsed_data['asset_id'] = asset_id
                             records_to_save.append(parsed_data)
                             ack_items.append((stream_name, group_name, message_id))
                         else:
-                            # 매핑 실패 시 로그
-                            if not hasattr(self, 'ticker_to_asset_id'):
-                                logger.warning(f"⚠️ Asset 맵이 설정되지 않음. Ticker: {ticker}")
-                            else:
-                                # Only log periodically to reduce log spam (every 100th occurrence)
-                                if not hasattr(self, '_missing_ticker_counts'):
-                                    self._missing_ticker_counts = {}
-                                count = self._missing_ticker_counts.get(ticker, 0) + 1
-                                self._missing_ticker_counts[ticker] = count
-                                
-                                if count == 1 or count % 100 == 0:
-                                    logger.warning(f"⚠️ Asset ID를 찾을 수 없음. Ticker: {ticker} (맵 크기: {len(self.ticker_to_asset_id)}, 발생: {count}회)")
-                            # ACK는 해야 하나? 실패한 메시지는 ACK해서 넘어가야 함.
+                            # 매핑 실패 - 가끔 로그 출력
+                            if not hasattr(self, '_missing_ticker_counts'):
+                                self._missing_ticker_counts = {}
+                            count = self._missing_ticker_counts.get(ticker, 0) + 1
+                            self._missing_ticker_counts[ticker] = count
+                            
+                            if count == 1 or count % 100 == 0:
+                                logger.warning(f"⚠️ Asset ID 못찾음: {ticker} (발생: {count}회)")
+                            
+                            # 실패해도 ACK하여 재처리 방지
                             ack_items.append((stream_name, group_name, message_id))
 
                 except Exception as e:
                     logger.error(f"메시지 파싱 실패 ({stream_name}:{message_id}): {e}")
-                    # 파싱 실패한 메시지도 ACK 처리하여 무한 루프 방지 (또는 DLQ로 이동)
+                    # 파싱 실패 시에도 ACK (DLQ가 없으므로)
                     ack_items.append((stream_name, group_name, message_id))
 
     def set_asset_map(self, asset_map: Dict[str, int]):

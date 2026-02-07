@@ -90,7 +90,7 @@ class AssetManager:
                         OR
                         (a.asset_type_id <> 8 AND COALESCE(a.collection_settings->>'collect_price', 'true') = 'true')
                       )
-                    ORDER BY market_cap DESC, a.ticker ASC
+                    ORDER BY market_cap DESC NULLS LAST, a.ticker ASC
                     """
                 )
                 result = await session.execute(query)
