@@ -89,7 +89,10 @@
         "map": "Map",
         "privacyPolicy": "Privacy Policy",
         "termsOfService": "Terms of Service",
-        "analysis": "Analysis"
+        "analysis": "Analysis",
+        "about": "About Us",
+        "contact": "Contact",
+        "disclaimer": "The information on this site is not investment advice. We are not responsible for any investment losses."
     },
     "Dashboard": {
         "live": "LIVE",
@@ -236,6 +239,49 @@
                     "title": "9. Contact Us",
                     "content": "For any questions regarding these Terms of Service, please contact us at contact@firemarkets.net."
                 }
+            }
+        },
+        "about": {
+            "title": "About Us",
+            "metaDescription": "FireMarkets - Financial Intelligence Platform",
+            "heading": "Welcome to FireMarkets",
+            "intro": "FireMarkets is a next-generation financial intelligence platform providing real-time market data, on-chain analytics, and AI-driven insights for cryptocurrency and global financial assets.",
+            "mission": {
+                "title": "Our Mission",
+                "content": "We empower all market participants—from individual investors to institutions—with professional-grade financial data and analytical tools to make better investment decisions."
+            },
+            "features": {
+                "title": "Key Features",
+                "realtime": "Real-time Market Data - Sub-second latency via WebSocket",
+                "onchain": "On-Chain Analytics - 30+ blockchain metrics including MVRV, NUPL",
+                "ai": "AI Insights - Machine learning-based market sentiment analysis",
+                "global": "Global Assets - Integrated monitoring of stocks, ETFs, commodities, and crypto"
+            },
+            "team": {
+                "title": "Our Team",
+                "content": "FireMarkets is operated by a team of experts with years of experience in fintech and blockchain. We prioritize data accuracy and user experience above all."
+            }
+        },
+        "contact": {
+            "title": "Contact Us",
+            "metaDescription": "Contact FireMarkets",
+            "heading": "Get in Touch",
+            "intro": "Have questions about FireMarkets? Reach out to us using the contact information below.",
+            "email": {
+                "title": "Email",
+                "address": "contact@firemarkets.net"
+            },
+            "business": {
+                "title": "Business Inquiries",
+                "content": "For partnerships, advertising, and business collaborations, please contact us via email."
+            },
+            "support": {
+                "title": "Technical Support",
+                "content": "If you encounter any issues while using our services, please email us. We respond within 24 business hours."
+            },
+            "social": {
+                "title": "Social Media",
+                "content": "Follow us on social media to stay updated with the latest news."
             }
         }
     }

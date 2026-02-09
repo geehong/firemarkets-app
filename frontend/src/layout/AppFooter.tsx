@@ -18,10 +18,21 @@ export default function AppFooter() {
                             <Link href="/terms-of-service" className="text-sm text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
                                 {t('termsOfService')}
                             </Link>
+                            <span className="text-gray-300 dark:text-gray-700">|</span>
+                            <Link href="/about" className="text-sm text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
+                                {t('about')}
+                            </Link>
+                            <span className="text-gray-300 dark:text-gray-700">|</span>
+                            <Link href="/contact" className="text-sm text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
+                                {t('contact')}
+                            </Link>
                         </div>
                         <span className="text-sm text-gray-500 dark:text-gray-400">
                             © {currentYear} FireMarkets. All rights reserved.
                         </span>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 max-w-xl">
+                            {t('disclaimer')}
+                        </p>
                     </div>
 
 

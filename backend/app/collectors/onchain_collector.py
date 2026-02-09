@@ -93,10 +93,16 @@ class OnchainCollector(BaseCollector):
             # 필터링: 현재 그룹에 속하고 설정에서 활성화된 메트릭만 선택
             metrics_to_collect = [m for m in enabled_metrics if m in current_group]
             
+            # Skipped metrics logging
+            skipped_group = group_a if is_even_day else group_b
+            skipped_metrics = [m for m in enabled_metrics if m in skipped_group]
+            
             self.logging_helper.log_info(
                 f"No API Key (Active Split Mode). Day: {day_of_month} ({'Even' if is_even_day else 'Odd'}). "
                 f"Target Group: {'B' if is_even_day else 'A'}. Collecting {len(metrics_to_collect)} metrics."
             )
+            if skipped_metrics:
+                self.logging_helper.log_info(f"Skipping {len(skipped_metrics)} metrics due to split mode: {', '.join(skipped_metrics)}")
 
         # 3. 데이터 수집 실행 및 결과 집계 (순차 실행으로 변경)
         results = []

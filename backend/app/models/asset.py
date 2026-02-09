@@ -499,7 +499,7 @@ class CryptoMetric(Base):
         {'extend_existing': True}
     )
     
-    metric_id = Column(BigInteger, primary_key=True)  # DB 스키마와 일치
+    metric_id = Column(BigInteger, primary_key=True, autoincrement=True)  # DB 스키마와 일치
     asset_id = Column(Integer, ForeignKey('assets.asset_id'), nullable=False, index=True)
     timestamp_utc = Column(Date, nullable=False, index=True)  # DB 스키마와 일치 (Date 타입)
     
