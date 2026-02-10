@@ -172,6 +172,22 @@ const PostDetailedView: React.FC<PostDetailedViewProps> = ({ post, locale }) => 
                         <FireMarketsAnalysis postInfo={postInfo} locale={locale} />
                     )}
 
+                    {/* Author Profile Section */}
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+                        <div className="flex items-center gap-4">
+                            <div className="w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center overflow-hidden">
+                                <span className="text-xl font-bold text-blue-600 dark:text-blue-400">GH</span>
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Geehong</h3>
+                                <p className="text-sm text-blue-600 dark:text-blue-400 font-medium font-outfit uppercase tracking-wider">FireMarkets Chief Analyst</p>
+                                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                    Specializing in on-chain data analysis and global market trends. Providing deep insights into the digital asset ecosystem.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
                     <PostInfoCard post={post} locale={locale} />
                     
                     {/* Disclaimer Component */}

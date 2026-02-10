@@ -30,6 +30,10 @@ export default function AppFooter() {
                         <span className="text-sm text-gray-500 dark:text-gray-400">
                             © {currentYear} FireMarkets. All rights reserved.
                         </span>
+                        <div className="flex flex-col items-center md:items-start text-xs text-gray-400 dark:text-gray-500 mt-1">
+                            <span>Business Info: FireMarkets Team</span>
+                            <span>Contact: <a href="mailto:geecgpia@gmail.com" className="hover:text-blue-500 underline">geecgpia@gmail.com</a></span>
+                        </div>
                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 max-w-xl">
                             {t('disclaimer')}
                         </p>

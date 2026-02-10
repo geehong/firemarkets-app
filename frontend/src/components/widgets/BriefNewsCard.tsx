@@ -82,7 +82,7 @@ export const BriefNewsCard: React.FC<BriefNewsCardProps> = ({
             />
 
             <div className="relative z-10 flex flex-col h-full pointer-events-none">
-                <Link href={`/briefnews/${slug}`} className="group block mb-2 pointer-events-auto">
+                <Link href={`/news/briefnews/${slug}`} className="group block mb-2 pointer-events-auto">
                     <h3 className={`${CONFIG.TITLE.SIZE} ${CONFIG.TITLE.FONT_WEIGHT} text-white group-hover:text-blue-300 leading-snug transition-colors drop-shadow-md`}>
                         {title}
                     </h3>

@@ -133,7 +133,7 @@ export default function BlogEdit({
     if (formData.post_type === 'news' || formData.post_type === 'raw_news' || formData.post_type === 'ai_draft_news') {
       prefix = '/news'
     } else if (formData.post_type === 'brief_news') {
-      prefix = '/briefnews'
+      prefix = '/news/briefnews'
     } else if (formData.post_type === 'onchain') {
       prefix = '/onchain'
     } else if (formData.post_type === 'assets') {

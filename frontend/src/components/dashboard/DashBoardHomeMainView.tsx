@@ -39,7 +39,7 @@ const LatestPostSection = ({ title, postType, linkUrl }: { title: string; postTy
         status: 'published'
     });
 
-    const posts = data?.posts || [];
+    const posts = (data as any)?.posts || [];
     const locale = useLocale();
     const t = useTranslations('Dashboard');
 
@@ -60,7 +60,7 @@ const LatestPostSection = ({ title, postType, linkUrl }: { title: string; postTy
                 <div className="text-center py-10 text-gray-400">No posts available.</div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    {posts.map((post) => {
+                    {posts.map((post: any) => {
                         const hasImage = post.cover_image && post.cover_image.trim() !== '';
                         const imageUrl = hasImage ? (post.cover_image || '').trim() : getFallbackImage({ ...post, category: post.category || undefined });
                         const postTitle = typeof post.title === 'object' ? (locale === 'ko' ? (post.title.ko || post.title.en) : (post.title.en || post.title.ko)) : post.title;
@@ -68,7 +68,7 @@ const LatestPostSection = ({ title, postType, linkUrl }: { title: string; postTy
                         return (
                             <Link
                                 key={post.id}
-                                href={`/blog/${post.slug}`}
+                                href={`${linkUrl}/${post.slug}`}
                                 className="group flex flex-col h-full"
                             >
                                 <div className="relative aspect-[16/10] rounded-xl overflow-hidden mb-3 bg-gray-100 dark:bg-gray-700 shadow-sm group-hover:shadow-md transition-all duration-300">
@@ -125,7 +125,7 @@ const BriefNewsSection = () => {
         order: 'desc'
     });
 
-    const briefNews = data?.posts || [];
+    const briefNews = (data as any)?.posts || [];
 
     if (isLoading) return <div className="h-60 bg-gray-100 dark:bg-gray-800 rounded-2xl animate-pulse"></div>;
 
@@ -171,7 +171,7 @@ const DashBoardHomeMainView = () => {
         order: 'desc'
     });
 
-    const briefNews = briefNewsData?.posts || [];
+    const briefNews = (briefNewsData as any)?.posts || [];
 
     const assetTypes = [
         { value: '', label_en: 'All', label_ko: '전체' },
@@ -319,7 +319,7 @@ const DashBoardHomeMainView = () => {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                                 </svg>
                             </button>
-                            <Link href="/briefnews" className="text-sm font-medium text-slate-500 hover:text-violet-600 transition-colors">
+                            <Link href="/news/briefnews" className="text-sm font-medium text-slate-500 hover:text-violet-600 transition-colors">
                                 {t('viewAll')} →
                             </Link>
                         </div>

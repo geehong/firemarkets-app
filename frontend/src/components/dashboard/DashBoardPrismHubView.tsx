@@ -75,7 +75,7 @@ const MainNewsSection = () => {
         status: 'published'
     });
 
-    const posts = data?.posts || [];
+    const posts = (data as any)?.posts || [];
     const t = useTranslations('Dashboard');
     const locale = useLocale();
 
@@ -104,7 +104,7 @@ const MainNewsSection = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {posts.map((post) => {
+                {posts.map((post: any) => {
                     const hasImage = post.cover_image && post.cover_image.trim() !== '';
                     const imageUrl = hasImage ? post.cover_image : getFallbackImage({ ...post, category: post.category || undefined });
                     const postTitle = typeof post.title === 'object' ? (locale === 'ko' ? (post.title.ko || post.title.en) : (post.title.en || post.title.ko)) : post.title;
@@ -155,7 +155,7 @@ const BriefNewsSection = () => {
         status: 'published'
     });
 
-    const posts = data?.posts || [];
+    const posts = (data as any)?.posts || [];
 
     if (isLoading) {
         return (

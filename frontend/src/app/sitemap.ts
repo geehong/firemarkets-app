@@ -44,7 +44,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         if (type === 'news') {
             pathPrefixes = ['/en/news', '/ko/news'];
         } else if (type === 'brief_news') {
-            pathPrefixes = ['/en/briefnews', '/ko/briefnews'];
+            pathPrefixes = ['/en/news/briefnews', '/ko/news/briefnews'];
         } else if (type === 'post' || type === 'raw_news' || type === 'ai_draft_news') {
             pathPrefixes = ['/en/blog', '/ko/blog'];
         } else if (type === 'page') {
@@ -53,12 +53,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
         if (pathPrefixes.length > 0) {
             pathPrefixes.forEach(prefix => {
-                postEntries.push({
-                    url: `${baseUrl}${prefix}/${slug}`,
-                    lastModified: updatedAt,
-                    changeFrequency: 'weekly',
-                    priority: type === 'news' ? 0.7 : 0.6
-                });
+                const urlPath = `${prefix}/${slug}`;
+                // Exclude any paths that should be noindexed
+                const restrictedPaths = ['/admin', '/profile', '/calendar', '/widgets', '/tables', '/chart'];
+                const isRestricted = restrictedPaths.some(p => urlPath.includes(p));
+                
+                if (!isRestricted) {
+                    postEntries.push({
+                        url: `${baseUrl}${urlPath}`,
+                        lastModified: updatedAt,
+                        changeFrequency: 'weekly',
+                        priority: type === 'news' ? 0.7 : 0.6
+                    });
+                }
             });
         }
     });

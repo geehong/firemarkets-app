@@ -8,6 +8,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import ScrollToTop from '@/components/common/ScrollToTop';
+import Script from 'next/script';
 
 const outfit = Outfit({
   subsets: ["latin"],
@@ -33,6 +34,14 @@ export default async function LocaleLayout({
 
   return (
     <html lang={locale} suppressHydrationWarning>
+      <head>
+        {/* Google AdSense - Replace with your own ca-pub ID */}
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1199110233969910"
+          crossOrigin="anonymous"
+        ></script>
+      </head>
       <body className={`${outfit.className} dark:bg-gray-900 overflow-x-hidden`} suppressHydrationWarning>
         <NextIntlClientProvider messages={messages}>
           <QueryProvider>

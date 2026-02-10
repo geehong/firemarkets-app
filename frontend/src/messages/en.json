@@ -191,8 +191,16 @@
                     "title": "6. Your Rights",
                     "content": "You have the right to access, correct, delete, or restrict the processing of your personal information at any time. Please contact us using the information below to exercise these rights."
                 },
+                "advertising": {
+                    "title": "7. Advertising and Cookies (Google AdSense)",
+                    "content": "We may display Google AdSense advertisements on our service. Google and third-party vendors use cookies to serve ads based on a user's prior visits to our website or other websites.",
+                    "items": {
+                        "google": "Google's use of advertising cookies enables it and its partners to serve ads based on your visit to this site and/or other sites on the Internet.",
+                        "optOut": "Users may opt out of personalized advertising by visiting Google Ads Settings (https://www.google.com/settings/ads)."
+                    }
+                },
                 "contact": {
-                    "title": "7. Contact Us",
+                    "title": "8. Contact Us",
                     "content": "For any questions regarding this Privacy Policy, please contact us at contact@firemarkets.net."
                 }
             }
@@ -263,6 +271,12 @@
             "team": {
                 "title": "Our Team",
                 "content": "FireMarkets is operated by a team of experts with years of experience in fintech and blockchain. We prioritize data accuracy and user experience above all."
+            },
+            "companyInfo": {
+                "title": "Company Information",
+                "address": "Address: 103-702, 33, Cheonma-ro 90beon-gil, Buk-gu, Pohang-si, Gyeongsangbuk-do, Republic of Korea",
+                "representative": "Representative: Ki-hong Kim (geecgpia@gmail.com)",
+                "businessArea": "Business Area: Investment & Development"
             }
         },
         "contact": {

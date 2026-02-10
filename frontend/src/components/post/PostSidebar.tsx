@@ -9,6 +9,7 @@ import { parseLocalized } from '@/utils/parseLocalized'
 interface PostSidebarProps {
     locale: string;
     postType?: string;
+    ticker?: string;
 }
 
 const SidebarWidget: React.FC<{
@@ -33,24 +34,10 @@ const SidebarWidget: React.FC<{
     )
 }
 
-const PostSidebar: React.FC<PostSidebarProps> = ({ locale, postType }) => {
+const PostSidebar: React.FC<PostSidebarProps> = ({ locale, postType, ticker }) => {
     const router = useRouter()
     const sidebarRef = useRef<HTMLElement>(null)
     const [searchTerm, setSearchTerm] = useState('')
-
-    // Debugging Sticky
-    useEffect(() => {
-        const handleScroll = () => {
-            if (sidebarRef.current) {
-                const rect = sidebarRef.current.getBoundingClientRect()
-                if (sidebarRef.current) {
-                    // Debug removed
-                }
-            }
-        }
-        window.addEventListener('scroll', handleScroll)
-        return () => window.removeEventListener('scroll', handleScroll)
-    }, [])
 
     // Pagination State
     const [page, setPage] = useState(1)
@@ -65,17 +52,37 @@ const PostSidebar: React.FC<PostSidebarProps> = ({ locale, postType }) => {
     }
 
     // 2. Fetch Posts with Pagination
-    // If postType is 'blog', we query for 'post' type. If 'brief_news' or 'news', use mapped type.
     const queryPostType = postType === 'blog' ? 'post' : postType;
 
-    const { data: postsData, isLoading } = usePosts({
+    // A. Main query: Filter by ticker if available, else by type
+    const { data: postsData, isLoading: isPostsLoading } = usePosts({
         page,
         page_size: pageSize,
-        post_type: queryPostType, // Filter by type
+        post_type: ticker ? undefined : queryPostType,
+        ticker: ticker,
     })
 
-    const posts = postsData?.posts || []
-    const totalPages = postsData?.total_pages || 1
+    // B. Filling query: Get recent general posts if ticker-based results are insufficient
+    const { data: recentPostsData, isLoading: isRecentLoading } = usePosts({
+        page: 1,
+        page_size: 10,
+        post_type: 'post,news,brief_news',
+    }, { 
+        enabled: !!ticker && (!(postsData as any) || ((postsData as any)?.posts?.length || 0) < 5)
+    })
+
+    // Combine posts
+    const tickerPosts = (postsData as any)?.posts || []
+    let displayPosts = tickerPosts
+    
+    if (ticker && displayPosts.length < 5 && (recentPostsData as any)?.posts) {
+        const existingIds = new Set(displayPosts.map((p: any) => p.id))
+        const fillPosts = (recentPostsData as any).posts.filter((p: any) => !existingIds.has(p.id))
+        displayPosts = [...displayPosts, ...fillPosts].slice(0, 5)
+    }
+
+    const totalPages = (postsData as any)?.total_pages || 1
+    const isLoading = isPostsLoading || (ticker && isRecentLoading && tickerPosts.length === 0)
 
     const handlePrevPage = () => {
         if (page > 1) setPage(p => p - 1)
@@ -87,6 +94,7 @@ const PostSidebar: React.FC<PostSidebarProps> = ({ locale, postType }) => {
 
     // Dynamic Title Logic
     const getRecentTitle = () => {
+        if (ticker) return locale === 'ko' ? `${ticker} 관련 소식` : `Related to ${ticker}`
         if (postType === 'news') return locale === 'ko' ? '최근 뉴스' : 'Recent News'
         if (postType === 'brief_news') return locale === 'ko' ? '최근 단신' : 'Recent Briefs'
         if (postType === 'blog') return locale === 'ko' ? '최근 포스트' : 'Recent Posts'
@@ -159,8 +167,8 @@ const PostSidebar: React.FC<PostSidebarProps> = ({ locale, postType }) => {
                             ))}
                         </div>
                     ) : (
-                        posts.length > 0 ? (
-                            posts.map((post) => (
+                        displayPosts.length > 0 ? (
+                            displayPosts.map((post: any) => (
                                 <div key={post.id} className="flex gap-3 group">
                                     {/* Thumbnail (Optional) */}
                                     {post.cover_image && (
@@ -175,7 +183,7 @@ const PostSidebar: React.FC<PostSidebarProps> = ({ locale, postType }) => {
                                     <div className="flex flex-col justify-center">
                                         <Link
                                             href={post.post_type === 'news' ? `/${locale}/news/${post.slug}` :
-                                                post.post_type === 'brief_news' ? `/${locale}/briefnews/${post.slug}` :
+                                                post.post_type === 'brief_news' ? `/${locale}/news/briefnews/${post.slug}` :
                                                     `/${locale}/blog/${post.slug}`}
                                             className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 line-clamp-2 leading-snug transition-colors"
                                         >

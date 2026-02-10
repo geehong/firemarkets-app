@@ -83,7 +83,7 @@ const AppSidebar: React.FC = () => {
     {
       name: "Market Signals",
       icon: <BoltIcon />,
-      path: "/briefnews",
+      path: "/news/briefnews",
     },
     // 4. Market Insight (Blog)
     {
@@ -279,85 +279,27 @@ const AppSidebar: React.FC = () => {
       path: "/calendar",
     },
     {
-      name: t('pages'), // Previously in navItems
+      icon: <UserCircleIcon />,
+      name: t('profile'),
+      path: "/profile",
+    },
+    {
+      name: t('widgets'),
+      icon: <GridIcon />,
+      path: "/widgets",
+    },
+    // Hidden demo and non-functional pages for production
+    /*
+    {
+      name: t('pages'), 
       icon: <PageIcon />,
       subItems: [
         { name: "Blank Page", path: "/blank", pro: false },
         { name: "404 Error", path: "/error-404", pro: false },
-        {
-          name: "Design Concepts",
-          icon: <GridIcon />,
-          subItems: [
-            {
-              name: "Dashboard",
-              icon: <DashboardIcon />,
-              subItems: [
-                { name: "Command Center", path: "/design-concepts/dashboard/command-center", icon: dotIcon },
-                { name: "Market Pulse", path: "/design-concepts/dashboard/market-pulse", icon: dotIcon },
-                { name: "Focus Mode", path: "/design-concepts/dashboard/focus-mode", icon: dotIcon },
-                { name: "On-Chain Insight", path: "/design-concepts/dashboard/on-chain-insight", icon: dotIcon },
-                { name: "Personalized Feed", path: "/design-concepts/dashboard/personalized-feed", icon: dotIcon },
-                { name: "Quantum Grid", path: "/design-concepts/dashboard/quantum-grid", icon: dotIcon, new: true },
-                { name: "Aurora Analytics", path: "/design-concepts/dashboard/aurora-analytics", icon: dotIcon, new: true },
-                { name: "Matrix Flow", path: "/design-concepts/dashboard/matrix-flow", icon: dotIcon, new: true },
-                { name: "Nebula Station", path: "/design-concepts/dashboard/nebula-station", icon: dotIcon, new: true },
-                { name: "Prism Hub", path: "/design-concepts/dashboard/prism-hub", icon: dotIcon, new: true },
-              ]
-            },
-            {
-              name: "FireMarkets Main Page",
-              icon: <PageIcon />,
-              subItems: [
-                { name: "Live Earth", path: "/design-concepts/home/live-earth", icon: dotIcon },
-                { name: "Neo-Terminal", path: "/design-concepts/home/neo-terminal", icon: dotIcon },
-                { name: "Institutional Trust", path: "/design-concepts/home/institutional-trust", icon: dotIcon },
-                { name: "Interactive Demo", path: "/design-concepts/home/interactive-demo", icon: dotIcon },
-                { name: "Community Driven", path: "/design-concepts/home/community-driven", icon: dotIcon },
-              ]
-            }
-          ]
-        },
-        {
-          name: "Level 1",
-          icon: <GridIcon />,
-          subItems: [
-            {
-              name: "Level 2",
-              path: "/level-2",
-              icon: <TableIcon />,
-              subItems: [
-                { name: "Level 3", path: "/level-3", icon: <PageIcon /> }
-              ]
-            }
-          ]
-        }
+        // ...
       ],
     },
-    {
-      name: t('forms'), // Previously in navItems
-      icon: <ListIcon />,
-      subItems: [{ name: "Form Elements", path: "/form-elements", pro: false }],
-    },
-    {
-      icon: <BoxCubeIcon />,
-      name: t('uiElements'),
-      subItems: [
-        { name: "Alerts", path: "/alerts", pro: false },
-        { name: "Avatar", path: "/avatars", pro: false },
-        { name: "Badge", path: "/badge", pro: false },
-        { name: "Buttons", path: "/buttons", pro: false },
-        { name: "Images", path: "/images", pro: false },
-        { name: "Videos", path: "/videos", pro: false },
-      ],
-    },
-    {
-      icon: <PlugInIcon />,
-      name: t('auth'),
-      subItems: [
-        { name: "Sign In", path: "/signin", pro: false },
-        { name: "Sign Up", path: "/signup", pro: false },
-      ],
-    },
+    */
   ];
 
   const isActive = useCallback((path: string) => path === pathname, [pathname]);

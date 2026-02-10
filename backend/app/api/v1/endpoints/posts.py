@@ -77,11 +77,12 @@ def get_posts(
     page: int = Query(1, ge=1, description="페이지 번호"),
     page_size: int = Query(20, ge=1, le=1000, description="페이지당 항목 수"),
     post_type: Optional[str] = Query(None, description="포스트 타입 필터"),
-    status: Optional[str] = Query(None, description="상태 필터"),
+    status_filter: Optional[str] = Query(None, alias="status", description="상태 필터"),
     search: Optional[str] = Query(None, description="검색어"),
     category: Optional[str] = Query(None, description="카테고리 필터"),
     tag: Optional[str] = Query(None, description="태그 필터"),
     author_id: Optional[int] = Query(None, description="작성자 ID 필터"),
+    ticker: Optional[str] = Query(None, description="티커 필터 (post_info 내 tickers 필드)"),
     sort_by: Optional[str] = Query('created_at', description="정렬 기준 (created_at, published_at, title, view_count)"),
     order: Optional[str] = Query('desc', description="정렬 순서 (asc, desc)"),
     current_user: Optional[User] = Depends(get_current_user_optional),
@@ -89,6 +90,7 @@ def get_posts(
 ):
     """포스트 목록 조회 (필터링 및 정렬 지원)"""
     try:
+        logger.info(f"[get_posts] status_filter={status_filter}, post_type={post_type}, page={page}, user={current_user}")
         skip = (page - 1) * page_size
 
         # 기본 쿼리 구성
@@ -102,8 +104,24 @@ def get_posts(
             else:
                 query = query.filter(Post.post_type == post_type)
         
-        if status:
-            query = query.filter(Post.status == status)
+        if status_filter:
+            # If status is strictly provided, trust the caller (assuming admin page usage or testing)
+            # This allows seeing 'draft' posts if status='draft' is requested explicitly
+            logger.info(f"[get_posts] Applying status filter: {status_filter}")
+            query = query.filter(Post.status == status_filter)
+        else:
+            # If no status is specified
+            
+            # EXCEPTION: If specific post_type is requested (e.g. ai_draft_news), allow seeing all statuses
+            # This is helpful for testing or if the frontend asks for a specific type without status filter
+            # Also covers cases where admin page selects a type but 'All Statuses'
+            if post_type:
+                pass
+            
+            # Default behavior: Show only 'published' for non-admin users
+            elif not current_user or not current_user.is_superuser:
+                # If logged in user is regular user, only show published
+                query = query.filter(Post.status == 'published')
         
         if author_id:
             logger.info(f"Filtering by author_id: {author_id}")
@@ -116,6 +134,13 @@ def get_posts(
                 Post.content.ilike(f"%{search}%") |
                 Post.content_ko.ilike(f"%{search}%") |
                 cast(Post.description, String).ilike(f"%{search}%")
+            )
+        
+        if ticker:
+            # post_info is JSON column.
+            # We use ilike on the casted string representation of the 'tickers' array in post_info
+            query = query.filter(
+                cast(Post.post_info['tickers'], String).ilike(f'%"{ticker}"%')
             )
         
         if category:

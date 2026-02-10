@@ -131,9 +131,9 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
     }
   }, [isError, error]);
 
-  const blogs = data?.posts || [];
-  const totalBlogs = data?.total || 0;
-  const totalPages = data?.total_pages || 1;
+  const blogs = (data as any)?.posts || [];
+  const totalBlogs = (data as any)?.total || 0;
+  const totalPages = (data as any)?.total_pages || 1;
 
   const handleStateChange = (updates: Record<string, any>) => {
     // Update local state is handled by useEffect on searchParams, 
@@ -161,7 +161,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedPosts(blogs.map(blog => blog.id));
+      setSelectedPosts(blogs.map((blog: any) => blog.id));
     } else {
       setSelectedPosts([]);
     }
@@ -309,7 +309,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
         setIsMerging(true); // Reuse merging loading state for UI feedback
         try {
           await Promise.all(selectedPosts.map(id => {
-            const post = blogs.find(b => b.id === id);
+            const post = blogs.find((b: any) => b.id === id);
             if (!post) return;
             // Default extract from post_info or existing fields
             // Assuming post_info is available in the list data (it should be if included in API)
@@ -681,7 +681,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
                     </td>
                   </tr>
                 ) : (
-                  blogs.map((blog) => (
+                  blogs.map((blog: any) => (
                     <tr key={blog.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                       <td className="px-4 py-3">
                         <input
@@ -738,7 +738,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
                             <Pencil className="w-4 h-4" />
                           </button>
                           <a
-                            href={blog.post_type === 'news' ? `/news/${blog.slug}` : blog.post_type === 'brief_news' ? `/briefnews/${blog.slug}` : `/blog/${blog.slug}`}
+                            href={blog.post_type === 'news' ? `/news/${blog.slug}` : blog.post_type === 'brief_news' ? `/news/briefnews/${blog.slug}` : `/blog/${blog.slug}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="p-1 text-green-600 hover:text-green-800 hover:bg-green-100 dark:text-green-400 dark:hover:text-green-300 dark:hover:bg-green-900 rounded"

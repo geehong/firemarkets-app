@@ -59,6 +59,40 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async redirects() {
+    return [
+      {
+        source: '/briefnews',
+        destination: '/news/briefnews',
+        permanent: true,
+      },
+      {
+        source: '/ko/briefnews',
+        destination: '/ko/news/briefnews',
+        permanent: true,
+      },
+      {
+        source: '/en/briefnews',
+        destination: '/en/news/briefnews',
+        permanent: true,
+      },
+      {
+        source: '/briefnews/:slug',
+        destination: '/news/briefnews/:slug',
+        permanent: true,
+      },
+      {
+        source: '/ko/briefnews/:slug',
+        destination: '/ko/news/briefnews/:slug',
+        permanent: true,
+      },
+      {
+        source: '/en/briefnews/:slug',
+        destination: '/en/news/briefnews/:slug',
+        permanent: true,
+      },
+    ];
+  },
 
 };
 

@@ -86,7 +86,19 @@ export default async function PrivacyPolicyPage({ params }: PageProps) {
                     </p>
                 </section>
 
-                {/* 7. 문의 */}
+                {/* 7. 광고 및 쿠기 (Google AdSense) */}
+                <section className="mb-8">
+                    <h2 className="text-2xl font-semibold mb-4">{t('privacyPolicy.sections.advertising.title')}</h2>
+                    <p className="text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+                        {t('privacyPolicy.sections.advertising.content')}
+                    </p>
+                    <ul className="list-disc list-inside text-gray-700 dark:text-gray-300 space-y-2">
+                        <li>{t('privacyPolicy.sections.advertising.items.google')}</li>
+                        <li>{t('privacyPolicy.sections.advertising.items.optOut')}</li>
+                    </ul>
+                </section>
+
+                {/* 8. 문의 */}
                 <section className="mb-8">
                     <h2 className="text-2xl font-semibold mb-4">{t('privacyPolicy.sections.contact.title')}</h2>
                     <p className="text-gray-700 dark:text-gray-300 leading-relaxed">

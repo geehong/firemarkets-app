@@ -94,14 +94,14 @@ export default function TagPage() {
         post_type: 'brief_news',
     })
 
-    const posts = data?.posts || []
-    const total = data?.total || 0
+    const posts = (data as any)?.posts || []
+    const total = (data as any)?.total || 0
     const totalPages = Math.ceil(total / pageSize)
 
     // Separate data for "all" tab
-    const blogPosts = blogData?.posts || []
-    const newsPosts = newsData?.posts || []
-    const briefPosts = briefData?.posts || []
+    const blogPosts = (blogData as any)?.posts || []
+    const newsPosts = (newsData as any)?.posts || []
+    const briefPosts = (briefData as any)?.posts || []
     const allTabLoading = blogLoading || newsLoading || briefLoading
 
     // Reset page when type changes
@@ -110,9 +110,9 @@ export default function TagPage() {
     }, [activeType, slug])
 
     // Calculate counts
-    const blogCount = blogData?.total || 0
-    const newsCount = newsData?.total || 0
-    const briefCount = briefData?.total || 0
+    const blogCount = (blogData as any)?.total || 0
+    const newsCount = (newsData as any)?.total || 0
+    const briefCount = (briefData as any)?.total || 0
     const allCount = blogCount + newsCount + briefCount
 
     const tabs: { key: PostType; label: string }[] = [

@@ -5,7 +5,14 @@ export default function robots(): MetadataRoute.Robots {
         rules: {
             userAgent: '*',
             allow: '/',
-            disallow: '/private/',
+            disallow: [
+                '/admin/',
+                '/profile/',
+                '/calendar/',
+                '/widgets/',
+                '/tables/',
+                '/chart/',
+            ],
         },
         sitemap: 'https://firemarkets.net/sitemap.xml',
     }

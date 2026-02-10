@@ -99,6 +99,20 @@ export default async function AboutPage({ params }: { params: Promise<{ locale: 
                     </div>
                 </section>
 
+                {/* Company Info Section */}
+                <section className="mb-16">
+                    <div className="bg-white dark:bg-gray-800 rounded-3xl p-8 md:p-12 border border-gray-100 dark:border-gray-700 shadow-sm">
+                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
+                            {t('companyInfo.title')}
+                        </h2>
+                        <div className="space-y-3 text-gray-600 dark:text-gray-300 leading-relaxed text-lg">
+                            <p>{t('companyInfo.address')}</p>
+                            <p>{t('companyInfo.representative')}</p>
+                            <p>{t('companyInfo.businessArea')}</p>
+                        </div>
+                    </div>
+                </section>
+
                 {/* Contact CTA */}
                 <section className="text-center">
                     <a 

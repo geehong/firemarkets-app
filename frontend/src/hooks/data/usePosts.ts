@@ -129,9 +129,10 @@ export const usePosts = (params?: {
   category?: string
   tag?: string
   author_id?: number
+  ticker?: string
   sort_by?: string
   order?: 'asc' | 'desc'
-}) => {
+}, options?: any) => {
   return useQuery({
     queryKey: ['posts', params],
     queryFn: async (): Promise<PostListResponse> => {
@@ -145,13 +146,16 @@ export const usePosts = (params?: {
       if (params?.category) searchParams.append('category', params.category)
       if (params?.tag) searchParams.append('tag', params.tag)
       if (params?.author_id) searchParams.append('author_id', params.author_id.toString())
+      if (params?.ticker) searchParams.append('ticker', params.ticker)
       if (params?.sort_by) searchParams.append('sort_by', params.sort_by)
       if (params?.order) searchParams.append('order', params.order)
 
       const url = `${getApiBase()}/posts/?${searchParams.toString()}`
       console.log('🔍 [usePosts] Fetching posts:', url)
 
-      const response = await fetch(url)
+      const response = await fetch(url, {
+        headers: getAuthHeaders(),
+      })
       if (!response.ok) {
         throw new Error(`Failed to fetch posts: ${response.status}`)
       }
@@ -162,6 +166,7 @@ export const usePosts = (params?: {
     },
     staleTime: 5 * 60 * 1000, // 5분 캐싱
     retry: 1,
+    ...options
   })
 }
 

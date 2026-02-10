@@ -19,6 +19,7 @@ import { useRealtimePrices } from '@/hooks/data/useSocket'
 import { useFearAndGreed } from '@/hooks/analysis/useFearAndGreed'
 import { useAssetPriceV2 } from '@/hooks/assets/useAssetV2'
 import BaseTemplateView from './BaseTemplateView'
+import PostSidebar from '@/components/post/PostSidebar'
 
 import { AssetHeaderDetail, AssetHeaderIndicators } from './block/HeaderViews'
 
@@ -382,7 +383,7 @@ const AssetDetailedView: React.FC<AssetDetailedViewProps> = ({ asset, locale }) 
                 coverImage: finalCoverImage,
                 breadcrumbs: [
                     { label: 'Admin', href: `/${locale}/admin` },
-                    { label: 'Assets', href: `/${locale}/admin/assets` },
+                    { label: 'Assets', href: `/${locale}/admin/page/list?post_type=assets` },
                     { label: assetName, href: '#' }
                 ],
                 actions: (
@@ -397,6 +398,7 @@ const AssetDetailedView: React.FC<AssetDetailedViewProps> = ({ asset, locale }) 
                 )
             }}
             tabs={tabs}
+            sidebar={<PostSidebar locale={locale} ticker={identifier} />}
         />
     )
 }
