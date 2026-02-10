@@ -43,13 +43,9 @@ const PostSidebar: React.FC<PostSidebarProps> = ({ locale, postType }) => {
         const handleScroll = () => {
             if (sidebarRef.current) {
                 const rect = sidebarRef.current.getBoundingClientRect()
-                console.log('Sticky Debug:', {
-                    scrollY: window.scrollY,
-                    sidebarTop: rect.top,
-                    sidebarHeight: rect.height,
-                    windowHeight: window.innerHeight,
-                    isSticky: rect.top <= 120 // roughly top-24 + offset
-                })
+                if (sidebarRef.current) {
+                    // Debug removed
+                }
             }
         }
         window.addEventListener('scroll', handleScroll)

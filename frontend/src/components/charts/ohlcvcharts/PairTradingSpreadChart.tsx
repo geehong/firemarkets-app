@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import ChartControls from '@/components/common/ChartControls'
+import { getColorMode } from '@/constants/colorModes'
 
 interface PairTradingSpreadChartProps {
     data: { date: string; spread: number; z_score: number }[]
@@ -73,6 +74,8 @@ const PairTradingSpreadChart: React.FC<PairTradingSpreadChartProps> = ({
             chartRef.current = null
         }
 
+        const currentTheme = getColorMode(colorMode);
+        
         const options: any = {
             chart: { height, backgroundColor: '#ffffff' },
             title: { text: `Z-Score Analysis: ${tickerA} / ${tickerB}`, style: { color: '#333' } },
@@ -81,13 +84,13 @@ const PairTradingSpreadChart: React.FC<PairTradingSpreadChartProps> = ({
                 title: { text: 'Z-Score (Standard Deviations)' },
                 plotLines: [
                     { value: 0, width: 2, color: '#333', dashStyle: 'Dot' },
-                    { value: 2, width: 2, color: '#ef4444', dashStyle: 'Dash', label: { text: 'Overvalued (+2.0)', style: { color: '#ef4444' } } },
-                    { value: -2, width: 2, color: '#22c55e', dashStyle: 'Dash', label: { text: 'Undervalued (-2.0)', style: { color: '#22c55e' } } }
+                    { value: 2, width: 2, color: currentTheme.halving_2 || '#ef4444', dashStyle: 'Dash', label: { text: 'Overvalued (+2.0)', style: { color: currentTheme.halving_2 || '#ef4444' } } },
+                    { value: -2, width: 2, color: currentTheme.halving_3 || '#22c55e', dashStyle: 'Dash', label: { text: 'Undervalued (-2.0)', style: { color: currentTheme.halving_3 || '#22c55e' } } }
                 ],
                 // Visual Bands for signaling zones
                 plotBands: [
-                    { from: 2, to: 10, color: 'rgba(239, 68, 68, 0.1)', label: { text: 'Sell Zone', style: { color: '#ef4444' } } },
-                    { from: -10, to: -2, color: 'rgba(34, 197, 94, 0.1)', label: { text: 'Buy Zone', style: { color: '#22c55e' } } }
+                    { from: 2, to: 10, color: colorMode === 'dark' ? 'rgba(255, 215, 0, 0.1)' : 'rgba(239, 68, 68, 0.1)', label: { text: 'Sell Zone', style: { color: currentTheme.halving_2 || '#ef4444' } } },
+                    { from: -10, to: -2, color: 'rgba(34, 197, 94, 0.1)', label: { text: 'Buy Zone', style: { color: currentTheme.halving_3 || '#22c55e' } } }
                 ]
             },
             xAxis: { type: 'datetime' },
@@ -99,12 +102,12 @@ const PairTradingSpreadChart: React.FC<PairTradingSpreadChartProps> = ({
                 name: 'Z-Score',
                 type: chartType,
                 data: zScoreData,
-                color: '#3b82f6',
+                color: currentTheme.coin,
                 // Color zones based on value
                 zones: [
-                    { value: -2, color: '#22c55e' }, // Below -2 (Green/Buy)
-                    { value: 2, color: '#3b82f6' },  // Normal Range (Blue)
-                    { color: '#ef4444' }             // Above 2 (Red/Sell)
+                    { value: -2, color: currentTheme.halving_3 || '#22c55e' }, // Below -2 (Green/Buy)
+                    { value: 2, color: currentTheme.coin },  // Normal Range (Blue)
+                    { color: currentTheme.halving_2 || '#ef4444' }             // Above 2 (Red/Sell)
                 ]
             }],
             rangeSelector: {
@@ -126,7 +129,7 @@ const PairTradingSpreadChart: React.FC<PairTradingSpreadChartProps> = ({
                 chartRef.current = null
             }
         }
-    }, [isClient, Highcharts, data, tickerA, tickerB, chartType]) // chartType triggers re-render
+    }, [isClient, Highcharts, data, tickerA, tickerB, chartType, colorMode]) // chartType and colorMode trigger re-render
 
     if (!isClient) return <div className="h-full flex items-center justify-center">Loading Library...</div>
 

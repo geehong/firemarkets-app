@@ -48,8 +48,31 @@ export const formatNumberWithLocale = (value: any, options?: Intl.NumberFormatOp
     return num.toLocaleString('en-US', options)
 }
 
+
 export const formatPercent = (value: any, fractionDigits = 2) => {
     const num = toNumber(value)
     if (num === null) return '-'
     return `${num.toFixed(fractionDigits)}%`
 }
+
+export const formatLargeNumber = (value: number | string | null | undefined): string => {
+    if (value === null || value === undefined) return '-';
+    
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(num)) return '-';
+
+    if (Math.abs(num) >= 1e12) {
+        return `${(num / 1e12).toFixed(2)}T`;
+    }
+    if (Math.abs(num) >= 1e9) {
+        return `${(num / 1e9).toFixed(2)}B`;
+    }
+    if (Math.abs(num) >= 1e6) {
+        return `${(num / 1e6).toFixed(2)}M`;
+    }
+    if (Math.abs(num) >= 1e3) {
+        return `${(num / 1e3).toFixed(2)}K`;
+    }
+    
+    return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
+};

@@ -66,6 +66,9 @@ def upgrade() -> None:
     op.drop_index('idx_asset_basic_ticker', table_name='assets', postgresql_where='(is_active = true)')
     op.drop_index('idx_asset_basic_type', table_name='assets', postgresql_where='(is_active = true)')
     op.drop_index('idx_assets_asset_type_id', table_name='assets')
+    # Manually drop dependent constraints if they exist
+    op.execute("ALTER TABLE post_products DROP CONSTRAINT IF EXISTS blog_products_product_symbol_fkey")
+    op.execute("ALTER TABLE post_products DROP CONSTRAINT IF EXISTS post_products_product_symbol_fkey")
     op.drop_constraint('uq_assets_ticker', 'assets', type_='unique')
     op.create_index(op.f('ix_assets_asset_id'), 'assets', ['asset_id'], unique=False)
     op.create_index(op.f('ix_assets_ticker'), 'assets', ['ticker'], unique=True)
@@ -123,7 +126,11 @@ def upgrade() -> None:
                existing_server_default=sa.text('CURRENT_TIMESTAMP'))
     op.create_index(op.f('ix_economic_indicators_indicator_code'), 'economic_indicators', ['indicator_code'], unique=False)
     op.create_index(op.f('ix_economic_indicators_timestamp'), 'economic_indicators', ['timestamp'], unique=False)
-    op.create_unique_constraint('uq_economic_indicator_code_timestamp', 'economic_indicators', ['indicator_code', 'timestamp'])
+    # Handle potentially existing constraint
+    # try:
+    #     op.create_unique_constraint('uq_economic_indicator_code_timestamp', 'economic_indicators', ['indicator_code', 'timestamp'])
+    # except Exception:
+    #     print("Constraint uq_economic_indicator_code_timestamp might already exist, skipping...")
     op.alter_column('etf_info', 'snapshot_date',
                existing_type=sa.DATE(),
                comment='Information reference date (stores the latest information)',
@@ -191,7 +198,7 @@ def upgrade() -> None:
                nullable=True,
                existing_server_default=sa.text('CURRENT_TIMESTAMP'))
     op.create_index(op.f('ix_m2_data_timestamp_utc'), 'm2_data', ['timestamp_utc'], unique=False)
-    op.create_unique_constraint('uq_m2_data_timestamp', 'm2_data', ['timestamp_utc'])
+    # op.create_unique_constraint('uq_m2_data_timestamp', 'm2_data', ['timestamp_utc'])
     op.alter_column('ohlcv_day_data', 'data_interval',
                existing_type=sa.VARCHAR(length=10),
                nullable=True,

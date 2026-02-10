@@ -73,6 +73,7 @@ class OnchainCollector(BaseCollector):
             )
         else:
             # Group A (Odd days): 15 metrics 홀수일
+            #
             group_a = [
                 'mvrv_z_score', 'mvrv', 'nupl', 'sopr', 'realized_price', 
                 'sth_realized_price', 'lth_mvrv', 'sth_mvrv', 'lth_nupl', 
@@ -81,11 +82,13 @@ class OnchainCollector(BaseCollector):
             ]
             
             # Group B (Even days): 15 metrics 짝수일
+            # utxos_in_loss_pct, utxos_in_profit_pct, reserve_risk deprecated (2025-12-31)
             group_b = [
                 'hashrate', 'difficulty', 'thermo_cap', 'puell_multiple', 
-                'reserve_risk', 'rhodl_ratio', 'nvts', 'nrpl_usd', 
-                'utxos_in_profit_pct', 'utxos_in_loss_pct', 'realized_cap', 
-                'etf_btc_flow', 'etf_btc_total', 'hodl_waves_supply', 'cdd_90dma'
+                'rhodl_ratio', 'nvts', 'nrpl_usd', 'realized_cap', 
+                'etf_btc_flow', 'etf_btc_total', 'hodl_waves_supply', 'cdd_90dma',
+                # New metrics
+                'open_interest_futures', 'funding_rate', 'bitcoin_dominance'
             ]
             
             current_group = group_b if is_even_day else group_a
@@ -438,6 +441,18 @@ class OnchainCollector(BaseCollector):
                 "realized_cap": {
                     "realizedCap": "realized_cap",
                     "realized_cap": "realized_cap"
+                },
+                "open_interest_futures": {
+                    "openInterestFutures": "open_interest_futures",
+                    "open_interest_futures": "open_interest_futures"
+                },
+                "funding_rate": {
+                    "fundingRate": "funding_rate",
+                    "funding_rate": "funding_rate"
+                },
+                "bitcoin_dominance": {
+                    "bitcoinDominance": "bitcoin_dominance",
+                    "bitcoin_dominance": "bitcoin_dominance"
                 }
             }
             
@@ -502,14 +517,19 @@ class OnchainCollector(BaseCollector):
             if isinstance(timestamp_str, str) and 'T' in timestamp_str:
                 return timestamp_str
                 
+            # Check for numeric string (Unix timestamp as string)
+            if isinstance(timestamp_str, str) and timestamp_str.isdigit():
+                 from datetime import datetime, timezone
+                 return datetime.fromtimestamp(float(timestamp_str), timezone.utc).isoformat().replace('+00:00', 'Z')
+
             # 날짜 형식인 경우 (YYYY-MM-DD)
             if isinstance(timestamp_str, str) and len(timestamp_str) == 10:
                 return f"{timestamp_str}T00:00:00Z"
                 
             # Unix timestamp인 경우
             if isinstance(timestamp_str, (int, float)):
-                from datetime import datetime
-                return datetime.fromtimestamp(timestamp_str).isoformat() + 'Z'
+                from datetime import datetime, timezone
+                return datetime.fromtimestamp(timestamp_str, timezone.utc).isoformat().replace('+00:00', 'Z')
                 
             return str(timestamp_str)
             

@@ -175,7 +175,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
         }
     };
 
-    const [timeRange, setTimeRange] = useState<'1y' | 'all'>('1y');
+    const [timeRange, setTimeRange] = useState<'1y' | 'all'>('all');
 
     // 온체인 메트릭 데이터 조회 (통합 엔드포인트)
     const { data: onchainData, isLoading: onchainLoading, error: onchainError } = useQuery({
@@ -415,6 +415,8 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
 
     // 차트 옵션
 
+    const currentTheme = getColorMode(colorMode);
+    
     const chartOptions: any = {
         chart: {
             height: height,
@@ -588,7 +590,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
                 name: 'Bitcoin Price',
                 type: chartType,
                 data: priceData,
-                color: '#3b82f6',
+                color: currentTheme.coin,
                 yAxis: 0,
                 // Area 차트일 때 그라데이션 효과 추가
                 ...(chartType === 'area' || chartType === 'areaspline') && {
@@ -600,11 +602,11 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
                             y2: 1
                         },
                         stops: [
-                            [0, 'rgba(59, 130, 246, 0.7)'],
-                            [0.5, 'rgba(59, 130, 246, 0.35)'],
-                            [0.8, 'rgba(59, 130, 246, 0.05)'],
-                            [0.9, 'rgba(59, 130, 246, 0.02)'],
-                            [1, 'rgba(59, 130, 246, 0.01)']
+                            [0, `${currentTheme.coin}B3`], // 0.7 opacity
+                            [0.5, `${currentTheme.coin}59`], // 0.35 opacity
+                            [0.8, `${currentTheme.coin}0D`], // 0.05 opacity
+                            [0.9, `${currentTheme.coin}05`], // 0.02 opacity
+                            [1, `${currentTheme.coin}03`] // 0.01 opacity
                         ]
                     }
                 },
@@ -617,7 +619,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
                 name: displayMetricName,
                 type: chartType,
                 data: mvrvData,
-                color: '#f59e0b',
+                color: currentTheme.metric,
                 yAxis: 1,
                 // Area 차트일 때 그라데이션 효과 추가
                 ...(chartType === 'area' || chartType === 'areaspline') && {
@@ -629,11 +631,11 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
                             y2: 1
                         },
                         stops: [
-                            [0, 'rgba(245, 158, 11, 0.7)'],
-                            [0.5, 'rgba(245, 158, 11, 0.35)'],
-                            [0.8, 'rgba(245, 158, 11, 0.05)'],
-                            [0.9, 'rgba(245, 158, 11, 0.02)'],
-                            [1, 'rgba(245, 158, 11, 0.01)']
+                            [0, `${currentTheme.metric}B3`], // 0.7 opacity
+                            [0.5, `${currentTheme.metric}59`], // 0.35 opacity
+                            [0.8, `${currentTheme.metric}0D`], // 0.05 opacity
+                            [0.9, `${currentTheme.metric}05`], // 0.02 opacity
+                            [1, `${currentTheme.metric}03`] // 0.01 opacity
                         ]
                     }
                 },
@@ -644,28 +646,36 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
         ],
         rangeSelector: showRangeSelector && !isMobile ? {
             enabled: true,
-            selected: timeRange === '1y' ? 0 : 1,
+            selected: 5,
             buttons: [
                 {
-                    type: 'year',
+                    type: 'month',
                     count: 1,
-                    text: '1Y',
-                    events: {
-                        click: function () {
-                            setTimeRange('1y');
-                            return false;
-                        }
-                    }
+                    text: '1M'
+                },
+                {
+                    type: 'month',
+                    count: 3,
+                    text: '3M'
+                },
+                {
+                    type: 'month',
+                    count: 6,
+                    text: '6M'
+                },
+                {
+                    type: 'year',
+                    count: 3,
+                    text: '3Y'
+                },
+                {
+                    type: 'year',
+                    count: 5,
+                    text: '5Y'
                 },
                 {
                     type: 'all',
-                    text: 'All',
-                    events: {
-                        click: function () {
-                            setTimeRange('all');
-                            return false;
-                        }
-                    }
+                    text: 'All'
                 }
             ],
             buttonTheme: {

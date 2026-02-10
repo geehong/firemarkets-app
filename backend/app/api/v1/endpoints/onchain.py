@@ -5,11 +5,11 @@ from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any, Callable
 from pydantic import BaseModel
 from datetime import datetime, date, timedelta
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc, cast, Date, and_
 import statistics
 
 from ....core.database import get_postgres_db
-from ....models.asset import Asset, OnchainMetricsInfo, CryptoMetric
+from ....models.asset import Asset, OnchainMetricsInfo, CryptoMetric, OHLCVData
 from ....schemas.common import (
     OnchainMetricCategoryResponse, OnchainMetricToggleResponse, 
     OnchainMetricRunResponse, OnchainMetricStatusResponse
@@ -127,7 +127,10 @@ def get_metric_data_range(metric_def: OnchainMetricsInfo, db: Session, ticker: O
         'delta_price_usd': 'delta_price_usd', 'lth_nupl': 'lth_nupl',
         'sth_nupl': 'sth_nupl', 'utxos_in_profit_pct': 'utxos_in_profit_pct',
         'utxos_in_loss_pct': 'utxos_in_loss_pct', 'nvts': 'nvts',
-        'market_cap': 'market_cap'
+        'market_cap': 'market_cap',
+        'open_interest_futures': 'open_interest_futures',
+        'funding_rate': 'funding_rate',
+        'bitcoin_dominance': 'bitcoin_dominance'
     }
     
     db_field = db_field_map.get(metric_def.metric_id)
@@ -196,7 +199,10 @@ def create_data_points(records: List, metric_def: OnchainMetricsInfo) -> List[Me
         'delta_price_usd': 'delta_price_usd', 'lth_nupl': 'lth_nupl',
         'sth_nupl': 'sth_nupl', 'utxos_in_profit_pct': 'utxos_in_profit_pct',
         'utxos_in_loss_pct': 'utxos_in_loss_pct', 'nvts': 'nvts',
-        'market_cap': 'market_cap'
+        'market_cap': 'market_cap',
+        'open_interest_futures': 'open_interest_futures',
+        'funding_rate': 'funding_rate',
+        'bitcoin_dominance': 'bitcoin_dominance'
     }
     
     db_field = db_field_map.get(metric_def.metric_id)
@@ -343,7 +349,10 @@ async def get_metric_data(
         'delta_price_usd': 'delta_price_usd', 'lth_nupl': 'lth_nupl',
         'sth_nupl': 'sth_nupl', 'utxos_in_profit_pct': 'utxos_in_profit_pct',
         'utxos_in_loss_pct': 'utxos_in_loss_pct', 'nvts': 'nvts',
-        'market_cap': 'market_cap'
+        'market_cap': 'market_cap',
+        'open_interest_futures': 'open_interest_futures',
+        'funding_rate': 'funding_rate',
+        'bitcoin_dominance': 'bitcoin_dominance'
     }
     
     db_field = db_field_map.get(metric_id)
@@ -390,6 +399,98 @@ async def get_latest_metric_data(
     start_date = end_date - timedelta(days=days)
     
     return await get_metric_data(metric_id, ticker, start_date, end_date, 1000, "json", db)
+
+@router.get("/metrics/hodl_waves/distribution")
+async def get_hodl_waves_distribution(
+    ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"),
+    start_date: Optional[date] = Query(None, description="시작 날짜 (YYYY-MM-DD)"),
+    end_date: Optional[date] = Query(None, description="종료 날짜 (YYYY-MM-DD)"),
+    limit: int = Query(1000, ge=1, le=100000, description="데이터 개수 제한"),
+    db: Session = Depends(get_postgres_db)
+):
+    """HODL Waves 분포 데이터를 시계열로 조회합니다."""
+    try:
+        clean_ticker = ticker.strip() if ticker else None
+        bitcoin_asset = get_bitcoin_asset(db, clean_ticker)
+        if not bitcoin_asset:
+            raise HTTPException(status_code=404, detail="Bitcoin asset not found")
+        
+        # 쿼리 구성
+        query = db.query(
+            CryptoMetric.timestamp_utc,
+            CryptoMetric.hodl_age_distribution,
+            CryptoMetric.hodl_waves_supply,
+            OHLCVData.close_price.label("price")
+        ).outerjoin(
+            OHLCVData, 
+            and_(
+                OHLCVData.asset_id == CryptoMetric.asset_id,
+                cast(OHLCVData.timestamp_utc, Date) == CryptoMetric.timestamp_utc,
+                OHLCVData.data_interval == '1d'
+            )
+        ).filter(
+            CryptoMetric.asset_id == bitcoin_asset.asset_id,
+            CryptoMetric.hodl_age_distribution.isnot(None)
+        )
+        
+        if start_date:
+            query = query.filter(CryptoMetric.timestamp_utc >= start_date)
+        if end_date:
+            query = query.filter(CryptoMetric.timestamp_utc <= end_date)
+        
+        records = query.order_by(desc(CryptoMetric.timestamp_utc)).limit(limit).all()
+        
+        # 데이터 변환 - 각 날짜별 분포 데이터
+        data = []
+        for record in records:
+            dist = record.hodl_age_distribution
+            if dist:
+                data.append({
+                    "date": record.timestamp_utc.isoformat() if hasattr(record.timestamp_utc, 'isoformat') else str(record.timestamp_utc),
+                    "total_supply": float(record.hodl_waves_supply) if record.hodl_waves_supply else None,
+                    "price": float(record.price) if record.price else None,
+                    "distribution": dist
+                })
+        
+        # 시리즈 데이터 구조 변환 (차트용)
+        # 각 연령 버킷별 시계열 데이터 생성
+        age_buckets = [
+            "0d_1d", "1d_1w", "1w_1m", "1m_3m", "3m_6m", "6m_1y",
+            "1y_2y", "2y_3y", "3y_4y", "4y_5y", "5y_7y", "7y_10y", "10y"
+        ]
+        
+        series = {}
+        for bucket in age_buckets:
+            series[bucket] = []
+        
+        # 시간순 정렬 (오래된 것부터)
+        for item in reversed(data):
+            timestamp = item["date"]
+            dist = item["distribution"]
+            for bucket in age_buckets:
+                value = dist.get(bucket, 0) if dist else 0
+                series[bucket].append({
+                    "date": timestamp,
+                    "value": value
+                })
+        
+        return {
+            "metric_id": "hodl_waves_supply",
+            "metric_name": "HODL Waves Distribution",
+            "data": data,  # 원본 데이터 (최신순)
+            "series": series,  # 차트용 시리즈 데이터 (시간순)
+            "age_buckets": age_buckets,
+            "metadata": {
+                "total_count": len(data),
+                "date_range": f"{data[-1]['date'] if data else 'N/A'} to {data[0]['date'] if data else 'N/A'}",
+                "last_updated": datetime.now().isoformat() + "Z"
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting HODL Waves distribution: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get HODL Waves distribution: {str(e)}")
 
 @router.get("/metrics/{metric_id}/stats", response_model=MetricStatsResponse)
 async def get_metric_stats(
@@ -467,7 +568,10 @@ async def get_dashboard_summary(
             'utxos_in_profit_pct': 'utxos_in_profit_pct', 'utxos_in_loss_pct': 'utxos_in_loss_pct', 
             'realized_cap': 'realized_cap', 'etf_btc_flow': 'etf_btc_flow', 
             'etf_btc_total': 'etf_btc_total', 'hodl_waves_supply': 'hodl_waves_supply', 
-            'cdd_90dma': 'cdd_90dma'
+            'cdd_90dma': 'cdd_90dma',
+            'open_interest_futures': 'open_interest_futures',
+            'funding_rate': 'funding_rate',
+            'bitcoin_dominance': 'bitcoin_dominance'
         }
         
         # 3. 우선 DB에 정의된 메트릭 확인

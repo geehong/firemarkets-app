@@ -67,26 +67,18 @@ const AssetAnalysisCard: React.FC<AssetAnalysisCardProps> = ({ ticker, locale })
     const { latestPrice } = useRealtimePrices(ticker);
 
     useEffect(() => {
+        let isMounted = true;
+        
         const fetchData = async () => {
             try {
-                console.log(`[FireMarketsAnalysis] Fetching Profile & Common data for: ${ticker}`);
-                
                 // Fetch both endpoints in parallel
                 const [v2Data, commonRes] = await Promise.all([
-                    apiClient.v2GetOverview(ticker, locale, { silentStatusCodes: [404] }).catch((err) => {
-                        if (err && err.status !== 404 && !err.message?.includes('404')) {
-                             console.error(`[FireMarketsAnalysis] V2 Overview Error:`, err);
-                        }
-                        return null;
-                    }),
-                    apiClient.v2GetCommonOverview(ticker, { silentStatusCodes: [404] }).catch((err) => {
-                        if (err && err.status !== 404 && !err.message?.includes('404')) {
-                             console.error(`[FireMarketsAnalysis] V2 Common Error:`, err);
-                        }
-                        return null;
-                    })
+                    apiClient.v2GetOverview(ticker, locale, { silentStatusCodes: [404] }).catch((err) => null),
+                    apiClient.v2GetCommonOverview(ticker, { silentStatusCodes: [404] }).catch((err) => null)
                 ]);
                 
+                if (!isMounted) return;
+
                 if (v2Data || commonRes) {
                     const getSafeJson = (d: any) => {
                         if (!d) return {};
@@ -138,22 +130,28 @@ const AssetAnalysisCard: React.FC<AssetAnalysisCardProps> = ({ ticker, locale })
                         displayPriceInit = Number(latestPrice.price);
                     }
 
-                    setData({
-                        ...merged,
-                        current_price: displayPriceInit,
-                        prev_close: foundPrevClose,
-                        is_crypto_or_commodity: isCryptoOrCommodity,
-                        company_name: profileData.name || numericData.company_name || ticker,
-                        price_change_percentage_24h: latestPrice?.changePercent ?? merged.price_change_percent ?? merged.price_change_percentage_24h,
-                    });
+                    if (isMounted) {
+                        setData({
+                            ...merged,
+                            current_price: displayPriceInit,
+                            prev_close: foundPrevClose,
+                            is_crypto_or_commodity: isCryptoOrCommodity,
+                            company_name: profileData.name || numericData.company_name || ticker,
+                            price_change_percentage_24h: latestPrice?.changePercent ?? merged.price_change_percent ?? merged.price_change_percentage_24h,
+                        });
+                    }
                 }
             } catch (error) {
-                console.error(`[FireMarketsAnalysis] Catch block for ${ticker}:`, error);
+                // Silent catch for analysis cards
             } finally {
-                setLoading(false);
+                if (isMounted) {
+                    setLoading(false);
+                }
             }
         };
         fetchData();
+        
+        return () => { isMounted = false; };
     }, [ticker, locale]);
 
     // Update price when socket pushes new data (already handled by displayPriceInit but keep for socket updates)

@@ -188,6 +188,8 @@ const CapitalizationChart: React.FC<CapitalizationChartProps> = ({
         setChartType(newType);
     };
 
+    const currentTheme = getColorMode(colorMode);
+
     const chartOptions: any = {
         chart: {
             height,
@@ -227,7 +229,7 @@ const CapitalizationChart: React.FC<CapitalizationChartProps> = ({
                 data: priceData,
                 type: chartType,
                 yAxis: 0,
-                color: '#d1d5db',
+                color: colorMode === 'dark' ? '#555555' : '#d1d5db',
                 lineWidth: 1,
                 dashStyle: 'Dot',
                 enableMouseTracking: false
@@ -237,7 +239,7 @@ const CapitalizationChart: React.FC<CapitalizationChartProps> = ({
                 data: marketCapData,
                 type: chartType,
                 yAxis: 1,
-                color: '#3b82f6',
+                color: currentTheme.coin,
                 fillOpacity: 0.05
             },
             {
@@ -245,7 +247,7 @@ const CapitalizationChart: React.FC<CapitalizationChartProps> = ({
                 data: realizedCapData,
                 type: chartType,
                 yAxis: 1,
-                color: '#f59e0b',
+                color: currentTheme.metric,
                 lineWidth: 2
             },
             {
@@ -253,7 +255,7 @@ const CapitalizationChart: React.FC<CapitalizationChartProps> = ({
                 data: thermoCapData,
                 type: 'line',
                 yAxis: 1,
-                color: '#ef4444',
+                color: currentTheme.halving_2 || '#ef4444',
                 lineWidth: 1,
                 dashStyle: 'Dash'
             },
@@ -262,7 +264,7 @@ const CapitalizationChart: React.FC<CapitalizationChartProps> = ({
                 data: investorCapData,
                 type: chartType,
                 yAxis: 1,
-                color: '#10b981',
+                color: currentTheme.halving_3 || '#10b981',
                 lineWidth: 2
             }
         ],

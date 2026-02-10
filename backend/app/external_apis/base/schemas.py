@@ -322,6 +322,11 @@ class CryptoMetricsData(BaseModel):
     utxos_in_loss_pct: Optional[float] = None
     nvts: Optional[float] = None
     market_cap: Optional[float] = None
+    
+    # New metrics (2026-02-10)
+    open_interest_futures: Optional[float] = None
+    funding_rate: Optional[float] = None
+    bitcoin_dominance: Optional[float] = None
 
 # ============================================================================
 # API 응답 데이터 (API Response Data)

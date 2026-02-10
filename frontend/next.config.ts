@@ -8,6 +8,21 @@ const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 const nextConfig: NextConfig = {
   /* config options here */
   output: 'standalone',
+  
+  // 개발 모드 설정
+  ...(process.env.NODE_ENV === 'development' && {
+    // 개발 모드에서 더 자세한 로그 표시
+    logging: {
+      fetches: {
+        fullUrl: true,
+      },
+    },
+    // 개발 인디케이터 설정
+    devIndicators: {
+      position: 'bottom-right',
+    },
+  }),
+
   webpack(config) {
     config.module.rules.push({
       test: /\.svg$/,

@@ -17,7 +17,7 @@ BACKUP_TIME=$(date +"%Y_%m_%d_%H_%M")
 
 # USB 드라이브 설정 (UUID를 사용하여 장치 이름이 sda/sdb로 바뀌어도 대응 가능하도록 함)
 USB_DEV="/dev/disk/by-uuid/c25491da-c894-4a0a-a045-6fdf98d57030"
-MOUNT_POINT="/mnt/usb_backup"
+MOUNT_POINT="/home/geehong/firemarkets-app/usb-backup-drive"
 
 # 0. USB 포맷 (FORMAT_USB=true 일 때만 실행)
 # 주의: 이 옵션은 USB의 모든 데이터를 삭제합니다.

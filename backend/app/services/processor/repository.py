@@ -728,7 +728,9 @@ class DataRepository:
                 for field in all_metric_fields:
                     val = item.get(field)
                     if val is not None:
-                        pg_data[field] = val if field in ('hodl_age_distribution', 'open_interest_futures') else self._sanitize_number(val)
+                        # Onchain data varies widely (e.g. hashrate, market_cap are huge). 
+                        # Relax max_abs to 1e30 and increase digits.
+                        pg_data[field] = val if field in ('hodl_age_distribution', 'open_interest_futures') else self._sanitize_number(val, max_abs=1e30, digits=10)
                         has_metric = True
                 if has_metric:
                     valid_pg_data_list.append(pg_data)

@@ -30,14 +30,14 @@ def resolve_asset_identifier(db: Session, asset_identifier: str) -> int:
     """
     from app.models import Asset
     
-    # 숫자인 경우 직접 ID로 사용
+    # 숫자인 경우 먼저 ID로 시도
     if asset_identifier.isdigit():
         asset_id = int(asset_identifier)
         # ID 유효성 검증
         exists = db.query(Asset).filter(Asset.asset_id == asset_id).first()
         if exists:
             return asset_id
-        raise HTTPException(status_code=404, detail=f"Asset not found with ID: {asset_identifier}")
+        # ID가 없더라도 바로 에러를 내지 않고 티커 검색으로 넘어감 (예: 600519 등 숫자 티커 대응)
     
     # 1차 시도: 정확한 티커 매칭
     asset = get_asset_by_ticker(db, asset_identifier)

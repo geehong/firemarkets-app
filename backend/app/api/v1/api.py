@@ -65,7 +65,10 @@ api_router.include_router(metrics.router, prefix="/metrics", tags=["metrics"])
 api_router.include_router(open_interest.router, tags=["open-interest"])
 api_router.include_router(realtime.router, prefix="/realtime", tags=["realtime"])
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
-api_router.include_router(sentiment_stats.router, prefix="/sentiment-check", tags=["sentiment-stats"])
+# api_router.include_router(sentiment_stats.router, prefix="/sentiment-check", tags=["sentiment-stats"])
+# Remounted to match frontend path /api/v1/analysis/sentiment/history
+api_router.include_router(sentiment_stats.router, prefix="/analysis/sentiment", tags=["sentiment-statistics"])
+
 api_router.include_router(analysis.router, prefix="/analysis", tags=["analysis"])
 api_router.include_router(posts.router, prefix="/posts", tags=["posts"])
 

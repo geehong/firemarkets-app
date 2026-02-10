@@ -4,6 +4,7 @@ import Link from 'next/link'
 import TableOfContents from './block/TableOfContents'
 import PostSidebar from '@/components/post/PostSidebar'
 import FireMarketsAnalysis from '@/components/post/FireMarketsAnalysis'
+import Disclaimer from '@/components/common/Disclaimer'
 
 interface BriefNewsDetailViewProps {
     post: any;
@@ -108,6 +109,29 @@ export default function BriefNewsDetailView({
                                     locale={locale} 
                                 />
                              </div>
+
+                             {/* CTA Banner for Blog (Internal Linking Strategy) */}
+                             <div className="mt-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-100 dark:border-blue-800 rounded-xl">
+                                <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                                    <div>
+                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
+                                            {locale === 'ko' ? '이 자산에 대한 더 깊은 분석이 필요하신가요?' : 'Want deeper analysis on this asset?'}
+                                        </h3>
+                                        <p className="text-sm text-gray-600 dark:text-gray-300">
+                                            {locale === 'ko' ? '전문가들이 제공하는 심층 리포트와 온체인 데이터를 확인해보세요.' : 'Check out expert reports and on-chain data provided by FireMarkets specialists.'}
+                                        </p>
+                                    </div>
+                                    <Link 
+                                        href="/blog" 
+                                        className="shrink-0 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg transition-colors shadow-md shadow-blue-500/20"
+                                    >
+                                        {locale === 'ko' ? '전문가 블로그 보기' : 'View Expert Blog'}
+                                    </Link>
+                                </div>
+                             </div>
+
+                             {/* Disclaimer Component */}
+                             <Disclaimer />
 
                             {/* Tags */}
                             {post.tags && post.tags.length > 0 && (

@@ -26,44 +26,65 @@ def backfill_sentiment():
         logger.info("Fetching posts needing sentiment analysis...")
         
         # Using python-side filtering for simplicity and compatibility
-        target_types = ['news', 'post', 'raw_news', 'ai_draft_news', 'brief_news']
+        target_types = ['brief_news', 'ai_draft_news', 'news']
         posts = db.query(Post).filter(Post.post_type.in_(target_types)).all()
         
         target_posts = []
         for p in posts:
             if not p.post_info:
-                # Initialize empty dict if None so we can add sentiment
                 p.post_info = {}
-                target_posts.append(p)
-                continue
-                
-            if not p.post_info.get('sentiment'):
+            
+            # Check if sentiment is missing or empty
+            info = p.post_info
+            if not info.get('sentiment') or not info['sentiment'].get('label'):
                 target_posts.append(p)
 
-        logger.info(f"Found {len(target_posts)} posts to process.")
+        logger.info(f"Found {len(target_posts)} posts ensuring they have sentiment (Target types: {target_types}).")
         
         count = 0
+        total = len(target_posts)
+        
         for p in target_posts:
-            title = p.title.get('en') if isinstance(p.title, dict) else str(p.title)
-            desc = p.description.get('en') if isinstance(p.description, dict) else str(p.description)
+            # Prepare text for analysis
+            # Prioritize content > description > title
+            text_to_analyze = ""
             
-            text = f"{title} {desc}".strip()
-            if not text:
+            if p.content and len(str(p.content)) > 10:
+                text_to_analyze = p.content
+            else:
+                 # Fallback to description
+                 desc = p.description
+                 if isinstance(desc, dict):
+                     text_to_analyze = desc.get('en') or desc.get('ko') or ""
+                 else:
+                     text_to_analyze = str(desc) if desc else ""
+                     
+                 # Fallback to title if description is empty
+                 if not text_to_analyze:
+                     if isinstance(p.title, dict):
+                         text_to_analyze = p.title.get('en') or p.title.get('ko') or ""
+                     else:
+                         text_to_analyze = str(p.title)
+
+            # Strip HTML
+            import re
+            clean_text = re.sub('<[^<]+?>', '', str(text_to_analyze)).strip()
+            
+            if not clean_text or len(clean_text) < 5:
+                logger.warning(f"Skipping post {p.id} due to empty content.")
                 continue
                 
-            sentiment = sentiment_analyzer.analyze(text)
+            sentiment = sentiment_analyzer.analyze(clean_text)
             
             # Update post_info
-            # IMPORTANT: modifying JSON field in place requires reassignment or flag_modified in some ORMs
-            # In SQLAlchemy, reassignment is safest:
-            new_info = dict(p.post_info)
+            new_info = dict(p.post_info) if p.post_info else {}
             new_info['sentiment'] = sentiment
             p.post_info = new_info
             
             count += 1
             if count % 10 == 0:
-                logger.info(f"Processed {count} posts...")
-                db.commit() # Commit periodically
+                logger.info(f"Processed {count}/{total} posts...")
+                db.commit()
                 
         db.commit()
         logger.info(f"Successfully backfilled {count} posts.")

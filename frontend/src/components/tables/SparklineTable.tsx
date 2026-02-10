@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useRef, useEffect } from "react";
 import {
   Table,
   TableBody,
@@ -42,6 +42,33 @@ interface AssetData {
 
 // 스파클라인 컴포넌트
 const SparklineChart = ({ data }: { data: number[] }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    // 컨테이너 크기가 유효한지 확인하고 상태 업데이트
+    const checkSize = () => {
+      if (containerRef.current) {
+        const { width, height } = containerRef.current.getBoundingClientRect();
+        // 크기가 유효할 때만 렌더링하도록 설정
+        setIsReady(width > 0 && height > 0);
+      }
+    };
+
+    // 초기 체크
+    checkSize();
+    
+    // ResizeObserver를 사용하여 크기 변경 감지 (크기가 0이 되면 차트 숨김)
+    const resizeObserver = new ResizeObserver(checkSize);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
   if (!data || data.length === 0) {
     return (
       <div className="w-full h-10 flex items-center justify-center text-gray-400 text-xs">
@@ -77,40 +104,46 @@ const SparklineChart = ({ data }: { data: number[] }) => {
   const gradientId = `gradient-${isPositive ? 'blue' : 'red'}`;
 
   return (
-    <div className="w-full h-10 min-w-[60px] min-h-[40px] relative rounded overflow-hidden">
-      <ResponsiveContainer width="100%" height="100%" minWidth={60} minHeight={40} debounce={50}>
-        <AreaChart
-          data={chartData}
-          margin={{ top: 2, right: 2, bottom: 2, left: 2 }}
-        >
-          <defs>
-            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={strokeColor} stopOpacity={0.4} />
-              <stop offset="100%" stopColor={strokeColor} stopOpacity={0.05} />
-            </linearGradient>
-          </defs>
-          <YAxis
-            domain={[yAxisMin, yAxisMax]}
-            hide={true}
-            allowDataOverflow={true}
-          />
-          <Tooltip
-            content={() => null}
-            cursor={false}
-          />
-          <Area
-            type="monotone"
-            dataKey="value"
-            stroke={strokeColor}
-            fill={`url(#${gradientId})`}
-            strokeWidth={2}
-            dot={false}
-            isAnimationActive={false}
-            activeDot={false}
-            connectNulls={false}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
+    <div 
+      ref={containerRef}
+      className="w-full h-10 min-w-[60px] min-h-[40px] relative rounded overflow-hidden"
+      style={{ minHeight: '40px', minWidth: '60px' }}
+    >
+      {isReady && (
+        <ResponsiveContainer width="100%" height="100%" minWidth={60} minHeight={40} debounce={100}>
+          <AreaChart
+            data={chartData}
+            margin={{ top: 2, right: 2, bottom: 2, left: 2 }}
+          >
+            <defs>
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={strokeColor} stopOpacity={0.4} />
+                <stop offset="100%" stopColor={strokeColor} stopOpacity={0.05} />
+              </linearGradient>
+            </defs>
+            <YAxis
+              domain={[yAxisMin, yAxisMax]}
+              hide={true}
+              allowDataOverflow={true}
+            />
+            <Tooltip
+              content={() => null}
+              cursor={false}
+            />
+            <Area
+              type="monotone"
+              dataKey="value"
+              stroke={strokeColor}
+              fill={`url(#${gradientId})`}
+              strokeWidth={2}
+              dot={false}
+              isAnimationActive={false}
+              activeDot={false}
+              connectNulls={false}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 };

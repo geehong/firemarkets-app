@@ -11,8 +11,10 @@ import { parseLocalized } from '@/utils/parseLocalized'
 import BaseTemplateView from './BaseTemplateView'
 import PostComments from '@/components/post/PostComments'
 import PostSidebar from '@/components/post/PostSidebar'
+import OnChainGuide from '@/components/post/OnChainGuide'
 
 import FireMarketsAnalysis from '../post/FireMarketsAnalysis'
+import Disclaimer from '@/components/common/Disclaimer'
 
 interface PostDetailedViewProps {
     post: any
@@ -159,6 +161,10 @@ const PostDetailedView: React.FC<PostDetailedViewProps> = ({ post, locale }) => 
                 <div className="space-y-6">
                     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 overflow-hidden">
                         <PostContent content={content} />
+                        
+                        {post.post_type === 'onchain' && (
+                            <OnChainGuide locale={locale} />
+                        )}
                     </div>
                     
                     {/* FireMarkets Analysis Section for News, Blog, and Post */}
@@ -167,6 +173,9 @@ const PostDetailedView: React.FC<PostDetailedViewProps> = ({ post, locale }) => 
                     )}
 
                     <PostInfoCard post={post} locale={locale} />
+                    
+                    {/* Disclaimer Component */}
+                    <Disclaimer />
 
                     {/* Comments Section */}
                     <PostComments postId={post.id} locale={locale} />

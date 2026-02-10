@@ -35,3 +35,4 @@ env/
 # Temp
 tmp/
 .temp/
+usb-backup-drive/

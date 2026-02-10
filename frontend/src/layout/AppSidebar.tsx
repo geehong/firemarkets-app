@@ -73,15 +73,21 @@ const AppSidebar: React.FC = () => {
       name: t('dashboard'),
       path: "/dashboard",
     },
-    // 2. News
+    // 2. Prime News (Major News)
     {
-      name: t('news'),
+      name: "Prime News",
       icon: <PageIcon />,
       path: "/news"
     },
-    // 3. Blog
+    // 3. Market Signals (AI Briefs)
     {
-      name: t('blog'),
+      name: "Market Signals",
+      icon: <BoltIcon />,
+      path: "/briefnews",
+    },
+    // 4. Market Insight (Blog)
+    {
+      name: "Market Insight",
       icon: <BlogIcon />,
       path: "/blog",
     },
@@ -149,6 +155,8 @@ const AppSidebar: React.FC = () => {
             { name: t('deltaPriceUsd'), path: "/onchain/delta_price_usd", icon: dotIcon },
             { name: t('trueMarketMean'), path: "/onchain/true_market_mean", icon: dotIcon },
             { name: t('aviv'), path: "/onchain/aviv", icon: dotIcon },
+            { name: t('openInterestFutures'), path: "/onchain/open_interest_futures", icon: dotIcon }, // Added
+            { name: t('fundingRate'), path: "/onchain/funding_rate", icon: dotIcon }, // Added
           ],
         },
         {
@@ -172,6 +180,7 @@ const AppSidebar: React.FC = () => {
             { name: t('rhodlRatio'), path: "/onchain/rhodl_ratio", icon: dotIcon },
             { name: t('nvts'), path: "/onchain/nvts", icon: dotIcon },
             { name: t('marketCap'), path: "/onchain/market_cap", icon: dotIcon },
+            { name: t('bitcoinDominance'), path: "/onchain/bitcoin_dominance", icon: dotIcon }, 
             { name: t('realizedCap'), path: "/onchain/realized_cap", icon: dotIcon },
             { name: t('thermoCap'), path: "/onchain/thermo_cap", icon: dotIcon },
           ],

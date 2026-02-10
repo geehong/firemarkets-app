@@ -12,7 +12,9 @@ import { useAuth } from '@/hooks/auth/useAuthNew'
 import Alert from '@/components/ui/alert/Alert'
 import { TimeIcon } from '@/icons'
 import { parseLocalized } from '@/utils/parseLocalized'
+import { formatLargeNumber } from '@/utils/formatters'
 import OnChainTemplateView from '@/components/template/onchain/OnChainTemplateView'
+import OnChainGuide from '@/components/post/OnChainGuide'
 
 // Prop interfaces for dynamic components
 interface OnChainChartProps {
@@ -35,6 +37,7 @@ const OHLCVCustomGUIChart = dynamic(() => import('@/components/charts/ohlcvchart
 const LiveChart = dynamic(() => import('@/components/charts/live/LiveChart'), { ssr: false })
 const BitcoinMonthlyReturns = dynamic(() => import('@/components/widgets/BitcoinMonthlyReturns').then(mod => mod.BitcoinMonthlyReturns), { ssr: false })
 const BitcoinPredictionChart = dynamic(() => import('@/components/charts/BitcoinPredictionChart'), { ssr: false })
+const HODLWavesChart = dynamic(() => import('@/components/charts/onchaincharts/HODLWavesChart'), { ssr: false })
 
 // Analysis Views
 const TechnicalAnalysisView = dynamic(() => import('@/components/analysis/views/TechnicalAnalysisView'), { ssr: false })
@@ -150,9 +153,11 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
         const formattedDate = isNaN(date.getTime()) ? '---' : 
             `${String(date.getFullYear()).slice(-2)}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}`;
 
-        const formattedValue = val >= 1000 
-            ? val.toLocaleString(undefined, { maximumFractionDigits: 0 }) 
-            : val.toLocaleString(undefined, { maximumFractionDigits: 4 });
+        const formattedValue = val >= 1000000 
+            ? formatLargeNumber(val)
+            : val >= 1000 
+                ? val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) 
+                : val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 
         return {
             value: formattedValue,
@@ -406,7 +411,11 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
                                             <div className="text-right space-y-1">
                                                 <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{locale === 'ko' ? '최근 값' : 'Last Value'}</div>
                                                 <div className={`text-xl font-black ${metricId === item.metric_id ? 'text-blue-700 dark:text-blue-300' : 'text-gray-900 dark:text-gray-100'}`}>
-                                                    {item.latest_value !== null ? item.latest_value.toLocaleString(undefined, { maximumFractionDigits: 4 }) : 'N/A'}
+                                                    {item.latest_value !== null ? (
+                                                        item.latest_value >= 1000000 
+                                                            ? formatLargeNumber(item.latest_value) 
+                                                            : item.latest_value.toLocaleString(undefined, { maximumFractionDigits: 4 })
+                                                    ) : 'N/A'}
                                                 </div>
                                             </div>
                                         </div>
@@ -452,58 +461,75 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
                                         // Standard Metric/Price View
                                         <>
                                             <ComponentCard title={metricConfig.title || (locale === 'ko' ? `${cleanMetricNameValue} 차트` : `${cleanMetricNameValue} Chart`)}>
-                                                {fullPath.includes('/onchain/price/live') ? (
-                                                    <LiveChart assetIdentifier="BTCUSDT" height={600} />
-                                                ) : fullPath.includes('/onchain/price/close/daily') ? (
-                                                    <ClosePriceChart
-                                                        assetId="BTCUSDT"
-                                                        interval="1d"
-                                                        allowedIntervals={['1d', '1w', '1M']}
-                                                        height={600}
-                                                    />
-                                                ) : fullPath.includes('/onchain/price/close/intraday') ? (
-                                                    <ClosePriceChart
-                                                        assetId="BTCUSDT"
-                                                        interval="1h"
-                                                        allowedIntervals={['1m', '5m', '15m', '30m', '1h', '4h']}
-                                                        height={600}
-                                                    />
-                                                ) : fullPath.includes('/onchain/price/ohlcv/daily') ? (
-                                                    <OHLCVCustomGUIChart
-                                                        assetIdentifier="BTCUSDT"
-                                                        dataInterval="1d"
-                                                        allowedIntervals={['1d', '1w', '1M']}
-                                                        height={600}
-                                                    />
-                                                ) : fullPath.includes('/onchain/price/ohlcv/intraday') ? (
-                                                    <OHLCVCustomGUIChart
-                                                        assetIdentifier="BTCUSDT"
-                                                        dataInterval="1h"
-                                                        allowedIntervals={['1m', '5m', '15m', '30m', '1h', '4h']}
-                                                        height={600}
-                                                    />
-                                                ) : (fullPath.includes('/onchain/price/moving-averages') || fullPath.includes('/onchain/analysis/moving-averages')) ? (
-                                                    <MovingAverageChart assetId="BTCUSDT" height={600} />
-                                                ) : fullPath.includes('/onchain/price/capitalization') ? (
-                                                    <CapitalizationChart assetId="BTCUSDT" height={600} />
-                                                ) : fullPath.includes('/onchain/price/pi-cycle') ? (
-                                                    <PiCycleChart assetId="BTCUSDT" height={600} />
-                                                ) : fullPath.toLowerCase().includes('/onchain/price/monthlyreturns') ? (
-                                                    <BitcoinMonthlyReturns />
-                                                ) : fullPath.includes('/onchain/price/outlook-2026') ? (
-                                                    <BitcoinPredictionChart />
-                                                ) : (
-                                                    <OnChainChart
-                                                        assetId="BTCUSDT"
-                                                        title={metricConfig.title || `Bitcoin Price vs ${cleanMetricNameValue} Correlation`}
-                                                        height={600}
-                                                        showRangeSelector={true}
-                                                        showStockTools={false}
-                                                        showExporting={true}
-                                                        metricId={metricId || undefined}
-                                                        metricName={cleanMetricNameValue}
-                                                    />
-                                                )}
+                                                <div className="relative w-full">
+                                                    {/* Central Overlay for Latest Value */}
+                                                    {latestValueInfo && (
+                                                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[5] pointer-events-none flex items-center justify-center gap-2 font-bold text-[32px] leading-none select-none opacity-80 md:opacity-100">
+                                                            <span className="text-gray-400 dark:text-gray-500">
+                                                                {latestValueInfo.date}
+                                                            </span>
+                                                            <span className="text-gray-300 dark:text-gray-600">:</span>
+                                                            <span className="text-blue-600 dark:text-blue-400">
+                                                                {latestValueInfo.value}
+                                                            </span>
+                                                        </div>
+                                                    )}
+
+                                                    {fullPath.includes('/onchain/price/live') ? (
+                                                        <LiveChart assetIdentifier="BTCUSDT" height={600} />
+                                                    ) : fullPath.includes('/onchain/price/close/daily') ? (
+                                                        <ClosePriceChart
+                                                            assetId="BTCUSDT"
+                                                            interval="1d"
+                                                            allowedIntervals={['1d', '1w', '1M']}
+                                                            height={600}
+                                                        />
+                                                    ) : fullPath.includes('/onchain/price/close/intraday') ? (
+                                                        <ClosePriceChart
+                                                            assetId="BTCUSDT"
+                                                            interval="1h"
+                                                            allowedIntervals={['1m', '5m', '15m', '30m', '1h', '4h']}
+                                                            height={600}
+                                                        />
+                                                    ) : fullPath.includes('/onchain/price/ohlcv/daily') ? (
+                                                        <OHLCVCustomGUIChart
+                                                            assetIdentifier="BTCUSDT"
+                                                            dataInterval="1d"
+                                                            allowedIntervals={['1d', '1w', '1M']}
+                                                            height={600}
+                                                        />
+                                                    ) : fullPath.includes('/onchain/price/ohlcv/intraday') ? (
+                                                        <OHLCVCustomGUIChart
+                                                            assetIdentifier="BTCUSDT"
+                                                            dataInterval="1h"
+                                                            allowedIntervals={['1m', '5m', '15m', '30m', '1h', '4h']}
+                                                            height={600}
+                                                        />
+                                                    ) : (fullPath.includes('/onchain/price/moving-averages') || fullPath.includes('/onchain/analysis/moving-averages')) ? (
+                                                        <MovingAverageChart assetId="BTCUSDT" height={600} />
+                                                    ) : fullPath.includes('/onchain/price/capitalization') ? (
+                                                        <CapitalizationChart assetId="BTCUSDT" height={600} />
+                                                    ) : fullPath.includes('/onchain/price/pi-cycle') ? (
+                                                        <PiCycleChart assetId="BTCUSDT" height={600} />
+                                                    ) : fullPath.toLowerCase().includes('/onchain/price/monthlyreturns') ? (
+                                                        <BitcoinMonthlyReturns />
+                                                    ) : fullPath.includes('/onchain/price/outlook-2026') ? (
+                                                        <BitcoinPredictionChart />
+                                                    ) : (fullPath.includes('/onchain/hodl_waves_supply') || metricId === 'hodl_waves_supply') ? (
+                                                        <HODLWavesChart height={700} locale={locale} />
+                                                    ) : (
+                                                        <OnChainChart
+                                                            assetId="BTCUSDT"
+                                                            title={metricConfig.title || `Bitcoin Price vs ${cleanMetricNameValue} Correlation`}
+                                                            height={600}
+                                                            showRangeSelector={true}
+                                                            showStockTools={false}
+                                                            showExporting={true}
+                                                            metricId={metricId || undefined}
+                                                            metricName={cleanMetricNameValue}
+                                                        />
+                                                    )}
+                                                </div>
                                             </ComponentCard>
         
                                             {/* ANALYSIS INFO SECTION - Render ONLY if post has no content */}
@@ -563,16 +589,21 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
         
                                             {/* About Section (Post Content) - Render if content exists */}
                                             {hasPostContent && (
-                                                <ComponentCard title={parseLocalized((postData as any).title, locale) || cleanMetricNameValue}>
-                                                    <div
-                                                        className="prose prose-sm dark:prose-invert max-w-none"
-                                                        dangerouslySetInnerHTML={{
-                                                            __html: locale === 'ko'
-                                                                ? ((postData as any).content_ko || (postData as any).content)
-                                                                : ((postData as any).content || (postData as any).content_ko)
-                                                        }}
-                                                    />
-                                                </ComponentCard>
+                                                <>
+                                                    <ComponentCard title={parseLocalized((postData as any).title, locale) || cleanMetricNameValue}>
+                                                        <div
+                                                            className="prose prose-sm dark:prose-invert max-w-none"
+                                                            dangerouslySetInnerHTML={{
+                                                                __html: locale === 'ko'
+                                                                    ? ((postData as any).content_ko || (postData as any).content)
+                                                                    : ((postData as any).content || (postData as any).content_ko)
+                                                            }}
+                                                        />
+                                                    </ComponentCard>
+                                                    {(postData as any).post_type === 'onchain' && (
+                                                        <OnChainGuide locale={locale} />
+                                                    )}
+                                                </>
                                             )}
                                         </>
                                     )}

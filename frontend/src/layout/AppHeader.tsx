@@ -27,6 +27,8 @@ import {
 
 const AppHeader: React.FC = () => {
   const [isApplicationMenuOpen, setApplicationMenuOpen] = useState(false);
+  const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
   const { isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
   const { isAuthenticated, user } = useAuth();
   const t = useTranslations('Sidebar');
@@ -56,16 +58,31 @@ const AppHeader: React.FC = () => {
       }
     };
 
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      
+      // Show header if scrolling up, hide if scrolling down more than 100px
+      if (currentScrollY > lastScrollY && currentScrollY > 100) {
+        setIsHeaderVisible(false);
+      } else {
+        setIsHeaderVisible(true);
+      }
+      
+      setLastScrollY(currentScrollY);
+    };
+
     document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("scroll", handleScroll, { passive: true });
 
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("scroll", handleScroll);
     };
-  }, []);
+  }, [lastScrollY]);
 
   return (
     <>
-      <header className="sticky top-0 flex flex-col w-full bg-white border-gray-200 z-40 dark:border-gray-800 dark:bg-gray-900 lg:border-b">
+      <header className={`sticky top-0 flex flex-col w-full bg-white border-gray-200 z-40 dark:border-gray-800 dark:bg-gray-900 lg:border-b transition-transform duration-300 ${isHeaderVisible ? 'translate-y-0' : '-translate-y-full'}`}>
         <div className="flex flex-col items-center justify-between grow lg:flex-row lg:px-[5%]">
           <div className="flex items-center justify-between w-full gap-2 px-3 py-3 border-b border-gray-200 dark:border-gray-800 sm:gap-4 lg:justify-normal lg:border-b-0 lg:px-0 lg:py-4">
             <button
@@ -271,7 +288,7 @@ const AppHeader: React.FC = () => {
 
       {/* Breadcrumb - Separate section below header as sibling element */}
       <div
-        className="hidden w-full px-6 lg:px-[5%] py-2 border-t border-gray-200 dark:border-gray-800 lg:block transition-all duration-300 ease-in-out sticky top-[76px] bg-white dark:bg-gray-900 z-30"
+        className={`hidden w-full px-6 lg:px-[5%] py-2 border-t border-gray-200 dark:border-gray-800 lg:block transition-all duration-300 ease-in-out sticky z-30 bg-white dark:bg-gray-900 ${isHeaderVisible ? 'top-[76px]' : 'top-0 shadow-sm'}`}
       >
         <DynamicBreadcrumb />
       </div>

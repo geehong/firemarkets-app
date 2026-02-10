@@ -32,6 +32,7 @@ const PostContent: React.FC<PostContentProps> = ({ content }) => {
                                 key={index}
                                 dangerouslySetInnerHTML={{ __html: part.content || '' }}
                                 className="html-part"
+                                suppressHydrationWarning
                             />
                         )
                     })}

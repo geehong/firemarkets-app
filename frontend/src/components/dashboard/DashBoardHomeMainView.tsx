@@ -162,6 +162,17 @@ const DashBoardHomeMainView = () => {
     const locale = useLocale();
     const [selectedAssetType, setSelectedAssetType] = useState<string>('');
 
+    // Fetch Brief News Data
+    const { data: briefNewsData, isLoading: isBriefLoading, refetch: refetchBriefNews } = usePosts({
+        post_type: 'brief_news',
+        status: 'published',
+        page_size: 10,
+        sort_by: 'created_at',
+        order: 'desc'
+    });
+
+    const briefNews = briefNewsData?.posts || [];
+
     const assetTypes = [
         { value: '', label_en: 'All', label_ko: '전체' },
         { value: 'Stocks', label_en: 'Stocks', label_ko: '주식' },
@@ -286,14 +297,39 @@ const DashBoardHomeMainView = () => {
                     <SparklineTable maxRows={10} typeName={selectedAssetType || undefined} />
                 </div>
 
-                {/* Latest Blog */}
-                <LatestPostSection title={t('blog')} postType="post" linkUrl="/blog" />
+                {/* Latest Blog (Market Insight) */}
+                <LatestPostSection title={locale === 'ko' ? "마켓 인사이트 (Expert Blog)" : "Market Insight (Expert Blog)"} postType="post" linkUrl="/blog" />
 
-                {/* Latest News */}
-                <LatestPostSection title={t('news')} postType="news" linkUrl="/news" />
+                {/* Latest News (Prime News) */}
+                <LatestPostSection title={locale === 'ko' ? "프라임 뉴스 (Prime News)" : "Prime News"} postType="news" linkUrl="/news" />
 
-                {/* Brief News */}
-                <BriefNewsSection />
+                {/* Brief News (Market Signals) */}
+                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl shadow-slate-200/50 dark:shadow-none p-6 border border-slate-100 dark:border-gray-700">
+                    <div className="flex justify-between items-end mb-6">
+                        <h3 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-transparent flex items-center gap-2">
+                            {locale === 'ko' ? "마켓 시그널 (AI Briefs)" : "Market Signals (AI Briefs)"}
+                        </h3>
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => refetchBriefNews()}
+                                className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-slate-500 transition-colors"
+                                title="Refresh"
+                            >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                            </button>
+                            <Link href="/briefnews" className="text-sm font-medium text-slate-500 hover:text-violet-600 transition-colors">
+                                {t('viewAll')} →
+                            </Link>
+                        </div>
+                    </div>
+                    {isBriefLoading ? (
+                        <div className="h-40 flex items-center justify-center text-gray-400">Loading...</div>
+                    ) : (
+                        <BriefNewsListTable data={briefNews} />
+                    )}
+                </div>
             </div>
         </DashBoardTemplateView>
     );

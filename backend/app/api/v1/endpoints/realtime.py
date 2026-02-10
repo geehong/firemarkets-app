@@ -519,6 +519,21 @@ async def get_realtime_quotes_delay_price_postgres(
             
             ohlcv_data = ohlcv_query.all()
             
+            # Secondary fallback: try 1d (daily) interval if no intraday data found
+            if not ohlcv_data:
+                logger.info(f"No intraday OHLCV found for {asset_identifier}, trying daily (1d) data")
+                ohlcv_query_daily = postgres_db.query(OHLCVData)\
+                    .filter(OHLCVData.asset_id == asset_id)\
+                    .filter(OHLCVData.data_interval == "1d")\
+                    .order_by(desc(OHLCVData.timestamp_utc))
+                
+                if is_last_only:
+                    ohlcv_query_daily = ohlcv_query_daily.limit(1)
+                else:
+                    ohlcv_query_daily = ohlcv_query_daily.limit(limit)
+                
+                ohlcv_data = ohlcv_query_daily.all()
+            
             if not ohlcv_data:
                 raise HTTPException(status_code=404, detail=f"No data found for asset: {asset_identifier}")
             
@@ -535,7 +550,7 @@ async def get_realtime_quotes_delay_price_postgres(
                     change_percent = (change_amount / float(prev_close)) * 100 if prev_close > 0 else None
                 
                 quote_dict = {
-                    "id": ohlcv.id,
+                    "id": ohlcv.ohlcv_id,
                     "asset_id": ohlcv.asset_id,
                     "timestamp_utc": ohlcv.timestamp_utc.isoformat() if ohlcv.timestamp_utc else None,
                     "price": float(ohlcv.close_price) if ohlcv.close_price else None,

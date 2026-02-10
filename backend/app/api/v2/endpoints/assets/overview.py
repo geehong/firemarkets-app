@@ -366,6 +366,8 @@ def get_unified_overview(
         "description": asset.description,
         "source": "unified",
         "ohlcv_info": ohlcv_info,
+        "post_id": post.id if post else None,
+        "post_slug": post.slug if post else None,
         "post_info": post_info,
     }
 

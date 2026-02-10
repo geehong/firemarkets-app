@@ -542,6 +542,11 @@ class CryptoMetric(Base):
     nvts = Column(DECIMAL(18, 10), nullable=True)
     market_cap = Column(DECIMAL(30, 2), nullable=True)
     
+    # New metrics (2026-02-10)
+    open_interest_futures = Column(DECIMAL(24, 10), nullable=True)
+    funding_rate = Column(DECIMAL(18, 10), nullable=True)
+    bitcoin_dominance = Column(DECIMAL(10, 4), nullable=True)
+    
     # Metadata
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())

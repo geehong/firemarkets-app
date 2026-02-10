@@ -242,7 +242,12 @@ class BitcoinDataClient(OnChainAPIClient):
                 'utxos_in_loss_pct': {'endpoint': 'utxos-in-loss-pct', 'field': ['utxosInLossPct', 'utxos_in_loss_pct']},
                 'nvts': {'endpoint': 'nvts', 'field': ['nvts']},
                 'market_cap': {'endpoint': 'market-cap', 'field': ['marketCap', 'market_cap']},
-                'realized_cap': {'endpoint': 'realized-cap', 'field': ['realizedCap', 'realized_cap']}
+                'realized_cap': {'endpoint': 'realized-cap', 'field': ['realizedCap', 'realized_cap']},
+                
+                # New metrics (2026-02-10)
+                'open_interest_futures': {'endpoint': 'open-interest-futures', 'field': ['openInterestFutures', 'open_interest_futures']},
+                'funding_rate': {'endpoint': 'funding-rate', 'field': ['fundingRate', 'funding_rate']},
+                'bitcoin_dominance': {'endpoint': 'bitcoin-dominance', 'field': ['bitcoinDominance', 'bitcoin_dominance']}
             }
             
             if metric_name not in metric_map:
@@ -320,15 +325,16 @@ class BitcoinDataClient(OnChainAPIClient):
                                          pass
                              
                              if hodl_dist:
+                                 # Calculate total supply from all distribution buckets
+                                 total_supply = sum(hodl_dist.values())
+                                 
                                  # Create metrics object with distribution
                                  metric_obj = CryptoMetricsData(
                                      asset_id=safe_asset_id,
                                      timestamp_utc=ts,
                                      hodl_age_distribution=hodl_dist,
-                                     # Also set a scalar value if needed, but likely we just want the dist.
-                                     # The schema has hodl_waves_supply as float, but it's actually a concept.
-                                     # We will leave hodl_waves_supply scalar as None or 0.
-                                     hodl_waves_supply=0.0 
+                                     # Set hodl_waves_supply as the total of all distribution values
+                                     hodl_waves_supply=total_supply
                                  )
                                  metrics_list.append(metric_obj)
                              continue

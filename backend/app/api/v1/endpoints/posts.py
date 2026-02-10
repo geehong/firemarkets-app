@@ -686,7 +686,9 @@ async def merge_posts(
                 "url": primary_info.get('url'),
                 "source": primary_info.get('source'),
                 "image_url": primary_info.get('image_url') or merged_data.get('image_url'),
-                "author": primary_info.get('author')
+                "author": primary_info.get('author'),
+                # Auto-calculate sentiment
+                "sentiment": sentiment_analyzer.analyze(merged_data.get("content_en", ""))
             }
         )
         
@@ -765,7 +767,9 @@ async def regenerate_merged_post(
             # post_info 업데이트 (merged_at 갱신)
             post_info={
                 **(post_obj.post_info or {}),
-                "last_regenerated_at": str(datetime.now())
+                "last_regenerated_at": str(datetime.now()),
+                # Re-calculate sentiment
+                "sentiment": sentiment_analyzer.analyze(merged_data.get("content_en", ""))
             }
         )
         
