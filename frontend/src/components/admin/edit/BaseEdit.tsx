@@ -266,7 +266,7 @@ export default function BaseEdit({
       // But we MUST allow updates if the server content has changed (e.g. after AI rewrite)
       if (formData.id === postData.id && formData.updated_at === postData.updated_at) return
 
-      const processMultilingualField = (field: any) => {
+        const processMultilingualField = (field: any) => {
         if (typeof field === 'string') return { ko: field, en: field }
         if (typeof field === 'object' && field !== null) {
           return {
@@ -277,8 +277,15 @@ export default function BaseEdit({
         return { ko: '', en: '' }
       }
 
+      // 2024-05-24: Fix for post_type mismatch (e.g. 'asset' vs 'assets')
+      // If API returns singular 'asset', normalize to 'assets' to match dropdown options
+      let normalizedPostType = postData.post_type;
+      if (postData.post_type === 'asset' as any) normalizedPostType = 'assets';
+      if (postData.post_type === 'blog' as any) normalizedPostType = 'post';
+
       setFormData({
         ...postData,
+        post_type: normalizedPostType,
         title: processMultilingualField(postData.title),
         description: processMultilingualField(postData.description),
         excerpt: processMultilingualField(postData.excerpt || postData.description),

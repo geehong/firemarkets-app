@@ -52,13 +52,20 @@ const PostSidebar: React.FC<PostSidebarProps> = ({ locale, postType, ticker }) =
     }
 
     // 2. Fetch Posts with Pagination
-    const queryPostType = postType === 'blog' ? 'post' : postType;
+    const ALLOWED_TYPES = 'news,post,brief_news';
+    
+    // Determine which type to fetch. If postType is one of the allowed ones, we can use it,
+    // otherwise default to the full allowed set.
+    let fetchType = ALLOWED_TYPES;
+    if (postType === 'blog' || postType === 'post') fetchType = 'post';
+    else if (postType === 'news') fetchType = 'news';
+    else if (postType === 'brief_news') fetchType = 'brief_news';
 
-    // A. Main query: Filter by ticker if available, else by type
+    // A. Main query: Filter by ticker if available, else by determined type
     const { data: postsData, isLoading: isPostsLoading } = usePosts({
         page,
         page_size: pageSize,
-        post_type: ticker ? undefined : queryPostType,
+        post_type: ticker ? ALLOWED_TYPES : fetchType,
         ticker: ticker,
     })
 
@@ -66,7 +73,7 @@ const PostSidebar: React.FC<PostSidebarProps> = ({ locale, postType, ticker }) =
     const { data: recentPostsData, isLoading: isRecentLoading } = usePosts({
         page: 1,
         page_size: 10,
-        post_type: 'post,news,brief_news',
+        post_type: ALLOWED_TYPES,
     }, { 
         enabled: !!ticker && (!(postsData as any) || ((postsData as any)?.posts?.length || 0) < 5)
     })

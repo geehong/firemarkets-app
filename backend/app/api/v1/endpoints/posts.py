@@ -1352,3 +1352,31 @@ async def cleanup_posts(
     except Exception as e:
         logger.error(f"Cleanup error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/ai-assistant")
+async def ai_assistant(
+    request: dict = Body(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_postgres_db)
+):
+    """
+    Editor AI Assistant Endpoint.
+    Accepts a prompt and context, returns AI-generated text.
+    Uses NewsAIEditorAgent to enforce 'Financial Columnist' persona.
+    """
+    prompt = request.get("prompt")
+    context = request.get("context")
+    
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt is required")
+
+    try:
+        agent = NewsAIEditorAgent()
+        # Call the new assist_editor method which enforces the rules
+        result = await agent.assist_editor(prompt, context)
+        return {"result": result}
+    except Exception as e:
+        logger.error(f"AI Assistant Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+

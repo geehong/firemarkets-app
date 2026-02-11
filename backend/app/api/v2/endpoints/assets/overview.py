@@ -356,6 +356,14 @@ def get_unified_overview(
             "status": post.status,
         }
     
+    # Post Content for Overview
+    content = None
+    content_ko = None
+    
+    if post:
+        content = post.content
+        content_ko = post.content_ko
+
     return {
         "asset_id": asset.asset_id,
         "ticker": asset.ticker,
@@ -364,6 +372,8 @@ def get_unified_overview(
         "exchange": asset.exchange,
         "currency": asset.currency,
         "description": asset.description,
+        "content": content,
+        "content_ko": content_ko,
         "source": "unified",
         "ohlcv_info": ohlcv_info,
         "post_id": post.id if post else None,

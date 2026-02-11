@@ -331,7 +331,7 @@ You are a top-tier financial columnist and lead investigative journalist. Your m
 3. **Structure**: 
    - **Title**: Create a thought-provoking, high-impact headline.
    - **Lead (Summary)**: Write a compelling introductory paragraph that seamlessly blends key facts with a hook. This must be a single cohesive paragraph of flowing prose.
-   - **Content Structure**: Use `<h3>` tags to break down the analysis into digestible sections. 
+   - **Content Structure**: Use `<h3>` tags to break down the analysis into 2-3 logical sections for readability and SEO. 
    - **Layout**: Do NOT include the main title `<h1>` or `<h2>` at the beginning. Start directly with the narrative text or an `<h3>` subheading if appropriate for the flow.
 5. **Tone**: Authoritative, insightful, and professional. The output should read like a featured article in a prestigious financial magazine (e.g., Bloomberg, The Economist).
 
@@ -410,8 +410,8 @@ For each news item, generate the following fields in both English and Korean:
 3. **Content**: A rich, expanded body text (2-3 paragraphs). 
    - Supplement the short input with context, definitions of terms, or potential market implications based on your knowledge.
    - Use clear, professional, yet accessible language (explain difficult terms).
-   - Format with HTML tags (e.g., <strong> for bold, <p> for paragraphs, <ul>/<li> for lists).
-   - **Layout**: Do NOT include the main title or any <h2>/<h3> headings at the beginning of the 'content'. Start directly with the body text.
+   - Format with HTML tags (e.g., <strong> for bold, <p> for paragraphs, <ul>/<li> for lists, <h3> for subheadings).
+   - **Layout**: Do NOT include the main title or any <h2>/<h3> headings at the beginning of the 'content'. However, you MUST use `<h3>` tags within the body to structure the narrative if it exceeds two paragraphs.
 
 **IMPORTANT**: Do NOT include specific prices, market cap numbers, dates, or any numerical market data. Your training data may be outdated and incorrect. Focus on general information, concepts, and qualitative analysis only.
 
@@ -570,8 +570,8 @@ You are a top-tier financial columnist and lead investigative journalist. Your t
 4. **Structure**: 
    - **Title**: A thought-provoking, high-impact headline (English & Korean).
    - **Description**: A compelling, narrative-style lead paragraph (English & Korean).
-   - **Content**: A detailed body text (4-6 paragraphs) using HTML tags. Use `<h3>` for subheadings to improve readability and SEO.
-   - **Layout**: Do NOT include the main title `<h1>` or `<h2>` at the beginning. You MAY use `<h3>` for section headers within the body.
+   - **Content**: A detailed body text (4-6 paragraphs) using HTML tags. You MUST use logic-based `<h3>` subheadings to break down the narrative into 2-3 distinct sections for readability.
+   - **Layout**: Do NOT include the main title `<h1>` or `<h2>` at the beginning.
 5. **Language**: Provide output in both English and Korean.
 
 [Additional Instructions for FireMarkets Identity]
@@ -625,7 +625,7 @@ Title: {title}
 1. **Writing Style**: Use a sophisticated, literary, and deeply analytical narrative style (완전한 문장 형태의 문어체 서술형). 
 2. **Strict Prohibition**: NEVER use bullet points, numbered lists, or the '-' character for list-making. The entire piece must be flowing prose.
 3. **Format**: Use HTML tags (e.g., `<p>`, `<strong>`, `<h3>`). Do NOT use Markdown.
-4. **Layout**: Do NOT include the main title `<h1>` or `<h2>` at the beginning. Use `<h3>` tags for subheadings to structure the narrative.
+4. **Layout**: Do NOT include the main title `<h1>` or `<h2>` at the beginning. You MUST use `<h3>` tags to create 2-3 logical subheadings within the narrative for structure and readability.
 5. **Language**: Provide output in both English and Korean.
 
 [Additional Instructions for FireMarkets Identity]
@@ -713,3 +713,53 @@ Return ONLY a valid JSON object:
         except Exception as e:
             logger.error(f"Rewrite post failed: {e}")
             return None
+
+    async def assist_editor(self, prompt: str, context: Optional[str] = None) -> str:
+        """
+        Assist the editor with direct prompts, maintaining the 'Financial Columnist' persona.
+        Used by the 'Ask AI' feature in TinyMCE.
+        
+        Args:
+            prompt: User's command (e.g., "Make this more professional", "Summarize this")
+            context: The selected text or current content of the editor
+        """
+        
+        # Persona & Rules System
+        system_rules = """
+You are a top-tier financial columnist and lead investigative journalist. 
+Your task is to assist the editor based on their request, adhering strictly to the following rules:
+
+1. **Writing Style**: Use a sophisticated, literary, and deeply analytical narrative style (완전한 문장 형태의 문어체 서술형).
+2. **Strict Prohibition**: NEVER use bullet points, numbered lists, or the '-' character. 
+3. **Format**: Return ONLY HTML content (e.g., `<p>`, `<strong>`, `<h3>`). Do NOT use Markdown code blocks.
+4. **Structure**: You MUST use `<h3>` subheadings to organize the content into logical sections if the response is longer than two paragraphs.
+5. **Tone**: Authoritative, insightful, and professional.
+6. **Language**: If the input is Korean, output Korean. If English, output English.
+
+[Additional Instructions]
+- If asked to "Make it longer" or "Improve", add qualitative depth and market context.
+- If asked to "Fix grammar", only correct errors while maintaining the professional tone.
+"""
+
+        full_prompt = f"{system_rules}\n\n[Context/Content]\n{context or ''}\n\n[User Request]\n{prompt}\n\n[Output]\n"
+        
+        try:
+            # Determine task type (rewrite/edit is 'general' high quality)
+            # We use 'general' to map to Gemini (or Groq fallback)
+            response = await self._generate_content(full_prompt, task_type="general")
+            
+            # Clean up response (remove markdown wrappers if any)
+            cleaned_response = response.strip()
+            if cleaned_response.startswith("```html"):
+                cleaned_response = cleaned_response[7:]
+            elif cleaned_response.startswith("```"):
+                cleaned_response = cleaned_response[3:]
+            
+            if cleaned_response.endswith("```"):
+                cleaned_response = cleaned_response[:-3]
+                
+            return cleaned_response.strip()
+            
+        except Exception as e:
+            logger.error(f"Editor assistance failed: {e}")
+            raise e

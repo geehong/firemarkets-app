@@ -8,7 +8,11 @@ export default function EditPagePage({ params }: { params: Promise<{ id: string 
     const { id: idStr } = use(params);
     const id = parseInt(idStr);
 
-    const handleSave = () => {
+    const handleSave = (post: any) => {
+        // Assets 타입은 리스트로 튕기지 않고 유지 (또는 자산 목록으로 이동)
+        if (post && post.post_type === 'assets') {
+            return;
+        }
         router.push('/admin/page/list');
     };
 
