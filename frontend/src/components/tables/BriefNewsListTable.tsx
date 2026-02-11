@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useLocale } from 'next-intl';
+import { useAuth } from '@/hooks/auth/useAuthNew';
 
 // --- CONFIGURATION START ---
 // Control spacing, border, and visual density of the table rows
@@ -40,6 +41,11 @@ interface BriefNewsListTableProps {
 
 export const BriefNewsListTable: React.FC<BriefNewsListTableProps> = ({ data }) => {
     const locale = useLocale() as 'en' | 'ko';
+    const { isAdmin } = useAuth();
+
+    const handleEdit = (postId: number) => {
+        window.open(`/admin/post/edit/${postId}`, '_blank');
+    };
 
     return (
         <div className="overflow-x-auto">
@@ -88,6 +94,21 @@ export const BriefNewsListTable: React.FC<BriefNewsListTableProps> = ({ data }) 
                                         {source}
                                     </span>
                                 </td>
+
+                                {/* Edit Button Column (Admin Only) */}
+                                {isAdmin && (
+                                    <td className={`${TABLE_STYLE.ROW.PADDING} whitespace-nowrap text-right w-10`}>
+                                        <button
+                                            onClick={() => handleEdit(item.id)}
+                                            className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:text-blue-400 dark:hover:bg-blue-900/30 transition-colors"
+                                            title="Edit"
+                                        >
+                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                            </svg>
+                                        </button>
+                                    </td>
+                                )}
                             </tr>
                         );
                     })}

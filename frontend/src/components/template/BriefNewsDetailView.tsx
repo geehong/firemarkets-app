@@ -5,6 +5,7 @@ import TableOfContents from './block/TableOfContents'
 import PostSidebar from '@/components/post/PostSidebar'
 import FireMarketsAnalysis from '@/components/post/FireMarketsAnalysis'
 import Disclaimer from '@/components/common/Disclaimer'
+import { useAuth } from '@/hooks/auth/useAuthNew'
 
 interface BriefNewsDetailViewProps {
     post: any;
@@ -27,6 +28,12 @@ export default function BriefNewsDetailView({
     source,
     originalUrl
 }: BriefNewsDetailViewProps) {
+    const { isAdmin } = useAuth();
+
+    const handleEdit = () => {
+        window.open(`/admin/post/edit/${post.id}`, '_blank');
+    };
+
     return (
         <main className="w-full px-4 py-8 max-w-none">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -63,6 +70,19 @@ export default function BriefNewsDetailView({
                                         <span className="w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-600" />
                                         {locale === 'ko' ? '출처' : 'Source'}: {source}
                                     </span>
+                                )}
+                                {/* Admin Edit Button */}
+                                {isAdmin && (
+                                    <button
+                                        onClick={handleEdit}
+                                        className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
+                                        title="Edit Post"
+                                    >
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                        </svg>
+                                        Edit
+                                    </button>
                                 )}
                             </div>
 

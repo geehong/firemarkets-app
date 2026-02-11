@@ -153,12 +153,31 @@ const PostDetailedView: React.FC<PostDetailedViewProps> = ({ post, locale }) => 
     }
 
     // Prepare Tabs
+    const handleEdit = () => {
+        window.open(`/admin/post/edit/${post.id}`, '_blank');
+    };
+
     const tabs = [
         {
             id: 'article',
             label: 'Article',
             content: (
                 <div className="space-y-6">
+                    {/* Admin Edit Button - visible at top of article */}
+                    {isAdmin && (
+                        <div className="flex justify-end">
+                            <button
+                                onClick={handleEdit}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
+                                title="Edit Post"
+                            >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                                Edit
+                            </button>
+                        </div>
+                    )}
                     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 overflow-hidden">
                         <PostContent content={content} />
                         
