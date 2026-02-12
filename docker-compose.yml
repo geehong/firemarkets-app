@@ -385,6 +385,7 @@ services:
     # Production uses the built image, no need for source code volumes
     volumes:
       - ./.env:/app/.env:ro
+      - ./frontend/public/images:/app/public/images # Persistent Image Storage
     # No command override to use Dockerfile CMD [node server.js]
     mem_limit: 3g
     memswap_limit: 3g

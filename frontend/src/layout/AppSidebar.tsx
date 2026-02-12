@@ -217,10 +217,16 @@ const AppSidebar: React.FC = () => {
       roles: ['admin', 'super_admin'],
       subItems: [
         {
+          name: t('dashboard'),
+          path: "/admin",
+          icon: <DashboardIcon />,
+        },
+        {
           name: "Post",
           path: "/admin/post", // Base path for expanding if needed, or just header
           icon: <PageIcon />,
           subItems: [
+            { name: t('dashboard'), path: "/admin/post", icon: dotIcon },
             { name: "Add Post", path: "/admin/post/create", icon: dotIcon },
             { name: "List Posts", path: "/admin/post/list", icon: dotIcon },
             { name: "Categories", path: "/admin/post/category", icon: dotIcon },
@@ -233,15 +239,22 @@ const AppSidebar: React.FC = () => {
           path: "/admin/page",
           icon: <PageIcon />,
           subItems: [
+            { name: t('dashboard'), path: "/admin/page", icon: dotIcon },
             { name: "Add Page", path: "/admin/page/create", icon: dotIcon },
             { name: "List Pages", path: "/admin/page/list", icon: dotIcon },
           ]
+        },
+        {
+          name: "Analytics",
+          path: "/admin/analytics",
+          icon: <PieChartIcon />,
         },
         {
           name: "Config",
           path: "/admin/config",
           icon: <BoltIcon />,
           subItems: [
+            { name: t('dashboard'), path: "/admin/config", icon: dotIcon },
             { name: "App", path: "/admin/config/app", icon: dotIcon },
             { name: "UI", path: "/admin/config/ui", icon: dotIcon },
             { name: "User", path: "/admin/config/user", icon: dotIcon },

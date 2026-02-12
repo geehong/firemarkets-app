@@ -36,9 +36,9 @@ export default function BriefNewsDetailView({
 
     return (
         <main className="w-full px-4 py-8 max-w-none">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="lg:flex lg:gap-8 w-full">
                 {/* Main Content Column */}
-                <div className="lg:col-span-8">
+                <div className="min-w-0 flex-1">
                     {/* Header */}
                     <article className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg overflow-hidden border border-gray-100 dark:border-gray-700">
                         {imageUrl && (
@@ -187,7 +187,7 @@ export default function BriefNewsDetailView({
                 </div>
 
                 {/* Sidebar Column */}
-                <div className="lg:col-span-4">
+                <div className="hidden lg:block w-[300px] min-w-[300px]">
                     <div className="sticky top-24">
                         <PostSidebar locale={locale} postType="brief_news" />
                     </div>

@@ -75,8 +75,8 @@ const BaseTemplateView: React.FC<BaseTemplateViewProps> = ({
 
     return (
         <div className="space-y-6">
-            <div className={`grid grid-cols-1 ${sidebar ? 'lg:grid-cols-12 gap-8' : ''}`}>
-                <div className={`${sidebar ? 'lg:col-span-8 space-y-6' : 'space-y-6'}`}>
+            <div className={`w-full ${sidebar ? 'lg:flex lg:gap-8' : ''}`}>
+                <div className={`min-w-0 ${sidebar ? 'flex-1 space-y-6' : 'space-y-6'}`}>
                     {/* 1. Semantic Header Section */}
                     {header && (
                         <header className="space-y-4">
@@ -194,7 +194,7 @@ const BaseTemplateView: React.FC<BaseTemplateViewProps> = ({
 
                 {/* Sidebar Column */}
                 {sidebar && (
-                    <div className="lg:col-span-4">
+                    <div className="hidden lg:block w-[300px] min-w-[300px]">
                         <div className="sticky top-24">
                             {sidebar}
                         </div>

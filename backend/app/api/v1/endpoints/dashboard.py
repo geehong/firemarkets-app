@@ -141,6 +141,78 @@ def get_ticker_summary_for_widgets(
 
     return TickerSummaryResponse(data=response_data)
 
+class KeywordCount(BaseModel):
+    keyword: str
+    count: int
+
+class DraftKeywordsResponse(BaseModel):
+    keywords: List[KeywordCount]
+
+@router.get("/draft-keywords", response_model=DraftKeywordsResponse)
+def get_draft_keywords(
+    limit: int = Query(20, ge=1, description="Number of keywords to return"),
+    db: Session = Depends(get_postgres_db)
+):
+    """
+    Analyzes titles of draft news (ai_draft_news, raw_news) 
+    and returns frequently occurring keywords.
+    """
+    from ....models.blog import Post
+    from sqlalchemy import or_
+    import re
+    from collections import Counter
+
+    # Fetch draft posts
+    posts = db.query(Post.title).filter(
+        Post.status == 'draft',
+        or_(
+            Post.post_type == 'ai_draft_news',
+            Post.post_type == 'raw_news'
+        )
+    ).all()
+
+    # Tokenizer logic
+    words = []
+    
+    # Common stop words (Korean & English) to exclude
+    stop_words = {
+        'the', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'but', 'is', 'are', 'was', 'were',
+        '이', '가', '은', '는', '을', '를', '의', '에', '와', '과', '도', '만', '로', '으로', '하다', '있다', '없다'
+    }
+
+    for p in posts:
+        # p.title is JSONB: {'ko': '...', 'en': '...'}
+        # We prioritize Korean title, fallback to English
+        title_ko = p.title.get('ko', '')
+        title_en = p.title.get('en', '')
+        
+        # Combine both for analysis or just use one? 
+        # User example was Korean: "알파톤 캐피탈"
+        # Let's analyze both to be safe, or just Korean if available.
+        
+        text_to_analyze = title_ko + " " + title_en
+        
+        # Simple regex to split by whitespace and punctuation
+        # Keep alphanumeric and Korean chars
+        tokens = re.findall(r'[a-zA-Z0-9가-힣]+', text_to_analyze)
+        
+        for token in tokens:
+            if len(token) < 2: # Skip single chars
+                continue
+            if token.lower() in stop_words:
+                continue
+            words.append(token)
+
+    # Count frequencies
+    counter = Counter(words)
+    
+    # Get top N
+    top_keywords = counter.most_common(limit)
+    
+    return DraftKeywordsResponse(
+        keywords=[KeywordCount(keyword=k, count=c) for k, c in top_keywords]
+    )
+
 # Helper functions
 def get_latest_ohlcv(db: Session, asset_id: int):
     """최신 OHLCV 데이터 조회"""

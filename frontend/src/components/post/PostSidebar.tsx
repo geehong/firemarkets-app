@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { usePosts } from '@/hooks/data/usePosts'
 import { parseLocalized } from '@/utils/parseLocalized'
+import AdUnit from "@/components/ads/AdUnit";
+import SidebarAdsWidget from '@/components/layout/SidebarAdsWidget';
 
 interface PostSidebarProps {
     locale: string;
@@ -134,6 +136,16 @@ const PostSidebar: React.FC<PostSidebarProps> = ({ locale, postType, ticker }) =
                 </form>
             </div>
 
+            {/* Ad Unit - Vertical */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 mb-6 flex justify-center">
+                <AdUnit 
+                    slot="6125039237" 
+                    format="vertical" 
+                    style={{ height: 'auto', minHeight: '300px', width: '100%' }}
+                    label="Advertisement"
+                />
+            </div>
+
             {/* 3. Recent Posts Widget */}
             <SidebarWidget
                 title={getRecentTitle()}
@@ -217,6 +229,10 @@ const PostSidebar: React.FC<PostSidebarProps> = ({ locale, postType, ticker }) =
                     </div>
                 </SidebarWidget>
             )}
+            {/* Global Ads Widget (Stacked) */}
+            <div className="mt-8">
+                <SidebarAdsWidget />
+            </div>
         </aside>
     )
 }

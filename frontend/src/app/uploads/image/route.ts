@@ -46,13 +46,14 @@ export async function POST(request: NextRequest) {
         const baseName = path.basename(originalName, path.extname(originalName))
 
         // Create SEO friendly filename: {slug}_{date}_{clean_filename}.webp
-        const date = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '') // YYYYMMDD
         const cleanBaseName = baseName.replace(/[^a-zA-Z0-9]/g, '_')
 
-        const fileName = `${slug}_${date}_${cleanBaseName}${ext}`
+        const fileName = `${slug}_${dateStr}_${cleanBaseName}${ext}`
 
-        // Determine upload directory: public/images/posts/{postType}
-        const uploadDir = path.join(process.cwd(), 'public', 'images', 'posts', postType)
+        // Determine upload directory: public/images/posts/{postType}/{date}
+        // User Request: frontend/public/images/posts/{post_type}/{date}/{imagename}
+        const uploadDir = path.join(process.cwd(), 'public', 'images', 'posts', postType, dateStr)
 
         // Ensure directory exists
         await mkdir(uploadDir, { recursive: true })
@@ -86,7 +87,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Return Public URL
-        const publicUrl = `/images/posts/${postType}/${fileName}`
+        const publicUrl = `/images/posts/${postType}/${dateStr}/${fileName}`
 
         return NextResponse.json({ success: true, url: publicUrl })
 

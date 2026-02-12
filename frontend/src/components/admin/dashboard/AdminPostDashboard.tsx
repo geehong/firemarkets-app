@@ -7,6 +7,8 @@ import { usePostStats } from '@/hooks/data/usePosts';
 import Link from 'next/link';
 import { FileText, PlusCircle, List } from 'lucide-react';
 
+import DraftKeywordsWidget from './DraftKeywordsWidget';
+
 export default function AdminPostDashboard() {
     const t = useTranslations('Admin');
     const locale = useLocale();
@@ -75,6 +77,11 @@ export default function AdminPostDashboard() {
                     </h3>
                     <p className="text-sm text-gray-500 mt-1">Work in progress</p>
                 </div>
+            </div>
+
+            {/* Keyword Widget Row */}
+            <div className="mb-8">
+               <DraftKeywordsWidget />
             </div>
 
             {/* Quick Actions / Recent */}

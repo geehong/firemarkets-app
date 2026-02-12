@@ -1,4 +1,5 @@
 import { Metadata } from 'next'
+import AdminGuard from '@/components/auth/AdminGuard'
 
 export const metadata: Metadata = {
   robots: {
@@ -18,5 +19,5 @@ export default function AdminLayout({
 }: {
   children: React.ReactNode
 }) {
-  return <>{children}</>
+  return <AdminGuard>{children}</AdminGuard>
 }

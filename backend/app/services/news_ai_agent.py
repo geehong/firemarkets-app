@@ -131,15 +131,17 @@ class NewsAIEditorAgent:
                 return ""
                 
             instruction = "\n[FireMarkets Promotional Message Requirement]\n"
-            instruction += "You MUST select ONE promotional message from the candidates below for each language version and integrate it naturally into your analysis (e.g., in the conclusion or a relevant advice section). Do not just append it awkwardly.\n"
+            instruction += "You MUST include a promotional message in your output as follows:\n"
             
             if ko_opts:
-                instruction += "\n[Korean Promo Candidates - Pick ONE]\n"
+                instruction += "- For the **Korean** version (analysis_ko, content_ko), you MUST select ONE message from the [Korean Promo Candidates] list below and integrate it naturally.\n"
+                instruction += "[Korean Promo Candidates]\n"
                 for i, txt in enumerate(ko_opts):
                     instruction += f"{i+1}. {txt}\n"
             
             if en_opts:
-                instruction += "\n[English Promo Candidates - Pick ONE]\n"
+                instruction += "- For the **English** version (analysis_en, content_en), you MUST select ONE message from the [English Promo Candidates] list below and integrate it naturally.\n"
+                instruction += "[English Promo Candidates]\n"
                 for i, txt in enumerate(en_opts):
                     instruction += f"{i+1}. {txt}\n"
                     
@@ -418,6 +420,7 @@ You are a top-tier financial columnist and lead investigative journalist. Your m
 [Additional Instructions for FireMarkets Identity]
 {firemarkets_promo_section}
 **Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
+**Critically Important**: Do NOT repeat the phrase 'FireMarkets FireMarkets Dashboard' or similar repetitive site names. Use 'FireMarkets Dashboard' or just 'FireMarkets' naturally.
 
 [Output Format]
 Return ONLY a JSON object with the following structure:
@@ -662,6 +665,7 @@ You are a top-tier financial columnist and lead investigative journalist. Your t
 [Additional Instructions for FireMarkets Identity]
 {firemarkets_promo_section}
 **Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
+**Critically Important**: Do NOT repeat the phrase 'FireMarkets FireMarkets Dashboard' or similar repetitive site names. Use 'FireMarkets Dashboard' or just 'FireMarkets' naturally.
 
 **IMPORTANT**: Do NOT include specific current prices or precise numerical market data unless absolutely certain from sources. Focus on qualitative depth and trend analysis.
 
@@ -726,6 +730,7 @@ Title: {title}
 [Additional Instructions for FireMarkets Identity]
 {firemarkets_promo_section}
 **Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
+**Critically Important**: Do NOT repeat the phrase 'FireMarkets FireMarkets Dashboard' or similar repetitive site names. Use 'FireMarkets Dashboard' or just 'FireMarkets' naturally.
 6. **Structure**: 
     - Title (Refined)
     - Description (Narrative Meta summary)
@@ -783,6 +788,7 @@ Content: {content}
 [Additional Instructions for FireMarkets Identity]
 {firemarkets_promo_section}
 **Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
+**Critically Important**: Do NOT repeat the phrase 'FireMarkets FireMarkets Dashboard' or similar repetitive site names. Use 'FireMarkets Dashboard' or just 'FireMarkets' naturally.
 
 [Output Format]
 Return ONLY a valid JSON object:

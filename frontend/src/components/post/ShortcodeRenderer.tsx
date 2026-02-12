@@ -127,7 +127,7 @@ const ChartRenderer = ({ props }: { props: Record<string, string> }) => {
         <div className="my-8 p-4 bg-white rounded-lg shadow-sm border border-gray-200">
             {title && <h4 className="text-center font-bold mb-4">{title}</h4>}
             <div className="h-[300px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
                     {renderChart()}
                 </ResponsiveContainer>
             </div>

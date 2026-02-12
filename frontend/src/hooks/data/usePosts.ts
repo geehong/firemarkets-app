@@ -659,3 +659,28 @@ export const useCleanupPosts = () => {
     },
   })
 }
+
+// 드래프트 키워드 조회 훅
+export const useDraftKeywords = (limit: number = 20) => {
+  return useQuery({
+    queryKey: ['draft-keywords', limit],
+    queryFn: async (): Promise<{ keywords: { keyword: string; count: number }[] }> => {
+      const url = `${getApiBase()}/dashboard/draft-keywords?limit=${limit}`
+      console.log('🔍 [useDraftKeywords] Fetching draft keywords:', url)
+
+      const response = await fetch(url, {
+        headers: getAuthHeaders(),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch draft keywords: ${response.status}`)
+      }
+
+      const data = await response.json()
+      console.log('✅ [useDraftKeywords] Draft keywords fetched successfully:', data)
+      return data
+    },
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  })
+}

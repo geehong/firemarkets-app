@@ -10,6 +10,7 @@ import { getFallbackImage } from '@/utils/fallbackImage';
 import { BriefNewsListTable } from '@/components/tables/BriefNewsListTable';
 import { apiClient } from '@/lib/api';
 import DashBoardTemplateView from '@/components/template/dashboard/DashBoardTemplateView';
+import AdUnit from '@/components/ads/AdUnit';
 
 // Dynamic imports
 const MiniPriceChart = dynamic(
@@ -188,7 +189,8 @@ const DashBoardHomeMainView = () => {
             title={t('homeTitle')}
             description={t('homeDesc')}
         >
-            <div className="space-y-8">
+            {/* Main Content Column */}
+            <div className="space-y-8 min-w-0">
                 {/* Hero Section */}
                 <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 text-white shadow-2xl">
                     <div className="absolute inset-0 bg-[url('/images/grid-pattern.svg')] opacity-10"></div>
@@ -250,11 +252,11 @@ const DashBoardHomeMainView = () => {
                 {/* Global Assets Chart */}
                 <div className="hidden md:block bg-white dark:bg-gray-800 rounded-2xl shadow-xl shadow-slate-200/50 dark:shadow-none p-6 border border-slate-100 dark:border-gray-700">
                     <div className="flex justify-between items-center mb-6">
-                         <h3 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-transparent flex items-center gap-2">
-                             Global Assets Comparison (YTD)
-                         </h3>
+                            <h3 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-transparent flex items-center gap-2">
+                                Global Assets Comparison (YTD)
+                            </h3>
                     </div>
-                     <MultipleComparisonChart
+                        <MultipleComparisonChart
                         assets={['GCUSD', 'BTCUSDT', 'SPY', 'QQQ']}
                         height={500}
                         compareMode="percent"
