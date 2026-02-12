@@ -1,0 +1,147 @@
+{
+  "crypto": {
+    "ko": [
+      "<strong><a href=\"https://firemarkets.net\">FireMarkets</a></strong>의 <a href=\"https://firemarkets.net/assets/{Ticker}\">{Name}({Ticker})</a> 페이지에서 실시간 캔들차트와 볼륨 분석을 통해 보다 전략적인 진입 타이밍을 포착할 수 있으며, <a href=\"https://firemarkets.net/blog\">Market Insight</a>에서 전문가의 심층 분석도 병행하면 더욱 정교한 투자 판단이 가능합니다.",
+      "이러한 온체인 동향을 보다 입체적으로 파악하고 싶다면, <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets의 {Name} 대시보드</a></strong>에서 제공하는 실시간 기술 지표와 차트 분석을 참고해 보시기 바랍니다.",
+      "변동성이 큰 {Name} 시장에서 냉정한 데이터 기반 판단이 중요합니다. <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets {Ticker} 분석 도구</a></strong>는 캔들스틱 차트, 볼륨 추이 등 핵심 지표를 한눈에 제공합니다.",
+      "{Name}의 가격 흐름과 거래량 변화를 실시간으로 추적하려면 <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets {Ticker} 페이지</a></strong>를 활용해 보세요. <a href=\"https://firemarkets.net/blog\">최신 Market Insight</a>와 함께 보면 시장의 큰 그림을 그리는 데 도움이 됩니다.",
+      "<strong><a href=\"https://firemarkets.net\">FireMarkets</a></strong>에서는 {Name}을 포함한 주요 디지털 자산의 기술적 차트와 시장 심리 지표를 종합적으로 제공하고 있어, <a href=\"https://firemarkets.net/assets/{Ticker}\">해당 자산 페이지</a>에서 보다 정밀한 포지션 관리가 가능합니다.",
+      "지금 이 시점의 {Name} 움직임을 놓치지 않으려면, <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets의 실시간 {Ticker} 차트</a></strong>와 <a href=\"https://firemarkets.net/blog\">전문 분석 칼럼</a>을 함께 확인하시길 권합니다."
+    ],
+    "en": [
+      "You can capture more strategic entry timing through real-time candlestick charts and volume analysis on the <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">{Name}({Ticker})</a></strong> page at <strong><a href=\"https://firemarkets.net\">FireMarkets</a></strong>, and pairing it with expert deep-dive analysis on <a href=\"https://firemarkets.net/blog\">Market Insight</a> enables even more precise investment decisions.",
+      "For a more comprehensive understanding of these on-chain trends, consider exploring the real-time technical indicators and chart analysis available on the <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets {Name} Dashboard</a></strong>.",
+      "In the highly volatile {Name} market, data-driven decisions are essential. The <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets {Ticker} analytics tool</a></strong> provides key indicators including candlestick charts and volume trends at a glance.",
+      "To track {Name}'s price movements and volume changes in real-time, leverage the <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets {Ticker} page</a></strong>. Combined with the <a href=\"https://firemarkets.net/blog\">latest Market Insight</a>, it helps paint the bigger market picture.",
+      "<strong><a href=\"https://firemarkets.net\">FireMarkets</a></strong> comprehensively provides technical charts and market sentiment indicators for major digital assets including {Name}, enabling more precise position management on the <a href=\"https://firemarkets.net/assets/{Ticker}\">asset page</a>.",
+      "To stay on top of {Name}'s current movements, we recommend checking <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets' real-time {Ticker} chart</a></strong> alongside the <a href=\"https://firemarkets.net/blog\">expert analysis column</a>."
+    ]
+  },
+  "stocks": {
+    "ko": [
+      "<strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets의 {Name}({Ticker}) 분석 페이지</a></strong>에서 캔들스틱 차트와 기술적 지표를 통해 주가 흐름을 면밀히 추적할 수 있으며, <a href=\"https://firemarkets.net/blog\">Market Insight</a>의 기업 분석과 병행하면 보다 균형 잡힌 투자 전략을 수립할 수 있습니다.",
+      "해당 종목의 기술적 분석을 원한다면, <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets {Ticker} 대시보드</a></strong>에서 제공하는 OHLCV 데이터와 거래량 패턴을 참고하시기 바랍니다.",
+      "{Name}의 주가 트렌드와 섹터 내 포지셔닝을 심층 분석하려면, <strong><a href=\"https://firemarkets.net\">FireMarkets</a></strong>의 <a href=\"https://firemarkets.net/assets/{Ticker}\">종합 차트 도구</a>가 유용한 인사이트를 제공합니다.",
+      "보다 데이터에 기반한 주식 투자 결정을 위해 <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets의 {Name} 상세 분석</a></strong>을 활용해 보세요. 볼륨 차트와 함께 <a href=\"https://firemarkets.net/blog\">시장 전문가의 인사이트</a>도 놓치지 마세요.",
+      "<strong><a href=\"https://firemarkets.net\">FireMarkets</a></strong>는 {Name}을 비롯한 글로벌 주요 종목의 실시간 차트와 기술 분석 도구를 제공하여, <a href=\"https://firemarkets.net/assets/{Ticker}\">다양한 시각에서의 투자 분석</a>을 지원합니다.",
+      "이번 이슈가 {Name}의 밸류에이션에 미치는 영향을 가늠하려면, <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets {Ticker} 분석 도구</a></strong>의 기술 지표를 참고하시고, <a href=\"https://firemarkets.net/blog\">심층 Market Insight</a>로 전체적인 맥락을 파악해 보시기 바랍니다."
+    ],
+    "en": [
+      "You can closely track stock price movements through candlestick charts and technical indicators on the <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets {Name}({Ticker}) analysis page</a></strong>, and combining it with corporate analysis on <a href=\"https://firemarkets.net/blog\">Market Insight</a> enables a more balanced investment strategy.",
+      "For technical analysis of this stock, refer to the OHLCV data and volume patterns available on the <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets {Ticker} Dashboard</a></strong>.",
+      "To conduct in-depth analysis of {Name}'s stock price trends and sector positioning, <strong><a href=\"https://firemarkets.net\">FireMarkets'</a></strong> <a href=\"https://firemarkets.net/assets/{Ticker}\">comprehensive charting tools</a> provide valuable insights.",
+      "For more data-driven stock investment decisions, leverage <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets' {Name} detailed analysis</a></strong>. Don't miss the <a href=\"https://firemarkets.net/blog\">market expert insights</a> alongside the volume charts.",
+      "<strong><a href=\"https://firemarkets.net\">FireMarkets</a></strong> provides real-time charts and technical analysis tools for major global stocks including {Name}, supporting <a href=\"https://firemarkets.net/assets/{Ticker}\">multi-perspective investment analysis</a>.",
+      "To gauge the impact of this issue on {Name}'s valuation, reference the technical indicators on the <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets {Ticker} analytics tool</a></strong>, and grasp the full context through <a href=\"https://firemarkets.net/blog\">in-depth Market Insight</a>."
+    ]
+  },
+  "etf": {
+    "ko": [
+      "포트폴리오 리밸런싱을 고려 중이라면, <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets의 {Name}({Ticker}) 페이지</a></strong>에서 상세 차트와 성과 추이를 확인할 수 있습니다. <a href=\"https://firemarkets.net/blog\">Market Insight</a>에서 섹터 분석도 함께 참고하세요.",
+      "{Name}의 구성 종목 흐름과 섹터 회전을 종합적으로 이해하려면 <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets {Ticker} 대시보드</a></strong>의 데이터 분석 도구가 도움이 됩니다.",
+      "시장 전반의 트렌드를 한눈에 파악하고 싶다면, <strong><a href=\"https://firemarkets.net\">FireMarkets</a></strong>에서 {Name}을 포함한 주요 ETF와 지수 자산의 <a href=\"https://firemarkets.net/assets/{Ticker}\">비교 차트</a>를 활용해 보시기 바랍니다.",
+      "<strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets의 {Name} 분석 도구</a></strong>를 활용하면 시장 전체의 방향성을 데이터 기반으로 검증할 수 있으며, <a href=\"https://firemarkets.net/blog\">전문 칼럼</a>으로 거시적 투자 관점을 넓히세요.",
+      "해당 ETF의 퍼포먼스와 변동성을 실시간으로 추적하고, 다른 자산과 비교 분석을 원한다면 <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets {Ticker}</a></strong> 페이지를 방문해 보세요."
+    ],
+    "en": [
+      "If you're considering portfolio rebalancing, check the detailed charts and performance trends on the <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets {Name}({Ticker}) page</a></strong>. Also refer to sector analysis on <a href=\"https://firemarkets.net/blog\">Market Insight</a>.",
+      "For a comprehensive understanding of {Name}'s constituent flows and sector rotation, the data analysis tools on the <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets {Ticker} Dashboard</a></strong> can be helpful.",
+      "To grasp overall market trends at a glance, leverage the <a href=\"https://firemarkets.net/assets/{Ticker}\">comparison charts</a> for major ETFs and index assets including {Name} on <strong><a href=\"https://firemarkets.net\">FireMarkets</a></strong>.",
+      "Use the <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets {Name} analytics tool</a></strong> to validate overall market direction with data, and broaden your macro investment perspective with <a href=\"https://firemarkets.net/blog\">expert columns</a>.",
+      "To track this ETF's performance and volatility in real-time and compare it with other assets, visit the <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets {Ticker}</a></strong> page."
+    ]
+  },
+  "commodity": {
+    "ko": [
+      "글로벌 매크로 환경 변화에 민감한 {Name}의 가격 동향을 보다 정밀하게 추적하려면, <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets의 {Name} 실시간 차트</a></strong>와 <a href=\"https://firemarkets.net/blog\">Market Insight</a>를 병행 활용하시길 권합니다.",
+      "안전자산으로서의 {Name}에 대한 시장 수요 변화를 데이터로 확인하고 싶다면, <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets {Ticker} 대시보드</a></strong>에서 제공하는 캔들차트와 거래량 분석을 참고하세요.",
+      "<strong><a href=\"https://firemarkets.net\">FireMarkets</a></strong>에서는 {Name}을 포함한 주요 원자재의 가격 차트와 매크로 지표를 함께 제공하여, <a href=\"https://firemarkets.net/assets/{Ticker}\">인플레이션 헤지 전략</a> 수립에 실질적인 도움을 드립니다.",
+      "원자재 시장의 최신 흐름을 놓치지 않으려면, <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets {Name}({Ticker}) 분석</a></strong>과 <a href=\"https://firemarkets.net/blog\">전문 분석 콘텐츠</a>를 함께 확인해 보세요.",
+      "지정학적 리스크와 통화정책이 {Name}에 미치는 영향을 기술적으로 분석하려면, <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets의 {Ticker} 차트 도구</a></strong>가 유용한 참고 자료가 될 것입니다."
+    ],
+    "en": [
+      "To more precisely track {Name}'s price trends, which are sensitive to changes in the global macro environment, we recommend leveraging <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets' {Name} real-time chart</a></strong> alongside <a href=\"https://firemarkets.net/blog\">Market Insight</a>.",
+      "To examine shifts in market demand for {Name} as a safe-haven asset through data, refer to the candlestick charts and volume analysis on the <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets {Ticker} Dashboard</a></strong>.",
+      "<strong><a href=\"https://firemarkets.net\">FireMarkets</a></strong> provides price charts and macro indicators for major commodities including {Name}, offering practical support for <a href=\"https://firemarkets.net/assets/{Ticker}\">inflation hedging strategies</a>.",
+      "To stay on top of the latest commodity market trends, check <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets {Name}({Ticker}) analysis</a></strong> together with <a href=\"https://firemarkets.net/blog\">expert analysis content</a>.",
+      "To technically analyze the impact of geopolitical risks and monetary policy on {Name}, the <strong><a href=\"https://firemarkets.net/assets/{Ticker}\">FireMarkets {Ticker} charting tool</a></strong> serves as a valuable reference."
+    ]
+  },
+  "general": {
+    "ko": [
+      "<strong><a href=\"https://firemarkets.net\">FireMarkets</a></strong>에서 제공하는 <a href=\"https://firemarkets.net/blog\">Market Insight</a>를 통해 거시경제 지표와 금, 은, 암호화폐 등의 상세 분석을 확인하고, <a href=\"https://firemarkets.net/onchain/analysis/fundamental\">온체인 펀더멘털 분석</a>으로 시장 트렌드를 예측하여 투자 결정을 최적화하는 데 활용하시기 바랍니다.",
+      "이와 같은 글로벌 경제 이슈가 자산 시장에 미치는 파급 효과를 다각도로 분석하려면, <strong><a href=\"https://firemarkets.net\">FireMarkets</a></strong>의 <a href=\"https://firemarkets.net/blog\">전문 분석 칼럼</a>과 다양한 자산 차트 도구를 활용해 보시기 바랍니다.",
+      "시장의 큰 흐름을 이해하고 투자 전략을 세우는 데 있어 <strong><a href=\"https://firemarkets.net\">FireMarkets</a></strong>의 <a href=\"https://firemarkets.net/blog\">Market Insight</a>는 거시경제 분석부터 개별 자산 트렌드까지 폭넓은 관점을 제공합니다.",
+      "복잡한 시장 상황 속에서 명확한 투자 방향을 잡으려면 <strong><a href=\"https://firemarkets.net\">FireMarkets</a></strong>의 <a href=\"https://firemarkets.net/blog\">심층 분석 콘텐츠</a>와 <a href=\"https://firemarkets.net/onchain/analysis/fundamental\">펀더멘털 온체인 데이터</a>를 종합적으로 활용하시길 권합니다.",
+      "금융 시장의 최신 동향과 전문적 분석이 필요하다면, <strong><a href=\"https://firemarkets.net\">FireMarkets</a></strong>에서 <a href=\"https://firemarkets.net/blog\">Market Insight</a>와 함께 주요 자산의 기술 차트를 확인하여 투자 인사이트를 넓혀 보세요.",
+      "<strong><a href=\"https://firemarkets.net\">FireMarkets</a></strong>는 다양한 자산군의 실시간 데이터와 <a href=\"https://firemarkets.net/blog\">전문가 수준의 시장 분석 콘텐츠</a>를 제공하여, 정보에 기반한 투자 결정을 지원합니다."
+    ],
+    "en": [
+      "Explore the detailed analysis of macro indicators, gold, silver, cryptocurrencies, and more through <a href=\"https://firemarkets.net/blog\">Market Insight</a> on <strong><a href=\"https://firemarkets.net\">FireMarkets</a></strong>, and leverage the <a href=\"https://firemarkets.net/onchain/analysis/fundamental\">on-chain fundamental analysis</a> to forecast market trends and optimize your investment decisions.",
+      "To analyze the ripple effects of global economic issues on asset markets from multiple angles, leverage <strong><a href=\"https://firemarkets.net\">FireMarkets'</a></strong> <a href=\"https://firemarkets.net/blog\">expert analysis columns</a> and diverse asset charting tools.",
+      "When it comes to understanding the big market picture and forming investment strategies, <strong><a href=\"https://firemarkets.net\">FireMarkets'</a></strong> <a href=\"https://firemarkets.net/blog\">Market Insight</a> provides broad perspectives from macroeconomic analysis to individual asset trends.",
+      "To establish a clear investment direction amid complex market conditions, we recommend comprehensively leveraging <strong><a href=\"https://firemarkets.net\">FireMarkets'</a></strong> <a href=\"https://firemarkets.net/blog\">in-depth analysis content</a> and <a href=\"https://firemarkets.net/onchain/analysis/fundamental\">fundamental on-chain data</a>.",
+      "If you need the latest financial market trends and professional analysis, expand your investment insight by checking <a href=\"https://firemarkets.net/blog\">Market Insight</a> and key asset technical charts on <strong><a href=\"https://firemarkets.net\">FireMarkets</a></strong>.",
+      "<strong><a href=\"https://firemarkets.net\">FireMarkets</a></strong> provides real-time data across diverse asset classes and <a href=\"https://firemarkets.net/blog\">professional-grade market analysis content</a>, supporting informed investment decisions."
+    ]
+  },
+  "ticker_category_map": {
+    "BTCUSDT": "crypto",
+    "ETHUSDT": "crypto",
+    "SOL": "crypto",
+    "DOGE": "crypto",
+    "XRP": "crypto",
+    "ADA": "crypto",
+    "BNB": "crypto",
+    "BTC": "crypto",
+    "ETH": "crypto",
+    "FET": "crypto",
+    "FIL": "crypto",
+    "AAPL": "stocks",
+    "TSLA": "stocks",
+    "NVDA": "stocks",
+    "MSFT": "stocks",
+    "AMZN": "stocks",
+    "GOOGL": "stocks",
+    "AMD": "stocks",
+    "INTC": "stocks",
+    "PLTR": "stocks",
+    "COIN": "stocks",
+    "WMT": "stocks",
+    "CRWD": "stocks",
+    "NFLX": "stocks",
+    "AVGO": "stocks",
+    "META": "stocks",
+    "T": "stocks",
+    "GS": "stocks",
+    "UBER": "stocks",
+    "FMX": "stocks",
+    "VZ": "stocks",
+    "RY": "stocks",
+    "RTX": "stocks",
+    "CAT": "stocks",
+    "AXON": "stocks",
+    "MSTR": "stocks",
+    "APP": "stocks",
+    "ARM": "stocks",
+    "LIN": "stocks",
+    "CCEP": "stocks",
+    "DASH": "stocks",
+    "MDB": "stocks",
+    "ROP": "stocks",
+    "TTD": "stocks",
+    "ON": "stocks",
+    "SPY": "etf",
+    "QQQ": "etf",
+    "ARKK": "etf",
+    "VTI": "etf",
+    "TQQQ": "etf",
+    "SQQQ": "etf",
+    "SOXL": "etf",
+    "SOXS": "etf",
+    "ICOD": "etf",
+    "GCUSD": "commodity",
+    "SIUSD": "commodity",
+    "CLUSD": "commodity"
+  }
+}

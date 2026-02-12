@@ -16,6 +16,8 @@ import logging
 import json
 import asyncio
 import re
+from app.utils.promo_template_loader import get_promo_candidates
+from app.services.asset_identity_service import asset_identity_service
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +70,84 @@ class NewsAIEditorAgent:
         
         if not self.gemini_available and not self.groq_available:
             logger.error("No AI providers available (neither Gemini nor Groq keys set)")
+
+    def _extract_tickers(self, posts: List[Post]) -> List[str]:
+        """Extract unique tickers from a list of Post objects"""
+        tickers = set()
+        for p in posts:
+            # Check post_info
+            if p.post_info and isinstance(p.post_info, dict):
+                ts = p.post_info.get('tickers', [])
+                if isinstance(ts, list):
+                    tickers.update(ts)
+            
+            # Check asset relationship
+            if p.asset and p.asset.ticker:
+                tickers.add(p.asset.ticker)
+                
+        return list(tickers)
+
+    def _get_promo_instructions(self, tickers: List[str]) -> str:
+        """Get formatted promo instructions for the prompt"""
+        try:
+            # Resolve categories using Identity Service
+            categories = []
+            if tickers:
+                # Use a new DB session for resolution
+                db = SessionLocal()
+                try:
+                    for t in tickers:
+                        identity = asset_identity_service.identify_asset(db, t)
+                        if identity['is_valid']:
+                            categories.append(identity['asset_type_category'])
+                finally:
+                    db.close()
+            
+            # Use the most common category or default
+            # get_promo_candidates now should handle explicit category passing or we modify it
+            # Actually, `get_promo_candidates` in loader was logic-heavy on TICKER MAP.
+            # We should probably update `get_promo_candidates` to accept a 'category' argument 
+            # OR pass the resolved category to it.
+            
+            # Let's inspect get_promo_candidates. It currently takes tickers and does lookups.
+            # To minimize changes to loader's signature if we can avoiding it, 
+            # we can pass the resolved category.
+            # However, `get_promo_candidates` signature is `tickers: List[str]`.
+            # I should update `promo_template_loader.py` first to accept `category` override.
+            
+            # Use the most frequent category found
+            target_category = "general"
+            if categories:
+                target_category = max(set(categories), key=categories.count)
+                
+            # We need to update `get_promo_candidates` to support 'category' param
+            # For now, let's assume I will update `promo_template_loader.py` next.
+            candidates = get_promo_candidates(tickers, category=target_category, count=3)
+            
+            ko_opts = candidates.get('ko', [])
+            en_opts = candidates.get('en', [])
+            
+            if not ko_opts and not en_opts:
+                return ""
+                
+            instruction = "\n[FireMarkets Promotional Message Requirement]\n"
+            instruction += "You MUST select ONE promotional message from the candidates below for each language version and integrate it naturally into your analysis (e.g., in the conclusion or a relevant advice section). Do not just append it awkwardly.\n"
+            
+            if ko_opts:
+                instruction += "\n[Korean Promo Candidates - Pick ONE]\n"
+                for i, txt in enumerate(ko_opts):
+                    instruction += f"{i+1}. {txt}\n"
+            
+            if en_opts:
+                instruction += "\n[English Promo Candidates - Pick ONE]\n"
+                for i, txt in enumerate(en_opts):
+                    instruction += f"{i+1}. {txt}\n"
+                    
+            return instruction
+        except Exception as e:
+            logger.error(f"Failed to get promo instructions: {e}")
+            return ""
+
             
     def _get_provider(self, task_type: str = "general") -> str:
         """
@@ -336,8 +416,8 @@ You are a top-tier financial columnist and lead investigative journalist. Your m
 5. **Tone**: Authoritative, insightful, and professional. The output should read like a featured article in a prestigious financial magazine (e.g., Bloomberg, The Economist).
 
 [Additional Instructions for FireMarkets Identity]
-1. **Connection to Data**: If the news mentions a specific asset (e.g., Bitcoin, Tesla), include a sentence like: "You can check the real-time on-chain signals and technical charts for this asset on the <a href='/dashboard' style='color: #3b82f6; text-decoration: underline;'>FireMarkets Dashboard</a>."
-2. **Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
+{firemarkets_promo_section}
+**Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
 
 [Output Format]
 Return ONLY a JSON object with the following structure:
@@ -363,6 +443,11 @@ Return ONLY a JSON object with the following structure:
             # verify_step1 checks import, version 0.8.6 supports async.
             
             # Unified Call
+            # Inject Promo
+            tickers = self._extract_tickers(cluster)
+            promo_section = self._get_promo_instructions(tickers)
+            prompt = prompt.replace("{firemarkets_promo_section}", promo_section)
+            
             text_response = await self._generate_content(prompt, task_type="collection")
             
             # Use robust JSON parsing
@@ -575,8 +660,8 @@ You are a top-tier financial columnist and lead investigative journalist. Your t
 5. **Language**: Provide output in both English and Korean.
 
 [Additional Instructions for FireMarkets Identity]
-1. **Connection to Data**: If the news mentions a specific asset (e.g., Bitcoin, Tesla), include a sentence like: "You can check the real-time on-chain signals and technical charts for this asset on the <a href='/dashboard' style='color: #3b82f6; text-decoration: underline;'>FireMarkets Dashboard</a>."
-2. **Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
+{firemarkets_promo_section}
+**Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
 
 **IMPORTANT**: Do NOT include specific current prices or precise numerical market data unless absolutely certain from sources. Focus on qualitative depth and trend analysis.
 
@@ -591,7 +676,12 @@ Return ONLY a valid JSON object:
     "content_ko": "..."
 }}"""
 
+        # Inject Promo
+        tickers = self._extract_tickers(posts)
+        promo_section = self._get_promo_instructions(tickers)
+        
         prompt = prompt_template.replace("{articles_text}", articles_text)
+        prompt = prompt.replace("{firemarkets_promo_section}", promo_section)
         try:
             text_response = await self._generate_content(prompt, task_type="merge", max_retries=1, base_delay=3)
             result = self._parse_json_response(text_response)
@@ -610,6 +700,11 @@ Return ONLY a valid JSON object:
         
         config = GLOBAL_APP_CONFIGS.get("ai_agent_prompts", {})
         
+        # Extract tickers for promo section
+        all_text_for_tickers = f"{title} {content}"
+        extracted_tickers = self._extract_tickers(all_text_for_tickers)
+        promo_section = self._get_promo_instructions(extracted_tickers)
+
         if not content:
             # If no content, try to generate from title alone
             # If no content, try to generate from title alone
@@ -629,8 +724,8 @@ Title: {title}
 5. **Language**: Provide output in both English and Korean.
 
 [Additional Instructions for FireMarkets Identity]
-1. **Connection to Data**: If the news mentions a specific asset (e.g., Bitcoin, Tesla), include a sentence like: "You can check the real-time on-chain signals and technical charts for this asset on the <a href='/dashboard' style='color: #3b82f6; text-decoration: underline;'>FireMarkets Dashboard</a>."
-2. **Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
+{firemarkets_promo_section}
+**Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
 6. **Structure**: 
     - Title (Refined)
     - Description (Narrative Meta summary)
@@ -686,8 +781,8 @@ Content: {content}
 7.  **Language**: Provide refined narrative versions in both English and Korean.
 
 [Additional Instructions for FireMarkets Identity]
-1. **Connection to Data**: If the news mentions a specific asset (e.g., Bitcoin, Tesla), include a sentence like: "You can check the real-time on-chain signals and technical charts for this asset on the <a href='/dashboard' style='color: #3b82f6; text-decoration: underline;'>FireMarkets Dashboard</a>."
-2. **Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
+{firemarkets_promo_section}
+**Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
 
 [Output Format]
 Return ONLY a valid JSON object:
@@ -702,6 +797,17 @@ Return ONLY a valid JSON object:
             # Truncate content for prompt safety if needed, though template replacement is raw
             truncated_content = content[:2000]
             prompt = prompt_template.replace("{title}", title).replace("{content}", truncated_content)
+        
+        # Inject Promo
+        # For rewrite, we try to extract tickers from post_data
+        # post_data is a dict usually passing 'tickers' list or simple fields
+        tickers = post_data.get('tickers', [])
+        # If tickers is not a list of strings, sanitize
+        if not isinstance(tickers, list):
+             tickers = []
+             
+        promo_section = self._get_promo_instructions(tickers)
+        prompt = prompt.replace("{firemarkets_promo_section}", promo_section)
         try:
             # Change task_type to 'general' to use Gemini provider logic
             text_response = await self._generate_content(prompt, task_type="general", max_retries=1, base_delay=3)
