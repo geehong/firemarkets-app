@@ -25,14 +25,17 @@ const AdUnit: React.FC<AdUnitProps> = ({
 
     useEffect(() => {
         try {
-            // Check if window.adsbygoogle maps to an array before pushing
-            // @ts-ignore
-            const adsbygoogle = window.adsbygoogle || [];
-            // @ts-ignore
-            if (Array.isArray(adsbygoogle)) {
-                // @ts-ignore
-                adsbygoogle.push({});
+            if (adRef.current) {
+                console.log(`[AdUnit Debug] Slot: ${slot}, Width: ${adRef.current.offsetWidth}, Height: ${adRef.current.offsetHeight}, ClientHeight: ${adRef.current.clientHeight}`);
+                if (adRef.current.offsetWidth === 0 || adRef.current.offsetHeight === 0) {
+                    console.warn(`[AdUnit Warning] AdUnit ${slot} has 0 dimensions! Ads may not load.`);
+                }
             }
+
+            // Check if window.adsbygoogle maps to an array before pushing
+            console.log(`[AdUnit Debug] Pushing ad request for slot ${slot}`);
+            // @ts-ignore
+            (window.adsbygoogle = window.adsbygoogle || []).push({});
         } catch (e) {
             console.error('AdSense error:', e);
         }

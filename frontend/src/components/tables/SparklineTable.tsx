@@ -50,8 +50,8 @@ const SparklineChart = ({ data }: { data: number[] }) => {
     const checkSize = () => {
       if (containerRef.current) {
         const { width, height } = containerRef.current.getBoundingClientRect();
-        // 크기가 유효할 때만 렌더링하도록 설정
-        setIsReady(width > 0 && height > 0);
+        // 크기가 유효하고 실제로 표시되는지(offsetParent) 확인
+        setIsReady(width > 0 && height > 0 && containerRef.current.offsetParent !== null);
       }
     };
 
@@ -59,7 +59,13 @@ const SparklineChart = ({ data }: { data: number[] }) => {
     checkSize();
     
     // ResizeObserver를 사용하여 크기 변경 감지 (크기가 0이 되면 차트 숨김)
-    const resizeObserver = new ResizeObserver(checkSize);
+    const resizeObserver = new ResizeObserver(() => {
+        checkSize();
+        if (containerRef.current) {
+             const { width, height } = containerRef.current.getBoundingClientRect();
+             // console.log(`[Sparkline Debug] Resize detected: ${width}x${height}, Visible: ${containerRef.current.offsetParent !== null}`);
+        }
+    });
     if (containerRef.current) {
       resizeObserver.observe(containerRef.current);
     }

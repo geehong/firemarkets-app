@@ -10,7 +10,7 @@ import { getFallbackImage } from '@/utils/fallbackImage';
 import { BriefNewsListTable } from '@/components/tables/BriefNewsListTable';
 import { apiClient } from '@/lib/api';
 import DashBoardTemplateView from '@/components/template/dashboard/DashBoardTemplateView';
-import AdUnit from '@/components/ads/AdUnit';
+
 
 // Dynamic imports
 const MiniPriceChart = dynamic(
