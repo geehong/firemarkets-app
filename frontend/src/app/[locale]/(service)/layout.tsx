@@ -12,6 +12,8 @@ import { usePathname } from "next/navigation";
 import { useLocale } from "next-intl";
 import RightSidebar from "@/components/layout/RightSidebar";
 
+import TopCollapsibleAd from "@/components/ads/TopCollapsibleAd";
+
 export default function ServiceLayout({
   children,
 }: {
@@ -63,6 +65,7 @@ export default function ServiceLayout({
   // ^/[a-z]{2}/news/.+$
   // ^/[a-z]{2}/post/.+$
   // ^/[a-z]{2}/assets/.+$
+  // ^/[a-z]{2}/tag/.+$
   
   // BUT: /news/briefnews is a list? No, /news/briefnews is not a route I saw. 
   // The route for brief news list is likely /news?tab=brief or similar, or just /news. 
@@ -85,7 +88,7 @@ export default function ServiceLayout({
   const isMapPage = pathWithoutLocale.startsWith('/map');
   const isOnchainPage = pathWithoutLocale.startsWith('/onchain');
 
-  const showGlobalSidebar = !isDetailPage && !isAdminPage && !isMapPage && !isOnchainPage;
+  const showGlobalSidebar = !isDetailPage && !isAdminPage && !isMapPage;
 
   return (
     <div className="min-h-screen xl:flex">
@@ -99,12 +102,12 @@ export default function ServiceLayout({
         {/* Header */}
         <AppHeader />
         
-        {/* Top Ad Unit */}
+        {/* Top Ad Unit (In-feed) - Collapsible */}
         <div className="w-full px-4 md:px-6 pt-4">
-            <AdUnit 
-                slot="8962635926" 
-                format="horizontal" 
-                style={{ height: '90px', maxHeight: '100px' }}
+            <TopCollapsibleAd 
+                slot="7449845954" 
+                format="fluid" 
+                layoutKey="-54+dc+w-6x+ka"
                 label="Advertisement"
             />
         </div>
@@ -123,13 +126,13 @@ export default function ServiceLayout({
             )}
         </div>
 
-        {/* Bottom Ad Unit */}
+        {/* Bottom Ad Unit (Multiplex) */}
         <div className="w-full px-4 md:px-6 pb-4">
             <AdUnit 
-                slot="4256742586" 
-                format="horizontal" 
-                style={{ height: '90px', maxHeight: '100px' }}
-                label="Advertisement"
+                slot="9947084578" 
+                format="autorelaxed" 
+                style={{ display: 'block' }}
+                label="Sponsored Content"
             />
         </div>
 

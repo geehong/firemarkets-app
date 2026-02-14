@@ -139,9 +139,10 @@ const PostSidebar: React.FC<PostSidebarProps> = ({ locale, postType, ticker }) =
             {/* Ad Unit - Vertical */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 mb-6 flex justify-center">
                 <AdUnit 
-                    slot="6125039237" 
-                    format="vertical" 
-                    style={{ height: 'auto', minHeight: '300px', width: '100%' }}
+                    slot="6390982941" 
+                    format="auto" 
+                    responsive={true}
+                    style={{ minHeight: '300px', width: '100%', display: 'block' }}
                     label="Advertisement"
                 />
             </div>

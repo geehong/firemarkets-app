@@ -4,8 +4,9 @@ import React, { useEffect, useRef } from 'react';
 
 interface AdUnitProps {
     slot: string;
-    format?: 'auto' | 'fluid' | 'rectangle' | 'horizontal' | 'vertical';
+    format?: 'auto' | 'fluid' | 'rectangle' | 'horizontal' | 'vertical' | 'autorelaxed';
     layoutKey?: string;
+    layout?: string; // For in-article ads (e.g. "in-article")
     responsive?: boolean;
     style?: React.CSSProperties;
     className?: string;
@@ -16,6 +17,7 @@ const AdUnit: React.FC<AdUnitProps> = ({
     slot,
     format = 'auto',
     layoutKey,
+    layout,
     responsive = true,
     style,
     className,
@@ -26,14 +28,14 @@ const AdUnit: React.FC<AdUnitProps> = ({
     useEffect(() => {
         try {
             if (adRef.current) {
-                console.log(`[AdUnit Debug] Slot: ${slot}, Width: ${adRef.current.offsetWidth}, Height: ${adRef.current.offsetHeight}, ClientHeight: ${adRef.current.clientHeight}`);
+                // console.log(`[AdUnit Debug] Slot: ${slot}, Width: ${adRef.current.offsetWidth}, Height: ${adRef.current.offsetHeight}, ClientHeight: ${adRef.current.clientHeight}`);
                 if (adRef.current.offsetWidth === 0 || adRef.current.offsetHeight === 0) {
-                    console.warn(`[AdUnit Warning] AdUnit ${slot} has 0 dimensions! Ads may not load.`);
+                    // console.warn(`[AdUnit Warning] AdUnit ${slot} has 0 dimensions! Ads may not load.`);
                 }
             }
 
             // Check if window.adsbygoogle maps to an array before pushing
-            console.log(`[AdUnit Debug] Pushing ad request for slot ${slot}`);
+            // console.log(`[AdUnit Debug] Pushing ad request for slot ${slot}`);
             // @ts-ignore
             (window.adsbygoogle = window.adsbygoogle || []).push({});
         } catch (e) {
@@ -56,7 +58,7 @@ const AdUnit: React.FC<AdUnitProps> = ({
     }
 
     return (
-        <div className={`ad-container w-full flex flex-col items-center ${className}`}>
+        <div className={`ad-container w-full flex flex-col items-center ${className} ${format === 'fluid' ? 'fluid-ad' : ''}`}>
             {label && (
                 <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">
                     {label}
@@ -65,12 +67,13 @@ const AdUnit: React.FC<AdUnitProps> = ({
             <ins
                 ref={adRef}
                 className="adsbygoogle"
-                style={{ display: 'block', width: '100%', ...style }}
+                style={{ display: 'block', width: '100%', textAlign: layout === 'in-article' ? 'center' : undefined, ...style }}
                 data-ad-client="ca-pub-1199110233969910"
                 data-ad-slot={slot}
                 data-ad-format={format}
                 data-full-width-responsive={responsive}
                 data-ad-layout-key={layoutKey}
+                data-ad-layout={layout}
             />
         </div>
     );

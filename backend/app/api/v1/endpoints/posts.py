@@ -1254,8 +1254,11 @@ async def cleanup_posts(
     """
     try:
         # 1. Fetch candidates (raw_news, brief_news, ai_draft_news)
+        # 1. Fetch candidates (raw_news, brief_news, ai_draft_news)
+        # EXCLUDE published posts to prevent accidental deletion of live content
         posts = db.query(Post).filter(
-            Post.post_type.in_(['raw_news', 'brief_news', 'ai_draft_news'])
+            Post.post_type.in_(['raw_news', 'brief_news', 'ai_draft_news']),
+            Post.status != 'published'
         ).all()
         
         to_delete_ids = []
@@ -1300,10 +1303,34 @@ async def cleanup_posts(
                     continue
 
             # Check 3: Mixed English/Korean content in content_ko
-            # This is specifically for failed AI translations where content_ko is mostly English.
-            if p.content_ko and is_mostly_english(p.content_ko):
-                to_delete_ids.append(p.id)
-                continue
+            # New Rule 1: Delete if English characters > 30% of total alphabetic content
+            if p.content_ko:
+                # Reuse is_mostly_english but with updated logic (or inline here for clarity)
+                # We'll update the helper function standard to match this requirement if possible, 
+                # but to avoid breaking other things, let's just do the check here using a helper or inline.
+                
+                # Let's use the helper definition below but updated to 30% threshold if we modify the helper.
+                # However, since we can't easily modify the helper at top of file with this tool call affecting the bottom,
+                # let's just implement the logic here to be safe and explicit.
+                
+                txt = re.sub('<[^<]+?>', '', p.content_ko).strip()
+                if txt:
+                    k_counts = len(re.findall('[가-힣]', txt))
+                    e_counts = len(re.findall('[a-zA-Z]', txt))
+                    total_counts = k_counts + e_counts
+                    
+                    if total_counts > 50:
+                        en_ratio = e_counts / total_counts
+                        if en_ratio > 0.3: # User requested 30% limit
+                            to_delete_ids.append(p.id)
+                            continue
+
+            # New Rule 2: Delete if no subheadings (h2, h3...) are present in content_ko
+            # Only applies to ai_draft_news/raw_news where structure is expected
+            if p.post_type in ['ai_draft_news', 'raw_news', 'brief_news'] and p.content_ko:
+                if not re.search(r'<h[2-6]', p.content_ko, re.IGNORECASE):
+                    to_delete_ids.append(p.id)
+                    continue
 
             # Check 4: Title filtering (Shadow, Chinese, Japanese)
             title_text = ""
@@ -1321,6 +1348,17 @@ async def cleanup_posts(
             # Chinese: \u4e00-\u9fff
             # Japanese: \u3040-\u309f (Hiragana), \u30a0-\u30ff (Katakana)
             if re.search(r'[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]', title_text):
+                to_delete_ids.append(p.id)
+                continue
+
+            # Check 5: Excessive Brand Mention ("FireMarkets" >= 2 times)
+            brand_count = 0
+            if p.content:
+                brand_count += len(re.findall(r'firemarkets', p.content, re.IGNORECASE))
+            if p.content_ko:
+                brand_count += len(re.findall(r'firemarkets', p.content_ko, re.IGNORECASE))
+            
+            if brand_count >= 2:
                 to_delete_ids.append(p.id)
                 continue
 

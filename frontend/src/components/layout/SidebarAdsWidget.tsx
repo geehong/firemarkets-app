@@ -7,9 +7,10 @@ const SidebarAdsWidget = () => {
             {/* Right Ad Unit */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-slate-100 dark:border-gray-700 p-4 min-h-[300px] flex items-center justify-center">
                 <AdUnit 
-                    slot="6125039237" 
-                    format="vertical" 
-                    style={{ height: '600px', width: '100%' }}
+                    slot="6390982941" 
+                    format="auto" 
+                    responsive={true}
+                    style={{ display: 'block' }}
                     label="Advertisement"
                 />
             </div>

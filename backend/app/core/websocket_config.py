@@ -37,7 +37,7 @@ class WebSocketConfig:
             health_check_interval=60
         ),
         'alpaca': ProviderConfig(
-            max_subscriptions=15,  # Alpaca Free tier limit (15 symbols * 2 channels = 30 max)
+            max_subscriptions=30,  # Alpaca Free tier limit (15 symbols * 2 channels = 30 max) - User requested 30 regardless
             supported_asset_types=[AssetType.ETF],  # ETF/Fund 전용 (User request)
             rate_limit_per_minute=200,
             priority=1,  # 동일 우선순위로 분산 배정
@@ -69,7 +69,7 @@ class WebSocketConfig:
             health_check_interval=60
         ),
         'twelvedata': ProviderConfig(
-            max_subscriptions=8,  # 트웰브데이터 무료 플랜 제한 (일일 8 크레딧)
+            max_subscriptions=6,  # 트웰브데이터 무료 플랜 제한 (사용자 요청: 6개)
             supported_asset_types=[AssetType.STOCK, AssetType.ETF],  # 주식 + ETF 지원
             rate_limit_per_minute=8,  # 분당 8회 제한
             priority=2,  # fallback용으로 낮은 우선순위

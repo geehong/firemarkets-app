@@ -416,13 +416,13 @@ class WebSocketOrchestrator:
             return
         
         # Strong type guards: restrict providers per asset type
-        # STOCK: only ['finnhub', 'alpaca'] (tiingo excluded due to bandwidth)
-        # ETF: only ['alpaca'] (finnhub unsupported; tiingo excluded due to bandwidth)
+        # STOCK: allow finnhub, alpaca, twelvedata, polygon (tiingo excluded due to bandwidth)
+        # ETF: allow alpaca, twelvedata, polygon (finnhub unsupported; tiingo excluded due to bandwidth)
         def _filter_by_type(consumers_list):
             if asset_type == AssetType.STOCK:
-                allowed = { 'finnhub', 'alpaca' }
+                allowed = { 'finnhub', 'alpaca', 'twelvedata', 'polygon' }
             elif asset_type == AssetType.ETF:
-                allowed = { 'alpaca' }
+                allowed = { 'alpaca', 'twelvedata', 'polygon' }
             else:
                 return consumers_list
             filtered = [(n, c, cfg) for (n, c, cfg) in consumers_list if n in allowed]
@@ -557,9 +557,9 @@ class WebSocketOrchestrator:
         # Enforce type-guarded providers per asset_type
         def _filter_by_type(consumers_list):
             if asset_type == AssetType.STOCK:
-                allowed = { 'finnhub', 'alpaca' }  # tiingo excluded
+                allowed = { 'finnhub', 'alpaca', 'twelvedata', 'polygon' }
             elif asset_type == AssetType.ETF:
-                allowed = { 'alpaca' }  # finnhub unsupported; tiingo excluded
+                allowed = { 'alpaca', 'twelvedata', 'polygon' }
             else:
                 return consumers_list
             filtered = [(n, c, cfg) for (n, c, cfg) in consumers_list if n in allowed]

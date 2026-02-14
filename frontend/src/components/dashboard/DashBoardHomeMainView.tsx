@@ -10,6 +10,7 @@ import { getFallbackImage } from '@/utils/fallbackImage';
 import { BriefNewsListTable } from '@/components/tables/BriefNewsListTable';
 import { apiClient } from '@/lib/api';
 import DashBoardTemplateView from '@/components/template/dashboard/DashBoardTemplateView';
+import AdUnit from '@/components/ads/AdUnit';
 
 
 // Dynamic imports
@@ -297,6 +298,17 @@ const DashBoardHomeMainView = () => {
                         </Link>
                     </div>
                     <SparklineTable maxRows={10} typeName={selectedAssetType || undefined} />
+                </div>
+
+                {/* Middle Ad Unit (Horizontal) */}
+                <div className="w-full h-auto min-h-[90px] flex justify-center items-center my-8">
+                    <div className="inline-block"> {/* Wrapper to force inline-block behavior if needed by AdSense style */}
+                         <AdUnit 
+                            slot="6328335974" 
+                            style={{ display: 'inline-block', width: '728px', height: '90px' }}
+                            label="Advertisement"
+                        />
+                    </div>
                 </div>
 
                 {/* Latest Blog (Market Insight) */}

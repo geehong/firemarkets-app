@@ -410,28 +410,29 @@ You are a top-tier financial columnist and lead investigative journalist. Your m
 [Instructions]
 1. **Writing Style**: Use a sophisticated, literary, and deeply analytical narrative style (완전한 문장 형태의 문어체 서술형). 
 2. **Strict Prohibition**: NEVER use bullet points, numbered lists, or the '-' character for summarizing. Do not use a dry "Reporting" format.
-3. **Structure**: 
+3. **Structure & Formatting (CRITICAL)**:
    - **Title**: Create a thought-provoking, high-impact headline.
    - **Lead (Summary)**: Write a compelling introductory paragraph that seamlessly blends key facts with a hook. This must be a single cohesive paragraph of flowing prose.
-   - **Content Structure**: Use `<h3>` tags to break down the analysis into 2-3 logical sections for readability and SEO. 
-   - **Layout**: Do NOT include the main title `<h1>` or `<h2>` at the beginning. Start directly with the narrative text or an `<h3>` subheading if appropriate for the flow.
-5. **Tone**: Authoritative, insightful, and professional. The output should read like a featured article in a prestigious financial magazine (e.g., Bloomberg, The Economist).
+   - **Content Structure**: The body text MUST be divided into 2-3 logical sections using `<h3>` tags (e.g., `<h3>Key Analysis</h3>`). Do NOT write a single continuous block of text.
+4. **Layout**: Do NOT include the main title `<h1>` or `<h2>` at the beginning. Start directly with the narrative text or an `<h3>` subheading if appropriate for the flow.
+5. **Citation (CRITICAL)**: You MUST mention the primary source name(s) naturally within the text or at the beginning/end (e.g., "According to Bloomberg...", "Reuters reported that...", "CoinDesk 보도에 따르면..."). This builds trust and authority.
+6. **Tone**: Authoritative, insightful, and professional. The output should read like a featured article in a prestigious financial magazine (e.g., Bloomberg, The Economist).
 
 [Additional Instructions for FireMarkets Identity]
 {firemarkets_promo_section}
 **Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
-**Critically Important**: Do NOT repeat the phrase 'FireMarkets FireMarkets Dashboard' or similar repetitive site names. Use 'FireMarkets Dashboard' or just 'FireMarkets' naturally.
+**Brand Name**: Do NOT use the term 'FireMarkets Dashboard'. Use ONLY 'FireMarkets'.
+**Frequency Limit**: Mention 'FireMarkets' **ONLY ONCE** in the entire article, preferably in the conclusion or market implication section. Do NOT repeat it in every paragraph.
 
 [Output Format]
-Return ONLY a JSON object with the following structure:
+Return ONLY a valid JSON object with the following structure:
 {{
     "title_ko": "...",
     "title_en": "...",
     "summary_ko": "Full narrative introductory paragraph in Korean",
     "summary_en": "Full narrative introductory paragraph in English",
-    "analysis_ko": "Detailed narrative essay analysis in Korean",
-    "analysis_en": "Detailed narrative essay analysis in English",
-    "sentiment": "Positive/Negative/Neutral",
+    "analysis_ko": "Detailed narrative essay analysis in Korean (HTML: use <h3> tags for sections)",
+    "analysis_en": "Detailed narrative essay analysis in English (HTML: use <h3> tags for sections)",
     "sentiment": "Positive/Negative/Neutral",
     "tickers": ["BTC", "ETH" ...],
     "keywords": ["ETF", "Regulation" ...],
@@ -455,6 +456,43 @@ Return ONLY a JSON object with the following structure:
             
             # Use robust JSON parsing
             result = self._parse_json_response(text_response)
+            
+            if result:
+                # Append Reference Links
+                source_links = []
+                seen_urls = set()
+                
+                for p in cluster:
+                    info = p.post_info or {}
+                    url = info.get('url') or info.get('link') or info.get('origin')
+                    source = info.get('source', 'News Source')
+                    
+                    if url and url not in seen_urls:
+                        seen_urls.add(url)
+                        source_links.append((source, url))
+                
+                if source_links:
+                    ref_html_en = '<div class="source-links" style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #eee; font-size: 0.9em; color: #666;">\n'
+                    ref_html_en += '<strong>Original Sources:</strong>\n<ul style="margin-top: 8px; padding-left: 20px;">\n'
+                    
+                    ref_html_ko = '<div class="source-links" style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #eee; font-size: 0.9em; color: #666;">\n'
+                    ref_html_ko += '<strong>참고 원문 (Original Sources):</strong>\n<ul style="margin-top: 8px; padding-left: 20px;">\n'
+                    
+                    for src, url in source_links:
+                        # English Link
+                        ref_html_en += f'<li>{src}: <a href="{url}" target="_blank" rel="noopener noreferrer" style="color: #2563eb; text-decoration: underline;">Check Original Source</a></li>\n'
+                        # Korean Link
+                        ref_html_ko += f'<li>{src}: <a href="{url}" target="_blank" rel="noopener noreferrer" style="color: #2563eb; text-decoration: underline;">원문 확인하기</a></li>\n'
+                        
+                    ref_html_en += '</ul></div>'
+                    ref_html_ko += '</ul></div>'
+                    
+                    # Append to analysis content
+                    if 'analysis_en' in result:
+                        result['analysis_en'] += ref_html_en
+                    if 'analysis_ko' in result:
+                        result['analysis_ko'] += ref_html_ko
+            
             return result
             
         except Exception as e:
@@ -652,20 +690,23 @@ You are a top-tier financial columnist and lead investigative journalist. Your t
 {articles_text}
 
 [Instructions]
-1. **Writing Style**: Use a sophisticated, literary, and deeply analytical narrative style (완전한 문장 형태의 문어체 서술형). 
+1. **Writing Style**: Use a sophisticated, literary, and deeply analytical narrative style (완전한 문장 형태의 문어체 서술형).
 2. **Strict Prohibition**: NEVER use bullet points, numbered lists, or the '-' character. Every section must be composed of flowing, connected sentences.
 3. **Synthesis**: Blend the facts from all sources into a single, cohesive story that reads like a featured magazine piece.
-4. **Structure**: 
+4. **Structure & Formatting (CRITICAL)**:
    - **Title**: A thought-provoking, high-impact headline (English & Korean).
    - **Description**: A compelling, narrative-style lead paragraph (English & Korean).
-   - **Content**: A detailed body text (4-6 paragraphs) using HTML tags. You MUST use logic-based `<h3>` subheadings to break down the narrative into 2-3 distinct sections for readability.
-   - **Layout**: Do NOT include the main title `<h1>` or `<h2>` at the beginning.
-5. **Language**: Provide output in both English and Korean.
+   - **Content**: A detailed body text (4-6 paragraphs) using HTML tags.
+   - **Subheadings**: You **MUST** use `<h3>` tags to break the content into 2-3 distinct thematic sections (e.g., `<h3>Market Implications</h3>`). Do NOT write a single continuous block of text.
+   - **Layout**: Do NOT include the main title `<h1>` or `<h2>` at the beginning. Start with the narrative text or an `<h3>` subheading.
+5. **Citation (CRITICAL)**: You MUST mention the primary source name(s) naturally within the text or at the beginning/end (e.g., "According to Bloomberg...", "Reuters reported that...", "CoinDesk 보도에 따르면..."). This builds trust and authority.
+6. **Language**: Provide output in both English and Korean.
 
 [Additional Instructions for FireMarkets Identity]
 {firemarkets_promo_section}
 **Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
-**Critically Important**: Do NOT repeat the phrase 'FireMarkets FireMarkets Dashboard' or similar repetitive site names. Use 'FireMarkets Dashboard' or just 'FireMarkets' naturally.
+**Brand Name**: Do NOT use the term 'FireMarkets Dashboard'. Use ONLY 'FireMarkets'.
+**Frequency Limit**: Mention 'FireMarkets' **ONLY ONCE** in the entire article, preferably in the conclusion or market implication section. Do NOT repeat it in every paragraph.
 
 **IMPORTANT**: Do NOT include specific current prices or precise numerical market data unless absolutely certain from sources. Focus on qualitative depth and trend analysis.
 
@@ -689,6 +730,43 @@ Return ONLY a valid JSON object:
         try:
             text_response = await self._generate_content(prompt, task_type="merge", max_retries=1, base_delay=3)
             result = self._parse_json_response(text_response)
+            
+            if result:
+                # Append Reference Links
+                source_links = []
+                seen_urls = set()
+                
+                for p in posts:
+                    info = p.post_info or {}
+                    url = info.get('url') or info.get('link') or info.get('origin')
+                    source = info.get('source', 'News Source')
+                    
+                    if url and url not in seen_urls:
+                        seen_urls.add(url)
+                        source_links.append((source, url))
+                
+                if source_links:
+                    ref_html_en = '<div class="source-links" style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #eee; font-size: 0.9em; color: #666;">\n'
+                    ref_html_en += '<strong>Original Sources:</strong>\n<ul style="margin-top: 8px; padding-left: 20px;">\n'
+                    
+                    ref_html_ko = '<div class="source-links" style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #eee; font-size: 0.9em; color: #666;">\n'
+                    ref_html_ko += '<strong>참고 원문 (Original Sources):</strong>\n<ul style="margin-top: 8px; padding-left: 20px;">\n'
+                    
+                    for src, url in source_links:
+                        # English Link
+                        ref_html_en += f'<li>{src}: <a href="{url}" target="_blank" rel="noopener noreferrer" style="color: #2563eb; text-decoration: underline;">Check Original Source</a></li>\n'
+                        # Korean Link
+                        ref_html_ko += f'<li>{src}: <a href="{url}" target="_blank" rel="noopener noreferrer" style="color: #2563eb; text-decoration: underline;">원문 확인하기</a></li>\n'
+                        
+                    ref_html_en += '</ul></div>'
+                    ref_html_ko += '</ul></div>'
+                    
+                    # Append to content
+                    if 'content_en' in result:
+                        result['content_en'] += ref_html_en
+                    if 'content_ko' in result:
+                        result['content_ko'] += ref_html_ko
+
             return self._ensure_html_content(result)
         except Exception as e:
             logger.error(f"Merge posts failed: {e}")
@@ -730,7 +808,8 @@ Title: {title}
 [Additional Instructions for FireMarkets Identity]
 {firemarkets_promo_section}
 **Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
-**Critically Important**: Do NOT repeat the phrase 'FireMarkets FireMarkets Dashboard' or similar repetitive site names. Use 'FireMarkets Dashboard' or just 'FireMarkets' naturally.
+**Brand Name**: Do NOT use the term 'FireMarkets Dashboard'. Use ONLY 'FireMarkets'.
+**Frequency Limit**: Mention 'FireMarkets' **ONLY ONCE** in the entire article, preferably in the conclusion or market implication section. Do NOT repeat it in every paragraph.
 6. **Structure**: 
     - Title (Refined)
     - Description (Narrative Meta summary)
@@ -788,7 +867,8 @@ Content: {content}
 [Additional Instructions for FireMarkets Identity]
 {firemarkets_promo_section}
 **Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
-**Critically Important**: Do NOT repeat the phrase 'FireMarkets FireMarkets Dashboard' or similar repetitive site names. Use 'FireMarkets Dashboard' or just 'FireMarkets' naturally.
+**Brand Name**: Do NOT use the term 'FireMarkets Dashboard'. Use ONLY 'FireMarkets'.
+**Frequency Limit**: Mention 'FireMarkets' **ONLY ONCE** in the entire article, preferably in the conclusion or market implication section. Do NOT repeat it in every paragraph.
 
 [Output Format]
 Return ONLY a valid JSON object:
