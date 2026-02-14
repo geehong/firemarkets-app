@@ -349,6 +349,17 @@ class NewsAIEditorAgent:
                     extensions=['extra', 'nl2br', 'sane_lists']
                 )
                 result[field] = html_content
+            
+            # Final Cleanup: Ensure **FireMarkets** is converted to <strong>FireMarkets</strong>
+            # regardless of whether it went through markdown conversion or not.
+            if result.get(field):
+                # Replace **text** with <strong>text</strong>
+                # We specifically target **FireMarkets** first as requested
+                result[field] = result[field].replace("**FireMarkets**", "<strong>FireMarkets</strong>")
+                
+                # Generic bold replacement if still present (be careful with non-matching pairs)
+                # Simple regex for bolding
+                result[field] = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', result[field])
                 
         return result
 
@@ -408,20 +419,21 @@ You are a top-tier financial columnist and lead investigative journalist. Your m
 {articles_text}
 
 [Instructions]
-1. **Writing Style**: Use a sophisticated, literary, and deeply analytical narrative style (완전한 문장 형태의 문어체 서술형). 
-2. **Strict Prohibition**: NEVER use bullet points, numbered lists, or the '-' character for summarizing. Do not use a dry "Reporting" format.
+1. **Writing Style**: Use a sophisticated, literary, and deeply analytical narrative style.
+2. **Formatting**: You MAY use bullet points or numbered lists where appropriate for readability and structure.
 3. **Structure & Formatting (CRITICAL)**:
    - **Title**: Create a thought-provoking, high-impact headline.
-   - **Lead (Summary)**: Write a compelling introductory paragraph that seamlessly blends key facts with a hook. This must be a single cohesive paragraph of flowing prose.
-   - **Content Structure**: The body text MUST be divided into 2-3 logical sections using `<h3>` tags (e.g., `<h3>Key Analysis</h3>`). Do NOT write a single continuous block of text.
-4. **Layout**: Do NOT include the main title `<h1>` or `<h2>` at the beginning. Start directly with the narrative text or an `<h3>` subheading if appropriate for the flow.
+   - **Lead (Summary)**: Write a compelling introductory paragraph.
+   - **Content Structure**: The body text MUST be divided into logical sections using `<h2>`, `<h3>`, or `<h4>` tags.
+4. **Layout**: Do NOT include the main title `<h1>` at the beginning. Use `<h2>` for main sections and `<h3>`/`<h4>` for subsections.
+5. **Format (Tags)**: Use ONLY HTML tags (e.g., `<strong>`, `<em>`). **Strictly PROHIBIT** using Markdown syntax like `**bold**` or `_italic_`. All formatting MUST be done with HTML.
 5. **Citation (CRITICAL)**: You MUST mention the primary source name(s) naturally within the text or at the beginning/end (e.g., "According to Bloomberg...", "Reuters reported that...", "CoinDesk 보도에 따르면..."). This builds trust and authority.
 6. **Tone**: Authoritative, insightful, and professional. The output should read like a featured article in a prestigious financial magazine (e.g., Bloomberg, The Economist).
 
 [Additional Instructions for FireMarkets Identity]
 {firemarkets_promo_section}
 **Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
-**Brand Name**: Do NOT use the term 'FireMarkets Dashboard'. Use ONLY 'FireMarkets'.
+**Brand Name**: Use 'FireMarkets'. If you want to emphasize it, use `<strong>FireMarkets</strong>`, do NOT use `**FireMarkets**`.
 **Frequency Limit**: Mention 'FireMarkets' **ONLY ONCE** in the entire article, preferably in the conclusion or market implication section. Do NOT repeat it in every paragraph.
 
 [Output Format]
@@ -431,8 +443,8 @@ Return ONLY a valid JSON object with the following structure:
     "title_en": "...",
     "summary_ko": "Full narrative introductory paragraph in Korean",
     "summary_en": "Full narrative introductory paragraph in English",
-    "analysis_ko": "Detailed narrative essay analysis in Korean (HTML: use <h3> tags for sections)",
-    "analysis_en": "Detailed narrative essay analysis in English (HTML: use <h3> tags for sections)",
+    "analysis_ko": "Detailed narrative essay analysis in Korean (HTML: use <h2>, <h3>, <h4> tags for sections)",
+    "analysis_en": "Detailed narrative essay analysis in English (HTML: use <h2>, <h3>, <h4> tags for sections)",
     "sentiment": "Positive/Negative/Neutral",
     "tickers": ["BTC", "ETH" ...],
     "keywords": ["ETF", "Regulation" ...],
@@ -690,22 +702,22 @@ You are a top-tier financial columnist and lead investigative journalist. Your t
 {articles_text}
 
 [Instructions]
-1. **Writing Style**: Use a sophisticated, literary, and deeply analytical narrative style (완전한 문장 형태의 문어체 서술형).
-2. **Strict Prohibition**: NEVER use bullet points, numbered lists, or the '-' character. Every section must be composed of flowing, connected sentences.
+1. **Writing Style**: Use a sophisticated, literary, and deeply analytical narrative style.
+2. **Formatting**: You MAY use bullet points or numbered lists where appropriate for readability.
 3. **Synthesis**: Blend the facts from all sources into a single, cohesive story that reads like a featured magazine piece.
 4. **Structure & Formatting (CRITICAL)**:
    - **Title**: A thought-provoking, high-impact headline (English & Korean).
    - **Description**: A compelling, narrative-style lead paragraph (English & Korean).
    - **Content**: A detailed body text (4-6 paragraphs) using HTML tags.
-   - **Subheadings**: You **MUST** use `<h3>` tags to break the content into 2-3 distinct thematic sections (e.g., `<h3>Market Implications</h3>`). Do NOT write a single continuous block of text.
-   - **Layout**: Do NOT include the main title `<h1>` or `<h2>` at the beginning. Start with the narrative text or an `<h3>` subheading.
+   - **Subheadings**: You **MUST** use `<h2>` or `<h3>` tags to break the content into distinct thematic sections.
+   - **Layout**: Do NOT include the main title `<h1>` at the beginning. Use `<h2>` for main sections.
 5. **Citation (CRITICAL)**: You MUST mention the primary source name(s) naturally within the text or at the beginning/end (e.g., "According to Bloomberg...", "Reuters reported that...", "CoinDesk 보도에 따르면..."). This builds trust and authority.
 6. **Language**: Provide output in both English and Korean.
 
 [Additional Instructions for FireMarkets Identity]
 {firemarkets_promo_section}
 **Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
-**Brand Name**: Do NOT use the term 'FireMarkets Dashboard'. Use ONLY 'FireMarkets'.
+**Brand Name**: Use 'FireMarkets'. If you want to emphasize it, use `<strong>FireMarkets</strong>`, do NOT use `**FireMarkets**`.
 **Frequency Limit**: Mention 'FireMarkets' **ONLY ONCE** in the entire article, preferably in the conclusion or market implication section. Do NOT repeat it in every paragraph.
 
 **IMPORTANT**: Do NOT include specific current prices or precise numerical market data unless absolutely certain from sources. Focus on qualitative depth and trend analysis.
@@ -799,16 +811,16 @@ You are a top-tier financial columnist and lead investigative journalist. Write 
 Title: {title}
 
 [Instructions]
-1. **Writing Style**: Use a sophisticated, literary, and deeply analytical narrative style (완전한 문장 형태의 문어체 서술형). 
-2. **Strict Prohibition**: NEVER use bullet points, numbered lists, or the '-' character for list-making. The entire piece must be flowing prose.
-3. **Format**: Use HTML tags (e.g., `<p>`, `<strong>`, `<h3>`). Do NOT use Markdown.
-4. **Layout**: Do NOT include the main title `<h1>` or `<h2>` at the beginning. You MUST use `<h3>` tags to create 2-3 logical subheadings within the narrative for structure and readability.
+1. **Writing Style**: Use a sophisticated, literary, and deeply analytical narrative style. 
+2. **Formatting**: You MAY use bullet points or numbered lists where appropriate.
+3. **Format**: Use HTML tags (e.g., `<p>`, `<strong>`, `<h2>`, `<h3>`). Do NOT use Markdown.
+4. **Layout**: Do NOT include the main title `<h1>`. You SHOULD use `<h2>` and `<h3>` tags to create logical subheadings within the narrative for structure and readability.
 5. **Language**: Provide output in both English and Korean.
 
 [Additional Instructions for FireMarkets Identity]
 {firemarkets_promo_section}
 **Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
-**Brand Name**: Do NOT use the term 'FireMarkets Dashboard'. Use ONLY 'FireMarkets'.
+**Brand Name**: Use 'FireMarkets'. If you want to emphasize it, use `<strong>FireMarkets</strong>`, do NOT use `**FireMarkets**`.
 **Frequency Limit**: Mention 'FireMarkets' **ONLY ONCE** in the entire article, preferably in the conclusion or market implication section. Do NOT repeat it in every paragraph.
 6. **Structure**: 
     - Title (Refined)
@@ -842,7 +854,7 @@ Content: {content}
 1.  **Writing Style & Depth (Avoid Thin Content)**:
     -   Do NOT just summarize facts. Expand on the "why" and "how".
     -   The final content MUST be substantial (at least 3-5 detailed paragraphs).
-    -   Use a sophisticated, literary, and deeply analytical narrative style (complete sentences, no bullet points).
+    -   Use a sophisticated, literary, and deeply analytical narrative style. You MAY use bullet points or numbered lists where appropriate.
 
 2.  **Originality & Value-Add (Avoid Scraped/Low-Value Content)**:
     -   Do NOT simply copy-paste or slightly reword the input.
@@ -860,14 +872,14 @@ Content: {content}
     -   If referencing specific data (prices, percentages), ensure it sounds credible and, if possible, mention the source (e.g., "according to recent SEC filings...", "as reported by Bloomberg...").
     -   Maintain a neutral, objective, yet insightful tone.
 
-5.  **Format**: Use HTML tags (e.g., `<p>`, `<strong>`, `<h3>`). Do NOT use Markdown.
-6.  **Layout**: Do NOT include the main title `<h1>` or `<h2>` at the beginning. **High Priority**: You MUST use `<h3>` tags to create 2-3 logical subheadings within the content for SEO and readability.
+5.  **Format**: Use HTML tags (e.g., `<p>`, `<strong>`, `<h2>`, `<h3>`). Do NOT use Markdown.
+6.  **Layout**: Do NOT include the main title `<h1>` at the beginning. **High Priority**: You MUST use `<h2>` or `<h3>` tags to create logical subheadings within the content for SEO and readability.
 7.  **Language**: Provide refined narrative versions in both English and Korean.
 
 [Additional Instructions for FireMarkets Identity]
 {firemarkets_promo_section}
 **Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
-**Brand Name**: Do NOT use the term 'FireMarkets Dashboard'. Use ONLY 'FireMarkets'.
+**Brand Name**: Use 'FireMarkets'. If you want to emphasize it, use `<strong>FireMarkets</strong>`, do NOT use `**FireMarkets**`.
 **Frequency Limit**: Mention 'FireMarkets' **ONLY ONCE** in the entire article, preferably in the conclusion or market implication section. Do NOT repeat it in every paragraph.
 
 [Output Format]
@@ -921,10 +933,10 @@ Return ONLY a valid JSON object:
 You are a top-tier financial columnist and lead investigative journalist. 
 Your task is to assist the editor based on their request, adhering strictly to the following rules:
 
-1. **Writing Style**: Use a sophisticated, literary, and deeply analytical narrative style (완전한 문장 형태의 문어체 서술형).
-2. **Strict Prohibition**: NEVER use bullet points, numbered lists, or the '-' character. 
-3. **Format**: Return ONLY HTML content (e.g., `<p>`, `<strong>`, `<h3>`). Do NOT use Markdown code blocks.
-4. **Structure**: You MUST use `<h3>` subheadings to organize the content into logical sections if the response is longer than two paragraphs.
+1. **Writing Style**: Use a sophisticated, literary, and deeply analytical narrative style.
+2. **Formatting**: You MAY use bullet points or numbered lists where appropriate.
+3. **Format**: Return ONLY HTML content (e.g., `<p>`, `<strong>`, `<h2>`, `<h3>`). Do NOT use Markdown code blocks.
+4. **Structure**: You SHOULD use `<h2>` or `<h3>` subheadings to organize the content into logical sections if the response is longer than two paragraphs.
 5. **Tone**: Authoritative, insightful, and professional.
 6. **Language**: If the input is Korean, output Korean. If English, output English.
 
