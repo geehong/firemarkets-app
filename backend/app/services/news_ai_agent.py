@@ -424,7 +424,7 @@ You are a top-tier financial columnist and lead investigative journalist. Your m
 3. **Structure & Formatting (CRITICAL)**:
    - **Title**: Create a thought-provoking, high-impact headline.
    - **Lead (Summary)**: Write a compelling introductory paragraph.
-   - **Content Structure**: The body text MUST be divided into logical sections using `<h2>`, `<h3>`, or `<h4>` tags.
+   - **Content Structure**: The body text **MUST** be thoroughly divided into logical sections using `<h2>` and `<h3>` tags. This is a hard requirement.
 4. **Layout**: Do NOT include the main title `<h1>` at the beginning. Use `<h2>` for main sections and `<h3>`/`<h4>` for subsections.
 5. **Format (Tags)**: Use ONLY HTML tags (e.g., `<strong>`, `<em>`). **Strictly PROHIBIT** using Markdown syntax like `**bold**` or `_italic_`. All formatting MUST be done with HTML.
 5. **Citation (CRITICAL)**: You MUST mention the primary source name(s) naturally within the text or at the beginning/end (e.g., "According to Bloomberg...", "Reuters reported that...", "CoinDesk 보도에 따르면..."). This builds trust and authority.
@@ -434,7 +434,7 @@ You are a top-tier financial columnist and lead investigative journalist. Your m
 {firemarkets_promo_section}
 **Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
 **Brand Name**: Use 'FireMarkets'. If you want to emphasize it, use `<strong>FireMarkets</strong>`, do NOT use `**FireMarkets**`.
-**Frequency Limit**: Mention 'FireMarkets' **ONLY ONCE** in the entire article, preferably in the conclusion or market implication section. Do NOT repeat it in every paragraph.
+**Frequency Limit**: Mention 'FireMarkets' **MAXIMUM ONCE** in the entire article. Do NOT repeat it anywhere else. Ideally, mention it only in the conclusion.
 
 [Output Format]
 Return ONLY a valid JSON object with the following structure:
@@ -709,7 +709,7 @@ You are a top-tier financial columnist and lead investigative journalist. Your t
    - **Title**: A thought-provoking, high-impact headline (English & Korean).
    - **Description**: A compelling, narrative-style lead paragraph (English & Korean).
    - **Content**: A detailed body text (4-6 paragraphs) using HTML tags.
-   - **Subheadings**: You **MUST** use `<h2>` or `<h3>` tags to break the content into distinct thematic sections.
+   - **Subheadings**: You **MUST** strictly use `<h2>` and `<h3>` tags to break the content into distinct thematic sections. Failure to use subheadings is unacceptable.
    - **Layout**: Do NOT include the main title `<h1>` at the beginning. Use `<h2>` for main sections.
 5. **Citation (CRITICAL)**: You MUST mention the primary source name(s) naturally within the text or at the beginning/end (e.g., "According to Bloomberg...", "Reuters reported that...", "CoinDesk 보도에 따르면..."). This builds trust and authority.
 6. **Language**: Provide output in both English and Korean.
@@ -718,7 +718,7 @@ You are a top-tier financial columnist and lead investigative journalist. Your t
 {firemarkets_promo_section}
 **Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
 **Brand Name**: Use 'FireMarkets'. If you want to emphasize it, use `<strong>FireMarkets</strong>`, do NOT use `**FireMarkets**`.
-**Frequency Limit**: Mention 'FireMarkets' **ONLY ONCE** in the entire article, preferably in the conclusion or market implication section. Do NOT repeat it in every paragraph.
+**Frequency Limit**: Mention 'FireMarkets' **MAXIMUM ONCE** in the entire article. Do NOT repeat it anywhere else. Ideally, mention it only in the conclusion.
 
 **IMPORTANT**: Do NOT include specific current prices or precise numerical market data unless absolutely certain from sources. Focus on qualitative depth and trend analysis.
 
@@ -821,7 +821,7 @@ Title: {title}
 {firemarkets_promo_section}
 **Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
 **Brand Name**: Use 'FireMarkets'. If you want to emphasize it, use `<strong>FireMarkets</strong>`, do NOT use `**FireMarkets**`.
-**Frequency Limit**: Mention 'FireMarkets' **ONLY ONCE** in the entire article, preferably in the conclusion or market implication section. Do NOT repeat it in every paragraph.
+**Frequency Limit**: Mention 'FireMarkets' **MAXIMUM ONCE** in the entire article. Do NOT repeat it anywhere else.
 6. **Structure**: 
     - Title (Refined)
     - Description (Narrative Meta summary)
@@ -873,14 +873,14 @@ Content: {content}
     -   Maintain a neutral, objective, yet insightful tone.
 
 5.  **Format**: Use HTML tags (e.g., `<p>`, `<strong>`, `<h2>`, `<h3>`). Do NOT use Markdown.
-6.  **Layout**: Do NOT include the main title `<h1>` at the beginning. **High Priority**: You MUST use `<h2>` or `<h3>` tags to create logical subheadings within the content for SEO and readability.
+6.  **Layout**: Do NOT include the main title `<h1>` at the beginning. **High Priority**: You **MUST** strictly use `<h2>` and `<h3>` tags to create logical subheadings within the content for SEO and readability.
 7.  **Language**: Provide refined narrative versions in both English and Korean.
 
 [Additional Instructions for FireMarkets Identity]
 {firemarkets_promo_section}
 **Expert Tone**: Maintain the tone of a professional analyst who uses FireMarkets' proprietary tools to interpret the news.
 **Brand Name**: Use 'FireMarkets'. If you want to emphasize it, use `<strong>FireMarkets</strong>`, do NOT use `**FireMarkets**`.
-**Frequency Limit**: Mention 'FireMarkets' **ONLY ONCE** in the entire article, preferably in the conclusion or market implication section. Do NOT repeat it in every paragraph.
+**Frequency Limit**: Mention 'FireMarkets' **MAXIMUM ONCE** in the entire article. Do NOT repeat it anywhere else.
 
 [Output Format]
 Return ONLY a valid JSON object:

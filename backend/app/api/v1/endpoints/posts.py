@@ -1321,7 +1321,7 @@ async def cleanup_posts(
                     
                     if total_counts > 50:
                         en_ratio = e_counts / total_counts
-                        if en_ratio > 0.3: # User requested 30% limit
+                        if en_ratio > 0.6: # Relaxed to 60% limit
                             to_delete_ids.append(p.id)
                             continue
 
@@ -1351,14 +1351,14 @@ async def cleanup_posts(
                 to_delete_ids.append(p.id)
                 continue
 
-            # Check 5: Excessive Brand Mention ("FireMarkets" >= 2 times)
+            # Check 5: Excessive Brand Mention ("FireMarkets" >= 3 times)
             brand_count = 0
             if p.content:
                 brand_count += len(re.findall(r'firemarkets', p.content, re.IGNORECASE))
             if p.content_ko:
                 brand_count += len(re.findall(r'firemarkets', p.content_ko, re.IGNORECASE))
             
-            if brand_count >= 2:
+            if brand_count >= 3:
                 to_delete_ids.append(p.id)
                 continue
 
