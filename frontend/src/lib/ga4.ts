@@ -9,7 +9,7 @@ const analyticsDataClient = new BetaAnalyticsDataClient({
     keyFilename: credentialsPath,
 });
 
-const propertyId = '524513344';
+const propertyId = '384453505';
 
 export async function getAnalyticsData(dateRange: { startDate: string; endDate: string }) {
     try {

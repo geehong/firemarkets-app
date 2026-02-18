@@ -80,7 +80,7 @@ export default function ServiceLayout({
       /^\/post\/.+$/,
       /^\/assets\/.+$/, // Matches /assets/btc, but not /assets
       /^\/tag\/.+$/,
-  ].some(regex => regex.test(pathWithoutLocale));
+  ].some(regex => regex.test(pathWithoutLocale)) && pathWithoutLocale !== '/news/briefnews';
 
   // Special case: /admin routes should definitely NOT show this marketing sidebar?
   // The file is in (service) layout. Admin routes are under (service)/admin.

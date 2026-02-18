@@ -109,7 +109,7 @@ export default function AnalyticsDashboardView() {
       <div className="flex justify-between items-center">
         <div>
           <Title className="text-2xl font-bold">Google Analytics 4</Title>
-          <Text>Real-time performance overview from Property ID: 524513344</Text>
+          <Text>Real-time performance overview from Property ID: 384453505</Text>
         </div>
         <BadgeDelta deltaType="moderateIncrease">Last 30 days</BadgeDelta>
       </div>
@@ -215,7 +215,7 @@ export default function AnalyticsDashboardView() {
              </div>
              <div className="p-3 bg-white/10 rounded-lg">
                 <Text className="text-white font-bold">Property ID</Text>
-                <Text className="text-white/70 text-xs">524513344</Text>
+                <Text className="text-white/70 text-xs">384453505</Text>
              </div>
           </div>
         </Card>
