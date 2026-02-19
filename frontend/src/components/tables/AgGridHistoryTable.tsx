@@ -1,10 +1,10 @@
 "use client"
 
-import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react'
+import React, { useMemo, useRef, useState, useEffect } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community'
 import { useOhlcvData } from '@/hooks/assets/useAssets'
-import DateRangePicker from '@/components/inputs/DateRangePicker'
+import { DateRangePicker, DateRange } from '@/components/ui/date-range-picker'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
@@ -17,27 +17,32 @@ interface Props {
 export default function AgGridHistoryTable({ assetIdentifier = 'BTCUSDT', dataInterval = '1d', height = 600 }: Props) {
   const gridRef = useRef<AgGridReact<any>>(null)
   const [interval, setInterval] = useState<'1d' | '1w' | '1m'>(dataInterval)
-  const [startDate, setStartDate] = useState<string>('')
-  const [endDate, setEndDate] = useState<string>('')
-  const [pendingStart, setPendingStart] = useState<string>('')
-  const [pendingEnd, setPendingEnd] = useState<string>('')
+  
+  // Use DateRange type for state
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined)
+
   const ohlcvOptions = useMemo(() => {
-    // 백엔드가 start_date/end_date 둘 다 있을 때 범위 필터가 확실할 경우를 대비해 보정
-    const todayYmd = new Date().toISOString().slice(0, 10)
-    const s = startDate || undefined
-    const e = endDate || (s ? todayYmd : undefined)
-    const fixedStart = s || (endDate ? '2010-01-01' : undefined)
+    // Format dates to YYYY-MM-DD for backend if they exist
+    const startDate = dateRange?.from ? dateRange.from.toISOString().slice(0, 10) : undefined
+    const endDate = dateRange?.to ? dateRange.to.toISOString().slice(0, 10) : undefined
+
+    // For initial load or when no range is selected, we might want defaults or just fetch recent
+    // If user selects range, we filter by that.
+    // Logic: 
+    // If explicit range set -> use it.
+    // If not -> fetch default (backend usually handles default limit)
+    
     return {
       dataInterval: interval,
-      startDate: fixedStart,
-      endDate: e,
+      startDate: startDate || (endDate ? '2010-01-01' : undefined), // If only end date, set far past start
+      endDate: endDate,
       limit: 50000,
     }
-  }, [interval, startDate, endDate])
+  }, [interval, dateRange])
+
   const { data, isLoading, error } = useOhlcvData(assetIdentifier, ohlcvOptions) as any
 
   useEffect(() => {
-    // 옵션 변경 시 디버그 로그
     // eslint-disable-next-line no-console
     console.log('[AgGridHistoryTable] ohlcvOptions', ohlcvOptions)
   }, [ohlcvOptions])
@@ -45,9 +50,7 @@ export default function AgGridHistoryTable({ assetIdentifier = 'BTCUSDT', dataIn
   const baseRows = useMemo(() => {
     const src = Array.isArray(data) ? data : (data?.data || data?.rows || [])
     if (!src) return []
-    // 백엔드에서 제공하는 change_percent 우선 사용
     return src.map((item: any) => {
-      // 백엔드에서 계산된 change_percent 사용 (없으면 null)
       const changePercent = item.change_percent !== null && item.change_percent !== undefined
         ? Number(item.change_percent)
         : null
@@ -66,17 +69,20 @@ export default function AgGridHistoryTable({ assetIdentifier = 'BTCUSDT', dataIn
 
   const rowData = useMemo(() => {
     if (!baseRows.length) return baseRows
-    // 날짜 범위 필터링 (YYYY-MM-DD 비교)
-    const hasStart = !!startDate
-    const hasEnd = !!endDate
-    if (!hasStart && !hasEnd) return baseRows
-    const startTs = hasStart ? new Date(startDate + 'T00:00:00Z').getTime() : -Infinity
-    const endTs = hasEnd ? new Date(endDate + 'T23:59:59Z').getTime() : Infinity
+    
+    // Client-side filtering if necessary (though backend should handle filtering with params)
+    // Double ensure filtering here if backend returns more data than requested range
+    const startTs = dateRange?.from ? dateRange.from.getTime() : -Infinity
+    // End date should include the full day
+    const endTs = dateRange?.to ? new Date(dateRange.to.getTime() + 86399999).getTime() : Infinity
+
+    if (!dateRange?.from && !dateRange?.to) return baseRows
+
     return baseRows.filter((r: any) => {
       const t = new Date(r.Date).getTime()
       return t >= startTs && t <= endTs
     })
-  }, [baseRows, startDate, endDate])
+  }, [baseRows, dateRange])
 
   const columnDefs = useMemo(() => ([
     { field: 'Date', headerName: 'Date', minWidth: 120, sort: 'desc', valueFormatter: (p: any) => p.value ? p.value.split('T')[0] : '' },
@@ -100,57 +106,27 @@ export default function AgGridHistoryTable({ assetIdentifier = 'BTCUSDT', dataIn
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2 px-2">
-        {(['1d', '1w', '1m'] as const).map(iv => (
-          <button
-            key={iv}
-            onClick={() => {
-              // eslint-disable-next-line no-console
-              console.log('[AgGridHistoryTable] interval click', iv)
-              setInterval(iv)
-            }}
-            className={`rounded border px-3 py-1 text-sm ${interval === iv ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700'}`}
-          >{iv.toUpperCase()}</button>
-        ))}
-        <div className="ml-2 text-sm flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2" title="Start">
+      <div className="flex flex-wrap items-center gap-4 px-2">
+        <div className="flex gap-2">
+            {(['1d', '1w', '1m'] as const).map(iv => (
+            <button
+                key={iv}
+                onClick={() => {
+                // eslint-disable-next-line no-console
+                console.log('[AgGridHistoryTable] interval click', iv)
+                setInterval(iv)
+                }}
+                className={`rounded border px-3 py-1 text-sm ${interval === iv ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700'}`}
+            >{iv.toUpperCase()}</button>
+            ))}
+        </div>
+
+        <div className="flex flex-col items-center gap-y-4">
             <DateRangePicker
-              numberOfMonths={1}
-              variant="start"
-              label=""
-              placeholder=""
-              className="!w-10 !h-10 rounded-full !px-0 !py-0 text-transparent bg-gray-50 border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition-all shadow-sm"
-              onStartDate={(s) => {
-                const v = s || ''
-                console.log('[AgGridHistoryTable] start single change', v)
-                setPendingStart(v)
-              }}
+                value={dateRange}
+                onChange={setDateRange}
+                className="w-60"
             />
-          </div>
-          <div className="flex items-center gap-2" title="End">
-            <DateRangePicker
-              numberOfMonths={1}
-              variant="end"
-              label=""
-              placeholder=""
-              className="!w-10 !h-10 rounded-full !px-0 !py-0 text-transparent bg-gray-50 border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition-all shadow-sm"
-              onEndDate={(e) => {
-                const v = e || ''
-                console.log('[AgGridHistoryTable] end single change', v)
-                setPendingEnd(v)
-              }}
-            />
-          </div>
-          <button
-            onClick={() => {
-              console.log('[AgGridHistoryTable] Execute with', pendingStart, pendingEnd)
-              setStartDate(pendingStart || '')
-              setEndDate(pendingEnd || '')
-            }}
-            className="rounded border px-3 py-1 text-sm bg-blue-600 text-white border-blue-600"
-          >
-            Execute
-          </button>
         </div>
       </div>
       <div style={{ width: '100%', height: `${height}px` }}>

@@ -63,7 +63,10 @@ export default function AnalyticsDashboardView() {
     async function fetchData() {
       try {
         const res = await fetch('/api/analytics');
-        if (!res.ok) throw new Error('Failed to fetch GA4 data');
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`Failed to fetch GA4 data: ${res.status} ${res.statusText} - ${errorText}`);
+        }
         const json = await res.json();
         setData(json);
       } catch (err: any) {

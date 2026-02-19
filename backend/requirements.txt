@@ -51,3 +51,4 @@ torch --index-url https://download.pytorch.org/whl/cu118
 transformers
 accelerate
 scipy
+docker

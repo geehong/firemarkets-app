@@ -20,10 +20,9 @@ from .endpoints import (
     auth,
     auth,
     analysis,
-    auth,
-    analysis,
     sentiment_stats,
-    posts
+    posts,
+    docker_control  # Added
 )
 from .external_apis import router as external_apis_router
 from app.schemas.common import ApiV1RootResponse
@@ -43,26 +42,27 @@ async def api_v1_root():
             "crypto": "/api/v1/crypto",
             "dashboard": "/api/v1/dashboard",
             "metrics": "/api/v1/metrics",
-            "realtime": "/api/v1/realtime"
+            "realtime": "/api/v1/realtime",
+            "docker": "/api/v1/docker"
         }
     }
 
 # 라우터 등록
 # 라우터 등록
 # api_router.include_router(assets.router, tags=["assets"]) # Removed
-api_router.include_router(world_assets.router, tags=["world-assets"])
-api_router.include_router(tickers.router, tags=["tickers"])
+api_router.include_router(world_assets.router, prefix="/world-assets", tags=["world-assets"])
+api_router.include_router(tickers.router, prefix="/tickers", tags=["tickers"])
 api_router.include_router(configurations.router, prefix="/configurations", tags=["configurations"])
 api_router.include_router(crypto.router, prefix="/crypto", tags=["crypto"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
-api_router.include_router(etf.router, tags=["etf"])
-api_router.include_router(logs.router, tags=["logs"])
+api_router.include_router(etf.router, prefix="/etf", tags=["etf"])
+api_router.include_router(logs.router, prefix="/logs", tags=["logs"])
 api_router.include_router(onchain.router, prefix="/onchain", tags=["onchain"])
-api_router.include_router(scheduler.router, tags=["scheduler"])
-api_router.include_router(collectors.router, tags=["collectors"])
-api_router.include_router(admin.router, tags=["admin"])
+api_router.include_router(scheduler.router, prefix="/scheduler", tags=["scheduler"])
+api_router.include_router(collectors.router, prefix="/collectors", tags=["collectors"])
+api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(metrics.router, prefix="/metrics", tags=["metrics"])
-api_router.include_router(open_interest.router, tags=["open-interest"])
+api_router.include_router(open_interest.router, prefix="/open-interest", tags=["open-interest"])
 api_router.include_router(realtime.router, prefix="/realtime", tags=["realtime"])
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 # api_router.include_router(sentiment_stats.router, prefix="/sentiment-check", tags=["sentiment-stats"])
@@ -71,6 +71,7 @@ api_router.include_router(sentiment_stats.router, prefix="/analysis/sentiment", 
 
 api_router.include_router(analysis.router, prefix="/analysis", tags=["analysis"])
 api_router.include_router(posts.router, prefix="/posts", tags=["posts"])
+api_router.include_router(docker_control.router, prefix="/docker", tags=["docker-control"])
 
 
 # External APIs router

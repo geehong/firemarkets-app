@@ -1,12 +1,11 @@
 import { BetaAnalyticsDataClient } from '@google-analytics/data';
-import path from 'path';
 
-// Load credentials
-const credentialsPath = path.join(process.cwd(), 'secrets', 'ga4-credentials.json');
+// Import credentials directly so they are bundled
+import credentials from '../../secrets/ga4-credentials.json';
 
-// Initialize client
+// Initialize client with credentials object
 const analyticsDataClient = new BetaAnalyticsDataClient({
-    keyFilename: credentialsPath,
+    credentials,
 });
 
 const propertyId = '384453505';
