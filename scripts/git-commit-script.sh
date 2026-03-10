@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # FireMarkets App Git Commit Script
-# 실행: 24시간마다 (매일 00:00)
+# 실행: 12시간마다 (00:00, 12:00)
 # 백업 시스템과 연동
 
 # 로그 파일 설정
@@ -26,10 +26,12 @@ cd /home/geehong/firemarkets-app || {
 
 # Git 상태 확인
 log_message "1. Git 상태 확인 중..."
-git status >> "$LOG_FILE" 2>&1
+git status --short >> "$LOG_FILE" 2>&1
+
+STATUS_OUTPUT=$(git status --porcelain)
 
 # 변경사항이 있는지 확인 (수정된 파일 + 추적되지 않는 파일 모두 확인)
-if [[ -z $(git status --porcelain) ]]; then
+if [[ -z "$STATUS_OUTPUT" ]]; then
     log_message "✓ 변경사항이 없습니다. 커밋을 건너뜁니다."
     log_message "=== Git 커밋 스크립트 종료 ==="
     exit 0
