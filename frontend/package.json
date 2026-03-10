@@ -58,6 +58,7 @@
     "highcharts": "^12.4.0",
     "highcharts-react-official": "^3.2.3",
     "jquery": "^3.7.1",
+    "lightweight-charts": "^5.1.0",
     "lucide-react": "^0.562.0",
     "nanoid": "^5.1.6",
     "next": "16.0.10",
