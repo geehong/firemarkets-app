@@ -77,6 +77,8 @@ class DataProcessor:
             "start_time": time.time()
         }
         
+        self.last_cleanup_time = time.time()
+        
         # Failover 관련 (기존 로직 유지)
         self.backup_sources = ["api_fallback"]
         self.current_source_index = 0
@@ -132,6 +134,11 @@ class DataProcessor:
                     elapsed = time.time() - self.stats["start_time"]
                     logger.info(f"📊 처리 통계: 총 {self.stats['processed_count']}개 처리, 에러 {self.stats['errors']}개, 실행 시간 {elapsed:.0f}초")
                 
+                # 주기적으로 오래된 실시간 데이터 정리 (1시간마다)
+                if time.time() - self.last_cleanup_time > 3600:
+                    await self.repository.cleanup_old_realtime_bars(days=7)
+                    self.last_cleanup_time = time.time()
+
                 # CPU 사용량 조절
                 if batch_count == 0:
                     await asyncio.sleep(0.5)  # Idle 대기

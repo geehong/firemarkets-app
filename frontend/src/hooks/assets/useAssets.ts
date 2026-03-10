@@ -69,8 +69,8 @@ export const useTreemapLive = (
   return useQuery({
     queryKey: ['treemap-live-table', params],
     queryFn: () => apiClient.v2GetTreemap(params),
-    staleTime: 5 * 60 * 1000,
-    refetchInterval: 15 * 60 * 1000,
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000, // 1분마다 자동 갱신
     ...queryOptions,
   })
 }
@@ -306,8 +306,8 @@ export const useTreemapLiveData = (
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['treemap-live-view', params],
     queryFn: () => apiClient.v2GetTreemap(params),
-    staleTime: 5 * 60 * 1000, // 5분 캐시
-    refetchInterval: 15 * 60 * 1000, // 15분마다 자동 갱신
+    staleTime: 30 * 1000, // 30초 캐시
+    refetchInterval: 60 * 1000, // 1분마다 자동 갱신
   })
 
   return { data, loading: isLoading, error, refetch }

@@ -23,6 +23,9 @@ Highcharts.setOptions({
   chart: {
     backgroundColor: '#252931',
   },
+  accessibility: {
+    enabled: false,
+  },
   title: {
     style: {
       color: 'white',

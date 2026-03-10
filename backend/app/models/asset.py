@@ -840,3 +840,27 @@ class SystemLog(Base):
     
     def __repr__(self):
         return f"<SystemLog(id={self.id}, level='{self.level}', module='{self.module}')>"
+
+
+class RealtimeQuotesTimeBar(Base):
+    """실시간 OHLCV 봉 데이터 테이블 (7일 유지 가동용)"""
+    __tablename__ = 'realtime_quotes_time_bar'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    asset_id = Column(Integer, ForeignKey('assets.asset_id', ondelete="CASCADE"), nullable=False, index=True)
+    timestamp_utc = Column(DateTime, nullable=False, index=True)
+    data_interval = Column(String(10), nullable=False)
+    open_price = Column(DECIMAL(24, 10), nullable=False)
+    high_price = Column(DECIMAL(24, 10), nullable=False)
+    low_price = Column(DECIMAL(24, 10), nullable=False)
+    close_price = Column(DECIMAL(24, 10), nullable=False)
+    volume = Column(DECIMAL(30, 10), default=0)
+    change_amount = Column(DECIMAL(24, 10))
+    change_percent = Column(DECIMAL(10, 4))
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('asset_id', 'timestamp_utc', 'data_interval', name='uq_rt_bar_asset_ts_interval'),
+        Index('idx_rt_bar_lookup', 'asset_id', 'timestamp_utc'),
+    )
+

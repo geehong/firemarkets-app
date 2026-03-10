@@ -355,23 +355,70 @@ def get_treemap_v2(
         result = db.execute(text(query), params)
         rows = result.fetchall()
         
+        asset_ids = [row._mapping.get("asset_id") for row in rows if row._mapping.get("asset_id")]
+        
+        # 2. 최신 시세/변동률 일괄 조회 (병합 로직 적용)
+        price_map = {}
+        if asset_ids:
+            price_stmt = text("""
+                WITH latest_prices AS (
+                    -- 1. Realtime Quotes
+                    SELECT 
+                        asset_id, price as close_price, timestamp_utc, change_percent, volume, 'realtime' as source
+                    FROM realtime_quotes 
+                    WHERE asset_id = ANY(:asset_ids)
+                    
+                    UNION ALL
+
+                    -- 2. Realtime Bar (웹소켓 집계)
+                    SELECT 
+                        asset_id, close_price, timestamp_utc, change_percent, volume, 'realtime_bar' as source
+                    FROM realtime_quotes_time_bar 
+                    WHERE asset_id = ANY(:asset_ids)
+
+                    UNION ALL
+                    
+                    -- 3. Delayed Quotes
+                    SELECT 
+                        asset_id, price as close_price, timestamp_utc, change_percent, volume, 'realtime_delay' as source
+                    FROM realtime_quotes_time_delay 
+                    WHERE asset_id = ANY(:asset_ids)
+                    
+                    UNION ALL
+                    
+                    -- 4. Intraday Data (REST API 저장분)
+                    SELECT 
+                        asset_id, close_price, timestamp_utc, change_percent, volume, 'intraday' as source
+                    FROM ohlcv_intraday_data 
+                    WHERE asset_id = ANY(:asset_ids)
+                )
+                SELECT DISTINCT ON (asset_id) 
+                    asset_id, close_price, change_percent, volume, timestamp_utc
+                FROM latest_prices
+                ORDER BY asset_id, timestamp_utc DESC
+            """)
+            price_rows = db.execute(price_stmt, {"asset_ids": asset_ids}).fetchall()
+            price_map = {row._mapping['asset_id']: row._mapping for row in price_rows}
+
         items = []
         for row in rows:
             row_dict = dict(row._mapping)
+            asset_id = row_dict.get("asset_id")
+            p_data = price_map.get(asset_id, {})
             
             items.append({
-                "asset_id": row_dict.get("asset_id"),
-                "asset_type_id": row_dict.get("asset_type_id"), # asset_type_id 추가
+                "asset_id": asset_id,
+                "asset_type_id": row_dict.get("asset_type_id"),
                 "ticker": row_dict.get("ticker"),
                 "name": row_dict.get("name"),
-                "type_name": row_dict.get("asset_type"), # asset_type 컬럼 사용
-                "logo_url": row_dict.get("logo_url"), # logo_url 추가
-                "current_price": float(row_dict.get("current_price")) if row_dict.get("current_price") else None,
+                "type_name": row_dict.get("asset_type"),
+                "logo_url": row_dict.get("logo_url"),
+                "current_price": float(p_data.get("close_price")) if p_data.get("close_price") is not None else (float(row_dict.get("current_price")) if row_dict.get("current_price") else None),
                 "market_cap": float(row_dict.get("market_cap")) if row_dict.get("market_cap") else None,
-                # daily_change_percent is mapped from price_change_percentage_24h in the view
-                "daily_change_percent": float(row_dict.get("price_change_percentage_24h")) if row_dict.get("price_change_percentage_24h") is not None else None,
-                "price_change_percentage_24h": float(row_dict.get("price_change_percentage_24h")) if row_dict.get("price_change_percentage_24h") is not None else None,
-                "volume_24h": float(row_dict.get("volume")) if row_dict.get("volume") else None, # volume 컬럼 사용 (뷰에서는 od_volume as volume)
+                "daily_change_percent": float(p_data.get("change_percent")) if p_data.get("change_percent") is not None else (float(row_dict.get("price_change_percentage_24h")) if row_dict.get("price_change_percentage_24h") is not None else None),
+                "price_change_percentage_24h": float(p_data.get("change_percent")) if p_data.get("change_percent") is not None else (float(row_dict.get("price_change_percentage_24h")) if row_dict.get("price_change_percentage_24h") is not None else None),
+                "volume_24h": float(p_data.get("volume")) if p_data.get("volume") is not None else (float(row_dict.get("volume")) if row_dict.get("volume") else None),
+                "last_updated": p_data.get("timestamp_utc")
             })
         
         # 요약 통계

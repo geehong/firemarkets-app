@@ -52,13 +52,14 @@ export const useQuotesPrice = (
   })
 }
 
-// Intraday OHLCV Hook
+// Unified OHLCV Hook (Intraday + Realtime)
 export const useIntradayOhlcv = (
   assetIdentifier: string,
   options?: {
     dataInterval?: string
     days?: number
     limit?: number
+    refetchInterval?: number
   },
   queryOptions?: Omit<UseQueryOptions<any, Error, any, any>, 'queryKey' | 'queryFn'>
 ) => {
@@ -80,11 +81,11 @@ export const useIntradayOhlcv = (
         v2Params.start_date = d.toISOString().split('T')[0]
       }
 
-      console.log('[useIntradayOhlcv] Calling V2 API with params:', v2Params)
       return apiClient.v2GetOhlcv(assetIdentifier, v2Params)
     },
     enabled: !!assetIdentifier,
-    staleTime: 30 * 1000, // 30초
+    staleTime: 30 * 1000,
+    refetchInterval: options?.refetchInterval,
     ...queryOptions,
   })
 }

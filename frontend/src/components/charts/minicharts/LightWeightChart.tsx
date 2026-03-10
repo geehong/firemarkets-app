@@ -4,6 +4,7 @@
 import React, { useEffect, useRef } from "react"
 import {
   createChart,
+  LineSeries,
   ColorType,
   LineStyle,
   Time,
@@ -154,7 +155,7 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
       },
     })
 
-    const series = chart.addLineSeries({
+    const series = chart.addSeries(LineSeries, {
       color: "#22c55e",
       lineWidth: 2,
       priceLineVisible: true,

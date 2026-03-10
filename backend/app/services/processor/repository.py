@@ -10,7 +10,7 @@ from ...core.database import get_postgres_db
 from ...models.asset import (
     RealtimeQuote, RealtimeQuoteTimeDelay, StockProfile, ETFInfo, 
     CryptoData, StockFinancial, StockAnalystEstimate, WorldAssetsRanking,
-    CryptoMetric
+    CryptoMetric, RealtimeQuotesTimeBar
 )
 
 logger = logging.getLogger(__name__)
@@ -92,34 +92,73 @@ class DataRepository:
                     dedup_rt[r['asset_id']] = r
                 realtime_rows = list(dedup_rt.values())
 
-                # 지연 테이블용 데이터
+                # 지연 테이블용 데이터 (1m 단위로 집계)
                 delay_dedup = {}
                 delay_allowed_keys = {'asset_id', 'timestamp_utc', 'price', 'volume', 'change_amount', 'change_percent', 'data_source', 'data_interval'}
                 for rec in batch:
                     d = {k: v for k, v in rec.items() if k in delay_allowed_keys}
-                    tw = self._get_time_window(rec['timestamp_utc'])
+                    tw = self._get_time_window(rec['timestamp_utc'], 1) # 1m window
                     d['timestamp_utc'] = tw
-                    d['data_interval'] = "15m" # TODO: Make configurable
+                    d['data_interval'] = "1m"
                     d['price'] = self._sanitize_number(rec.get('price'))
                     d['volume'] = self._sanitize_number(rec.get('volume'))
                     d['change_amount'] = self._sanitize_number(rec.get('change_amount'))
                     d['change_percent'] = self._sanitize_number(rec.get('change_percent'))
                     
-                    # Missing keys from filtering might need to be re-added if they were derived or renamed
-                    # But here 'rec' has the source data.
-                    # Wait, 'd' is filtered from 'rec'. 'rec' has 'ticker' etc.
-                    # We need to make sure 'd' has what we need.
                     if 'asset_id' not in d: d['asset_id'] = rec.get('asset_id')
                     if 'data_source' not in d: d['data_source'] = rec.get('data_source')
                     
                     if d['price'] is None:
                         continue
-                    key = (d['asset_id'], d['timestamp_utc'], d['data_source'])
-                    delay_dedup[key] = d
+                        
+                    key = (d['asset_id'], d['timestamp_utc'], d['data_source'], d['data_interval'])
+                    if key not in delay_dedup:
+                        delay_dedup[key] = d
+                    else:
+                        delay_dedup[key].update(d)
                 delay_rows = list(delay_dedup.values())
 
+                # 실시간 봉 테이블 (1m, 5m) 집계 및 추가
+                rt_bar_rows = []
+                for interval in ["1m", "5m"]:
+                    win_size = 1 if interval == "1m" else 5
+                    bar_dedup = {}
+                    for rec in batch:
+                        ts = rec['timestamp_utc']
+                        tw = self._get_time_window(ts, win_size)
+                        price = self._sanitize_number(rec.get('price'))
+                        if price is None: continue
+                        
+                        key = (rec['asset_id'], tw, interval)
+                        if key not in bar_dedup:
+                            bar_dedup[key] = {
+                                'asset_id': rec['asset_id'],
+                                'timestamp_utc': tw,
+                                'data_interval': interval,
+                                'open_price': price,
+                                'high_price': price,
+                                'low_price': price,
+                                'close_price': price,
+                                'volume': self._sanitize_number(rec.get('volume')) or 0
+                            }
+                        else:
+                            bar = bar_dedup[key]
+                            bar['high_price'] = max(bar['high_price'], price)
+                            bar['low_price'] = min(bar['low_price'], price)
+                            bar['close_price'] = price
+                            bar['volume'] += self._sanitize_number(rec.get('volume')) or 0
+                    
+                    for bar in bar_dedup.values():
+                        bar['change_amount'] = bar['close_price'] - bar['open_price']
+                        if bar['open_price'] != 0:
+                            bar['change_percent'] = (bar['change_amount'] / bar['open_price']) * 100
+                        else:
+                            bar['change_percent'] = 0
+                            
+                    rt_bar_rows.extend(list(bar_dedup.values()))
+
                 try:
-                    # 실시간 테이블 UPSERT
+                    # 1. 실시간 테이블 UPSERT
                     if realtime_rows:
                         stmt = pg_insert(RealtimeQuote).values(realtime_rows)
                         stmt = stmt.on_conflict_do_update(
@@ -136,11 +175,11 @@ class DataRepository:
                         )
                         pg_db.execute(stmt)
 
-                    # 지연 테이블 UPSERT
+                    # 2. 지연 테이블 (1m) UPSERT
                     if delay_rows:
                         stmt = pg_insert(RealtimeQuoteTimeDelay).values(delay_rows)
                         stmt = stmt.on_conflict_do_update(
-                            index_elements=['asset_id', 'timestamp_utc', 'data_source'],
+                            index_elements=['asset_id', 'timestamp_utc', 'data_source', 'data_interval'],
                             set_={
                                 'price': stmt.excluded.price,
                                 'volume': stmt.excluded.volume,
@@ -151,18 +190,51 @@ class DataRepository:
                         )
                         pg_db.execute(stmt)
 
+                    # 3. 실시간 봉 테이블 (1m, 5m) UPSERT
+                    if rt_bar_rows:
+                        stmt = pg_insert(RealtimeQuotesTimeBar).values(rt_bar_rows)
+                        stmt = stmt.on_conflict_do_update(
+                            index_elements=['asset_id', 'timestamp_utc', 'data_interval'],
+                            set_={
+                                'high_price': func.greatest(RealtimeQuotesTimeBar.high_price, stmt.excluded.high_price),
+                                'low_price': func.least(RealtimeQuotesTimeBar.low_price, stmt.excluded.low_price),
+                                'close_price': stmt.excluded.close_price,
+                                'volume': RealtimeQuotesTimeBar.volume + stmt.excluded.volume,
+                                'change_amount': stmt.excluded.close_price - RealtimeQuotesTimeBar.open_price,
+                                'change_percent': ((stmt.excluded.close_price - RealtimeQuotesTimeBar.open_price) / RealtimeQuotesTimeBar.open_price) * 100,
+                                'updated_at': func.now()
+                            }
+                        )
+                        pg_db.execute(stmt)
+
                     pg_db.commit()
                     success_count += len(batch)
-                    logger.debug(f"💾 배치 저장 성공: {len(batch)}개 (실시간: {len(realtime_rows)}, 지연: {len(delay_rows)})")
+                    logger.debug(f"💾 배치 저장 성공: {len(batch)}개 (RT: {len(realtime_rows)}, Delay: {len(delay_rows)}, Bars: {len(rt_bar_rows)})")
                 except Exception as e:
                     pg_db.rollback()
                     logger.error(f"❌ Bulk upsert 실패: {e}", exc_info=True)
-                    # TODO: Implement fallback/retry logic if needed
 
             logger.info(f"💾 총 저장 완료: {success_count}/{len(validated_records)}개")
             return success_count > 0
         finally:
             pg_db.close()
+
+    async def cleanup_old_realtime_bars(self, days: int = 7) -> int:
+        """7일 이상 된 실시간 봉 데이터 삭제"""
+        try:
+            db = next(get_postgres_db())
+            try:
+                cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
+                deleted = db.query(RealtimeQuotesTimeBar).filter(RealtimeQuotesTimeBar.timestamp_utc < cutoff).delete()
+                db.commit()
+                if deleted > 0:
+                    logger.info(f"🧹 오래된 실시간 봉 데이터 삭제 완료: {deleted}개 (Cutoff: {cutoff})")
+                return deleted
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"실시간 봉 데이터 정리 실패: {e}")
+            return 0
 
     async def save_stock_profile(self, items: List[Dict[str, Any]]) -> bool:
         if not items:

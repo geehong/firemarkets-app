@@ -15,6 +15,14 @@ const LiveChart = dynamic(
     () => import('@/components/charts/live/LiveChart'),
     { ssr: false }
 )
+const SessionLiveChart = dynamic(
+    () => import('@/components/charts/live/SessionLiveChart'),
+    { ssr: false }
+)
+const RollingLiveChart = dynamic(
+    () => import('@/components/charts/live/RollingLiveChart'),
+    { ssr: false }
+)
 const MiniPriceChart = dynamic(
     () => import('@/components/charts/minicharts/MiniPriceChart'),
     { ssr: false }
@@ -115,27 +123,108 @@ export default function ChartsPage() {
                 )}
 
                 {activeTab === 'live' && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <ComponentCard title="BTC/USDT Live Chart">
-                            <div className="h-[400px]">
-                                <LiveChart
-                                    assetIdentifier="BTCUSDT"
-                                    height={400}
-                                    dataSource="binance"
-                                    useWebSocket={true}
-                                />
+                    <div className="space-y-12">
+                        {/* Section 1: Session Live Charts */}
+                        <section>
+                            <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-6 px-1 flex items-center gap-2">
+                                <span className="w-1.5 h-6 bg-blue-500 rounded-full" />
+                                Type 1: Session Charts (Starts from 09:00 KST)
+                            </h2>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                <div className="h-[400px]">
+                                    <SessionLiveChart
+                                        assetIdentifier="BTCUSDT"
+                                        title="Bitcoin Session"
+                                    />
+                                </div>
+                                <div className="h-[400px]">
+                                    <SessionLiveChart
+                                        assetIdentifier="ETHUSDT"
+                                        title="Ethereum Session"
+                                    />
+                                </div>
+                                <div className="h-[400px]">
+                                    <SessionLiveChart
+                                        assetIdentifier="SPY"
+                                        title="SPY ETF Session"
+                                    />
+                                </div>
+                                <div className="h-[400px]">
+                                    <SessionLiveChart
+                                        assetIdentifier="MSFT"
+                                        title="Microsoft Session"
+                                    />
+                                </div>
                             </div>
-                        </ComponentCard>
-                        <ComponentCard title="ETH/USDT Live Chart">
-                            <div className="h-[400px]">
-                                <LiveChart
-                                    assetIdentifier="ETHUSDT"
-                                    height={400}
-                                    dataSource="binance"
-                                    useWebSocket={true}
-                                />
+                        </section>
+
+                        {/* Section 2: Rolling Live Charts */}
+                        <section>
+                            <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-6 px-1 flex items-center gap-2">
+                                <span className="w-1.5 h-6 bg-green-500 rounded-full" />
+                                Type 2: Rolling Charts (Last 24 Hours)
+                            </h2>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                <div className="h-[400px]">
+                                    <RollingLiveChart
+                                        assetIdentifier="BTCUSDT"
+                                        title="Bitcoin 24H Rolling"
+                                        lookbackHours={24}
+                                    />
+                                </div>
+                                <div className="h-[400px]">
+                                    <RollingLiveChart
+                                        assetIdentifier="ETHUSDT"
+                                        title="Ethereum 24H Rolling"
+                                        lookbackHours={24}
+                                    />
+                                </div>
+                                <div className="h-[400px]">
+                                    <RollingLiveChart
+                                        assetIdentifier="SPY"
+                                        title="SPY 24H Rolling"
+                                        lookbackHours={24}
+                                    />
+                                </div>
+                                <div className="h-[400px]">
+                                    <RollingLiveChart
+                                        assetIdentifier="MSFT"
+                                        title="Microsoft 24H Rolling"
+                                        lookbackHours={24}
+                                    />
+                                </div>
                             </div>
-                        </ComponentCard>
+                        </section>
+
+                        {/* Section 3: Original Live Charts (Highcharts) */}
+                        <section>
+                            <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-6 px-1 flex items-center gap-2">
+                                <span className="w-1.5 h-6 bg-purple-500 rounded-full" />
+                                Legacy: Line Style Live Charts
+                            </h2>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                <ComponentCard title="BTC/USDT Line (Highcharts)">
+                                    <div className="h-[400px]">
+                                        <LiveChart
+                                            assetIdentifier="BTCUSDT"
+                                            height={400}
+                                            dataSource="binance"
+                                            useWebSocket={true}
+                                        />
+                                    </div>
+                                </ComponentCard>
+                                <ComponentCard title="ETH/USDT Line (Highcharts)">
+                                    <div className="h-[400px]">
+                                        <LiveChart
+                                            assetIdentifier="ETHUSDT"
+                                            height={400}
+                                            dataSource="binance"
+                                            useWebSocket={true}
+                                        />
+                                    </div>
+                                </ComponentCard>
+                            </div>
+                        </section>
                     </div>
                 )}
 

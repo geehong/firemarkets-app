@@ -204,11 +204,29 @@ def get_assets_table_v2(
         total = query.count()
         rows = query.offset((page - 1) * page_size).limit(page_size).all()
         
-        # 5. Process Results & Fetch Sparklines
+        # 5. Process Results & Fetch Sparklines & Realtime Prices
         data = []
         user_asset_ids = [r[0].asset_id for r in rows]
         
-        # Fetch Sparklines (Last 30 days) efficiently
+        # 5a. Fetch Realtime Prices efficiently
+        price_map = {}
+        if user_asset_ids:
+            price_stmt = text("""
+                WITH latest_prices AS (
+                    SELECT asset_id, price as close_price, timestamp_utc, change_percent, 'realtime' as source FROM realtime_quotes WHERE asset_id = ANY(:asset_ids)
+                    UNION ALL
+                    SELECT asset_id, close_price, timestamp_utc, change_percent, 'bar' as source FROM realtime_quotes_time_bar WHERE asset_id = ANY(:asset_ids)
+                    UNION ALL
+                    SELECT asset_id, price as close_price, timestamp_utc, change_percent, 'delay' as source FROM realtime_quotes_time_delay WHERE asset_id = ANY(:asset_ids)
+                    UNION ALL
+                    SELECT asset_id, close_price, timestamp_utc, change_percent, 'intraday' as source FROM ohlcv_intraday_data WHERE asset_id = ANY(:asset_ids)
+                )
+                SELECT DISTINCT ON (asset_id) * FROM latest_prices ORDER BY asset_id, timestamp_utc DESC
+            """)
+            price_rows = db.execute(price_stmt, {"asset_ids": user_asset_ids}).fetchall()
+            price_map = {row._mapping['asset_id']: row._mapping for row in price_rows}
+
+        # 5b. Fetch Sparklines (Last 30 days) efficiently
         sparkline_map = {}
         if user_asset_ids:
             thirty_days_ago = datetime.now() - timedelta(days=30)
@@ -230,6 +248,7 @@ def get_assets_table_v2(
         
         for ranking, t_name in rows:
             sparkline = sparkline_map.get(ranking.asset_id, [])
+            p_data = price_map.get(ranking.asset_id, {})
             
             item = AssetTableItem(
                 asset_id=ranking.asset_id,
@@ -237,21 +256,21 @@ def get_assets_table_v2(
                 ticker=ranking.ticker,
                 name=ranking.name,
                 asset_type=t_name,
-                exchange=None, # Ranking table might not have exchange, can join Asset if needed but for performance skipping
+                exchange=None,
                 currency="USD",
                 
-                price=float(ranking.price_usd) if ranking.price_usd else None,
-                change_percent_today=float(ranking.daily_change_percent) if ranking.daily_change_percent else None,
+                price=float(p_data.get("close_price")) if p_data.get("close_price") is not None else (float(ranking.price_usd) if ranking.price_usd else None),
+                change_percent_today=float(p_data.get("change_percent")) if p_data.get("change_percent") is not None else (float(ranking.daily_change_percent) if ranking.daily_change_percent else None),
                 
                 market_cap=float(ranking.market_cap_usd) if ranking.market_cap_usd else None,
-                volume_today=None, # Not in ranking table
-                change_52w_percent=None, # Not in ranking table
+                volume_today=None,
+                change_52w_percent=None,
                 
                 sparkline_30d=sparkline,
                 
-                data_source="world_assets_ranking",
-                last_updated=ranking.ranking_date,
-                is_realtime=False # Ranking is usually daily snapshot
+                data_source="mixed_realtime" if p_data else "world_assets_ranking",
+                last_updated=p_data.get("timestamp_utc") or ranking.ranking_date,
+                is_realtime=True if p_data else False
             )
             data.append(item)
             

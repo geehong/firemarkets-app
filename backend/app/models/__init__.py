@@ -40,6 +40,7 @@ from .asset import (
     WorldAssetsRanking,
     BondMarketData,
     ScrapingLogs,
+    RealtimeQuotesTimeBar,
 )
 
 # Financial models
@@ -125,6 +126,7 @@ __all__ = [
     "WorldAssetsRanking",
     "BondMarketData",
     "ScrapingLogs",
+    "RealtimeQuotesTimeBar",
     
     # Financial models
     "FinancialStatement",
