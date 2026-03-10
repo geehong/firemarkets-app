@@ -113,4 +113,3 @@ docker-compose logs db_postgres --since 1h 2>&1 | grep -E "(error|ERROR|exceptio
 docker-compose logs frontend --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | tail -50
 docker-compose logs websocket_broadcaster --since 1h 2>&1 | grep -E "(error|ERROR|exception|Exception|failed|Failed)" | tail -50
 
-        

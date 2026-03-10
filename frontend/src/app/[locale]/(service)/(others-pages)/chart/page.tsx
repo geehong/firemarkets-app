@@ -19,6 +19,10 @@ const MiniPriceChart = dynamic(
     () => import('@/components/charts/minicharts/MiniPriceChart'),
     { ssr: false }
 )
+const LightWeightChart = dynamic(
+    () => import('@/components/charts/minicharts/LightWeightChart'),
+    { ssr: false }
+)
 const OHLCVCustomGUIChart = dynamic(
     () => import('@/components/charts/ohlcvcharts/OHLCVCustomGUIChart'),
     { ssr: false }
@@ -47,14 +51,15 @@ const MultipleComparisonChart = dynamic(
 )
 
 export default function ChartsPage() {
-    const [activeTab, setActiveTab] = useState<'bar' | 'line' | 'treemap' | 'live' | 'mini' | 'ohlcv' | 'onchain' | 'volume' | 'multiple'>('bar')
+    const [activeTab, setActiveTab] = useState<'bar' | 'line' | 'treemap' | 'live' | 'mini' | 'lightweight' | 'ohlcv' | 'onchain' | 'volume' | 'multiple'>('bar')
 
     const tabs = [
         { id: 'bar', label: 'Bar Charts' },
         { id: 'line', label: 'Line Charts' },
         { id: 'treemap', label: 'Treemap' },
         { id: 'live', label: 'Live Charts' },
-        { id: 'mini', label: 'Mini Charts' },
+        { id: 'mini', label: 'Mini Charts (Highcharts)' },
+        { id: 'lightweight', label: 'Mini Charts (Lightweight)' },
         { id: 'ohlcv', label: 'OHLCV' },
         { id: 'volume', label: 'Volume' },
         { id: 'multiple', label: 'Multiple Comparison' },
@@ -149,6 +154,41 @@ export default function ChartsPage() {
                         <ComponentCard title="Mini AAPL">
                             <div className="h-[200px]">
                                 <MiniPriceChart assetIdentifier="AAPL" title="Apple Inc." chartType="stocks" />
+                            </div>
+                        </ComponentCard>
+                    </div>
+                )}
+
+                {activeTab === 'lightweight' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <ComponentCard title="BTC Lightweight">
+                            <div className="h-[200px]">
+                                <LightWeightChart
+                                    assetIdentifier="BTCUSDT"
+                                    title="Bitcoin (Lightweight)"
+                                    chartType="crypto"
+                                    dataSource="binance"
+                                />
+                            </div>
+                        </ComponentCard>
+                        <ComponentCard title="ETH Lightweight">
+                            <div className="h-[200px]">
+                                <LightWeightChart
+                                    assetIdentifier="ETHUSDT"
+                                    title="Ethereum (Lightweight)"
+                                    chartType="crypto"
+                                    dataSource="binance"
+                                />
+                            </div>
+                        </ComponentCard>
+                        <ComponentCard title="AAPL Lightweight">
+                            <div className="h-[200px]">
+                                <LightWeightChart
+                                    assetIdentifier="AAPL"
+                                    title="Apple Inc. (Lightweight)"
+                                    chartType="stocks"
+                                    dataSource="iex"
+                                />
                             </div>
                         </ComponentCard>
                     </div>
