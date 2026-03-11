@@ -97,12 +97,13 @@ export const useDelayedQuotes = (
     dataSource?: string
     limit?: number
     days?: number | string
+    dataInterval?: string
   },
   queryOptions?: Omit<UseQueryOptions<any, Error, any, any>, 'queryKey' | 'queryFn'>
 ) => {
   return useQuery({
     queryKey: ['delayed-quotes', assetIdentifiers, options],
-    queryFn: () => apiClient.getDelayedQuotes(assetIdentifiers, options?.dataSource, options?.limit, options?.days),
+    queryFn: () => apiClient.getDelayedQuotes(assetIdentifiers, options?.dataSource, options?.limit, options?.days, options?.dataInterval || '15m'),
     enabled: assetIdentifiers.length > 0,
     refetchInterval: 15 * 60 * 1000, // 15분마다 자동 갱신
     staleTime: 15 * 60 * 1000, // 15분간 데이터를 신선하게 유지

@@ -10,6 +10,7 @@ from typing import Dict, Any, Type
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from app.core.database import SessionLocal
 from app.models.asset import AppConfiguration, SchedulerLog

@@ -9,7 +9,7 @@ import {
   LineStyle,
   Time,
 } from "lightweight-charts"
-import { useIntradayOhlcv } from "@/hooks/data/useRealtime"
+import { useIntradayOhlcv, useDelayedQuoteLast } from "@/hooks/data/useRealtime"
 import { useRealtimePrices } from "@/hooks/data/useSocket"
 import { useAssetDetail } from "@/hooks/assets/useAssets"
 
@@ -87,6 +87,7 @@ interface LiveCandleChartProps {
   lookbackHours?: number
   dataInterval?: string // "1m", "5m", "15m", "1h"
   chartType?: "candle" | "line"
+  height?: number | string
 }
 
 /**
@@ -101,11 +102,15 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
   lookbackHours = 24,
   dataInterval = DEFAULT_CANDLE_INTERVAL,
   chartType = "candle",
+  height = 400,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const chartRef = useRef<any | null>(null)
   const seriesRef = useRef<any | null>(null)
   const lastCandleRef = useRef<any | null>(null)
+
+  const [currentInterval, setCurrentInterval] = useState(dataInterval)
+  const [chartStats, setChartStats] = useState({ first: 0, last: 0, prevClose: 0 })
 
   // 1. 자산 정보 및 과거 데이터 로드
   const { data: assetDetail } = useAssetDetail(assetIdentifier)
@@ -113,22 +118,23 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
   // 과도한 날짜 자르기 방지를 위해 days 조건 없이 절대 포인트 2016개(7일치 5분봉 기준)만 요청합니다.
   // 이렇게 해야 MSFT/SPY 등 비24h 자산에서 start_date에 의한 미래 데이터 잘림 현상이 일어나지 않고 확실한 '최근 2016개'를 받아옵니다.
   const calcLimit = Math.floor(
-    (dataInterval === "1m" ? 1440 : 
-     dataInterval === "15m" ? 96 : 
-     dataInterval === "1h" ? 24 : 288) * 7
+    (currentInterval === "1m" ? 1440 : 
+     currentInterval === "15m" ? 96 : 
+     currentInterval === "1h" ? 24 : 288) * 7
   )
 
   // dataInterval에 따른 로컬 refetch interval 동기화 (과부하 방지)
   const dynamicRefetchInterval = useMemo(() => {
     let seconds = 300 // 기본 5m
-    if (dataInterval === "1m") seconds = 60
-    else if (dataInterval === "15m") seconds = 900
-    else if (dataInterval === "1h") seconds = 3600
+    if (currentInterval === "1m") seconds = 60
+    else if (currentInterval === "15m") seconds = 900
+    else if (currentInterval === "30m") seconds = 1800
+    else if (currentInterval === "1h") seconds = 3600
     return seconds * 1000
-  }, [dataInterval])
+  }, [currentInterval])
 
   const ohlcvQuery = useIntradayOhlcv(assetIdentifier, { 
-    dataInterval, 
+    dataInterval: currentInterval, 
     limit: calcLimit,
     refetchInterval: dynamicRefetchInterval 
   })
@@ -136,6 +142,31 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
 
   // 2. 실시간 웹소켓 구독
   const { latestPrice } = useRealtimePrices(assetIdentifier)
+
+  const { data: lastQuoteResponse } = useDelayedQuoteLast(
+    assetIdentifier,
+    { dataInterval: "15m" },
+    { enabled: !!assetIdentifier }
+  )
+
+  const prevClosePrice = useMemo(() => {
+    if (!historyData.length) return null;
+    const now = new Date();
+    const todayStartUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0);
+    let candidate = null;
+    for (let i = historyData.length - 1; i >= 0; i--) {
+      const d = historyData[i];
+      const tsStr = d.timestamp_utc || d.timestamp || d.time;
+      const dateStr = typeof tsStr === 'string' && !tsStr.includes('Z') && !tsStr.includes('+') ? `${tsStr}Z` : tsStr;
+      const ts = new Date(dateStr).getTime();
+      const price = Number(d.close_price ?? d.close ?? 0);
+      if (ts <= todayStartUtc) {
+        candidate = price;
+        break;
+      }
+    }
+    return candidate;
+  }, [historyData]);
 
   // 3. 차트 초기화
   useEffect(() => {
@@ -198,7 +229,7 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
       chartRef.current = null
       seriesRef.current = null
     }
-  }, [chartType, dataInterval])
+  }, [chartType, currentInterval])
 
   // 4. 데이터 필터링 및 업데이트 (Mode 1, 2 적용)
   useEffect(() => {
@@ -306,6 +337,8 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
     if (processed.length > 0) {
       seriesRef.current.setData(processed)
       lastCandleRef.current = processed[processed.length - 1]
+      const prevClose = processed.length > 0 ? processed[0].open : processed[0].close // approximation based on earliest data if previous close isn't accurate
+      setChartStats({ first: processed[0].close, last: processed[processed.length - 1].close, prevClose })
 
       if (mode === "session") {
         // 세션 차트의 경우, 좌측은 고정(시작시간)되게 하고 우측은 (24시간 보장용 빈 공간)을 논리적으로 확보
@@ -314,9 +347,10 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
         const sessionEndSeconds = startTimeSeconds + (24 * 3600);
         
         let intervalSeconds = 300; // default 5m
-        if (dataInterval === "1m") intervalSeconds = 60;
-        else if (dataInterval === "15m") intervalSeconds = 900;
-        else if (dataInterval === "1h") intervalSeconds = 3600;
+        if (currentInterval === "1m") intervalSeconds = 60;
+        else if (currentInterval === "15m") intervalSeconds = 900;
+        else if (currentInterval === "30m") intervalSeconds = 1800;
+        else if (currentInterval === "1h") intervalSeconds = 3600;
 
         // 세션 종료까지 남은 봉(캔들)의 개수
         const missingCandlesCount = Math.max(0, Math.floor((sessionEndSeconds - lastTime) / intervalSeconds));
@@ -342,9 +376,11 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
     
     // 현재 인터벌 계산 (예: 15m = 900초)
     let intervalSeconds = 900
-    if (dataInterval === "1m") intervalSeconds = 60
-    else if (dataInterval === "5m") intervalSeconds = 300
-    else if (dataInterval === "1h") intervalSeconds = 3600
+    if (currentInterval === "1m") intervalSeconds = 60
+    else if (currentInterval === "5m") intervalSeconds = 300
+    else if (currentInterval === "15m") intervalSeconds = 900
+    else if (currentInterval === "30m") intervalSeconds = 1800
+    else if (currentInterval === "1h") intervalSeconds = 3600
 
     const candleStartTime = Math.floor(tickTime / intervalSeconds) * intervalSeconds
     const lastCandle = lastCandleRef.current
@@ -372,21 +408,83 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
       seriesRef.current.update(updatedCandle)
       lastCandleRef.current = updatedCandle
     }
-  }, [latestPrice, dataInterval])
+    setChartStats(prev => ({ ...prev, last: tickPrice }))
+  }, [latestPrice, currentInterval])
+
+  // Change percent matching legacy logic (comparing to previous close from websocket or lastQuoteResponse)
+  const currentPrice = chartStats.last > 0 ? chartStats.last : (latestPrice?.price ? Number(latestPrice.price) : 0);
+  
+  let computedChangePercent = 0;
+  let computedChangeAmount = 0;
+
+  if (typeof latestPrice?.changePercent === 'number') {
+      computedChangePercent = latestPrice.changePercent;
+      if (prevClosePrice && prevClosePrice > 0) {
+          computedChangeAmount = currentPrice - prevClosePrice;
+      } else {
+          computedChangeAmount = currentPrice * (computedChangePercent / 100);
+      }
+  } else if (lastQuoteResponse?.quote) {
+      const qp = Number(lastQuoteResponse.quote.change_percent);
+      const qa = Number(lastQuoteResponse.quote.change_amount);
+      if (isFinite(qp)) computedChangePercent = qp;
+      if (isFinite(qa)) computedChangeAmount = qa;
+      else if (prevClosePrice && prevClosePrice > 0) computedChangeAmount = currentPrice - prevClosePrice;
+      else computedChangeAmount = currentPrice * (computedChangePercent / 100);
+  } else if (prevClosePrice && prevClosePrice > 0 && currentPrice > 0) {
+      computedChangeAmount = currentPrice - prevClosePrice;
+      computedChangePercent = (computedChangeAmount / prevClosePrice) * 100;
+  } else if (chartStats.prevClose > 0) {
+      // fallback to chart's initial point
+      computedChangeAmount = currentPrice - chartStats.prevClose;
+      computedChangePercent = (computedChangeAmount / chartStats.prevClose) * 100;
+  }
+
+  const isPositive = computedChangePercent >= 0;
+  const changeSign = computedChangePercent > 0 ? '+' : (computedChangePercent < 0 ? '-' : '');
+
+  // Get color based on change percent (matching Legacy logic)
+  const getChangeColor = (percent: number) => {
+    if (percent <= -3) return 'text-[#f73539]';
+    if (percent >= 3) return 'text-[#2ecc59]';
+    if (percent < 0) return 'text-[#f73539]'; // Changed to use exact hex for consistency
+    if (percent > 0) return 'text-[#2ecc59]'; // Changed to use exact hex for consistency
+    return 'text-gray-500';
+  }
+  const colorClass = getChangeColor(computedChangePercent)
 
   return (
-    <div className="group relative flex flex-col gap-2 h-full w-full p-4 rounded-xl bg-white/40 dark:bg-gray-900/40 backdrop-blur-md border border-gray-200/50 dark:border-gray-800/50 shadow-xl transition-all hover:bg-white/60 dark:hover:bg-gray-900/60">
+    <div 
+      className="group relative flex flex-col gap-2 w-full p-4 rounded-xl bg-white/40 dark:bg-gray-900/40 backdrop-blur-md border border-gray-200/50 dark:border-gray-800/50 shadow-xl transition-all hover:bg-white/60 dark:hover:bg-gray-900/60"
+      style={{ height: typeof height === 'number' ? `${height}px` : height }}
+    >
       <div className="flex items-center justify-between px-1">
         <div className="flex flex-col">
-          <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            {title || assetIdentifier}
-          </h3>
+          <div className="flex items-baseline gap-2">
+            <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              {title || assetIdentifier}
+            </h3>
+            <div className={`flex items-baseline gap-2 ${colorClass}`}>
+              <span className="font-semibold text-sm">{changeSign}{Math.abs(computedChangePercent).toFixed(2)}%</span>
+              <span className="text-xs font-medium">{changeSign}{Math.abs(computedChangeAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+          </div>
           <p className="text-[10px] text-gray-500 font-medium">
-            {mode === "session" ? `Session Open~` : `Rolling: Last ${lookbackHours}h`} | {dataInterval}
+            {mode === "session" ? `Session Open~` : `Rolling: Last ${lookbackHours}h`} | {currentInterval}
           </p>
         </div>
         <div className="flex items-center gap-2">
+           <select 
+             className="bg-transparent border border-gray-200 dark:border-gray-800 rounded px-1 min-w-[50px] text-[10px] text-gray-500 dark:text-gray-400 outline-none hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+             value={currentInterval}
+             onChange={(e) => setCurrentInterval(e.target.value)}
+           >
+             <option value="1m">1m</option>
+             <option value="5m">5m</option>
+             <option value="15m">15m</option>
+             <option value="30m">30m</option>
+           </select>
            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
              {assetIdentifier}
            </span>

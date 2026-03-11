@@ -257,19 +257,14 @@ async def get_performance_treemap_data(
     logger.info(f"Performance treemap request started - period: {performance_period}, limit: {limit}")
     
     try:
-        from sqlalchemy import func, and_, case, text
+        from sqlalchemy import func, and_, text
         from datetime import datetime, timedelta
-        from ....models.asset import Asset, AssetType, OHLCVData
+        from ....models.asset import Asset, AssetType, OHLCVData, WorldAssetsRanking
         
         # 1. 최신 ranking_date를 찾기
-        latest_ranking_date = (
-            db.query(WorldAssetsRanking.ranking_date)
-            .order_by(WorldAssetsRanking.ranking_date.desc())
-            .first()
-        )
+        latest_ranking_date = db.query(func.max(WorldAssetsRanking.ranking_date)).scalar()
         
         if not latest_ranking_date:
-            logger.warning("No ranking data found")
             return {
                 "success": True,
                 "data": [],
@@ -302,145 +297,135 @@ async def get_performance_treemap_data(
             start_date = end_date - timedelta(days=3650)
         else:
             start_date = end_date - timedelta(days=1)
+            
+        # 3. 최적화: 시가총액 상위 랭킹 데이터만 먼저 빠르게 추출
+        sql = text("""
+            SELECT DISTINCT ON (war.asset_id)
+                war.asset_id,
+                a.name,
+                a.ticker,
+                at.type_name as category,
+                war.market_cap_usd,
+                war.price_usd as current_price,
+                war.daily_change_percent,
+                war.country
+            FROM world_assets_ranking war
+            JOIN assets a ON war.asset_id = a.asset_id
+            JOIN asset_types at ON a.asset_type_id = at.asset_type_id
+            WHERE war.ranking_date = :latest_date
+              AND war.asset_id IS NOT NULL 
+              AND war.market_cap_usd IS NOT NULL
+              AND war.data_source != '8marketcap_etfs'
+            ORDER BY war.asset_id, war.last_updated DESC NULLS LAST
+        """)
         
-        # 3. 최적화된 단일 쿼리로 모든 데이터 조회
-        # 각 asset_id별로 최고 시가총액을 가진 레코드만 선택하는 서브쿼리
-        max_market_cap_subquery = (
-            db.query(
-                WorldAssetsRanking.asset_id,
-                func.max(WorldAssetsRanking.market_cap_usd).label('max_market_cap')
-            )
-            .filter(
-                WorldAssetsRanking.asset_id.isnot(None),
-                WorldAssetsRanking.market_cap_usd.isnot(None),
-                WorldAssetsRanking.market_cap_usd > 0,
-                WorldAssetsRanking.ranking_date == latest_ranking_date[0]
-            )
-            .group_by(WorldAssetsRanking.asset_id)
-            .subquery()
-        )
+        raw_rows = db.execute(sql, {"latest_date": latest_ranking_date}).fetchall()
         
-        # OHLCV 데이터가 있는 자산만 필터링하는 서브쿼리
-        assets_with_ohlcv_subquery = (
-            db.query(OHLCVData.asset_id)
-            .filter(OHLCVData.data_interval.is_(None))  # 일봉 데이터는 data_interval이 NULL
-            .group_by(OHLCVData.asset_id)
-            .subquery()
-        )
+        # 파이썬 레벨에서 정렬 및 리미트 (DB의 복잡한 정렬보다 빠름)
+        sorted_rows = sorted(raw_rows, key=lambda x: x.market_cap_usd or 0, reverse=True)[:limit]
+        asset_ids = [row.asset_id for row in sorted_rows]
         
-        # 메인 쿼리: 모든 필요한 데이터를 한번에 조회
-        query = (
-            db.query(
-                WorldAssetsRanking,
-                Asset,
-                AssetType.type_name,
-                # OHLCV 데이터도 함께 조회
-                func.min(OHLCVData.timestamp_utc).label('min_date'),
-                func.max(OHLCVData.timestamp_utc).label('max_date'),
-                func.count(OHLCVData.ohlcv_id).label('data_points')
-            )
-            .join(Asset, WorldAssetsRanking.asset_id == Asset.asset_id)
-            .join(AssetType, Asset.asset_type_id == AssetType.asset_type_id)
-            .join(max_market_cap_subquery, 
-                and_(
-                    WorldAssetsRanking.asset_id == max_market_cap_subquery.c.asset_id,
-                    WorldAssetsRanking.market_cap_usd == max_market_cap_subquery.c.max_market_cap
-                )
-            )
-            .join(assets_with_ohlcv_subquery, 
-                WorldAssetsRanking.asset_id == assets_with_ohlcv_subquery.c.asset_id
-            )
-            .outerjoin(OHLCVData, 
-                and_(
-                    WorldAssetsRanking.asset_id == OHLCVData.asset_id,
-                    OHLCVData.data_interval.is_(None),  # 일봉 데이터는 data_interval이 NULL
-                    OHLCVData.timestamp_utc >= start_date,
-                    OHLCVData.timestamp_utc <= end_date
-                )
-            )
-            .filter(
-                WorldAssetsRanking.ranking_date == latest_ranking_date[0]
-            )
-            .group_by(
-                WorldAssetsRanking.id,
-                Asset.asset_id,
-                AssetType.type_name
-            )
-            .order_by(WorldAssetsRanking.market_cap_usd.desc())
-            .limit(limit)
-        )
-        
-        assets_data = query.all()
-        logger.info(f"Found {len(assets_data)} assets with OHLCV data")
-        
+        if not asset_ids:
+            return {
+                "success": True,
+                "data": [],
+                "total": 0,
+                "performance_period": performance_period,
+                "categories": []
+            }
+            
         result = []
         
-        # 동기 방식으로 성과 계산 처리
-        for ranking, asset, type_name, min_date, max_date, data_points in assets_data:
-            try:
-                # 4. 성과 계산을 위한 OHLCV 데이터 조회 (최적화된 버전)
-                if performance_period == "1d":
-                    # 1일 성과: 최근 2일 데이터만 조회
-                    ohlcv_query = (
-                        db.query(OHLCVData)
-                        .filter(
-                            OHLCVData.asset_id == asset.asset_id,
-                            OHLCVData.data_interval.is_(None)  # 일봉 데이터는 data_interval이 NULL
-                        )
-                        .order_by(OHLCVData.timestamp_utc.desc())
-                        .limit(2)
-                    )
-                else:
-                    # 다른 기간: 기간 내 데이터 조회
-                    ohlcv_query = (
-                        db.query(OHLCVData)
-                        .filter(
-                            OHLCVData.asset_id == asset.asset_id,
-                            OHLCVData.data_interval.is_(None),  # 일봉 데이터는 data_interval이 NULL
-                            OHLCVData.timestamp_utc >= start_date,
-                            OHLCVData.timestamp_utc <= end_date
-                        )
-                        .order_by(OHLCVData.timestamp_utc.asc())
-                    )
-                
-                ohlcv_data = ohlcv_query.all()
-                
-                if len(ohlcv_data) < 2:
-                    continue
-                
-                # 5. 성과 계산
-                if performance_period == "1d":
-                    # 최신 데이터가 마지막, 이전 데이터가 첫 번째
-                    end_price = float(ohlcv_data[0].close_price)
-                    start_price = float(ohlcv_data[1].close_price)
-                    latest_ohlcv = ohlcv_data[0]
-                else:
-                    start_price = float(ohlcv_data[0].close_price)
-                    end_price = float(ohlcv_data[-1].close_price)
-                    latest_ohlcv = ohlcv_data[-1]
-                
-                performance = ((end_price - start_price) / start_price) * 100 if start_price > 0 else 0
-                
+        # 4. OHLCV 데이터 (기간 등락률 계산 목적)
+        if performance_period == "1d":
+            # 1일 성과는 world_assets_ranking의 daily_change_percent를 그대로 사용하여 100배 가속
+            for row in sorted_rows:
                 result.append({
-                    "asset_id": asset.asset_id,
-                    "name": asset.name,
-                    "ticker": asset.ticker,
-                    "category": type_name,
-                    "market_cap_usd": float(ranking.market_cap_usd),
-                    "current_price": float(latest_ohlcv.close_price),
-                    "performance": performance,
+                    "asset_id": row.asset_id,
+                    "name": row.name,
+                    "ticker": row.ticker,
+                    "category": row.category,
+                    "market_cap_usd": float(row.market_cap_usd),
+                    "current_price": float(row.current_price or 0),
+                    "performance": float(row.daily_change_percent or 0),
                     "performance_period": performance_period,
-                    "volume_24h": float(latest_ohlcv.volume) if latest_ohlcv.volume else 0,
-                    "change_percent_24h": float(latest_ohlcv.change_percent) if latest_ohlcv.change_percent else 0,
-                    "country": ranking.country,
-                    "data_points": len(ohlcv_data),
+                    "volume_24h": 0,
+                    "change_percent_24h": float(row.daily_change_percent or 0),
+                    "country": row.country,
+                    "data_points": 1,
                     "start_date": start_date.isoformat(),
                     "end_date": end_date.isoformat()
                 })
-            except Exception as e:
-                logger.error(f"Error calculating performance for asset {asset.asset_id}: {e}")
-                continue
+        else:
+            # 1d 이상인 경우, 선택된 N개 항목에 대해서만 Window 쿼리로 빠르고 정확하게 기간 양끝단 가격 조회
+            ohlcv_sql = text("""
+                WITH ranked_ohlcv AS (
+                    SELECT 
+                        asset_id,
+                        close_price,
+                        timestamp_utc,
+                        volume,
+                        change_percent,
+                        ROW_NUMBER() OVER (PARTITION BY asset_id ORDER BY timestamp_utc ASC) as asc_rank,
+                        ROW_NUMBER() OVER (PARTITION BY asset_id ORDER BY timestamp_utc DESC) as desc_rank,
+                        COUNT(*) OVER (PARTITION BY asset_id) as data_points
+                    FROM ohlcv_day_data
+                    WHERE asset_id = ANY(:asset_ids)
+                      AND (data_interval IN ('1d', '1day') OR data_interval IS NULL)
+                      AND timestamp_utc >= :start_date
+                      AND timestamp_utc <= :end_date
+                )
+                SELECT * FROM ranked_ohlcv 
+                WHERE asc_rank = 1 OR desc_rank = 1
+            """)
+            
+            ohlcv_rows = db.execute(ohlcv_sql, {
+                "asset_ids": asset_ids,
+                "start_date": start_date,
+                "end_date": end_date
+            }).fetchall()
+            
+            ohlcv_map = {}
+            for row in ohlcv_rows:
+                aid = row.asset_id
+                if aid not in ohlcv_map:
+                    ohlcv_map[aid] = {"start_price": None, "end_price": None, "points": row.data_points, "vol": 0, "chg": 0}
+                if row.asc_rank == 1:
+                    ohlcv_map[aid]["start_price"] = float(row.close_price)
+                if row.desc_rank == 1:
+                    ohlcv_map[aid]["end_price"] = float(row.close_price)
+                    ohlcv_map[aid]["vol"] = float(row.volume or 0)
+                    ohlcv_map[aid]["chg"] = float(row.change_percent or 0)
+                    
+            for row in sorted_rows:
+                stats = ohlcv_map.get(row.asset_id, {})
+                s_price = stats.get("start_price")
+                e_price = stats.get("end_price")
+                
+                perf = 0
+                if s_price and e_price and s_price > 0:
+                    perf = ((e_price - s_price) / s_price) * 100
+                elif performance_period == "1d":
+                    perf = float(row.daily_change_percent or 0)
+                
+                result.append({
+                    "asset_id": row.asset_id,
+                    "name": row.name,
+                    "ticker": row.ticker,
+                    "category": row.category,
+                    "market_cap_usd": float(row.market_cap_usd),
+                    "current_price": float(row.current_price or 0),
+                    "performance": perf,
+                    "performance_period": performance_period,
+                    "volume_24h": stats.get("vol", 0),
+                    "change_percent_24h": stats.get("chg", float(row.daily_change_percent or 0)),
+                    "country": row.country,
+                    "data_points": stats.get("points", 0),
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat()
+                })
         
+
         # 카테고리명 추출
         categories = list(set(item["category"] for item in result))
         

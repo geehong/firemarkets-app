@@ -9,6 +9,7 @@ interface RollingLiveChartProps {
   lookbackHours?: number // 최근 N시간 유지, 기본값 24
   dataInterval?: "1m" | "5m" | "15m" | "1h"
   chartType?: "candle" | "line"
+  height?: number | string
 }
 
 /**

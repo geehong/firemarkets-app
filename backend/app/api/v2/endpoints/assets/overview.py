@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 import logging
 
+from fastapi_cache.decorator import cache
 from app.core.database import get_postgres_db
 from app.models import OHLCVData, Asset, AssetType, Post
 from app.schemas.asset import AssetOverviewResponse, AssetsTableResponse
@@ -75,51 +76,17 @@ def calculate_asset_info(db: Session, asset_id: int) -> Dict[str, Any]:
             price_change = current_price - prev_close
             price_change_percent = (price_change / prev_close) * 100
     
-    # 52주 범위 계산
-    one_year_ago = latest.timestamp_utc - timedelta(days=365)
-    ohlcv_52w = db.query(
-        func.max(OHLCVData.high_price).label('max_high'),
-        func.min(OHLCVData.low_price).label('min_low')
-    ).filter(
-        OHLCVData.asset_id == asset_id,
-        OHLCVData.timestamp_utc >= one_year_ago,
-        OHLCVData.data_interval.in_(['1d', '1day', None])
-    ).first()
-    
-    # 이동평균
-    ohlcv_50d = db.query(OHLCVData).filter(
-        OHLCVData.asset_id == asset_id,
-        OHLCVData.data_interval.in_(['1d', '1day', None])
-    ).order_by(OHLCVData.timestamp_utc.desc()).limit(50).all()
-    
-    ohlcv_200d = db.query(OHLCVData).filter(
-        OHLCVData.asset_id == asset_id,
-        OHLCVData.data_interval.in_(['1d', '1day', None])
-    ).order_by(OHLCVData.timestamp_utc.desc()).limit(200).all()
-    
-    sma_50 = None
-    sma_200 = None
-    
-    if ohlcv_50d and len(ohlcv_50d) >= 50:
-        closes = [safe_float(d.close_price) for d in ohlcv_50d if d.close_price]
-        if closes:
-            sma_50 = sum(closes) / len(closes)
-    
-    if ohlcv_200d and len(ohlcv_200d) >= 200:
-        closes = [safe_float(d.close_price) for d in ohlcv_200d if d.close_price]
-        if closes:
-            sma_200 = sum(closes) / len(closes)
-    
+    # 52주 범위 & 이동평균 계산 중단 (DB 부하 최적화)
     return {
         "current_price": current_price,
         "prev_close": prev_close,
         "price_change": price_change,
         "price_change_percent": price_change_percent,
-        "week_52_high": safe_float(ohlcv_52w.max_high) if ohlcv_52w else None,
-        "week_52_low": safe_float(ohlcv_52w.min_low) if ohlcv_52w else None,
+        "week_52_high": None,
+        "week_52_low": None,
         "volume": volume,
-        "day_50_moving_avg": sma_50,
-        "day_200_moving_avg": sma_200,
+        "day_50_moving_avg": None,
+        "day_200_moving_avg": None,
         "last_updated": latest.timestamp_utc,
     }
 
@@ -128,7 +95,8 @@ def calculate_asset_info(db: Session, asset_id: int) -> Dict[str, Any]:
 # ============================================================================
 
 @router.get("/table", response_model=AssetsTableResponse)
-def get_assets_table_v2(
+@cache(expire=30)
+async def get_assets_table_v2(
     type_name: Optional[str] = Query(None, description="자산 유형 필터 (Stocks, Crypto, ETFs, Funds)"),
     page: int = Query(1, ge=1, description="페이지 번호"),
     page_size: int = Query(50, ge=1, le=200, description="페이지당 항목 수"),
@@ -219,7 +187,11 @@ def get_assets_table_v2(
                     UNION ALL
                     SELECT asset_id, price as close_price, timestamp_utc, change_percent, 'delay' as source FROM realtime_quotes_time_delay WHERE asset_id = ANY(:asset_ids)
                     UNION ALL
-                    SELECT asset_id, close_price, timestamp_utc, change_percent, 'intraday' as source FROM ohlcv_intraday_data WHERE asset_id = ANY(:asset_ids)
+                    SELECT DISTINCT ON (asset_id) asset_id, close_price, timestamp_utc, change_percent, 'intraday' as source 
+                    FROM ohlcv_intraday_data 
+                    WHERE asset_id = ANY(:asset_ids) 
+                      AND timestamp_utc > (now() AT TIME ZONE 'UTC' - INTERVAL '7 days')
+                    ORDER BY asset_id, timestamp_utc DESC
                 )
                 SELECT DISTINCT ON (asset_id) * FROM latest_prices ORDER BY asset_id, timestamp_utc DESC
             """)
@@ -299,7 +271,8 @@ def get_assets_table_v2(
 # ============================================================================
 
 @router.get("/{asset_identifier}")
-def get_overview_v2(
+@cache(expire=30)
+async def get_overview_v2(
     asset_identifier: str = Path(..., description="Asset ID or Ticker"),
     lang: str = Query("ko", description="언어 코드 (ko, en)"),
     db: Session = Depends(get_postgres_db)
@@ -406,7 +379,8 @@ def get_unified_overview(
 # ============================================================================
 
 @router.get("/{asset_identifier}/bundle")
-def get_overview_bundle_v2(
+@cache(expire=120)
+async def get_overview_bundle_v2(
     asset_identifier: str = Path(..., description="Asset ID or Ticker"),
     lang: str = Query("ko", description="언어 코드 (ko, en)"),
     db: Session = Depends(get_postgres_db)

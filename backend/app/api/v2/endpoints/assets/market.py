@@ -104,6 +104,7 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
                 'intraday' as source_table
             FROM ohlcv_intraday_data 
             WHERE asset_id = :asset_id
+              AND timestamp_utc > (now() AT TIME ZONE 'UTC' - INTERVAL '7 days')
             
             UNION ALL
             
@@ -164,7 +165,7 @@ def db_get_ohlcv_data(
     start_date: Optional[date], 
     end_date: Optional[date], 
     data_interval: str, 
-    limit: int = 50000
+    limit: int = 5000
 ) -> List[OHLCVData]:
     """OHLCV 데이터 조회"""
     query = db.query(OHLCVData).filter(OHLCVData.asset_id == asset_id)
@@ -194,7 +195,7 @@ def db_get_intraday_data(
     start_date: Optional[date], 
     end_date: Optional[date], 
     data_interval: str, 
-    limit: int = 50000
+    limit: int = 5000
 ) -> List[OHLCVIntradayData]:
     """Intraday (분봉/시간봉) 데이터 조회 - ohlcv_intraday_data 테이블 사용"""
     query = db.query(OHLCVIntradayData).filter(OHLCVIntradayData.asset_id == asset_id)
@@ -218,7 +219,7 @@ def db_get_delay_data(
     start_date: Optional[date], 
     end_date: Optional[date], 
     data_interval: str, 
-    limit: int = 50000
+    limit: int = 5000
 ) -> List[RealtimeQuoteTimeDelay]:
     """Delayed Quotes 데이터 조회 - realtime_quotes_time_delay 테이블 사용"""
     query = db.query(RealtimeQuoteTimeDelay).filter(RealtimeQuoteTimeDelay.asset_id == asset_id)
@@ -241,7 +242,7 @@ def db_get_realtime_bar_data(
     start_date: Optional[date], 
     end_date: Optional[date], 
     data_interval: str, 
-    limit: int = 50000
+    limit: int = 5000
 ) -> List[RealtimeQuotesTimeBar]:
     """Realtime bar (봉) 데이터 조회 - realtime_quotes_time_bar 테이블 사용"""
     query = db.query(RealtimeQuotesTimeBar).filter(RealtimeQuotesTimeBar.asset_id == asset_id)
@@ -260,6 +261,9 @@ def db_get_realtime_bar_data(
 
 def _recalculate_change_percent(data_list: List[Dict]) -> List[Dict]:
     """리스트 내의 Dict 데이터의 change_percent를 이전 종가(prev_close)를 기준으로 강제 재계산함 (DB 값 무시)"""
+    if not data_list:
+        return []
+        
     # Sort just in case, though usually already sorted
     sorted_data = sorted(data_list, key=lambda x: x['timestamp_utc'])
     
@@ -267,12 +271,19 @@ def _recalculate_change_percent(data_list: List[Dict]) -> List[Dict]:
     
     for row in sorted_data:
         close_p = row.get('close_price')
+        open_p = row.get('open_price')
         
-        # Always calculate if prev_close exists (ignore DB value)
+        # Calculate change_percent
         if prev_close is not None and prev_close > 0 and close_p is not None:
-             # Calculate and update in place
+             # Calculate and update in place (relative to prev close)
              change_p = round(((close_p - prev_close) / prev_close) * 100, 4)
              row['change_percent'] = change_p
+        elif open_p is not None and open_p > 0 and close_p is not None:
+             # Fallback for first bar: relative to its own open
+             change_p = round(((close_p - open_p) / open_p) * 100, 4)
+             row['change_percent'] = change_p
+        else:
+             row['change_percent'] = 0.0
         
         # Update prev_close
         if close_p is not None:
@@ -356,8 +367,8 @@ def get_daily_data_combined(db, asset_id, start_date, end_date, limit):
         rows = query.order_by(RealtimeQuoteTimeDelay.timestamp_utc.desc()).limit(lmt).all()
         return sorted(rows, key=lambda x: x.timestamp_utc)
 
-    base_5m = db_get_intraday_data(db, asset_id, start_date, end_date, '5m', limit * 12)
-    base_15m = db_get_delay_data_local(db, asset_id, start_date, end_date, '15m', limit * 4)
+    base_5m = db_get_intraday_data(db, asset_id, start_date, end_date, '5m', 1000)
+    base_15m = db_get_delay_data_local(db, asset_id, start_date, end_date, '15m', 500)
     
     all_source_data = _format_ohlcv_rows(base_5m) + _format_ohlcv_rows(base_15m)
     
@@ -532,7 +543,7 @@ def get_ohlcv_data_v2(
     data_interval: str = Query("1d", description="데이터 간격: 1m(1분봉), 5m(5분봉), 1h(1시간봉), 1d(일봉), 1W(주봉), 1M 또는 1mo(월봉)"),
     start_date: Optional[date] = Query(None, description="시작 날짜 (YYYY-MM-DD)"),
     end_date: Optional[date] = Query(None, description="종료 날짜 (YYYY-MM-DD)"),
-    limit: int = Query(50000, ge=1, le=100000, description="최대 데이터 포인트 수"),
+    limit: int = Query(2000, ge=1, le=15000, description="최대 데이터 포인트 수"),
     db: Session = Depends(get_postgres_db)
 ):
     """
@@ -600,15 +611,22 @@ def get_ohlcv_data_v2(
             native_data = _format_ohlcv_rows(native_rows)
             
             # 누락 방지를 위해 하위 분봉 로드 (5M~30M은 1M에서, 1H 이상은 5M에서)
+            # 중요: 과거 테이블과 실시간 테이블 양쪽에서 소스 데이터를 가져와야 오늘자 리샘플링이 가능함
             if target_min <= 30:
-                raw_rows = db_get_intraday_data(db, asset_id, start_date, end_date, '1m', limit * target_min)
+                source_int = '1m'
+                raw_hist = db_get_intraday_data(db, asset_id, start_date, end_date, source_int, limit * target_min)
+                raw_rt = db_get_realtime_bar_data(db, asset_id, start_date, end_date, source_int, limit * target_min)
             else:
-                raw_rows = db_get_intraday_data(db, asset_id, start_date, end_date, '5m', limit * (target_min // 5))
-            raw_data = _format_ohlcv_rows(raw_rows)
+                source_int = '5m'
+                raw_hist = db_get_intraday_data(db, asset_id, start_date, end_date, source_int, limit * (target_min // 5))
+                raw_rt = db_get_realtime_bar_data(db, asset_id, start_date, end_date, source_int, limit * (target_min // 5))
+            
+            raw_data = _format_ohlcv_rows(raw_hist + raw_rt)
             
             unique_sources = {}
             for d in raw_data:
                 ts = d['timestamp_utc']
+                # 단순 틱 데이터(H=L)가 아닌 유의미한 봉 데이터를 우선시함
                 if ts not in unique_sources or d.get('high_price') != d.get('low_price'):
                     unique_sources[ts] = d
             
@@ -877,6 +895,7 @@ def get_batch_latest_prices_v2(
                     timestamp_utc 
                 FROM ohlcv_intraday_data 
                 WHERE asset_id = ANY(:asset_ids)
+                  AND timestamp_utc > (now() AT TIME ZONE 'UTC' - INTERVAL '7 days')
                 
                 UNION ALL
                 

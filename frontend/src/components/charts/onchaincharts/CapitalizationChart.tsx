@@ -84,7 +84,7 @@ const CapitalizationChart: React.FC<CapitalizationChartProps> = ({
 
     // Data Fetching
     const fetchOptions = {
-        limit: timeRange === 'all' ? 50000 : 365,
+        limit: timeRange === 'all' ? 2000 : 365,
         time_range: timeRange === 'all' ? undefined : timeRange
     };
 

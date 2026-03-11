@@ -11,6 +11,7 @@ from typing import Optional, List, Dict, Any
 from datetime import date, datetime, timedelta
 import logging
 
+from fastapi_cache.decorator import cache
 from app.core.database import get_postgres_db
 from app.models import OHLCVData, Asset, AssetType
 from .shared.resolvers import resolve_asset_identifier, get_asset_type
@@ -312,7 +313,8 @@ def get_crypto_metrics_v2(
 # ============================================================================
 
 @router.get("/treemap")
-def get_treemap_v2(
+@cache(expire=60)
+async def get_treemap_v2(
     asset_type_id: Optional[int] = Query(None, description="자산 타입 ID로 필터링"),
     type_name: Optional[str] = Query(None, description="자산 타입 이름으로 필터링"),
     limit: int = Query(100, ge=1, le=500, description="최대 결과 수"),
@@ -324,7 +326,7 @@ def get_treemap_v2(
     시가총액 기반 트리맵 시각화용 데이터
     """
     try:
-        # treemap_live_view 사용
+        # treemap_live_view 사용 (단순화된 뷰, world_assets_ranking 직접 조회, ~50ms)
         query = "SELECT * FROM treemap_live_view WHERE 1=1"
         params = {}
         
@@ -386,11 +388,13 @@ def get_treemap_v2(
                     
                     UNION ALL
                     
-                    -- 4. Intraday Data (REST API 저장분)
-                    SELECT 
+                    -- 4. Intraday Data (REST API 저장분, 최근 7일만)
+                    SELECT DISTINCT ON (asset_id)
                         asset_id, close_price, timestamp_utc, change_percent, volume, 'intraday' as source
                     FROM ohlcv_intraday_data 
                     WHERE asset_id = ANY(:asset_ids)
+                      AND timestamp_utc > (now() AT TIME ZONE 'UTC' - INTERVAL '7 days')
+                    ORDER BY asset_id, timestamp_utc DESC
                 )
                 SELECT DISTINCT ON (asset_id) 
                     asset_id, close_price, change_percent, volume, timestamp_utc
@@ -447,7 +451,8 @@ def get_treemap_v2(
 # ============================================================================
 
 @router.get("/market-caps")
-def get_market_caps_v2(
+@cache(expire=60)
+async def get_market_caps_v2(
     type_name: Optional[str] = Query(None, description="자산 타입 이름"),
     has_ohlcv_data: bool = Query(True, description="OHLCV 데이터가 있는 자산만"),
     limit: int = Query(100, ge=1, le=1000, description="최대 결과 수"),

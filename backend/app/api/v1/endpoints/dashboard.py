@@ -225,7 +225,7 @@ def get_asset_by_ticker(db: Session, ticker: str):
     """Ticker로 자산 조회"""
     return db.query(Asset).filter(Asset.ticker == ticker).first()
 
-def get_ohlcv_data(db: Session, asset_id: int, start_date: Optional[date], end_date: Optional[date], data_interval: str, limit: int = 50000):
+def get_ohlcv_data(db: Session, asset_id: int, start_date: Optional[date], end_date: Optional[date], data_interval: str, limit: int = 2000):
     """OHLCV 데이터 조회"""
     query = db.query(OHLCVData).filter(
         OHLCVData.asset_id == asset_id,

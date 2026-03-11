@@ -9,6 +9,7 @@ interface SessionLiveChartProps {
   sessionStartTime?: string // HH:mm format, 기본값 "09:00"
   dataInterval?: "1m" | "5m" | "15m" | "1h"
   chartType?: "candle" | "line"
+  height?: number | string
 }
 
 /**

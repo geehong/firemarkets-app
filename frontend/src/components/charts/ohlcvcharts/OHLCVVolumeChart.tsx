@@ -153,7 +153,7 @@ const OHLCVVolumeChart: React.FC<OHLCVVolumeChartProps> = ({
             case '1d': return 365 * 10    // 10년치 일봉 (3650)
             case '1w': return 52 * 20     // 20년치 주봉 (1040)
             case '1M': return 12 * 30     // 30년치 월봉 (360)
-            default: return 50000    // 백엔드 기본값
+            default: return 2000    // 백엔드 기본값
         }
     }
 

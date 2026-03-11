@@ -36,7 +36,7 @@ export default function AgGridHistoryTable({ assetIdentifier = 'BTCUSDT', dataIn
       dataInterval: interval,
       startDate: startDate || (endDate ? '2010-01-01' : undefined), // If only end date, set far past start
       endDate: endDate,
-      limit: 50000,
+      limit: 500,
     }
   }, [interval, dateRange])
 

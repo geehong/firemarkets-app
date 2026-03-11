@@ -4,9 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { apiClient } from '@/lib/api'
 import AssetInfo from '../assets/AssetInfo'
-import LivePriceStocksEtfChart from '@/components/charts/live/LivePriceStocksEtfChart'
-import LivePriceCryptoChart from '@/components/charts/live/LivePriceCryptoChart'
-import LivePriceCommoditiesChart from '@/components/charts/live/LivePriceCommoditiesChart'
+import RollingLiveChart from '@/components/charts/live/RollingLiveChart'
 import OHLCVCustomGUIChart from '@/components/charts/ohlcvcharts/OHLCVCustomGUIChart'
 import StocksInfoCard from '@/components/assets/cards/StocksInfoCard'
 import CryptoInfoCard from '@/components/assets/cards/CryptoInfoCard'
@@ -208,10 +206,14 @@ const AssetDetailedView: React.FC<AssetDetailedViewProps> = ({ asset, locale }) 
 
     // Chart Wrapper
     const renderLiveChart = () => {
-        if (isStock || isETF) return <LivePriceStocksEtfChart assetIdentifier={identifier} height={400} />
-        if (isCrypto) return <LivePriceCryptoChart assetIdentifier={identifier} height={400} />
-        if (isCommodity) return <LivePriceCommoditiesChart assetIdentifier={identifier} height={400} />
-        return <LivePriceStocksEtfChart assetIdentifier={identifier} height={400} />
+        return (
+            <RollingLiveChart 
+                assetIdentifier={identifier} 
+                title={`${assetName} 24H Rolling`}
+                lookbackHours={24}
+                dataInterval="5m"
+            />
+        )
     }
 
     // Helper to get latest financial data

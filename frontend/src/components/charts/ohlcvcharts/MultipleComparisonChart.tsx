@@ -77,10 +77,10 @@ const MultipleComparisonChart: React.FC<MultipleComparisonChartProps> = ({
     // Interval Helper ...
     const getLimit = (intv: string) => {
         switch (intv) {
-            case '1d': return 50000;
-            case '1w': return 50000;
-            case '1M': return 50000;
-            default: return 50000;
+            case '1d': return 2000;
+            case '1w': return 2000;
+            case '1M': return 2000;
+            default: return 2000;
         }
     }
     

@@ -289,11 +289,11 @@ export class ApiClient {
     return this.requestV2(`/assets/widgets/ticker-summary${qs ? `?${qs}` : ''}`)
   }
 
-  getDelayedQuotes(assetIdentifiers: string[], dataSource?: string, limit: number = 360, days: number | string = 1) {
+  getDelayedQuotes(assetIdentifiers: string[], dataSource?: string, limit: number = 360, days: number | string = 1, dataInterval: string = '15m') {
     // V2 OHLCV is singular. We must parallel fetch.
     const requests = assetIdentifiers.map(id => {
         const search = new URLSearchParams()
-        search.append('data_interval', '15m')
+        search.append('data_interval', dataInterval)
         // V2 matches limit logic roughly or we pass timestamp filters.
         // Assuming limit is sufficient.
         search.append('limit', limit.toString())

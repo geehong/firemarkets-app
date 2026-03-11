@@ -100,6 +100,11 @@ class PolygonWSConsumer(BaseWSConsumer):
                         self.is_connected = True
                         logger.info(f"✅ {self.client_name} REST API connected successfully with key: {self.api_key_manager.get_key_info_for_logging()}")
                         return True
+                    elif response.status_code == 429:
+                        # 429는 키는 유효하지만 속도 제한에 걸린 것임
+                        self.is_connected = True
+                        logger.warning(f"⚠️ {self.client_name} REST API rate limited (429), but key is valid. Continuing...")
+                        return True
                     else:
                         logger.error(f"❌ Polygon API test failed with status {response.status_code}")
                         failed_key = self.current_key_info['key'] if self.current_key_info else "unknown"
@@ -115,6 +120,8 @@ class PolygonWSConsumer(BaseWSConsumer):
                         )
                         log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries, f"API test failed with status {response.status_code}")
                         
+                        # 다른 에러면 즉시 재시도하거나 지연
+                        await asyncio.sleep(2)
                         retry_count += 1
                         continue
             except Exception as e:
@@ -234,15 +241,14 @@ class PolygonWSConsumer(BaseWSConsumer):
         
         while self.is_running and self.is_connected and self.subscribed_tickers:
             try:
-                # Rate limiting 체크
-                await self._rate_limit()
-                
                 # 구독된 티커들에 대해 데이터 요청
                 for ticker in list(self.subscribed_tickers):
+                    # Rate limiting 체크 - 각 요청 전 한 번씩
+                    await self._rate_limit()
                     await self._fetch_ticker_data(ticker)
                 
-                # 다음 폴링까지 대기
-                await asyncio.sleep(self._polling_interval)
+                # 다음 전체 폴링 시작 전 대기 (이미 _rate_limit에서 개별적으로 대기하므로 짧게)
+                await asyncio.sleep(1.0)
                 
             except asyncio.CancelledError:
                 logger.info(f"🔄 {self.client_name} polling loop cancelled")

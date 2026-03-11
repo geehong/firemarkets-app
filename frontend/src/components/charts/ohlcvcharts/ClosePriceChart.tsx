@@ -42,7 +42,7 @@ const ClosePriceChart: React.FC<ClosePriceChartProps> = ({
     // Intraday logic
     const { data: timeData, isLoading: timeLoading } = useIntraday(
         assetId,
-        { dataInterval: selectedInterval, limit: 50000 },
+        { dataInterval: selectedInterval, limit: 2000 },
         // @ts-ignore
         { enabled: isIntradayInterval, staleTime: 60_000 }
     )
@@ -50,7 +50,7 @@ const ClosePriceChart: React.FC<ClosePriceChartProps> = ({
     // Daily logic
     const { data: dailyData, isLoading: dailyLoading } = useOhlcv(
         assetId,
-        { dataInterval: selectedInterval, limit: 50000 },
+        { dataInterval: selectedInterval, limit: 2000 },
         // @ts-ignore
         { enabled: isDailyInterval, staleTime: 60_000 }
     )

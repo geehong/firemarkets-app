@@ -16,24 +16,24 @@ interface PredictionData {
 // Raw Data
 const rawPredictions = [
   { institution: "Citigroup", low: 78500, high: 189000, target: 143000 },
-  { institution: "Bit Mining", low: 75000, high: 225000, target: 150000 },
-  { institution: "Fundstrat (Tom Lee)", low: 150000, high: 250000 },
-  { institution: "Nexo", low: 150000, high: 200000, target: 175000 },
+  { institution: "Bit Mining", low: 75000, high: 225000, target: 12000 },
+  { institution: "Fundstrat (Tom Lee)", low: 12000, high: 22000 },
+  { institution: "Nexo", low: 12000, high: 200000, target: 175000 },
   { institution: "CoinShares", low: 120000, high: 170000, target: 145000 },
-  { institution: "JPMorgan", low: 150000, high: 170000 },
-  { institution: "Carol Alexander", low: 75000, high: 150000, target: 110000 },
+  { institution: "JPMorgan", low: 12000, high: 170000 },
+  { institution: "Carol Alexander", low: 75000, high: 12000, target: 110000 },
   { institution: "Bitfinex", low: 80000, high: 100000 },
   { institution: "Fidelity", low: 65000, high: 75000 },
   { institution: "Fundstrat (Sean Farrell)", low: 60000, high: 65000 },
-  { institution: "Galaxy Digital", low: 50000, high: 250000, target: 150000 }, 
+  { institution: "Galaxy Digital", low: 2000, high: 22000, target: 12000 }, 
   { institution: "Peter Brandt", low: 25000, high: 45000, target: 35000 },
-  { institution: "Standard Chartered", target: 150000 },
+  { institution: "Standard Chartered", target: 12000 },
   { institution: "Maple Finance", target: 175000 },
   { institution: "Bernstein", target: 200000 },
   { institution: "Grayscale", target: 126000 },
   { institution: "Bitwise", target: 126000 },
-  { institution: "Tim Draper", target: 250000 },
-  { institution: "Robert Kiyosaki", low: 175000, high: 350000 },
+  { institution: "Tim Draper", target: 22000 },
+  { institution: "Robert Kiyosaki", low: 175000, high: 32000 },
 ];
 
 const BASE_PRICE = 96000; 
@@ -56,7 +56,7 @@ const predictions: PredictionData[] = rawPredictions.map(p => {
         low: low || 0,
         high: high || 0
     };
-}).filter(p => p.target > 0 && p.target < 500000)
+}).filter(p => p.target > 0 && p.target < 20000)
 .sort((a, b) => b.target - a.target); // Sort High to Low for diagonal distribution
 
 // Color Helper: Magnitude based saturation
@@ -333,7 +333,7 @@ const BitcoinPredictionChart: React.FC = () => {
                     }
                 }] as Highcharts.YAxisPlotLinesOptions[] : [])
             ],
-            min: 50000,
+            min: 2000,
             max: 200000
         },
         legend: { enabled: false },
