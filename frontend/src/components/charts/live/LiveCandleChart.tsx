@@ -110,33 +110,27 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
   // 1. 자산 정보 및 과거 데이터 로드
   const { data: assetDetail } = useAssetDetail(assetIdentifier)
   
-  // 24시간 시장 여부 조기 판별 (과거 데이터 로드 범위 결정을 위해)
-  const is24hMarketBase = useMemo(() => {
-    if (!assetDetail) return true; // 기본값
-    const typeName = (assetDetail.asset_type || assetDetail.type_name || '').toLowerCase();
-    if (typeName.includes('stock') || typeName.includes('etf')) return false;
-    return true;
-  }, [assetDetail]);
+  // 과도한 날짜 자르기 방지를 위해 days 조건 없이 절대 포인트 2016개(7일치 5분봉 기준)만 요청합니다.
+  // 이렇게 해야 MSFT/SPY 등 비24h 자산에서 start_date에 의한 미래 데이터 잘림 현상이 일어나지 않고 확실한 '최근 2016개'를 받아옵니다.
+  const calcLimit = Math.floor(
+    (dataInterval === "1m" ? 1440 : 
+     dataInterval === "15m" ? 96 : 
+     dataInterval === "1h" ? 24 : 288) * 7
+  )
 
-  // 과거 데이터 범위 계산 (주식/ETF 등 비24시간 시장은 주말을 고려해 5일 로드, 크립토 등은 3일 로드)
-  const ohlcvOptions = useMemo(() => {
-    return { dataInterval, days: is24hMarketBase ? 3 : 5 }
-  }, [dataInterval, is24hMarketBase])
-
-  // 인터벌에 따른 리미트 계산 (예: 5m = 하루 288개 * 요청일수)
-  const calcLimit = useMemo(() => {
-    let pointsPerDay = 288; // 5m 기본값 (12 * 24)
-    if (dataInterval === "1m") pointsPerDay = 1440;
-    else if (dataInterval === "15m") pointsPerDay = 96;
-    else if (dataInterval === "1h") pointsPerDay = 24;
-    return pointsPerDay * ohlcvOptions.days;
-  }, [dataInterval, ohlcvOptions.days])
+  // dataInterval에 따른 로컬 refetch interval 동기화 (과부하 방지)
+  const dynamicRefetchInterval = useMemo(() => {
+    let seconds = 300 // 기본 5m
+    if (dataInterval === "1m") seconds = 60
+    else if (dataInterval === "15m") seconds = 900
+    else if (dataInterval === "1h") seconds = 3600
+    return seconds * 1000
+  }, [dataInterval])
 
   const ohlcvQuery = useIntradayOhlcv(assetIdentifier, { 
     dataInterval, 
-    days: ohlcvOptions.days,
     limit: calcLimit,
-    refetchInterval: 10 * 1000 // 10초마다 갱신
+    refetchInterval: dynamicRefetchInterval 
   })
   const historyData = ohlcvQuery.data?.data || []
 
@@ -274,6 +268,41 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
       processed = processed.filter(d => (d.time as number) >= startTimeSeconds)
     }
 
+    // Y축 스케일 독립적 재설계
+    if (processed.length > 0) {
+      if (mode === "session") {
+        // 세션 차트는 화면에 표시되는 가장 최근 거래가격(마지막 봉의 종가) 기준 ±2%
+        const currentRefPrice = processed[processed.length - 1].close;
+        seriesRef.current.applyOptions({
+          autoscaleInfoProvider: () => ({
+            priceRange: {
+              minValue: currentRefPrice * 0.98,
+              maxValue: currentRefPrice * 1.02,
+            },
+          }),
+        });
+      } else {
+        // 롤링 차트는 필터링된 범위(최대 24h 등)의 실제 Max/Min 값 * 1% 여백
+        let viewMin = Infinity;
+        let viewMax = -Infinity;
+        processed.forEach(p => {
+          if (p.low < viewMin) viewMin = p.low;
+          if (p.high > viewMax) viewMax = p.high;
+        });
+        
+        if (viewMin !== Infinity && viewMax !== -Infinity) {
+          seriesRef.current.applyOptions({
+            autoscaleInfoProvider: () => ({
+              priceRange: {
+                minValue: viewMin * 0.99,
+                maxValue: viewMax * 1.01,
+              },
+            }),
+          });
+        }
+      }
+    }
+
     if (processed.length > 0) {
       seriesRef.current.setData(processed)
       lastCandleRef.current = processed[processed.length - 1]
@@ -297,9 +326,10 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
            rightOffset: missingCandlesCount,
            fixLeftEdge: true,
         });
-      } else {
-        chartRef.current.timeScale().fitContent()
       }
+      
+      // 어떤 차트 모드든 (세션의 우측 여백을 포함하여) 화면 레이아웃에 맞게 한눈에 들어오도록 강제 압축
+      chartRef.current.timeScale().fitContent();
     }
   }, [historyData, mode, sessionStartTime, lookbackHours])
 

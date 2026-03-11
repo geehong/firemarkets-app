@@ -217,17 +217,22 @@ class PolygonWSConsumer(BaseWSConsumer):
         """메인 실행 루프 - 폴링 방식으로 데이터 수집"""
         try:
             if self.is_connected and self.subscribed_tickers:
+                self.is_running = True
                 await self._polling_loop()
             else:
                 logger.error(f"❌ {self.client_name} not connected or no subscriptions")
+                raise Exception(f"{self.client_name} not connected")
         except Exception as e:
             logger.error(f"❌ {self.client_name} run error: {e}")
+            raise e
+        finally:
+            self.is_running = False
     
     async def _polling_loop(self):
         """폴링 루프 - 분당 5회 제한 (12초 간격)"""
         logger.info(f"🔄 {self.client_name} polling loop started")
         
-        while self.is_connected and self.subscribed_tickers:
+        while self.is_running and self.is_connected and self.subscribed_tickers:
             try:
                 # Rate limiting 체크
                 await self._rate_limit()

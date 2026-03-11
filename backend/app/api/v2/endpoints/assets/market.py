@@ -590,25 +590,42 @@ def get_ohlcv_data_v2(
                  "data": data
              }
 
-        # 3. 시간봉 (1h, 4h 등 리샘플링 필요한 경우)
-        if interval_upper in ['1H', '4H']:
-            interval_map = {'1H': 60, '4H': 240}
+        # 3. 시간봉 (5M, 15M, 30M, 1H, 4H 등 리샘플링 필요한 경우)
+        if interval_upper in ['5M', '15M', '30M', '1H', '4H']:
+            interval_map = {'5M': 5, '15M': 15, '30M': 30, '1H': 60, '4H': 240}
             target_min = interval_map[interval_upper]
-            primary_rows = db_get_intraday_data(db, asset_id, start_date, end_date, '5m', limit * (target_min // 5))
-            primary_data = _format_ohlcv_rows(primary_rows)
+            
+            # 먼저 네이티브 해당 인터벌 데이터를 로드 
+            native_rows = db_get_intraday_data(db, asset_id, start_date, end_date, data_interval, limit)
+            native_data = _format_ohlcv_rows(native_rows)
+            
+            # 누락 방지를 위해 하위 분봉 로드 (5M~30M은 1M에서, 1H 이상은 5M에서)
+            if target_min <= 30:
+                raw_rows = db_get_intraday_data(db, asset_id, start_date, end_date, '1m', limit * target_min)
+            else:
+                raw_rows = db_get_intraday_data(db, asset_id, start_date, end_date, '5m', limit * (target_min // 5))
+            raw_data = _format_ohlcv_rows(raw_rows)
             
             unique_sources = {}
-            for d in primary_data:
+            for d in raw_data:
                 ts = d['timestamp_utc']
                 if ts not in unique_sources or d.get('high_price') != d.get('low_price'):
                     unique_sources[ts] = d
             
             synth_data = resample_intraday_data(list(unique_sources.values()), target_min, data_interval)
-            unique_final = {d['timestamp_utc']: d for d in primary_data}
-            for d in synth_data:
-                ts = d['timestamp_utc']
-                if ts not in unique_final or d.get('high_price') != d.get('low_price'):
-                    unique_final[ts] = d
+            
+            # 실시간/지연 데이터(리얼타임 테이블)도 해당 인터벌로 가져와 함께 병합
+            rt_bar_rows = db_get_realtime_bar_data(db, asset_id, start_date, end_date, data_interval, limit)
+            delay_rows = db_get_delay_data(db, asset_id, start_date, end_date, data_interval, limit)
+            rt_data = _format_ohlcv_rows(rt_bar_rows)
+            dy_data = _format_ohlcv_rows(delay_rows)
+
+            unique_final = {d['timestamp_utc']: d for d in native_data}
+            for ds in [synth_data, dy_data, rt_data]:
+                for d in ds:
+                    ts = d['timestamp_utc']
+                    if ts not in unique_final or d.get('high_price') != d.get('low_price'):
+                        unique_final[ts] = d
             
             data = sorted(unique_final.values(), key=lambda x: x['timestamp_utc'])
             data = _recalculate_change_percent(data)

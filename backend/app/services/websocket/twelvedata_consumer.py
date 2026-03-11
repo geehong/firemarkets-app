@@ -189,11 +189,16 @@ class TwelveDataWSConsumer(BaseWSConsumer):
         """메인 실행 루프 - 오케스트레이터가 connect/subscribe를 직접 호출하므로 메시지 루프만 실행"""
         try:
             if self.is_connected and self.websocket:
+                self.is_running = True
                 await self._message_loop()
             else:
                 logger.error(f"❌ {self.client_name} not connected, cannot start message loop")
+                raise Exception(f"{self.client_name} not connected")
         except Exception as e:
             logger.error(f"❌ {self.client_name} run error: {e}")
+            raise e
+        finally:
+            self.is_running = False
     
     async def _message_loop(self):
         """메시지 수신 루프"""
@@ -207,10 +212,19 @@ class TwelveDataWSConsumer(BaseWSConsumer):
                 except Exception as e:
                     logger.error(f"❌ {self.client_name} message handling error: {e}")
                     
-        except websockets.exceptions.ConnectionClosed:
-            logger.warning(f"⚠️ {self.client_name} connection closed")
+            # 루프를 정상적으로 빠져나왔다면 웹소켓이 닫힌 것
+            if self.is_running:
+                logger.warning(f"⚠️ {self.client_name} message loop exited unexpectedly")
+                raise Exception(f"{self.client_name} connection closed unexpectedly")
+                
+        except websockets.exceptions.ConnectionClosed as e:
+            logger.warning(f"⚠️ {self.client_name} connection closed: {e}")
+            if self.is_running:
+                raise Exception(f"{self.client_name} connection closed: {e}")
         except Exception as e:
             logger.error(f"❌ {self.client_name} message loop error: {e}")
+            if self.is_running:
+                raise e
     
     async def _handle_message(self, data: dict):
         """메시지 처리"""

@@ -107,12 +107,7 @@ async def main():
     """메인 함수"""
     # 수집할 자산 목록 (ticker 또는 asset_id)
     assets_to_collect = [
-        {"identifier": "BRK-B", "asset_id": 15},  # asset_id로 직접 지정
-        {"identifier": "VTI"},
-        {"identifier": "VOO"},
-        {"identifier": "IVV"},
-        {"identifier": "BND"},
-        {"identifier": "VUG"},
+        {"identifier": "MSFT"},
     ]
     
     intervals = ["1m", "5m"]
