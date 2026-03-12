@@ -193,6 +193,11 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
         borderVisible: false,
         autoScale: true,
       },
+      handleScale: {
+        axisDoubleClickReset: true,
+        mouseWheel: true,
+        pinch: true,
+      },
     })
 
     const series = chartType === "candle" 

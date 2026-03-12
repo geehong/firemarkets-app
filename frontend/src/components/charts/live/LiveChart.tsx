@@ -405,6 +405,9 @@ const LiveChart: React.FC<LiveChartProps> = ({
             navigator: {
                 enabled: false,
             },
+            credits: {
+                enabled: false,
+            },
             exporting: {
                 enabled: false,
             },

@@ -144,6 +144,9 @@ const MultipleComparisonChart: React.FC<MultipleComparisonChartProps> = ({
                     height: height,
                     backgroundColor: '#ffffff'
                 },
+                credits: {
+                    enabled: false
+                },
                 rangeSelector: {
                     selected: (startDate || endDate) ? undefined : 4
                 },

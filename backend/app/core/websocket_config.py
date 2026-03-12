@@ -37,7 +37,7 @@ class WebSocketConfig:
             health_check_interval=60
         ),
         'alpaca': ProviderConfig(
-            max_subscriptions=30,  # Alpaca Free tier limit (15 symbols * 2 channels = 30 max) - User requested 30 regardless
+            max_subscriptions=30,  # Alpaca Free tier limit (Trades-only subscription allowed up to 30 symbols)
             supported_asset_types=[AssetType.ETF],  # ETF/Fund 전용 (User request)
             rate_limit_per_minute=200,
             priority=1,  # 동일 우선순위로 분산 배정

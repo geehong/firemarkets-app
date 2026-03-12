@@ -411,6 +411,9 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
                         iconsURL: '/images/icons/stock-icons/'
                     }
                 },
+                credits: {
+                    enabled: false
+                },
                 xAxis: {
                     min: startDate ? new Date(startDate).getTime() : undefined,
                     max: endDate ? new Date(endDate).getTime() : undefined

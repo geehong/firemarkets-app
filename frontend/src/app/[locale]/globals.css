@@ -294,6 +294,18 @@
 }
 
 /* third-party libraries CSS */
+
+/* Hide TradingView Lightweight Charts Attribution/Logo */
+div[class*="tv-lightweight-charts"] > div:has(a[href*="tradingview.com"]),
+div[class*="tv-lightweight-charts"] a[href*="tradingview.com"] {
+  display: none !important;
+}
+
+/* Global Highcharts Credits Removal */
+.highcharts-credits {
+  display: none !important;
+}
+
 .apexcharts-legend-text {
   @apply !text-gray-700 dark:!text-gray-400;
 }

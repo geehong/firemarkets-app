@@ -370,12 +370,9 @@ class AlpacaWSConsumer(BaseWSConsumer):
         # Alpaca는 채널별 구독 형식. trades(T), quotes(Q), bars(B) 등
         try:
             tickers = sorted(list(self.subscribed_tickers))
-            # 폐장 시간에도 데이터를 받기 위해 quotes와 bars도 구독
             subscribe_msg = {
                 "action": "subscribe", 
-                "trades": tickers,
-                "quotes": tickers
-                # bars is removed for stability in free tier
+                "trades": tickers
             }
             await self._ws.send(json.dumps(subscribe_msg))
             logger.info(f"📋 {self.client_name} subscribed trades/quotes: {tickers}")

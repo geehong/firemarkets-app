@@ -459,6 +459,7 @@ volumes:
   npm_data:
   npm_letsencrypt:
   frontend_node_modules:
+  cloudbeaver_data:
     # Frontend node_modules (컨테이너 전용)
 
 networks:

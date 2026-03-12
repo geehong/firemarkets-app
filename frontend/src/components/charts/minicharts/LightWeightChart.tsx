@@ -4,10 +4,11 @@
 import React, { useEffect, useRef, useState, useMemo } from "react"
 import {
   createChart,
-  LineSeries,
   ColorType,
   LineStyle,
   Time,
+  IChartApi,
+  ISeriesApi,
 } from "lightweight-charts"
 import { useDelayedQuotes, useSparklinePrice } from "@/hooks/data/useRealtime"
 import { useRealtimePrices } from "@/hooks/data/useSocket"
@@ -41,20 +42,23 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
   dataSource,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const chartRef = useRef<ReturnType<typeof createChart> | null>(null)
-  const seriesRef = useRef<any | null>(null)
+  const chartRef = useRef<IChartApi | null>(null)
+  const seriesRef = useRef<ISeriesApi<"Line"> | null>(null)
 
   const [dataInterval, setDataInterval] = useState("15m")
 
-  // 데이터/자산 정보 훅 (기존 MiniPriceChart와 동일한 데이터 파이프 재사용)
+  // 데이터/자산 정보 훅
   const { data: assetDetail } = useAssetDetail(assetIdentifier)
 
-  const isStocksOrEtf =
-    chartType === "stocks" ||
-    assetDetail?.asset_type_id === 2 ||
-    assetDetail?.asset_type_id === 5 ||
-    assetDetail?.type_name?.toLowerCase() === "stocks" ||
-    assetDetail?.type_name?.toLowerCase() === "etfs"
+  const isStocksOrEtf = useMemo(() => {
+    return (
+      chartType === "stocks" ||
+      assetDetail?.asset_type_id === 2 ||
+      assetDetail?.asset_type_id === 5 ||
+      assetDetail?.type_name?.toLowerCase() === "stocks" ||
+      assetDetail?.type_name?.toLowerCase() === "etfs"
+    )
+  }, [chartType, assetDetail])
 
   const delayedQuotesQuery = useDelayedQuotes(
     [assetIdentifier],
@@ -68,10 +72,7 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
     { enabled: isStocksOrEtf }
   )
 
-  const apiResponse: any = isStocksOrEtf
-    ? sparklineQuery.data
-    : delayedQuotesQuery.data
-
+  const apiResponse: any = isStocksOrEtf ? sparklineQuery.data : delayedQuotesQuery.data
   const { latestPrice } = useRealtimePrices(assetIdentifier)
 
   // API 응답을 lightweight-charts 형식으로 다운샘플/매핑
@@ -91,57 +92,80 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
 
     if (!raw.length) return []
 
-    // 간단한 다운샘플링: 최대 300 포인트로 축소 (1GB VPS 방어)
+    // 최대 300 포인트로 축소 로직 최적화 (마지막 데이터 보존)
     const maxPoints = 300
     const step = Math.max(1, Math.floor(raw.length / maxPoints))
-
+    
     const sampled: LineDataPoint[] = []
+    
     for (let i = 0; i < raw.length; i += step) {
       const p = raw[i]
       const rawTs = p.timestamp_utc || p.date
       const ts = rawTs ? new Date(rawTs).getTime() : NaN
-      const val =
-        p.price ?? p.close_price ?? p.close ?? p.value
+      const val = Number(p.price ?? p.close_price ?? p.close ?? p.value)
 
-      if (!ts || !isFinite(ts) || val == null) continue
+      if (!ts || isNaN(ts) || isNaN(val)) continue
 
       sampled.push({
-        time: (ts / 1000) as Time, // lightweight-charts는 초 단위 사용
-        value: Number(val),
+        time: Math.floor(ts / 1000) as Time,
+        value: val,
       })
     }
 
-    // 시간 정렬
-    return sampled.sort((a, b) => (a.time as number) - (b.time as number))
+    // 마지막 배열 요소가 원본의 최신 데이터를 누락했다면 강제 추가 (웹소켓 연결 부드럽게)
+    const lastRaw = raw[raw.length - 1]
+    const lastRawTs = lastRaw.timestamp_utc || lastRaw.date
+    if (lastRawTs) {
+      const lastTs = Math.floor(new Date(lastRawTs).getTime() / 1000) as Time
+      if (sampled.length > 0 && sampled[sampled.length - 1].time !== lastTs) {
+        sampled.push({
+          time: lastTs,
+          value: Number(lastRaw.price ?? lastRaw.close_price ?? lastRaw.close ?? lastRaw.value),
+        })
+      }
+    }
+
+    // 시간 오름차순 정렬 및 중복 제거
+    const uniqueSampled = sampled.filter((item, index, self) => 
+      index === 0 || item.time > self[index - 1].time
+    )
+
+    return uniqueSampled
   }, [apiResponse, assetIdentifier])
 
-  const firstPrice = seriesData.length > 0 ? seriesData[0].value : 0
-  const currentPrice = latestPrice?.price ? Number(latestPrice.price) : (seriesData.length > 0 ? seriesData[seriesData.length - 1].value : 0)
-  const changeAmount = firstPrice > 0 ? currentPrice - firstPrice : 0
-  const changePercent = firstPrice > 0 ? (changeAmount / firstPrice) * 100 : 0
-  const isPositive = changeAmount >= 0
+  // 가격 계산 로직 (useMemo로 연산 최소화)
+  const { firstPrice, currentPrice, changeAmount, changePercent, isPositive } = useMemo(() => {
+    const startP = seriesData.length > 0 ? seriesData[0].value : 0
+    const currP = latestPrice?.price 
+      ? Number(latestPrice.price) 
+      : (seriesData.length > 0 ? seriesData[seriesData.length - 1].value : 0)
+    
+    const changeAmt = startP > 0 ? currP - startP : 0
+    const changePct = startP > 0 ? (changeAmt / startP) * 100 : 0
+    
+    return {
+      firstPrice: startP,
+      currentPrice: currP,
+      changeAmount: changeAmt,
+      changePercent: changePct,
+      isPositive: changeAmt >= 0
+    }
+  }, [seriesData, latestPrice])
 
-  // 차트 초기화 (한 번만)
+  // 차트 초기화 (1회 실행)
   useEffect(() => {
-    if (!containerRef.current) return
-    if (chartRef.current) return
+    if (!containerRef.current || chartRef.current) return
 
     const chart = createChart(containerRef.current, {
       layout: {
-        background: {
-          type: ColorType.Solid,
-          color: "transparent",
-        },
+        background: { type: ColorType.Solid, color: "transparent" },
         textColor: "var(--tw-prose-body, #9CA3AF)",
       },
       grid: {
         vertLines: { color: "rgba(148, 163, 184, 0.12)" },
         horzLines: { color: "rgba(148, 163, 184, 0.12)" },
       },
-      rightPriceScale: {
-        visible: true,
-        borderVisible: false,
-      },
+      rightPriceScale: { visible: true, borderVisible: false },
       timeScale: {
         borderVisible: false,
         rightOffset: 4,
@@ -149,30 +173,19 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
         fixLeftEdge: false,
         fixRightEdge: false,
       },
-      crosshair: {
-        mode: 1,
-      },
-      handleScroll: {
-        mouseWheel: true,
-        pressedMouseMove: true,
-      },
-      handleScale: {
-        axisDoubleClickReset: true,
-        mouseWheel: true,
-        pinch: true,
-      },
+      crosshair: { mode: 1 },
+      handleScroll: { mouseWheel: true, pressedMouseMove: true },
+      handleScale: { axisDoubleClickReset: true, mouseWheel: true, pinch: true },
+      // watermark: { visible: false }, // CSS에서 처리하므로 제거
+      autoSize: true, // v4/v5 기능: ResizeObserver 수동 구현 대체
     })
 
-    const series = chart.addSeries(LineSeries, {
-      color: "#22c55e",
+    const series = chart.addLineSeries({
+      color: "#22c55e", 
       lineWidth: 2,
       priceLineVisible: true,
       lastValueVisible: true,
-      priceFormat: {
-        type: "price",
-        precision: 2,
-        minMove: 0.01,
-      },
+      priceFormat: { type: "price", precision: 2, minMove: 0.01 },
       crosshairMarkerVisible: true,
       lineStyle: LineStyle.Solid,
     })
@@ -180,51 +193,41 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
     chartRef.current = chart
     seriesRef.current = series
 
-    const resizeObserver = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (!entry || !chartRef.current) return
-      const { width, height } = entry.contentRect
-      chartRef.current.applyOptions({ width, height })
-      chartRef.current.timeScale().fitContent()
-    })
-
-    resizeObserver.observe(containerRef.current)
-
     return () => {
-      resizeObserver.disconnect()
-      if (chartRef.current) {
-        chartRef.current.remove()
-        chartRef.current = null
-      }
+      chart.remove()
+      chartRef.current = null
       seriesRef.current = null
     }
   }, [])
 
-  // 초기 데이터 주입 (React 리렌더 없이 단발성 호출)
+  // 과거 데이터 업데이트 및 상승/하락 동적 색상 변경
   useEffect(() => {
-    if (!seriesRef.current) return
-    if (!seriesData.length) return
+    if (!seriesRef.current || !seriesData.length) return
+    
     seriesRef.current.setData(seriesData)
+    seriesRef.current.applyOptions({
+      color: isPositive ? "#22c55e" : "#ef4444" // 상승 초록, 하락 빨강
+    })
+    
     if (chartRef.current) {
       chartRef.current.timeScale().fitContent()
     }
-  }, [seriesData])
+  }, [seriesData, isPositive])
 
-  // 실시간 WebSocket 데이터는 차트 객체에만 전달 (리액트 상태 업데이트 없음)
+  // 실시간 웹소켓 가격 업데이트
   useEffect(() => {
-    if (!seriesRef.current) return
-    if (!latestPrice) return
+    if (!seriesRef.current || !latestPrice) return
 
-    const ts = new Date(latestPrice.timestamp).getTime()
-    if (!ts || !isFinite(ts)) return
-
+    const ts = Math.floor(new Date(latestPrice.timestamp).getTime() / 1000) as Time
     const value = Number(latestPrice.price)
-    if (!isFinite(value)) return
 
-    seriesRef.current.update({
-      time: (ts / 1000) as Time,
-      value,
-    })
+    if (isNaN(ts as number) || isNaN(value)) return
+
+    try {
+      seriesRef.current.update({ time: ts, value })
+    } catch (error) {
+      console.warn("Chart realtime update skipped:", error)
+    }
   }, [latestPrice])
 
   return (
@@ -233,17 +236,22 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
         <div className="flex items-baseline gap-2">
           {title && (
             <span className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <span className={`w-2 h-2 rounded-full animate-pulse ${isPositive ? 'bg-green-500' : 'bg-red-500'}`} />
               {title}
             </span>
           )}
           {firstPrice > 0 && (
             <div className={`flex items-baseline gap-1 ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
-              <span className="font-semibold">{isPositive ? '+' : ''}{changeAmount.toFixed(2)}</span>
-              <span className="text-[10px] opacity-80">({isPositive ? '+' : ''}{changePercent.toFixed(2)}%)</span>
+              <span className="font-semibold">
+                {isPositive ? '+' : ''}{changeAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+              <span className="text-[10px] opacity-80">
+                ({isPositive ? '+' : ''}{changePercent.toFixed(2)}%)
+              </span>
             </div>
           )}
         </div>
+        
         <div className="flex items-center gap-2">
           <select 
             className="bg-transparent border border-gray-200 dark:border-gray-800 rounded px-1 min-w-[50px] text-[10px] text-gray-500 dark:text-gray-400 outline-none hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
@@ -260,13 +268,13 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
           </span>
         </div>
       </div>
+      
       <div
         ref={containerRef}
-        className="w-full h-full min-h-[160px] rounded-md bg-white/60 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800"
+        className="relative w-full h-full min-h-[160px] rounded-md bg-white/60 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800 overflow-hidden"
       />
     </div>
   )
 }
 
 export default LightWeightChart
-
