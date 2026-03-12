@@ -39,7 +39,7 @@ class FinnhubWSConsumer(BaseWSConsumer):
         self._last_save_times: dict = {}  # {symbol: timestamp}
         # Redis 저장 주기 (기본 1초 - 실시간 유지, CPU만 절약)
         # DB 저장 throttle은 data_processor에서 처리
-        self._save_interval = float(os.getenv("WEBSOCKET_REDIS_SAVE_INTERVAL", "1"))
+        self._save_interval = float(os.getenv("WEBSOCKET_REDIS_SAVE_INTERVAL", "0.2"))
     
     @property
     def client_name(self) -> str:

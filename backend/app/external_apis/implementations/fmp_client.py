@@ -4,6 +4,7 @@ Financial Modeling Prep (FMP) API client for financial data.
 import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime
+import pytz
 
 import httpx
 
@@ -131,6 +132,19 @@ class FMPClient(TradFiAPIClient):
                         
                         timestamp = safe_date_parse(date_str)
                         if timestamp is not None:
+                            # FMP의 historical-chart 등은 보통 거래소 시간(미국 주식의 경우 ET)으로 데이터가 옴.
+                            # 시스템 표준인 UTC로 변환 (이미 UTC인 경우를 위해 tzinfo 체크)
+                            if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+                                # naivetime 인 경우 ET로 가정하고 UTC로 변환 (TradFi 데이터 기준)
+                                try:
+                                    et_tz = pytz.timezone('America/New_York')
+                                    # safe_date_parse가 이미 UTC를 붙여서 반환했을 수 있으므로 다시 처리
+                                    # 만약 safe_date_parse가 naive+UTC를 반환했다면 이를 ET로 재해석
+                                    dt_naive = timestamp.replace(tzinfo=None)
+                                    timestamp = et_tz.localize(dt_naive).astimezone(pytz.UTC)
+                                except Exception as tz_e:
+                                    logger.warning(f"Timezone conversion failed for FMP: {tz_e}")
+                            
                             # FMP의 고유 필드 이름을 표준 필드 이름으로 매핑
                             point = OhlcvDataPoint(
                                 timestamp_utc=timestamp,

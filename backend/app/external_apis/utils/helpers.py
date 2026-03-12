@@ -37,8 +37,10 @@ def safe_int(value: Any, default: int = None) -> Optional[int]:
         return default
 
 
+from datetime import datetime, timezone
+
 def safe_date_parse(date_str: str) -> Optional[datetime]:
-    """Safely parse date string with multiple format support"""
+    """Safely parse date string with multiple format support and return UTC-aware datetime"""
     if not date_str:
         return None
     
@@ -52,7 +54,11 @@ def safe_date_parse(date_str: str) -> Optional[datetime]:
     
     for fmt in formats:
         try:
-            return datetime.strptime(date_str, fmt)
+            dt = datetime.strptime(date_str, fmt)
+            # 타임존 정보가 없으면 UTC로 설정
+            if dt.tzinfo is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
         except ValueError:
             continue
     
@@ -61,13 +67,14 @@ def safe_date_parse(date_str: str) -> Optional[datetime]:
     return None
 
 
+
 def safe_timestamp_parse(timestamp_ms: int) -> Optional[datetime]:
-    """Safely parse Unix timestamp (milliseconds) to datetime"""
+    """Safely parse Unix timestamp (milliseconds) to UTC-aware datetime"""
     if not timestamp_ms:
         return None
     try:
         # 밀리초 단위 Unix timestamp를 사용
-        return datetime.fromtimestamp(timestamp_ms / 1000)
+        return datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
     except (ValueError, TypeError):
         return None
 

@@ -3,6 +3,7 @@ Trading Calendar Utilities
 거래일 관련 유틸리티 함수들
 """
 from datetime import datetime, timedelta
+import pytz
 from typing import List, Tuple
 import holidays
 
@@ -139,6 +140,38 @@ def format_trading_status_message(date: datetime, country: str = 'US') -> str:
             return f"공휴일입니다 ({date.strftime('%Y-%m-%d')})"
     else:
         return f"거래일입니다 ({date.strftime('%Y-%m-%d %A')})"
+
+
+def is_regular_market_hours(dt: datetime = None) -> bool:
+    """
+    미국 정규장 시간인지 확인 (09:30 ~ 16:00 ET)
+    
+    Args:
+        dt: 확인할 날짜와 시간 (기본값: 현재 시간)
+    
+    Returns:
+        bool: 정규장 시간이면 True, 아니면 False
+    """
+    if dt is None:
+        dt = datetime.now(pytz.utc)
+    
+    # 입력된 dt가 naive한 경우 UTC로 가정
+    if dt.tzinfo is None:
+        dt = pytz.utc.localize(dt)
+    
+    # 미국 동부 시간(ET)으로 변환
+    et_tz = pytz.timezone('America/New_York')
+    dt_et = dt.astimezone(et_tz)
+    
+    # 거래일인지 확인 (주말/공휴일 제외)
+    if not is_trading_day(dt_et):
+        return False
+    
+    # 시간 체크 (09:30 ~ 16:00)
+    market_open = dt_et.replace(hour=9, minute=30, second=0, microsecond=0)
+    market_close = dt_et.replace(hour=16, minute=0, second=0, microsecond=0)
+    
+    return market_open <= dt_et <= market_close
 
 
 

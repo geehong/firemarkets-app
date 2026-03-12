@@ -850,6 +850,7 @@ class RealtimeQuotesTimeBar(Base):
     asset_id = Column(Integer, ForeignKey('assets.asset_id', ondelete="CASCADE"), nullable=False, index=True)
     timestamp_utc = Column(DateTime, nullable=False, index=True)
     data_interval = Column(String(10), nullable=False)
+    data_source = Column(String(20))
     open_price = Column(DECIMAL(24, 10), nullable=False)
     high_price = Column(DECIMAL(24, 10), nullable=False)
     low_price = Column(DECIMAL(24, 10), nullable=False)
@@ -860,7 +861,7 @@ class RealtimeQuotesTimeBar(Base):
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
-        UniqueConstraint('asset_id', 'timestamp_utc', 'data_interval', name='uq_rt_bar_asset_ts_interval'),
+        UniqueConstraint('asset_id', 'timestamp_utc', 'data_interval', 'data_source', name='uq_rt_bar_asset_ts_interval_source'),
         Index('idx_rt_bar_lookup', 'asset_id', 'timestamp_utc'),
     )
 

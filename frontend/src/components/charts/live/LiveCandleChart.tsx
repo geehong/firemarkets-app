@@ -69,6 +69,29 @@ const getDynamicSessionStartUTC = (sessionStartTime: string, isUSMarket: boolean
   }
 }
 
+// 미국 정규장 시간인지 확인하는 간단한 유틸리티
+const isUSRegularMarketHours = () => {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      hour12: false,
+      hour: 'numeric',
+      minute: 'numeric',
+      weekday: 'short'
+  });
+  const parts = formatter.formatToParts(now);
+  const partMap = Object.fromEntries(parts.map(p => [p.type, p.value]));
+  
+  const day = partMap.weekday; // Mon, Tue...
+  const hour = parseInt(partMap.hour);
+  const minute = parseInt(partMap.minute);
+  
+  if (day === 'Sat' || day === 'Sun') return false;
+  
+  const timeNum = hour * 100 + minute;
+  return timeNum >= 930 && timeNum <= 1600;
+};
+
 export type LiveChartMode = "session" | "rolling"
 
 interface CandlePoint {
@@ -253,6 +276,13 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
       };
     })
 
+    // Client-side에서 추가된 실시간 데이터를 병합하여 유실 방지
+    const lastHistoryTime = processed.length > 0 ? (processed[processed.length - 1].time as number) : 0;
+    if (lastCandleRef.current && (lastCandleRef.current.time as number) > lastHistoryTime) {
+      // 서버 데이터보다 최신인 클라이언트 데이터가 있으면 추가
+      processed.push(lastCandleRef.current);
+    }
+
     // 오름차순 정렬
     processed.sort((a, b) => (a.time as number) - (b.time as number))
 
@@ -267,7 +297,7 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
       const exchange = (assetDetail.exchange || '').toUpperCase();
       const currency = (assetDetail.currency || '').toUpperCase();
       
-      if (typeName.includes('stock') || typeName.includes('etf')) {
+      if (typeName.includes('stock') || typeName.includes('etf') || typeName === 'stocks' || typeName === 'etfs') {
         is24hMarket = false; // 주식, ETF는 24시간 시장이 아님
         if (currency === 'USD' || exchange === 'NASDAQ' || exchange === 'NYSE' || exchange === 'AMEX') {
           isUSMarket = true;
@@ -391,10 +421,10 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
     const lastCandle = lastCandleRef.current
 
     if (candleStartTime > (lastCandle.time as number)) {
-      // 새로운 봉 시작: 최초 시작가는 실시간 직전가(혹은 현재 틱가)로 생성
+      // 새로운 봉 시작
       const newCandle = {
         time: candleStartTime as Time,
-        open: lastCandle.close, // 갭 방지를 위해 오픈가를 이전 봉 종가로 시작
+        open: lastCandle.close,
         high: Math.max(lastCandle.close, tickPrice),
         low: Math.min(lastCandle.close, tickPrice),
         close: tickPrice,
@@ -402,8 +432,6 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
       seriesRef.current.update(newCandle)
       lastCandleRef.current = newCandle
     } else {
-      // 기존 봉 업데이트: 오픈가는 건드리지 않고, 고가/저가/종가만 업데이트
-      // 이렇게 해야 "29초 1200 -> 30초 1100" 변동 시 1200이 윗꼬리(High)로 남고 종가(Close)가 1100으로 찍힙니다
       const updatedCandle = {
         ...lastCandle,
         high: Math.max(lastCandle.high, tickPrice),
@@ -415,6 +443,56 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
     }
     setChartStats(prev => ({ ...prev, last: tickPrice }))
   }, [latestPrice, currentInterval])
+
+  // 6. 타이머를 통한 빈 봉 자동 생성 및 롤링 유지 (거래가 없을 때도 차트가 흐르게 함)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (!seriesRef.current || !lastCandleRef.current) return;
+      
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      
+      // 현재 인터벌 계산
+      let intervalSeconds = 300;
+      if (currentInterval === "1m") intervalSeconds = 60;
+      else if (currentInterval === "5m") intervalSeconds = 300;
+      else if (currentInterval === "15m") intervalSeconds = 900;
+      else if (currentInterval === "30m") intervalSeconds = 1800;
+      else if (currentInterval === "1h") intervalSeconds = 3600;
+
+      const candleStartTime = Math.floor(nowSeconds / intervalSeconds) * intervalSeconds;
+      const lastCandle = lastCandleRef.current;
+
+      // 자산 정보 (정규장 여부 판별용)
+      let isUSMarket = false;
+      let is24hMarket = true;
+      if (assetDetail) {
+        const typeName = (assetDetail.asset_type || assetDetail.type_name || '').toLowerCase();
+        if (typeName.includes('stock') || typeName.includes('etf') || typeName === 'stocks' || typeName === 'etfs') {
+          is24hMarket = false;
+          const currency = (assetDetail.currency || '').toUpperCase();
+          if (currency === 'USD') isUSMarket = true;
+        }
+      }
+
+      // 정규장 시간이거나 24시간 시장인 경우에만 새로운 봉 자동 생성
+      const marketOpen = is24hMarket || (isUSMarket ? isUSRegularMarketHours() : true); // 일단 한국장은 편의상 항상 열린것으로 간주(시간로직 추가가능)
+
+      if (marketOpen && candleStartTime > (lastCandle.time as number)) {
+        // 새로운 봉 시간이 되었는데 웹소켓이 안 왔을 경우, 이전 종가로 시가/종가 생성
+        const ghostCandle = {
+          time: candleStartTime as Time,
+          open: lastCandle.close,
+          high: lastCandle.close,
+          low: lastCandle.close,
+          close: lastCandle.close,
+        };
+        seriesRef.current.update(ghostCandle);
+        lastCandleRef.current = ghostCandle;
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [currentInterval, assetDetail]);
 
   // Change percent matching legacy logic (comparing to previous close from websocket or lastQuoteResponse)
   const currentPrice = chartStats.last > 0 ? chartStats.last : (latestPrice?.price ? Number(latestPrice.price) : 0);

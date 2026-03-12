@@ -13,6 +13,7 @@ class DataValidator:
     def __init__(self):
         self.price_ranges = self._initialize_price_ranges()
         self._ticker_cache: Dict[int, str] = {}
+        self.last_prices: Dict[int, float] = {} # {asset_id: last_price}
 
     def _initialize_price_ranges(self) -> Dict[str, tuple]:
         """자산별 가격 범위 초기화 (최소값, 최대값)"""
@@ -62,6 +63,19 @@ class DataValidator:
                 if price <= 0:
                     logger.warning(f"🚨 가격이 0 이하: {ticker}={price}")
                     return False
+                
+                # 동적 변동성 검증 (최근 가격 대비 급격한 변화 차단)
+                if asset_id in self.last_prices:
+                    last_price = self.last_prices[asset_id]
+                    if last_price > 0:
+                        deviation = abs(price - last_price) / last_price
+                        # 5% 이상 급격한 변화는 Bad Tick으로 간주 (코인 변동성 고려)
+                        if deviation > 0.05:
+                            logger.warning(f"🚨 급격한 가격 변동 감지(차단): {ticker} {last_price} -> {price} ({deviation*100:.2f}%)")
+                            return False
+                
+                # 검증 성공 시 마지막 가격 업데이트
+                self.last_prices[asset_id] = price
                 logger.debug(f"✅ 기본 가격 검증 통과: {ticker}={price:.2f}")
             
             return True

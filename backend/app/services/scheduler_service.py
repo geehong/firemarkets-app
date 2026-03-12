@@ -36,6 +36,7 @@ from app.services.news_clustering_service import NewsClusteringService
 from app.services.news_ai_agent import NewsAIEditorAgent
 from app.models.blog import Post
 from app.collectors.fred_collector import FredCollector
+from app.collectors.us_backfill_collector import USBackfillCollector
 
 
 class SchedulerService:
@@ -55,6 +56,7 @@ class SchedulerService:
         "News": {"class": NewsCollector, "config_key": "is_news_collection_enabled"},
         "RSS": {"class": RSSCollector, "config_key": "is_rss_collection_enabled"},
         "Fred": {"class": FredCollector, "config_key": "is_fred_collection_enabled"},
+        "USBackfill": {"class": USBackfillCollector, "config_key": "is_ohlcv_collection_enabled"},
     }
     
     # Maps temp.json collector keys to actual job configurations
@@ -97,6 +99,10 @@ class SchedulerService:
         },
         "etf_clients": {
             "job_key": "ETFInfo",
+            "config": {}
+        },
+        "us_backfill_daily": {
+            "job_key": "USBackfill",
             "config": {}
         },
         "stock_profiles_clients": {
@@ -742,6 +748,19 @@ class SchedulerService:
         )
         self.logger.info(f"✅ Scheduled job: 'daily_raw_news_cleanup' (Daily at 00:30 {self.scheduler.timezone})")
 
+        # --- Daily US Stock Backfill Job ---
+        # Run at 06:00 KST / 21:00 UTC
+        if self.config_manager.is_ohlcv_collection_enabled():
+            self.scheduler.add_job(
+                self._create_collection_function(USBackfillCollector),
+                'cron',
+                hour=21,
+                minute=0,
+                id='daily_us_backfill_collection_job',
+                replace_existing=True
+            )
+            self.logger.info(f"✅ Scheduled job: 'daily_us_backfill_collection_job' (Daily at 06:00 KST / 21:00 UTC)")
+
     def _update_heartbeat(self):
         """Writes a heartbeat to the DB every minute to show the scheduler is alive."""
         db = SessionLocal()
@@ -861,6 +880,20 @@ class SchedulerService:
                 replace_existing=True
             )
             self.logger.info(f"✅ Scheduled job: 'daily_raw_news_cleanup' (Daily at 00:30 {timezone})")
+
+            # --- Daily US Stock Backfill Job ---
+            # Run at 06:00 KST / 21:00 UTC
+            if self.config_manager.is_ohlcv_collection_enabled():
+                self.scheduler.add_job(
+                    self._create_collection_function(USBackfillCollector),
+                    'cron',
+                    hour=21,
+                    minute=0,
+                    id='daily_us_backfill_collection_job',
+                    replace_existing=True,
+                    timezone=timezone
+                )
+                self.logger.info(f"✅ Scheduled job: 'daily_us_backfill_collection_job' (Daily at 06:00 KST / 21:00 UTC)")
             
             self.logger.info(f"✅ Scheduled {len(self.scheduler.get_jobs())} jobs from temp.json config")
             

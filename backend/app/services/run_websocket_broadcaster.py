@@ -199,43 +199,38 @@ async def listen_to_redis_and_broadcast():
                         await asyncio.sleep(1)
                     logger.info("✅ 백엔드 재연결 완료! 메시지 처리 재개.")
 
-                # 모든 스트림에서 데이터 읽기 (CPU 최적화)
-                # block=1000으로 최대 1초 대기, 메시지 없으면 다음 스트림으로
+                # 모든 스트림에서 데이터 병렬로 읽기 (성능 최적화 & Head-of-line blocking 제거)
                 all_messages = []
-                try:
-                    for stream_name, group_name in realtime_streams.items():
-                        try:
-                            stream_data = await redis_client.xreadgroup(
-                                groupname=group_name,
-                                consumername="broadcaster",
-                                streams={stream_name: ">"},
-                                count=1000,  # 배치 크기 증가
-                                block=1000  # 1초 대기 (메시지 있으면 즉시 반환)
-                            )
-                            if stream_data:
-                                for stream_name_bytes, messages in stream_data:
-                                    stream_name_str = stream_name_bytes.decode('utf-8') if isinstance(stream_name_bytes, bytes) else str(stream_name_bytes)
-                                    logger.debug(f"📥 [BROADCASTER←REDIS] 스트림 '{stream_name_str}'에서 {len(messages)}개 메시지 수신")
-                                all_messages.extend(stream_data)
-                        except exceptions.ResponseError as e:
-                            if "NOGROUP" in str(e):
-                                logger.warning(f"⚠️ Consumer Group '{group_name}'가 스트림 '{stream_name}'에 존재하지 않음. 재생성 시도...")
-                                try:
-                                    await redis_client.xgroup_create(name=stream_name, groupname=group_name, id="$", mkstream=True)
-                                    logger.info(f"✅ Consumer Group '{group_name}' 재생성 완료 (최신 위치에서 시작)")
-                                except Exception as recreate_error:
-                                    logger.error(f"❌ Consumer Group 재생성 실패: {recreate_error}")
-                            else:
-                                logger.error(f"스트림 '{stream_name}' 읽기 오류: {e}")
-                            continue
-                except Exception as read_error:
-                    logger.error(f"스트림 읽기 중 오류: {read_error}")
-                    await asyncio.sleep(2)
-                    continue
+                
+                async def read_stream(s_name, g_name):
+                    try:
+                        return await redis_client.xreadgroup(
+                            groupname=g_name,
+                            consumername="broadcaster_node",
+                            streams={s_name: ">"},
+                            count=1000,
+                            block=500
+                        )
+                    except exceptions.ResponseError as e:
+                        if "NOGROUP" in str(e):
+                            try:
+                                await redis_client.xgroup_create(name=s_name, groupname=g_name, id="$", mkstream=True)
+                            except: pass
+                        return None
+                    except Exception:
+                        return None
 
-                # 메시지가 없으면 짧게 대기 후 계속 (block=1000이므로 이미 대기함)
+                # 모든 스트림 읽기 작업을 동시에 실행
+                tasks = [read_stream(s, g) for s, g in realtime_streams.items()]
+                results = await asyncio.gather(*tasks)
+                
+                for res in results:
+                    if res:
+                        all_messages.extend(res)
+
+                # 메시지가 없으면 아주 짧게 휴식 (CPU 점유 방지)
                 if not all_messages:
-                    await asyncio.sleep(0.1)  # 짧은 대기 후 다음 루프
+                    await asyncio.sleep(0.01)
                     continue
 
                 for stream_name_bytes, messages in all_messages:

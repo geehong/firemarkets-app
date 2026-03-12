@@ -14,7 +14,7 @@ from datetime import timezone
 import redis.asyncio as redis
 
 from ..core.config import GLOBAL_APP_CONFIGS
-from ..models.asset import Asset
+from ..models.asset import Asset, AssetType
 from ..core.database import get_postgres_db
 from ..utils.logger import logger
 from ..utils.redis_queue_manager import RedisQueueManager
@@ -192,8 +192,10 @@ class DataProcessor:
         try:
             pg_db = next(get_postgres_db())
             try:
-                assets = pg_db.query(Asset.ticker, Asset.asset_id).all()
-                asset_map = {ticker: asset_id for ticker, asset_id in assets}
+                # AssetType과 조인하여 type_name을 가져옴
+                assets = pg_db.query(Asset.ticker, Asset.asset_id, AssetType.type_name)\
+                    .join(AssetType, Asset.asset_type_id == AssetType.asset_type_id).all()
+                asset_map = {ticker: {'id': asset_id, 'type': type_name} for ticker, asset_id, type_name in assets}
                 
                 # Verify specific mappings for debugging
                 check_tickers = ['BIDU', 'WMT', 'NFLX', 'AAPL', 'NVDA', 'GOOG']

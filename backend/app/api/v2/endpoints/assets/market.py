@@ -46,55 +46,58 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
             -- 0. Realtime Quotes (Finnhub/Alpaca)
             SELECT 
                 'realtime' as data_interval,
-                price as close_price, 
+                price as close_price,
                 price as open_price,
                 price as high_price,
                 price as low_price,
                 volume,
                 change_percent,
                 timestamp_utc,
-                'realtime' as source_table
-            FROM realtime_quotes 
+                'realtime' as source_table,
+                NULL as data_source
+            FROM realtime_quotes
             WHERE asset_id = :asset_id
 
             UNION ALL
 
             -- 1. Realtime Quotes (15m delay)
-            SELECT 
+            SELECT
                 data_interval,
-                price as close_price, 
+                price as close_price,
                 price as open_price,
                 price as high_price,
                 price as low_price,
                 volume,
                 change_percent,
                 timestamp_utc,
-                'realtime_delay' as source_table
-            FROM realtime_quotes_time_delay 
+                'realtime_delay' as source_table,
+                data_source
+            FROM realtime_quotes_time_delay
             WHERE asset_id = :asset_id
-            
+
             UNION ALL
-            
+
             -- 2. Realtime Bar Data (1m, 5m etc)
-            SELECT 
+            SELECT
                 data_interval,
-                close_price, 
+                close_price,
                 open_price,
                 high_price,
                 low_price,
                 volume,
                 change_percent,
                 timestamp_utc,
-                'realtime_bar' as source_table
-            FROM realtime_quotes_time_bar 
+                'realtime_bar' as source_table,
+                data_source
+            FROM realtime_quotes_time_bar
             WHERE asset_id = :asset_id
 
             UNION ALL
-            
+
             -- 3. Intraday Data
-            SELECT 
+            SELECT
                 data_interval,
-                close_price, 
+                close_price,
                 open_price,
                 high_price,
                 low_price,
@@ -102,16 +105,16 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
                 change_percent,
                 timestamp_utc,
                 'intraday' as source_table
-            FROM ohlcv_intraday_data 
+            FROM ohlcv_intraday_data
             WHERE asset_id = :asset_id
               AND timestamp_utc > (now() AT TIME ZONE 'UTC' - INTERVAL '7 days')
-            
+
             UNION ALL
-            
+
             -- 4. Daily Data
-            SELECT 
+            SELECT
                 COALESCE(data_interval, '1d'),
-                close_price, 
+                close_price,
                 open_price,
                 high_price,
                 low_price,
@@ -119,16 +122,16 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
                 change_percent,
                 timestamp_utc,
                 'daily' as source_table
-            FROM ohlcv_day_data 
+            FROM ohlcv_day_data
             WHERE asset_id = :asset_id
             AND (data_interval = '1d' OR data_interval = '1day' OR data_interval IS NULL)
 
             UNION ALL
-            
+
             -- 5. Ranking Data
-            SELECT 
+            SELECT
                 '1d' as data_interval,
-                price_usd as close_price, 
+                price_usd as close_price,
                 price_usd as open_price,
                 price_usd as high_price,
                 price_usd as low_price,
@@ -136,20 +139,20 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
                 daily_change_percent as change_percent,
                 CAST(ranking_date AS TIMESTAMP) as timestamp_utc,
                 'ranking' as source_table
-            FROM world_assets_ranking 
+            FROM world_assets_ranking
             WHERE asset_id = :asset_id
         )
         SELECT *
         FROM latest_prices
-        ORDER BY timestamp_utc DESC, 
-                 CASE source_table 
-                    WHEN 'realtime' THEN 1 
+        ORDER BY timestamp_utc DESC,
+                 CASE source_table
+                    WHEN 'realtime' THEN 1
                     WHEN 'realtime_bar' THEN 2
                     WHEN 'realtime_delay' THEN 3
                     WHEN 'intraday' THEN 4
                     WHEN 'daily' THEN 5
                     WHEN 'ranking' THEN 6
-                    ELSE 9 
+                    ELSE 9
                  END ASC
         LIMIT 1
     """)
@@ -160,119 +163,203 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
 
 
 def db_get_ohlcv_data(
-    db: Session, 
-    asset_id: int, 
-    start_date: Optional[date], 
-    end_date: Optional[date], 
-    data_interval: str, 
+    db: Session,
+    asset_id: int,
+    start_date: Optional[date],
+    end_date: Optional[date],
+    data_interval: str,
     limit: int = 5000
 ) -> List[OHLCVData]:
     """OHLCV 데이터 조회"""
     query = db.query(OHLCVData).filter(OHLCVData.asset_id == asset_id)
-    
+
     # 인터벌 필터링
     if data_interval.lower() in ['1d', '1day']:
         query = query.filter(OHLCVData.data_interval.in_(['1d', '1day', None]))
     else:
         query = query.filter(OHLCVData.data_interval == data_interval)
-    
+
     if start_date:
         query = query.filter(OHLCVData.timestamp_utc >= start_date)
     if end_date:
         query = query.filter(OHLCVData.timestamp_utc <= end_date)
-    
+
     if start_date:
         return query.order_by(OHLCVData.timestamp_utc.asc()).limit(limit).all()
-    
+
     # start_date가 없으면 최신 데이터 우선 조회 (DESC sorting -> Limit -> ASC resort)
     rows = query.order_by(OHLCVData.timestamp_utc.desc()).limit(limit).all()
     return sorted(rows, key=lambda x: x.timestamp_utc)
 
 
 def db_get_intraday_data(
-    db: Session, 
-    asset_id: int, 
-    start_date: Optional[date], 
-    end_date: Optional[date], 
-    data_interval: str, 
+    db: Session,
+    asset_id: int,
+    start_date: Optional[date],
+    end_date: Optional[date],
+    data_interval: str,
     limit: int = 5000
 ) -> List[OHLCVIntradayData]:
     """Intraday (분봉/시간봉) 데이터 조회 - ohlcv_intraday_data 테이블 사용"""
     query = db.query(OHLCVIntradayData).filter(OHLCVIntradayData.asset_id == asset_id)
-    
+
     query = query.filter(OHLCVIntradayData.data_interval == data_interval)
-    
+
     if start_date:
         query = query.filter(OHLCVIntradayData.timestamp_utc >= start_date)
     if end_date:
         query = query.filter(OHLCVIntradayData.timestamp_utc <= end_date)
-    
+
     if start_date:
         return query.order_by(OHLCVIntradayData.timestamp_utc.asc()).limit(limit).all()
-    
+
     rows = query.order_by(OHLCVIntradayData.timestamp_utc.desc()).limit(limit).all()
     return sorted(rows, key=lambda x: x.timestamp_utc)
 
 def db_get_delay_data(
-    db: Session, 
-    asset_id: int, 
-    start_date: Optional[date], 
-    end_date: Optional[date], 
-    data_interval: str, 
+    db: Session,
+    asset_id: int,
+    start_date: Optional[date],
+    end_date: Optional[date],
+    data_interval: str,
     limit: int = 5000
 ) -> List[RealtimeQuoteTimeDelay]:
     """Delayed Quotes 데이터 조회 - realtime_quotes_time_delay 테이블 사용"""
-    query = db.query(RealtimeQuoteTimeDelay).filter(RealtimeQuoteTimeDelay.asset_id == asset_id)
-    query = query.filter(RealtimeQuoteTimeDelay.data_interval == data_interval)
-    
+    start_time_str = start_date.isoformat() if start_date else 'NULL'
+    end_time_str = end_date.isoformat() if end_date else 'NULL'
+
+    query_str = f"""
+        SELECT DISTINCT ON (timestamp_utc)
+            asset_id,
+            data_interval,
+            price,
+            volume,
+            change_percent,
+            timestamp_utc,
+            data_source
+        FROM realtime_quotes_time_delay
+        WHERE asset_id = :asset_id
+          AND data_interval = :data_interval
+          {"AND timestamp_utc >= :start_date" if start_date else ""}
+          {"AND timestamp_utc <= :end_date" if end_date else ""}
+        ORDER BY timestamp_utc ASC,
+                 CASE
+                    WHEN data_source = 'polygon' THEN 1
+                    WHEN data_source = 'twelvedata' THEN 2
+                    WHEN data_source = 'alpaca' THEN 3
+                    ELSE 4
+                 END ASC
+        LIMIT :limit
+    """
+    params = {
+        "asset_id": asset_id,
+        "data_interval": data_interval,
+        "limit": limit
+    }
     if start_date:
-        query = query.filter(RealtimeQuoteTimeDelay.timestamp_utc >= start_date)
+        params["start_date"] = start_date
     if end_date:
-        query = query.filter(RealtimeQuoteTimeDelay.timestamp_utc <= end_date)
-    
-    if start_date:
-        return query.order_by(RealtimeQuoteTimeDelay.timestamp_utc.asc()).limit(limit).all()
-    
-    rows = query.order_by(RealtimeQuoteTimeDelay.timestamp_utc.desc()).limit(limit).all()
-    return sorted(rows, key=lambda x: x.timestamp_utc)
+        params["end_date"] = end_date
+
+    rows = db.execute(text(query_str), params).fetchall()
+
+    # Convert raw rows to RealtimeQuoteTimeDelay objects for compatibility with _format_ohlcv_rows
+    result_objects = []
+    for row in rows:
+        result_objects.append(RealtimeQuoteTimeDelay(
+            asset_id=row.asset_id,
+            data_interval=row.data_interval,
+            price=row.price,
+            volume=row.volume,
+            change_percent=row.change_percent,
+            timestamp_utc=row.timestamp_utc,
+            data_source=row.data_source
+        ))
+    return result_objects
 
 def db_get_realtime_bar_data(
-    db: Session, 
-    asset_id: int, 
-    start_date: Optional[date], 
-    end_date: Optional[date], 
-    data_interval: str, 
+    db: Session,
+    asset_id: int,
+    start_date: Optional[date],
+    end_date: Optional[date],
+    data_interval: str,
     limit: int = 5000
 ) -> List[RealtimeQuotesTimeBar]:
     """Realtime bar (봉) 데이터 조회 - realtime_quotes_time_bar 테이블 사용"""
-    query = db.query(RealtimeQuotesTimeBar).filter(RealtimeQuotesTimeBar.asset_id == asset_id)
-    query = query.filter(RealtimeQuotesTimeBar.data_interval == data_interval)
-    
+    start_time_str = start_date.isoformat() if start_date else 'NULL'
+    end_time_str = end_date.isoformat() if end_date else 'NULL'
+
+    query_str = f"""
+        SELECT DISTINCT ON (timestamp_utc)
+            asset_id,
+            data_interval,
+            open_price,
+            high_price,
+            low_price,
+            close_price,
+            volume,
+            change_amount,
+            change_percent,
+            timestamp_utc,
+            data_source
+        FROM realtime_quotes_time_bar
+        WHERE asset_id = :asset_id
+          AND data_interval = :data_interval
+          {f"AND timestamp_utc >= :start_date" if start_date else ""}
+          {f"AND timestamp_utc <= :end_date" if end_date else ""}
+        ORDER BY timestamp_utc ASC,
+                 CASE
+                    WHEN data_source = 'polygon' THEN 1
+                    WHEN data_source = 'twelvedata' THEN 2
+                    WHEN data_source = 'alpaca' THEN 3
+                    ELSE 4
+                 END ASC
+        LIMIT :limit
+    """
+    params = {
+        "asset_id": asset_id,
+        "data_interval": data_interval,
+        "limit": limit
+    }
     if start_date:
-        query = query.filter(RealtimeQuotesTimeBar.timestamp_utc >= start_date)
+        params["start_date"] = start_date
     if end_date:
-        query = query.filter(RealtimeQuotesTimeBar.timestamp_utc <= end_date)
-    
-    if start_date:
-        return query.order_by(RealtimeQuotesTimeBar.timestamp_utc.asc()).limit(limit).all()
-    
-    rows = query.order_by(RealtimeQuotesTimeBar.timestamp_utc.desc()).limit(limit).all()
-    return sorted(rows, key=lambda x: x.timestamp_utc)
+        params["end_date"] = end_date
+
+    rows = db.execute(text(query_str), params).fetchall()
+
+    # Convert raw rows to RealtimeQuotesTimeBar objects for compatibility with _format_ohlcv_rows
+    result_objects = []
+    for row in rows:
+        result_objects.append(RealtimeQuotesTimeBar(
+            asset_id=row.asset_id,
+            data_interval=row.data_interval,
+            open_price=row.open_price,
+            high_price=row.high_price,
+            low_price=row.low_price,
+            close_price=row.close_price,
+            volume=row.volume,
+            change_amount=row.change_amount,
+            change_percent=row.change_percent,
+            timestamp_utc=row.timestamp_utc,
+            data_source=row.data_source
+        ))
+    return result_objects
 
 def _recalculate_change_percent(data_list: List[Dict]) -> List[Dict]:
     """리스트 내의 Dict 데이터의 change_percent를 이전 종가(prev_close)를 기준으로 강제 재계산함 (DB 값 무시)"""
     if not data_list:
         return []
-        
+
     # Sort just in case, though usually already sorted
     sorted_data = sorted(data_list, key=lambda x: x['timestamp_utc'])
-    
+
     prev_close = None
-    
+
     for row in sorted_data:
         close_p = row.get('close_price')
         open_p = row.get('open_price')
-        
+
         # Calculate change_percent
         if prev_close is not None and prev_close > 0 and close_p is not None:
              # Calculate and update in place (relative to prev close)
@@ -284,21 +371,21 @@ def _recalculate_change_percent(data_list: List[Dict]) -> List[Dict]:
              row['change_percent'] = change_p
         else:
              row['change_percent'] = 0.0
-        
+
         # Update prev_close
         if close_p is not None:
             prev_close = close_p
-            
+
     return sorted_data
 
 def _format_ohlcv_rows(rows):
     # Ensure rows are sorted by timestamp for correct change_percent calculation
     sorted_rows = sorted(rows, key=lambda x: x.timestamp_utc)
-    
+
     res = []
-    
+
     seen_timestamps = set()
-    
+
     for row in sorted_rows:
         if row.timestamp_utc in seen_timestamps:
             continue
@@ -338,48 +425,43 @@ def _format_ohlcv_rows(rows):
                 'change_percent': float(row.change_percent) if row.change_percent else None,
                 'data_interval': row.data_interval or '1d'
             })
-            
+
     # Use helper to fill any missing change_percent (though _format_ohlcv_rows usually handles raw data, this is safe)
-    # Note: The previous logic inside here was removing the need for this, but to be consistent with 
+    # Note: The previous logic inside here was removing the need for this, but to be consistent with
     # the new plan where we do it at the end, we can use the helper here too for simple calls.
     return _recalculate_change_percent(res)
 
-
-    return aggregated
 
 def get_daily_data_combined(db, asset_id, start_date, end_date, limit):
     """일봉 데이터 조회 + 인트라데이/딜레이 합성 병합"""
     # 1. Primary: ohlcv_day_data
     ohlcv_rows = db_get_ohlcv_data(db, asset_id, start_date, end_date, '1d', limit)
     data = _format_ohlcv_rows(ohlcv_rows)
-    
+
     # Normalize timestamps to 00:00:00 for 1d data to avoid duplicates
     for d in data:
         d['timestamp_utc'] = d['timestamp_utc'].replace(hour=0, minute=0, second=0, microsecond=0)
-    
+
     # 2. Synthesis helper (from 5m + 15m delay)
     def db_get_delay_data_local(db_l, a_id, s_date, e_date, d_interval, lmt):
-        from app.models import RealtimeQuoteTimeDelay
-        query = db_l.query(RealtimeQuoteTimeDelay).filter(RealtimeQuoteTimeDelay.asset_id == a_id)
-        query = query.filter(RealtimeQuoteTimeDelay.data_interval == d_interval)
-        if s_date: query = query.filter(RealtimeQuoteTimeDelay.timestamp_utc >= s_date)
-        if e_date: query = query.filter(RealtimeQuoteTimeDelay.timestamp_utc <= e_date)
-        rows = query.order_by(RealtimeQuoteTimeDelay.timestamp_utc.desc()).limit(lmt).all()
-        return sorted(rows, key=lambda x: x.timestamp_utc)
+        # This local helper is now redundant as db_get_delay_data is updated
+        # but keeping it for context if it was used elsewhere.
+        # For this specific call, we will use the updated global db_get_delay_data.
+        return db_get_delay_data(db_l, a_id, s_date, e_date, d_interval, lmt)
 
     base_5m = db_get_intraday_data(db, asset_id, start_date, end_date, '5m', 1000)
     base_15m = db_get_delay_data_local(db, asset_id, start_date, end_date, '15m', 500)
-    
+
     all_source_data = _format_ohlcv_rows(base_5m) + _format_ohlcv_rows(base_15m)
-    
+
     unique_sources = {}
     for d in all_source_data:
         ts = d['timestamp_utc']
         if ts not in unique_sources or d.get('high_price') != d.get('low_price'):
             unique_sources[ts] = d
-    
+
     synth_data = resample_intraday_data(list(unique_sources.values()), 1440, '1d') # 1d
-    
+
     # 3. Merge
     unique_final = {d['timestamp_utc']: d for d in data}
     for d in synth_data:
@@ -387,7 +469,7 @@ def get_daily_data_combined(db, asset_id, start_date, end_date, limit):
         # Add if missing or if synthesized candle is more complete (just a safety check)
         if ts not in unique_final:
             unique_final[ts] = d
-    
+
     merged_data = sorted(unique_final.values(), key=lambda x: x['timestamp_utc'])
     return _recalculate_change_percent(merged_data)
 
@@ -405,10 +487,10 @@ def aggregate_to_weekly_v2(daily_data: List[Dict]) -> List[Dict]:
         rows = sorted(buckets[key], key=lambda x: x['timestamp_utc'])
         if not rows:
             continue
-        
+
         first = rows[0]
         last = rows[-1]
-        
+
         candle = {
             'timestamp_utc': last['timestamp_utc'],
             'open_price': float(first['open_price']) if first['open_price'] else None,
@@ -420,13 +502,13 @@ def aggregate_to_weekly_v2(daily_data: List[Dict]) -> List[Dict]:
             'data_interval': '1W'
         }
         aggregated.append(candle)
-    
+
     prev_close = None
     for candle in aggregated:
         if prev_close and candle['close_price'] and prev_close > 0:
             candle['change_percent'] = round(((candle['close_price'] - prev_close) / prev_close) * 100, 4)
         prev_close = candle['close_price']
-    
+
     return aggregated
 
 
@@ -442,10 +524,10 @@ def aggregate_to_monthly_v2(daily_data: List[Dict]) -> List[Dict]:
         rows = sorted(buckets[(y, m)], key=lambda x: x['timestamp_utc'])
         if not rows:
             continue
-        
+
         first = rows[0]
         last = rows[-1]
-        
+
         candle = {
             'timestamp_utc': last['timestamp_utc'],
             'open_price': float(first['open_price']) if first['open_price'] else None,
@@ -457,13 +539,13 @@ def aggregate_to_monthly_v2(daily_data: List[Dict]) -> List[Dict]:
             'data_interval': '1M'
         }
         aggregated.append(candle)
-    
+
     prev_close = None
     for candle in aggregated:
         if prev_close and candle['close_price'] and prev_close > 0:
             candle['change_percent'] = round(((candle['close_price'] - prev_close) / prev_close) * 100, 4)
         prev_close = candle['close_price']
-    
+
     return aggregated
 
 
@@ -482,7 +564,7 @@ def resample_intraday_data(rows: List[Dict], interval_minutes: int, label: str =
 
     for r in rows:
         ts = r['timestamp_utc']
-        
+
         if interval_minutes >= 1440:
             # 1d or more: floor to day
             current_bucket_time = ts.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -508,18 +590,18 @@ def resample_intraday_data(rows: List[Dict], interval_minutes: int, label: str =
 
     if bucket_rows:
         aggregated.append(_make_candle(bucket_rows, bucket_start_time, label))
-        
+
     return aggregated
 
 def _make_candle(rows, timestamp, interval_str):
     """Dict 형태의 rows로부터 캔들 생성"""
     first = rows[0]
     last = rows[-1]
-    
+
     high = max((float(x['high_price']) for x in rows if x['high_price'] is not None), default=0.0)
     low = min((float(x['low_price']) for x in rows if x['low_price'] is not None), default=0.0)
     vol = sum((float(x['volume']) for x in rows if x['volume'] is not None))
-    
+
     candle = {
         'timestamp_utc': timestamp,
         'open_price': float(first['open_price']) if first['open_price'] else None,
@@ -548,8 +630,8 @@ def get_ohlcv_data_v2(
 ):
     """
     OHLCV 차트 데이터 조회 (과거 ~ 실시간 자동 병합)
-    
-    - **data_interval**: 
+
+    - **data_interval**:
       * 분봉/시봉: 1m, 5m, 1h, 4h 등 (실시간 시세 자동 병합)
       * 일봉/주봉/월봉: 1d, 1W, 1M, 1mo (과거 정적 데이터)
     - **start_date/end_date**: 날짜 범위 필터
@@ -569,7 +651,7 @@ def get_ohlcv_data_v2(
 
         asset_id = resolve_asset_identifier(db, asset_identifier)
         interval_upper = data_interval.upper()
-        
+
         # 1. 주봉/월봉
         if data_interval in ['1W', '1M', '1w', '1mo', '1month']:
             if data_interval == '1m':
@@ -588,7 +670,7 @@ def get_ohlcv_data_v2(
                     "count": len(aggregated),
                     "data": aggregated
                 }
-        
+
         # 2. 일봉
         if interval_upper in ['1D', '1DAY']:
              data = get_daily_data_combined(db, asset_id, start_date, end_date, limit)
@@ -605,11 +687,11 @@ def get_ohlcv_data_v2(
         if interval_upper in ['5M', '15M', '30M', '1H', '4H']:
             interval_map = {'5M': 5, '15M': 15, '30M': 30, '1H': 60, '4H': 240}
             target_min = interval_map[interval_upper]
-            
-            # 먼저 네이티브 해당 인터벌 데이터를 로드 
+
+            # 먼저 네이티브 해당 인터벌 데이터를 로드
             native_rows = db_get_intraday_data(db, asset_id, start_date, end_date, data_interval, limit)
             native_data = _format_ohlcv_rows(native_rows)
-            
+
             # 누락 방지를 위해 하위 분봉 로드 (5M~30M은 1M에서, 1H 이상은 5M에서)
             # 중요: 과거 테이블과 실시간 테이블 양쪽에서 소스 데이터를 가져와야 오늘자 리샘플링이 가능함
             if target_min <= 30:
@@ -620,18 +702,18 @@ def get_ohlcv_data_v2(
                 source_int = '5m'
                 raw_hist = db_get_intraday_data(db, asset_id, start_date, end_date, source_int, limit * (target_min // 5))
                 raw_rt = db_get_realtime_bar_data(db, asset_id, start_date, end_date, source_int, limit * (target_min // 5))
-            
+
             raw_data = _format_ohlcv_rows(raw_hist + raw_rt)
-            
+
             unique_sources = {}
             for d in raw_data:
                 ts = d['timestamp_utc']
                 # 단순 틱 데이터(H=L)가 아닌 유의미한 봉 데이터를 우선시함
                 if ts not in unique_sources or d.get('high_price') != d.get('low_price'):
                     unique_sources[ts] = d
-            
+
             synth_data = resample_intraday_data(list(unique_sources.values()), target_min, data_interval)
-            
+
             # 실시간/지연 데이터(리얼타임 테이블)도 해당 인터벌로 가져와 함께 병합
             rt_bar_rows = db_get_realtime_bar_data(db, asset_id, start_date, end_date, data_interval, limit)
             delay_rows = db_get_delay_data(db, asset_id, start_date, end_date, data_interval, limit)
@@ -644,7 +726,7 @@ def get_ohlcv_data_v2(
                     ts = d['timestamp_utc']
                     if ts not in unique_final or d.get('high_price') != d.get('low_price'):
                         unique_final[ts] = d
-            
+
             data = sorted(unique_final.values(), key=lambda x: x['timestamp_utc'])
             data = _recalculate_change_percent(data)
 
@@ -653,7 +735,7 @@ def get_ohlcv_data_v2(
             # 1) 인트라데이 (과거 분봉)
             intraday_rows = db_get_intraday_data(db, asset_id, start_date, end_date, data_interval, limit)
             hist_data = _format_ohlcv_rows(intraday_rows)
-            
+
             # 2) 실시간 집계 봉 (최신 7일분)
             realtime_bar_rows = db_get_realtime_bar_data(db, asset_id, start_date, end_date, data_interval, limit)
             realtime_bar_hist = _format_ohlcv_rows(realtime_bar_rows)
@@ -661,14 +743,24 @@ def get_ohlcv_data_v2(
             # 3) 지연 시세 (백업용)
             delay_rows = db_get_delay_data(db, asset_id, start_date, end_date, data_interval, limit)
             delay_hist = _format_ohlcv_rows(delay_rows)
+
+            # 병합 (최신 데이터가 이전 데이터를 덮어씀, 소스 우선순위와 함께 유니크 보장)
+            unique_final = {}
+            # 우선순위가 낮은 소스부터 채워서 최종적으로 높은 우선순위가 덮어쓰도록 유도하거나, 
+            # 혹은 timestamp별로 소스 순위를 따져서 하나만 선택
             
-            # 병합 (최신 데이터가 이전 데이터를 덮어씀)
-            unique_final = {d['timestamp_utc']: d for d in hist_data}
+            # 1) 히스토리 데이터 먼저 로드
+            for d in hist_data:
+                unique_final[d['timestamp_utc']] = d
             for d in delay_hist:
-                unique_final[d['timestamp_utc']] = d
+                ts = d['timestamp_utc']
+                if ts not in unique_final or d.get('high_price') != d.get('low_price'):
+                    unique_final[ts] = d
             for d in realtime_bar_hist:
-                unique_final[d['timestamp_utc']] = d
-            
+                ts = d['timestamp_utc']
+                if ts not in unique_final or d.get('high_price') != d.get('low_price'):
+                    unique_final[ts] = d
+
             data = sorted(unique_final.values(), key=lambda x: x['timestamp_utc'])
             data = _recalculate_change_percent(data)
 
@@ -700,15 +792,15 @@ def get_price_data_v2(
 ):
     """
     현재 가격 및 변동률 조회
-    
+
     최신 OHLCV 데이터 기반 가격 정보 반환
     """
     try:
         asset_id = resolve_asset_identifier(db, asset_identifier)
-        
+
         # Unified Logic for latest price
         latest_unified = get_latest_unified_data(db, asset_id)
-        
+
         if latest_unified:
             logger.info(f"[Price] '{asset_identifier}' Returning unified latest: {latest_unified['close_price']} at {latest_unified['timestamp_utc']}")
             return {
@@ -723,7 +815,7 @@ def get_price_data_v2(
                 "last_updated": latest_unified['timestamp_utc'],
                 "data_source": "unified"
             }
-            
+
         # Fallback (Old logic) if unified fails or returns nothing (unlikely if assets exist)
         latest = get_latest_ohlcv(db, asset_id)
         if not latest:
@@ -731,7 +823,7 @@ def get_price_data_v2(
             world_asset = db.query(WorldAssetsRanking).filter(
                 WorldAssetsRanking.asset_id == asset_id
             ).order_by(WorldAssetsRanking.ranking_date.desc()).first()
-            
+
             if world_asset:
                 return {
                     "asset_id": asset_id,
@@ -743,14 +835,14 @@ def get_price_data_v2(
                 }
 
             raise HTTPException(status_code=404, detail="Price data not found")
-        
+
         # 이전 종가 조회 (변동률 계산용)
         prev_ohlcv = db.query(OHLCVData).filter(
             OHLCVData.asset_id == asset_id,
             OHLCVData.timestamp_utc < latest.timestamp_utc,
             OHLCVData.data_interval.in_(['1d', '1day', None])
         ).order_by(OHLCVData.timestamp_utc.desc()).first()
-        
+
         change_percent = None
         if latest.change_percent:
             change_percent = float(latest.change_percent)
@@ -758,7 +850,7 @@ def get_price_data_v2(
             current = float(latest.close_price)
             prev = float(prev_ohlcv.close_price)
             change_percent = ((current - prev) / prev) * 100
-        
+
         return {
             "asset_id": asset_id,
             "current_price": float(latest.close_price) if latest.close_price else None,
@@ -771,7 +863,7 @@ def get_price_data_v2(
             "last_updated": latest.timestamp_utc,
             "data_source": "ohlcv"
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -791,12 +883,12 @@ def get_price_history_v2(
 ):
     """
     빠른 기간별 가격 히스토리 조회
-    
+
     - **period**: 1d(1일), 1w(1주), 1m(1개월), 3m(3개월), 6m(6개월), 1y(1년), all(전체)
     """
     try:
         asset_id = resolve_asset_identifier(db, asset_identifier)
-        
+
         # 기간별 날짜 계산
         period_days = {
             '1d': 1,
@@ -807,14 +899,14 @@ def get_price_history_v2(
             '1y': 365,
             'all': None
         }
-        
+
         days = period_days.get(period.lower())
         start_date = None
         if days:
             start_date = (datetime.now() - timedelta(days=days)).date()
-        
+
         ohlcv_rows = db_get_ohlcv_data(db, asset_id, start_date, None, '1d', 10000)
-        
+
         # 간단한 형태로 반환
         data = [
             {
@@ -824,14 +916,14 @@ def get_price_history_v2(
             }
             for row in ohlcv_rows
         ]
-        
+
         return {
             "asset_id": asset_id,
             "period": period,
             "count": len(data),
             "data": data
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -853,47 +945,75 @@ def get_batch_latest_prices_v2(
     """
     try:
         logger.info(f"[BatchPrice] Request for tickers: {tickers}")
-        
+
         if not tickers:
             return {"data": []}
-            
+
         ticker_list = [t.strip().upper() for t in tickers.split(',') if t.strip()]
-        
+
         # 1. Get Asset IDs
         assets = db.query(Asset.asset_id, Asset.ticker).filter(
             Asset.ticker.in_(ticker_list)
         ).all()
-        
+
         logger.info(f"[BatchPrice] Found {len(assets)} assets for tickers: {[a.ticker for a in assets]}")
-        
+
         if not assets:
             return {"data": []}
-            
+
         asset_map = {a.asset_id: a.ticker for a in assets}
         asset_ids = list(asset_map.keys())
-        
+
         # 2. Get Max Date per Asset (optimized UNION ALL)
         # Check Realtime (delay), Intraday, and Daily tables
         # Priority: Timestamp DESC
-        
+
         stmt = text("""
             WITH latest_prices AS (
-                -- 1. Realtime Quotes (15m delay)
-                SELECT 
-                    asset_id, 
-                    price as close_price, 
-                    timestamp_utc 
-                FROM realtime_quotes_time_delay 
+                -- 0. Realtime Quotes (Live)
+                SELECT
+                    asset_id,
+                    price as close_price,
+                    timestamp_utc,
+                    'realtime' as source_table,
+                    data_source
+                FROM realtime_quotes
                 WHERE asset_id = ANY(:asset_ids)
-                
+
                 UNION ALL
-                
+
+                -- 1. Realtime Quotes (15m delay)
+                SELECT
+                    asset_id,
+                    price as close_price,
+                    timestamp_utc,
+                    'realtime_delay' as source_table,
+                    data_source
+                FROM realtime_quotes_time_delay
+                WHERE asset_id = ANY(:asset_ids)
+
+                UNION ALL
+
+                -- 1.1 Realtime Bar Data
+                SELECT
+                    asset_id,
+                    close_price,
+                    timestamp_utc,
+                    'realtime_bar' as source_table,
+                    data_source
+                FROM realtime_quotes_time_bar
+                WHERE asset_id = ANY(:asset_ids)
+
+                UNION ALL
+
                 -- 2. Intraday Data
-                SELECT 
-                    asset_id, 
-                    close_price, 
-                    timestamp_utc 
-                FROM ohlcv_intraday_data 
+                SELECT
+                    asset_id,
+                    close_price,
+                    timestamp_utc,
+                    'intraday' as source_table,
+                    NULL as data_source
+                FROM ohlcv_intraday_data
                 WHERE asset_id = ANY(:asset_ids)
                   AND timestamp_utc > (now() AT TIME ZONE 'UTC' - INTERVAL '7 days')
                 
@@ -903,7 +1023,9 @@ def get_batch_latest_prices_v2(
                 SELECT 
                     asset_id, 
                     close_price, 
-                    timestamp_utc 
+                    timestamp_utc,
+                    'daily' as source_table,
+                    NULL as data_source
                 FROM ohlcv_day_data 
                 WHERE asset_id = ANY(:asset_ids) 
                 AND (data_interval = '1d' OR data_interval = '1day' OR data_interval IS NULL)
@@ -914,16 +1036,33 @@ def get_batch_latest_prices_v2(
                 SELECT 
                     asset_id, 
                     price_usd as close_price, 
-                    CAST(ranking_date AS TIMESTAMP) as timestamp_utc
+                    CAST(ranking_date AS TIMESTAMP) as timestamp_utc,
+                    'ranking' as source_table,
+                    'ranking' as data_source
                 FROM world_assets_ranking 
                 WHERE asset_id = ANY(:asset_ids)
             )
             SELECT DISTINCT ON (asset_id) 
                 asset_id, 
                 close_price, 
-                timestamp_utc 
+                timestamp_utc,
+                data_source
             FROM latest_prices
-            ORDER BY asset_id, timestamp_utc DESC
+            ORDER BY asset_id, 
+                     timestamp_utc DESC,
+                     CASE source_table
+                        WHEN 'realtime' THEN 1
+                        WHEN 'realtime_bar' THEN 2
+                        WHEN 'realtime_delay' THEN 3
+                        WHEN 'intraday' THEN 4
+                        ELSE 9
+                     END ASC,
+                     CASE 
+                        WHEN data_source = 'polygon' THEN 1
+                        WHEN data_source = 'twelvedata' THEN 2
+                        WHEN data_source = 'alpaca' THEN 3
+                        ELSE 4
+                     END ASC
         """)
         
         rows = db.execute(stmt, {"asset_ids": asset_ids}).fetchall()

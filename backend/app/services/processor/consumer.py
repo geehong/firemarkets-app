@@ -3,6 +3,8 @@ import asyncio
 import redis.asyncio as redis
 from typing import Dict, List, Any, Optional
 import time
+import pytz
+from ...utils.trading_calendar import is_regular_market_hours
 
 logger = logging.getLogger(__name__)
 
@@ -209,33 +211,45 @@ class StreamConsumer:
                             continue
                         
                         # Ticker resolution logic
-                        asset_id = None
+                        asset_info = None
                         if hasattr(self, 'ticker_to_asset_id'):
                             # 1. Exact match
                             if ticker in self.ticker_to_asset_id:
-                                asset_id = self.ticker_to_asset_id[ticker]
+                                asset_info = self.ticker_to_asset_id[ticker]
                             # 2. Try removing 'USDT' (e.g. BTCUSDT -> BTC)
                             elif ticker.endswith('USDT') and len(ticker) > 4:
                                 normalized = ticker[:-4]
                                 if normalized in self.ticker_to_asset_id:
-                                    asset_id = self.ticker_to_asset_id[normalized]
+                                    asset_info = self.ticker_to_asset_id[normalized]
                              # 3. Try removing '-USD' (e.g. SOL-USD -> SOL)
                             elif ticker.endswith('-USD') and len(ticker) > 4:
                                 normalized = ticker[:-4]
                                 if normalized in self.ticker_to_asset_id:
-                                    asset_id = self.ticker_to_asset_id[normalized]
+                                    asset_info = self.ticker_to_asset_id[normalized]
                             # 4. Try removing '-USDT' (e.g. BTC-USDT -> BTC)
                             elif ticker.endswith('-USDT') and len(ticker) > 5:
                                 normalized = ticker[:-5]
                                 if normalized in self.ticker_to_asset_id:
-                                    asset_id = self.ticker_to_asset_id[normalized]
+                                    asset_info = self.ticker_to_asset_id[normalized]
                             # 5. Handle slash (e.g. XAU/USD -> XAU)
                             elif '/USD' in ticker:
                                 normalized = ticker.split('/')[0]
                                 if normalized in self.ticker_to_asset_id:
-                                    asset_id = self.ticker_to_asset_id[normalized]
+                                    asset_info = self.ticker_to_asset_id[normalized]
                         
-                        if asset_id is not None:
+                        if asset_info is not None:
+                            asset_id = asset_info['id']
+                            asset_type = asset_info['type']
+                            
+                            # 정규장 외 시간 필터링 (주식/ETF 전용)
+                            # is_regular_market_hours()는 현재 시간을 기준으로 판단
+                            if asset_type and asset_type.lower() in ('stocks', 'etfs'):
+                                if not is_regular_market_hours():
+                                    # 정규장 시간이 아니면 필터링 (저장하지 않음)
+                                    # ACK는 하여 스트림에서 제거
+                                    ack_items.append((stream_name, group_name, message_id))
+                                    continue
+                            
                             parsed_data['asset_id'] = asset_id
                             records_to_save.append(parsed_data)
                             ack_items.append((stream_name, group_name, message_id))

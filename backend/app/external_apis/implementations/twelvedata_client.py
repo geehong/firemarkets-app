@@ -157,7 +157,9 @@ class TwelveDataClient(TradFiAPIClient):
                 "symbol": normalized_symbol,
                 "interval": norm_interval,
                 "format": "JSON",
+                "timezone": "UTC",
             }
+
             if start_date:
                 params["start_date"] = start_date
             if end_date:

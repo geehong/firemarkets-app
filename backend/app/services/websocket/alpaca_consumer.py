@@ -412,16 +412,9 @@ class AlpacaWSConsumer(BaseWSConsumer):
                 ts = item.get('t')
                 logger.debug(f"📈 {self.client_name} trade: {symbol} = ${price} (vol: {size})")
             elif msg_type == 'q':  # quote
-                bid = item.get('bp')
-                ask = item.get('ap')
-                logger.debug(f"📊 {self.client_name} quote: {symbol} bid=${bid} ask=${ask}")
-                # quote의 경우 중간가격 사용
-                if bid is not None and ask is not None:
-                    price = (float(bid) + float(ask)) / 2
-                else:
-                    price = None
-                size = None
-                ts = item.get('t')
+                # Ignore quotes to prevent barcode patterns caused by Bid/Ask spreads
+                logger.debug(f"📊 {self.client_name} ignoring quote: {symbol}")
+                return
             elif msg_type == 'b':  # bar (1분 캔들)
                 close = item.get('c')
                 volume = item.get('v')

@@ -2,7 +2,7 @@ import logging
 import os
 import time
 from typing import List, Dict, Any, Optional
-from datetime import datetime, date
+from datetime import datetime, date, timedelta, timezone
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -92,7 +92,7 @@ class DataRepository:
                     dedup_rt[r['asset_id']] = r
                 realtime_rows = list(dedup_rt.values())
 
-                # 지연 테이블용 데이터 (1m 단위로 집계)
+                # 지연 테이블용 데이터 (1m 단위로 집계) - 영구 저장용
                 delay_dedup = {}
                 delay_allowed_keys = {'asset_id', 'timestamp_utc', 'price', 'volume', 'change_amount', 'change_percent', 'data_source', 'data_interval'}
                 for rec in batch:
@@ -118,6 +118,8 @@ class DataRepository:
                         delay_dedup[key].update(d)
                 delay_rows = list(delay_dedup.values())
 
+                realtime_rows = list(dedup_rt.values())
+
                 # 실시간 봉 테이블 (1m, 5m) 집계 및 추가
                 rt_bar_rows = []
                 for interval in ["1m", "5m"]:
@@ -129,12 +131,13 @@ class DataRepository:
                         price = self._sanitize_number(rec.get('price'))
                         if price is None: continue
                         
-                        key = (rec['asset_id'], tw, interval)
+                        key = (rec['asset_id'], tw, interval, rec.get('data_source', 'unknown'))
                         if key not in bar_dedup:
                             bar_dedup[key] = {
                                 'asset_id': rec['asset_id'],
                                 'timestamp_utc': tw,
                                 'data_interval': interval,
+                                'data_source': rec.get('data_source', 'unknown'),
                                 'open_price': price,
                                 'high_price': price,
                                 'low_price': price,
@@ -175,7 +178,7 @@ class DataRepository:
                         )
                         pg_db.execute(stmt)
 
-                    # 2. 지연 테이블 (1m) UPSERT
+                    # 2. 지연 테이블 (1m) UPSERT - 영구 저장
                     if delay_rows:
                         stmt = pg_insert(RealtimeQuoteTimeDelay).values(delay_rows)
                         stmt = stmt.on_conflict_do_update(
@@ -220,15 +223,42 @@ class DataRepository:
             pg_db.close()
 
     async def cleanup_old_realtime_bars(self, days: int = 7) -> int:
-        """7일 이상 된 실시간 봉 데이터 삭제"""
+        """7일 이상 된 실시간 봉 데이터 삭제 및 비정상 데이터(꼬리) 보정"""
         try:
             db = next(get_postgres_db())
             try:
-                cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
+                # 1. 오래된 데이터 삭제
+                cutoff = datetime.now(timezone.utc) - timedelta(days=days)
                 deleted = db.query(RealtimeQuotesTimeBar).filter(RealtimeQuotesTimeBar.timestamp_utc < cutoff).delete()
+                
+                # 2. 비정상 데이터(꼬리/니들) 보정
+                # 시가/종가 범위 대비 고가/저가가 1% 이상 차이나는 경우 보정
+                fix_query = """
+                UPDATE realtime_quotes_time_bar 
+                SET 
+                  high_price = CASE 
+                    WHEN (high_price - GREATEST(open_price, close_price)) / NULLIF(close_price, 0) > 0.01 
+                    THEN GREATEST(open_price, close_price) * 1.001 
+                    ELSE high_price 
+                  END,
+                  low_price = CASE 
+                    WHEN (LEAST(open_price, close_price) - low_price) / NULLIF(close_price, 0) > 0.01 
+                    THEN LEAST(open_price, close_price) * 0.999 
+                    ELSE low_price 
+                  END
+                WHERE 
+                  timestamp_utc > NOW() - INTERVAL '2 days'
+                  AND (
+                    (high_price - GREATEST(open_price, close_price)) / NULLIF(close_price, 0) > 0.01 
+                    OR (LEAST(open_price, close_price) - low_price) / NULLIF(close_price, 0) > 0.01
+                  );
+                """
+                db.execute(fix_query)
                 db.commit()
+                
                 if deleted > 0:
-                    logger.info(f"🧹 오래된 실시간 봉 데이터 삭제 완료: {deleted}개 (Cutoff: {cutoff})")
+                    logger.info(f"🧹 오래된 실시간 봉 데이터 삭제 완료: {deleted}개")
+                logger.info(f"🛡️ 실시간 봉 데이터 이상치 보정 완료 (최근 2일)")
                 return deleted
             finally:
                 db.close()
