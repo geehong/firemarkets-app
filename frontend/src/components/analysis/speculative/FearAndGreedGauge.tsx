@@ -9,7 +9,13 @@ const ReactApexChart = dynamic(() => import("react-apexcharts"), { ssr: false })
 
 import { useFearAndGreed } from "@/hooks/analysis/useFearAndGreed";
 
-export default function FearAndGreedGauge() {
+interface FearAndGreedGaugeProps {
+  height?: number;
+  hideTitle?: boolean;
+  noBackground?: boolean;
+}
+
+export default function FearAndGreedGauge({ height = 240, hideTitle = false, noBackground = false }: FearAndGreedGaugeProps) {
   const { fngData, history, loading } = useFearAndGreed();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
@@ -110,9 +116,10 @@ export default function FearAndGreedGauge() {
   };
 
   return (
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center">
-        <div className="flex items-center justify-between w-full mb-4">
-             <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">Crypto Fear & Greed</h3>
+      <div className={`${noBackground ? 'bg-transparent border-none' : 'bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700'} flex flex-col items-center w-full`}>
+        {!hideTitle && (
+          <div className="flex items-center justify-between w-full mb-4">
+               <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">Crypto Fear & Greed</h3>
              
              {/* Dropdown */}
              <select 
@@ -124,13 +131,14 @@ export default function FearAndGreedGauge() {
                 <option value="weekly">Weekly Avg</option>
                 <option value="monthly">Monthly Avg</option>
             </select>
-        </div>
+          </div>
+        )}
 
         {/* Content Container - Constrained Width */}
         <div className="flex flex-col items-center w-full max-w-[280px]">
             {/* Gauge */}
             <div className="relative w-full flex justify-center">
-                <ReactApexChart options={fngChartOptions} series={[fngValue]} type="radialBar" height={240} width={"100%"} />
+                <ReactApexChart options={fngChartOptions} series={[fngValue]} type="radialBar" height={height} width={"100%"} />
                 <div className="absolute bottom-4 w-full text-center">
                     <p className="text-xs text-gray-400">Next Update: {fngData ? new Date(parseInt(fngData.timestamp) * 1000 + 86400000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : 'Unknown'}</p>
                 </div>

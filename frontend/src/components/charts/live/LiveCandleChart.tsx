@@ -16,55 +16,83 @@ import { useAssetDetail } from "@/hooks/assets/useAssets"
 // ==========================================
 // [차트 설정] 기본 봉 크기 설정 (코드 상단에서 직접 변경 가능)
 // ==========================================
-export const DEFAULT_CANDLE_INTERVAL = "5m" // 예: 1m, 5m, 15m, 1h, 1d 등
+export const DEFAULT_CANDLE_INTERVAL = "15m" // 예: 1m, 5m, 15m, 1h, 1d 등
 
-// 세션 시작 시각을 UTC 초 단위로 변환해주는 유틸리티 (미국 주식 서머타임 자동 대응)
+// 뉴욕 시간(ET) 파츠 추출을 위한 헬퍼
+const getNYParts = (date: Date) => {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      year: 'numeric', month: 'numeric', day: 'numeric',
+      hour: 'numeric', minute: 'numeric', second: 'numeric',
+      hour12: false, weekday: 'short'
+    }).formatToParts(date);
+    const p = Object.fromEntries(parts.map(x => [x.type, x.value]));
+    return {
+      y: parseInt(p.year),
+      m: parseInt(p.month),
+      d: parseInt(p.day),
+      h: parseInt(p.hour),
+      min: parseInt(p.minute),
+      dow: p.weekday // Sun, Mon...
+    };
+  } catch (e) {
+    // Fallback if Intl fails
+    return { y: date.getUTCFullYear(), m: date.getUTCMonth() + 1, d: date.getUTCDate(), h: date.getUTCHours(), min: date.getUTCMinutes(), dow: 'Mon' };
+  }
+};
+
+// 세션 시작 시각을UTC 초 단위로 변환해주는 유틸리티 (미국 주식 서머타임 자동 대응)
 const getDynamicSessionStartUTC = (sessionStartTime: string, isUSMarket: boolean, baseDate: Date = new Date()) => {
-  const now = baseDate
-  
+  const ny = getNYParts(baseDate);
+  let targetDate = new Date(baseDate);
+
   if (isUSMarket) {
-    // 미국 주식 개장 (오전 9시 30분 NY 시간)
-    const formatter = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/New_York',
-        timeZoneName: 'short'
-    });
-    const isDST = formatter.format(now).includes('EDT');
+    // 미국 주식 개장: 09:30 AM ET
+    const sessionStartNum = 930;
+    const currentNum = ny.h * 100 + ny.min;
+
+    // 주말(토, 일)이면 금요일로 이동
+    if (ny.dow === 'Sun') {
+      targetDate.setDate(targetDate.getDate() - 2);
+    } else if (ny.dow === 'Sat') {
+      targetDate.setDate(targetDate.getDate() - 1);
+    } else if (currentNum < sessionStartNum) {
+      // 주중인데 아직 개장 전이면 전장으로 이동 (월요일이면 금요일로)
+      if (ny.dow === 'Mon') {
+        targetDate.setDate(targetDate.getDate() - 3);
+      } else {
+        targetDate.setDate(targetDate.getDate() - 1);
+      }
+    }
+
+    // 대상 날짜를 다시 NY 파츠로 추출 (월/일/년도가 바뀌었을 수 있음)
+    const tny = getNYParts(targetDate);
     
-    // 서머타임 적용 시 UTC 13:30, 해제 시 UTC 14:30
+    // 해당 날짜의 09:30 ET가 UTC로 몇 시인지 판별 (DST 확인)
+    // 3월 중순~11월 초는 EDT(UTC-4), 그 외는 EST(UTC-5)
+    // 2026년 서머타임 시작은 3월 8일 일요일입니다. 현재는 서머타임 적용 중(EDT).
+    const isDST = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      timeZoneName: 'short'
+    }).format(targetDate).includes('DT');
+    
     const utcHours = isDST ? 13 : 14;
-    const utcMinutes = 30;
+    return Date.UTC(tny.y, tny.m - 1, tny.d, utcHours, 30, 0, 0) / 1000;
+  } else {
+    // 일반 한국 시장/크립토 등 (KST 기준 09:00 등)
+    const [sHour, sMin] = sessionStartTime.split(":").map(Number);
+    const kst = new Intl.DateTimeFormat('ko-KR', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric', month: 'numeric', day: 'numeric',
+      hour: 'numeric', minute: 'numeric'
+    }).formatToParts(targetDate);
+    const kp = Object.fromEntries(kst.map(x => [x.type, x.value]));
     
-    const sessionStart = new Date(Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      now.getUTCDate(),
-      utcHours,
-      utcMinutes,
-      0, 0
-    ));
-    
-    if (now < sessionStart) {
+    let sessionStart = new Date(Date.UTC(parseInt(kp.year), parseInt(kp.month) - 1, parseInt(kp.day), sHour - 9, sMin, 0, 0));
+    if (baseDate < sessionStart) {
       sessionStart.setUTCDate(sessionStart.getUTCDate() - 1);
     }
-    return sessionStart.getTime() / 1000;
-  } else {
-    // 한국/크립토/커머디티 시장 등 (KST 기준)
-    const [sHour, sMin] = sessionStartTime.split(":").map(Number)
-    
-    // KST는 UTC+9
-    const sessionStart = new Date(Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      now.getUTCDate(),
-      sHour - 9, 
-      sMin,
-      0, 0
-    ))
-    
-    if (now < sessionStart) {
-      sessionStart.setUTCDate(sessionStart.getUTCDate() - 1)
-    }
-    
     return sessionStart.getTime() / 1000;
   }
 }
@@ -145,6 +173,12 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
      currentInterval === "15m" ? 96 : 
      currentInterval === "1h" ? 24 : 288) * 7
   )
+  
+  // 1-1. Reset refs on asset/interval change
+  useEffect(() => {
+    lastCandleRef.current = null;
+    setChartStats({ first: 0, last: 0, prevClose: 0 });
+  }, [assetIdentifier, currentInterval]);
 
   // dataInterval에 따른 로컬 refetch interval 동기화 (과부하 방지)
   const dynamicRefetchInterval = useMemo(() => {
@@ -293,13 +327,13 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
     let isUSMarket = false;
     let is24hMarket = true;
     if (assetDetail) {
-      const typeName = (assetDetail.asset_type || assetDetail.type_name || '').toLowerCase();
+      const typeName = (assetDetail.asset_type || assetDetail.asset_type_name || assetDetail.type_name || '').toLowerCase();
       const exchange = (assetDetail.exchange || '').toUpperCase();
       const currency = (assetDetail.currency || '').toUpperCase();
       
-      if (typeName.includes('stock') || typeName.includes('etf') || typeName === 'stocks' || typeName === 'etfs') {
-        is24hMarket = false; // 주식, ETF는 24시간 시장이 아님
-        if (currency === 'USD' || exchange === 'NASDAQ' || exchange === 'NYSE' || exchange === 'AMEX') {
+      if (typeName.includes('stock') || typeName.includes('etf') || typeName === 'stocks' || typeName === 'etfs' || typeName.includes('commodity') || typeName.includes('index')) {
+        is24hMarket = false; // 주식, ETF, 원자재, 지수는 24시간 시장이 아님 (주말 휴장)
+        if (currency === 'USD' || exchange === 'NASDAQ' || exchange === 'NYSE' || exchange === 'AMEX' || exchange === 'ICE' || exchange === 'COMEX' || exchange === 'NYMEX' || exchange === 'CME') {
           isUSMarket = true;
         }
       }
@@ -311,18 +345,22 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
     let startTimeSeconds = 0;
     
     if (mode === "session") {
-      // 1번 모드: 장 시작 시각부터 표시
-      startTimeSeconds = getDynamicSessionStartUTC(sessionStartTime, isUSMarket)
-      let filtered = processed.filter(d => (d.time as number) >= startTimeSeconds)
+      // API에서 불러온 실제 데이터의 '마지막 지점'을 기준으로 세션을 잡습니다. (가장 확실함)
+      // historyData가 존재하면 그 데이터를 기반으로, 없으면 현재 시각 기반으로 계산
+      const referenceDate = historyData.length > 0 
+        ? new Date(new Date(historyData[historyData.length - 1].timestamp_utc || historyData[historyData.length - 1].timestamp).getTime())
+        : new Date();
+        
+      startTimeSeconds = getDynamicSessionStartUTC(sessionStartTime, isUSMarket, referenceDate);
+      
+      // 세션의 종료 시간 계산 (충분히 넉넉하게 23시간으로 설정하여 해당 일의 상하장 전후 데이터를 모두 포함)
+      const sessionDurationSeconds = 23 * 3600;
+      let endTimeSeconds = startTimeSeconds + sessionDurationSeconds;
 
-      // 주식/ETF 등의 경우 아직 개장 전이거나 주말/휴일이면 오늘 세션 데이터가 0개입니다.
-      // 이 경우 데이터가 존재하는 가장 '최근 거래일'의 세션을 찾아 그 날의 세션 시작 시간을 기준으로 삼습니다.
-      if (filtered.length === 0 && processed.length > 0 && !is24hMarket) {
-        const lastDataTime = (processed[processed.length - 1].time as number) * 1000;
-        startTimeSeconds = getDynamicSessionStartUTC(sessionStartTime, isUSMarket, new Date(lastDataTime));
-        filtered = processed.filter(d => (d.time as number) >= startTimeSeconds);
-      }
-      processed = filtered;
+      processed = processed.filter(d => {
+        const t = (d.time as number);
+        return t >= startTimeSeconds && t <= endTimeSeconds;
+      });
     } else {
       // 2번 모드: 최근 N시간 롤링 (유지)
       let effectiveLookback = lookbackHours
@@ -376,31 +414,41 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
       setChartStats({ first: processed[0].close, last: processed[processed.length - 1].close, prevClose })
 
       if (mode === "session") {
-        // 세션 차트의 경우, 좌측은 고정(시작시간)되게 하고 우측은 (24시간 보장용 빈 공간)을 논리적으로 확보
-        // 남은 시간(예: 현재가 15시면 09:00까지 남은 18시간)을 계산해 빈 캔들 개수(rightOffset)로 변환
+        // 세션 차트의 경우, 현재 시간이 세션 종료 전이라면 미래 공간을 확보
         const lastTime = processed[processed.length - 1].time as number;
-        const sessionEndSeconds = startTimeSeconds + (24 * 3600);
         
-        let intervalSeconds = 300; // default 5m
-        if (currentInterval === "1m") intervalSeconds = 60;
-        else if (currentInterval === "15m") intervalSeconds = 900;
-        else if (currentInterval === "30m") intervalSeconds = 1800;
-        else if (currentInterval === "1h") intervalSeconds = 3600;
+        // 세션 종료는 시작 + 6.5시간(주식 정규장) 또는 24시간
+        const sessionDurationSeconds = isUSMarket ? (6.5 * 3600) : (24 * 3600);
+        const sessionEndSeconds = startTimeSeconds + sessionDurationSeconds;
+        
+        // 현재 NY 시간이 세션 종료 전인 경우만 rightOffset 주입
+        const nowUTC = Date.now() / 1000;
+        if (nowUTC < sessionEndSeconds) {
+            let intervalSeconds = 300; // default 5m
+            if (currentInterval === "1m") intervalSeconds = 60;
+            else if (currentInterval === "15m") intervalSeconds = 900;
+            else if (currentInterval === "30m") intervalSeconds = 1800;
+            else if (currentInterval === "1h") intervalSeconds = 3600;
 
-        // 세션 종료까지 남은 봉(캔들)의 개수
-        const missingCandlesCount = Math.max(0, Math.floor((sessionEndSeconds - lastTime) / intervalSeconds));
-        
-        // Lightweight Charts의 timeScale에 오프셋 강제 주입하여 우측 텅 빈 여백 생성 (데이터 자체를 더하진 않음)
-        chartRef.current.timeScale().applyOptions({
-           rightOffset: missingCandlesCount,
-           fixLeftEdge: true,
-        });
+            const missingCandlesCount = Math.max(0, Math.floor((sessionEndSeconds - lastTime) / intervalSeconds));
+            
+            chartRef.current.timeScale().applyOptions({
+               rightOffset: missingCandlesCount,
+               fixLeftEdge: true,
+            });
+        } else {
+            // 이미 세션이 종료된 과거 데이터라면 꽉 채움
+            chartRef.current.timeScale().applyOptions({
+                rightOffset: 0,
+                fixLeftEdge: true,
+            });
+        }
       }
       
       // 어떤 차트 모드든 (세션의 우측 여백을 포함하여) 화면 레이아웃에 맞게 한눈에 들어오도록 강제 압축
       chartRef.current.timeScale().fitContent();
     }
-  }, [historyData, mode, sessionStartTime, lookbackHours])
+  }, [historyData, mode, sessionStartTime, lookbackHours, assetDetail])
 
   // 5. 실시간 웹소켓 틱(Tick) 처리 (캔들 높이 실시간 반영)
   useEffect(() => {

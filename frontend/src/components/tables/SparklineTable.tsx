@@ -43,34 +43,38 @@ interface AssetData {
 // 스파클라인 컴포넌트
 const SparklineChart = ({ data }: { data: number[] }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [isReady, setIsReady] = useState(false);
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
   useEffect(() => {
     // 컨테이너 크기가 유효한지 확인하고 상태 업데이트
-    const checkSize = () => {
+    const updateSize = () => {
       if (containerRef.current) {
         const { width, height } = containerRef.current.getBoundingClientRect();
-        // 크기가 유효하고 실제로 표시되는지(offsetParent) 확인
-        setIsReady(width > 0 && height > 0 && containerRef.current.offsetParent !== null);
+        if (width > 0 && height > 0) {
+          setDimensions({ width, height });
+        }
       }
     };
 
-    // 초기 체크
-    checkSize();
+    // 초기 체크 (레이아웃 안정을 위해 약간의 지연 추가)
+    const timer = setTimeout(updateSize, 100);
     
-    // ResizeObserver를 사용하여 크기 변경 감지 (크기가 0이 되면 차트 숨김)
-    const resizeObserver = new ResizeObserver(() => {
-        checkSize();
-        if (containerRef.current) {
-             const { width, height } = containerRef.current.getBoundingClientRect();
-             // console.log(`[Sparkline Debug] Resize detected: ${width}x${height}, Visible: ${containerRef.current.offsetParent !== null}`);
+    // ResizeObserver를 사용하여 크기 변경 감지
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setDimensions({ width, height });
         }
+      }
     });
+
     if (containerRef.current) {
       resizeObserver.observe(containerRef.current);
     }
 
     return () => {
+      clearTimeout(timer);
       resizeObserver.disconnect();
     };
   }, []);
@@ -83,7 +87,7 @@ const SparklineChart = ({ data }: { data: number[] }) => {
     );
   }
 
-  // 데이터가 1개만 있어도 차트로 표시 (직선)
+  // 데이터 가공
   const chartData = data.map((value, index) => ({
     index,
     value,
@@ -96,27 +100,19 @@ const SparklineChart = ({ data }: { data: number[] }) => {
   const lastValue = data[data.length - 1];
   const isPositive = lastValue >= firstValue;
 
-  // Y축 범위를 약간 확장하여 차트가 더 잘 보이도록 함
-  // 데이터가 1개인 경우에도 적절한 범위 설정
-  const yAxisMin = data.length === 1
-    ? minValue - (minValue * 0.05)
-    : minValue - (range * 0.1);
-  const yAxisMax = data.length === 1
-    ? maxValue + (maxValue * 0.05)
-    : maxValue + (range * 0.1);
+  const yAxisMin = data.length === 1 ? minValue - (minValue * 0.05) : minValue - (range * 0.1);
+  const yAxisMax = data.length === 1 ? maxValue + (maxValue * 0.05) : maxValue + (range * 0.1);
 
-  // 배경색을 위한 색상 결정 (상승: 파란색, 하강: 빨간색)
-  const strokeColor = isPositive ? "#3b82f6" : "#ef4444"; // 파란색 또는 빨간색
+  const strokeColor = isPositive ? "#3b82f6" : "#ef4444";
   const gradientId = `gradient-${isPositive ? 'blue' : 'red'}`;
 
   return (
     <div 
       ref={containerRef}
       className="w-full h-10 min-w-[60px] min-h-[40px] relative rounded overflow-hidden"
-      style={{ minHeight: '40px', minWidth: '60px' }}
     >
-      {isReady && (
-        <ResponsiveContainer width="100%" height="100%" minWidth={60} minHeight={40} debounce={100}>
+      {dimensions.width > 0 && dimensions.height > 0 && (
+        <ResponsiveContainer width="100%" height="100%">
           <AreaChart
             data={chartData}
             margin={{ top: 2, right: 2, bottom: 2, left: 2 }}
@@ -132,10 +128,7 @@ const SparklineChart = ({ data }: { data: number[] }) => {
               hide={true}
               allowDataOverflow={true}
             />
-            <Tooltip
-              content={() => null}
-              cursor={false}
-            />
+            <Tooltip content={() => null} cursor={false} />
             <Area
               type="monotone"
               dataKey="value"
@@ -144,7 +137,6 @@ const SparklineChart = ({ data }: { data: number[] }) => {
               strokeWidth={2}
               dot={false}
               isAnimationActive={false}
-              activeDot={false}
               connectNulls={false}
             />
           </AreaChart>

@@ -3,8 +3,8 @@ import React from "react";
 import DashBoardMainView from "@/components/dashboard/DashBoardMainView";
 
 export const metadata: Metadata = {
-  title: "FireMarkets Dashboard | Prism Hub & Personalized Feed",
-  description: "Real-time market overview and personalized feed for the modern investor.",
+  title: "FireMarkets Dashboard | Live Market & Prism Hub",
+  description: "Real-time live market sessions, prism hub overview and personalized feed.",
 };
 
 export default function Dashboard() {

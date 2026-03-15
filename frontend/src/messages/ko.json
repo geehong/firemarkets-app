@@ -142,7 +142,8 @@
         "latestUpdate": "최신 업데이트",
         "moreNews": "더 많은 뉴스",
         "overview": "개요",
-        "dashboard": "대시보드"
+        "dashboard": "대시보드",
+        "liveMarket": "라이브 마켓"
     },
     "Common": {
         "underConstruction": "준비중입니다.",

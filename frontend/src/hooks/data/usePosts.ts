@@ -203,13 +203,17 @@ export const usePost = (postId: number | undefined) => {
 export const usePostBySlug = (slug: string | undefined) => {
   return useQuery({
     queryKey: ['post', 'slug', slug],
-    queryFn: async (): Promise<Post> => {
+    queryFn: async (): Promise<Post | null> => {
       if (!slug) throw new Error('Slug is required')
 
       const url = `${getApiBase()}/posts/slug/${slug}`
       console.log('🔍 [usePostBySlug] Fetching post by slug:', url)
 
       const response = await fetch(url)
+      if (response.status === 404) {
+        console.warn(`ℹ️ [usePostBySlug] Post not found (404) for slug: ${slug}. Returning null.`)
+        return null
+      }
       if (!response.ok) {
         throw new Error(`Failed to fetch post by slug: ${response.status}`)
       }
