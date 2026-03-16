@@ -71,22 +71,45 @@ class USBackfillCollector(BaseCollector):
                         continue
                         
                     # Save to TimeBar
-                    await self._upsert_bars(asset_id, interval, data_points)
-                    
-                    # Save to Delay (Permanent 1m)
-                    if interval == "1m":
-                        await self._upsert_delay_bars(asset_id, data_points)
-                    
-                    # Save to Historical (for charts)
-                    await self._upsert_historical_bars(asset_id, interval, data_points)
+                    if not data_points:
+                        continue
                         
-                    self.db.commit()
-                    total_data_points += len(data_points)
-                    logger.debug(f"✅ Backfilled {ticker} ({interval})")
+                    # 3. Redis Queue에 전달하도록 수정 (직접 DB 저장 대신)
+                    # ohlcv_intraday_data 타입으로 통합하여 전달
+                    items = []
+                    for dp in data_points:
+                        ts = dp.timestamp_utc.astimezone(timezone.utc).replace(microsecond=0, tzinfo=None)
+                        items.append({
+                            "asset_id": asset_id,
+                            "timestamp_utc": ts.isoformat(),
+                            "data_interval": interval,
+                            "open": float(dp.open_price),
+                            "high": float(dp.high_price),
+                            "low": float(dp.low_price),
+                            "close": float(dp.close_price),
+                            "volume": float(dp.volume or 0),
+                            "data_source": "polygon"
+                        })
+
+                    if items and self.redis_queue_manager:
+                        task_type = "ohlcv_day_data" if interval in ["1d", "daily"] else "ohlcv_intraday_data"
+                        await self.redis_queue_manager.push_batch_task(
+                            task_type,
+                            {
+                                "items": items,
+                                "metadata": {
+                                    "asset_id": asset_id,
+                                    "interval": interval,
+                                    "is_backfill": True,
+                                    "target_tables": ["realtime_quotes_time_bar", "ohlcv_intraday_data"]
+                                }
+                            }
+                        )
+                        total_data_points += len(items)
+                        logger.debug(f"📤 Enqueued {ticker} ({interval}) to Redis Queue")
                     
                 except Exception as e:
                     logger.error(f"❌ Error backfilling {ticker} ({interval}): {e}")
-                    self.db.rollback()
                 
                 # Small sleep to be kind
                 await asyncio.sleep(0.05)
@@ -95,105 +118,5 @@ class USBackfillCollector(BaseCollector):
             "success": True,
             "assets_processed": len(target_assets),
             "data_points_added": total_data_points,
-            "message": f"US Stock backfill completed for {len(target_assets)} assets"
+            "message": f"US Stock backfill enqueued for {len(target_assets)} assets"
         }
-
-    async def _upsert_bars(self, asset_id: int, interval: str, data_points: List[Any]):
-        seen = {}
-        for dp in data_points:
-            ts = dp.timestamp_utc.astimezone(timezone.utc).replace(microsecond=0, tzinfo=None)
-            key = (asset_id, ts, interval, "polygon")
-            seen[key] = {
-                "asset_id": asset_id,
-                "timestamp_utc": ts,
-                "data_interval": interval,
-                "data_source": "polygon",
-                "open_price": float(dp.open_price),
-                "high_price": float(dp.high_price),
-                "low_price": float(dp.low_price),
-                "close_price": float(dp.close_price),
-                "volume": float(dp.volume or 0),
-                "updated_at": datetime.utcnow().replace(microsecond=0)
-            }
-        
-        unique_records = list(seen.values())
-        if unique_records:
-            batch_size = 500
-            for i in range(0, len(unique_records), batch_size):
-                batch = unique_records[i:i+batch_size]
-                stmt = insert(RealtimeQuotesTimeBar).values(batch)
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=['asset_id', 'timestamp_utc', 'data_interval'],
-                    set_={
-                        "open_price": stmt.excluded.open_price,
-                        "high_price": stmt.excluded.high_price,
-                        "low_price": stmt.excluded.low_price,
-                        "close_price": stmt.excluded.close_price,
-                        "volume": stmt.excluded.volume,
-                        "updated_at": stmt.excluded.updated_at
-                    }
-                )
-                self.db.execute(stmt)
-
-    async def _upsert_delay_bars(self, asset_id: int, data_points: List[Any]):
-        seen = {}
-        for dp in data_points:
-            ts = dp.timestamp_utc.astimezone(timezone.utc).replace(microsecond=0, tzinfo=None)
-            key = (asset_id, ts)
-            seen[key] = {
-                "asset_id": asset_id,
-                "timestamp_utc": ts,
-                "price": float(dp.close_price),
-                "volume": float(dp.volume or 0),
-                "data_source": "polygon",
-                "data_interval": "1m",
-                "updated_at": datetime.utcnow().replace(microsecond=0)
-            }
-        
-        unique_records = list(seen.values())
-        if unique_records:
-            batch_size = 500
-            for i in range(0, len(unique_records), batch_size):
-                batch = unique_records[i:i+batch_size]
-                stmt = insert(RealtimeQuoteTimeDelay).values(batch)
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=['asset_id', 'timestamp_utc', 'data_source', 'data_interval'],
-                    set_={
-                        "price": stmt.excluded.price,
-                        "volume": stmt.excluded.volume,
-                        "updated_at": stmt.excluded.updated_at
-                    }
-                )
-                self.db.execute(stmt)
-    async def _upsert_historical_bars(self, asset_id: int, interval: str, data_points: List[Any]):
-        """Upsert for OHLCVIntradayData (Historical bars used for charts)"""
-        records = []
-        for dp in data_points:
-            ts = dp.timestamp_utc.astimezone(timezone.utc).replace(microsecond=0, tzinfo=None)
-            records.append({
-                "asset_id": asset_id,
-                "timestamp_utc": ts,
-                "data_interval": interval,
-                "open_price": float(dp.open_price),
-                "high_price": float(dp.high_price),
-                "low_price": float(dp.low_price),
-                "close_price": float(dp.close_price),
-                "volume": float(dp.volume or 0),
-            })
-        
-        if records:
-            batch_size = 500
-            for i in range(0, len(records), batch_size):
-                batch = records[i:i+batch_size]
-                stmt = insert(OHLCVIntradayData).values(batch)
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=['asset_id', 'timestamp_utc', 'data_interval'],
-                    set_={
-                        "open_price": stmt.excluded.open_price,
-                        "high_price": stmt.excluded.high_price,
-                        "low_price": stmt.excluded.low_price,
-                        "close_price": stmt.excluded.close_price,
-                        "volume": stmt.excluded.volume,
-                    }
-                )
-                self.db.execute(stmt)

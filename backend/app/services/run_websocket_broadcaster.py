@@ -84,6 +84,7 @@ sio_client = socketio.AsyncClient(
 ticker_to_asset_id_cache: Dict[str, int] = {}
 ticker_to_asset_type_cache: Dict[str, str] = {}
 last_asset_cache_refresh: Optional[datetime] = None
+last_broadcast_prices = {}  # { (asset_id, ticker): last_price }
 asset_cache_refresh_interval = timedelta(minutes=10)
 
 # REALTIME_STREAMS 설정이 없을 경우를 대비한 기본값
@@ -114,19 +115,37 @@ async def _refresh_asset_cache():
         db = SessionLocal()
         try:
             # 모든 활성 자산 가져오기
-            assets = db.query(Asset.ticker, Asset.asset_id, AssetType.type_name)\
+            # AssetType.type_name 대신 AssetType 객체 자체를 가져와서 .name 속성을 사용
+            assets = db.query(Asset, AssetType)\
                 .join(AssetType, Asset.asset_type_id == AssetType.asset_type_id)\
                 .filter(Asset.is_active == True)\
                 .all()
             
             new_id_cache = {}
+            new_id_to_ticker_cache = {}
             new_type_cache = {}
             
-            for ticker, asset_id, type_name in assets:
-                new_id_cache[ticker.upper()] = asset_id
-                new_type_cache[ticker.upper()] = type_name
+            for asset_obj, asset_type_obj in assets:
+                t = asset_obj.ticker.upper()
+                aid = asset_obj.asset_id
+                
+                # 중복 티커 체크 (예: 같은 티커가 여러 타입으로 존재할 경우)
+                if t in new_id_cache:
+                    prev_aid = new_id_cache[t]
+                    logger.warning(f"⚠️ [Broadcaster] Duplicate ticker mapping: {t} already points to {prev_aid}, skipping {aid}")
+                    continue
+                
+                new_id_cache[t] = aid
+                new_id_to_ticker_cache[aid] = t
+                new_type_cache[t] = asset_type_obj.type_name if asset_type_obj else "Unknown"
+                
+                # 변형 심볼 매핑 (USDT 등)
+                for variant in [f"{t}USDT", f"{t}-USD"]:
+                    if variant not in new_id_cache:
+                        new_id_cache[variant] = aid
             
             ticker_to_asset_id_cache = new_id_cache
+            asset_id_to_ticker_cache = new_id_to_ticker_cache
             ticker_to_asset_type_cache = new_type_cache
             
             last_asset_cache_refresh = datetime.now(timezone.utc)
@@ -233,103 +252,107 @@ async def listen_to_redis_and_broadcast():
                     await asyncio.sleep(0.01)
                     continue
 
+                # 스트림별로 메시지를 모아서 심볼별 최신 데이터만 추출 (De-duplication)
+                # target_quotes = { (asset_id, ticker): {data} }
+                target_quotes = {}
+                # acks = { stream_name: [message_ids] }
+                acks = {}
+
                 for stream_name_bytes, messages in all_messages:
                     stream_name = stream_name_bytes.decode('utf-8') if isinstance(stream_name_bytes, bytes) else stream_name_bytes
                     group_name = realtime_streams.get(stream_name)
-
+                    if stream_name not in acks: acks[stream_name] = []
                     for message_id, message_data in messages:
                         try:
-                            symbol = message_data.get(b'symbol', b'').decode('utf-8').upper()
-                            price = safe_float(message_data.get(b'price', b'').decode('utf-8'))
+                            acks[stream_name].append(message_id)
+                            
+                            # 🔍 [STREAM READ]
+                            symbol_raw = message_data.get(b'symbol', b'').decode('utf-8')
+                            price_raw = message_data.get(b'price', b'').decode('utf-8')
+                            provider_raw = message_data.get(b'provider', b'unknown').decode('utf-8')
+                            
+                            p_val = safe_float(price_raw)
+                            if p_val is None: continue
+
+                            symbol = symbol_raw.upper()
+                            price = p_val
                             volume = safe_float(message_data.get(b'volume', b'').decode('utf-8'))
-                            provider = message_data.get(b'provider', b'unknown').decode('utf-8')
+                            provider = provider_raw
 
-                            if not symbol or price is None:
-                                continue
-
-                            # 티커 형식 변환 (Coinbase: ETH-USD -> ETHUSDT, Binance: 그대로)
-                            original_symbol = symbol
+                            # 🛠 [심볼 매핑 고도화]
+                            ticker_for_broadcast = symbol
+                            asset_id = None
                             
-                            # provider가 없으면 stream_name에서 추론
-                            if provider == 'unknown' or not provider:
-                                if 'coinbase' in stream_name.lower():
-                                    provider = 'coinbase'
-                                elif 'binance' in stream_name.lower():
-                                    provider = 'binance'
-                                elif 'finnhub' in stream_name.lower():
-                                    provider = 'finnhub'
+                            # 1. 공급자별 특화 정규화
+                            search_symbols = [symbol]
+                            if provider == 'coinbase' and '-' in symbol:
+                                # "BTC-USD" -> ["BTC", "BTCUSDT"] 추가 탐색
+                                base = symbol.split('-')[0]
+                                search_symbols.extend([base, f"{base}USDT"])
+                            elif provider == 'binance' and symbol.endswith('USDT'):
+                                # "BTCUSDT" -> ["BTC"] 추가 탐색
+                                base = symbol.replace('USDT', '')
+                                search_symbols.append(base)
                             
-                            # 티커 변환 로직
-                            if symbol.endswith('-USD'):
-                                # ETH-USD -> ETHUSDT 변환 (Coinbase 형식)
-                                base = symbol[:-4]  # '-USD' 제거
-                                symbol = f"{base}USDT"
-                                logger.debug(f"🔄 티커 변환: {original_symbol} -> {symbol} (provider: {provider}, stream: {stream_name})")
-                            elif not symbol.endswith('USDT') and provider == 'binance':
-                                # Binance는 USDT 접미사가 없으면 추가
-                                if not any(symbol.endswith(suffix) for suffix in ['USDT', 'BUSD', 'BTC', 'ETH']):
-                                    symbol = f"{symbol}USDT"
-                                    logger.debug(f"🔄 Binance 티커 변환: {original_symbol} -> {symbol}")
-                            elif provider == 'swissquote':
-                                # Swissquote 심볼 역정규화 (XAU/USD -> GCUSD)
-                                mapping = {'XAU/USD': 'GCUSD', 'XAG/USD': 'SIUSD'}
-                                if symbol in mapping:
-                                    symbol = mapping[symbol]
-                                    logger.debug(f"🔄 Swissquote 티커 변환: {original_symbol} -> {symbol}")
-
-                            # 먼저 전체 심볼로 검색
-                            asset_id = ticker_to_asset_id_cache.get(symbol)
-                            ticker_for_broadcast = symbol  # 브로드캐스트에 사용할 티커
-                            
-                            # 없으면 원본 심볼로도 시도
-                            if not asset_id and original_symbol != symbol:
-                                asset_id = ticker_to_asset_id_cache.get(original_symbol)
+                            # 2. 가능한 모든 변형으로 매핑 조회
+                            for s in search_symbols:
+                                asset_id = ticker_to_asset_id_cache.get(s)
                                 if asset_id:
-                                    ticker_for_broadcast = original_symbol
-                                    logger.debug(f"🔍 변환된 심볼 '{symbol}' not found, using original: '{original_symbol}'")
-                            
-                            # 여전히 없으면 USDT 접미사 제거하여 검색
-                            if not asset_id and symbol.endswith('USDT'):
-                                symbol_for_db = symbol.replace('USDT', '')
-                                asset_id = ticker_to_asset_id_cache.get(symbol_for_db)
-                                if asset_id:
-                                    ticker_for_broadcast = symbol_for_db  # DB 티커 사용 (예: ETH)
-                                logger.debug(f"🔍 Full symbol '{symbol}' not found, trying without USDT: '{symbol_for_db}'")
+                                    ticker_for_broadcast = s
+                                    # [MAPPING TRACE]
+                                    if symbol in ['SOL', 'ETHUSDT', 'BTCUSDT']:
+                                        logger.info(f"🔍 [MAPPING-TRACE] {provider} | {symbol} -> Internal: {ticker_for_broadcast} (ID: {asset_id})")
+                                    break
                             
                             if not asset_id:
-                                logger.debug(f"⚠️ Asset ID not found for symbol: {symbol} (original: {original_symbol}, provider: {provider})")
-                                logger.debug(f"📋 Available symbols in cache: {list(ticker_to_asset_id_cache.keys())[:10]}...")
+                                if symbol in ['SOL', 'ETHUSDT', 'BTCUSDT']:
+                                    logger.warning(f"⚠️ [Broadcaster] Mapping failed for critical asset: {symbol} ({provider})")
                                 continue
-                            else:
-                                logger.debug(f"✅ Found asset_id {asset_id} for symbol: {symbol} (original: {original_symbol})")
 
-                            # 브로드캐스트할 때는 데이터베이스에 저장된 티커 형식 사용 (예: ETH)
-                            # Frontend의 useRealtimePrices와 일치하도록 DB 티커 형식 (예: ETH) 사용
-                            quote_data = {
+                            # 🚨 [추가] 가격 이상치 검증 (급격한 변동 차단)
+                            # 매우 짧은 시간(배치 간격) 내에 10% 이상 변동은 데이터 오류일 가능성이 높음
+                            cache_key = (asset_id, ticker_for_broadcast)
+                            if cache_key in last_broadcast_prices:
+                                prev_p = last_broadcast_prices[cache_key]
+                                if prev_p > 0 and price > 0:
+                                    deviation = abs(price - prev_p) / prev_p
+                                    if deviation > 0.1:  # 10% 이상 변동
+                                        logger.warning(f"🚨 [Broadcaster] 이상 가격 감지(차단) {ticker_for_broadcast}: {prev_p} -> {price} ({deviation*100:.2f}%)")
+                                        continue
+                            
+                            last_broadcast_prices[cache_key] = price
+
+                            # 중복 제거: 같은 asset_id/ticker 조합은 가장 최신(마지막) 메시지로 덮어쓰기
+                            target_quotes[(asset_id, ticker_for_broadcast)] = {
                                 "asset_id": asset_id,
-                                "ticker": ticker_for_broadcast,  # DB 티커 형식 (예: ETH, BTC)
-                                "asset_type": ticker_to_asset_type_cache.get(ticker_for_broadcast, "Unknown"), # 자산 타입 추가
+                                "ticker": ticker_for_broadcast,
+                                "asset_type": ticker_to_asset_type_cache.get(ticker_for_broadcast, "Unknown"),
                                 "timestamp_utc": datetime.now(timezone.utc).isoformat(),
                                 "price": price,
                                 "volume": volume,
                                 "data_source": provider
                             }
 
-                            if sio_client.connected:
-                                logger.debug(f"📤 [BROADCASTER→BACKEND] 전송 시도: {symbol} = ${price} (asset_id: {asset_id})")
-                                await sio_client.emit('broadcast_quote', quote_data)
-                                logger.debug(f"✅ [BROADCASTER→BACKEND] 전송 완료: {symbol} = ${price}")
-                            else:
-                                logger.warning(f"⚠️ [BROADCASTER→BACKEND] 백엔드 연결 끊김: {symbol} 전송 불가 (재시도 예정)")
-
-                            # 메시지 ACK (연결 상태에서만)
-                            if sio_client.connected:
-                                await redis_client.xack(stream_name, group_name, message_id)
-
                         except Exception as e:
-                            logger.exception(f"❌ 메시지 처리 중 오류: {e}")
-                            # 오류 발생 시에도 ACK 처리하여 무한 루프 방지
-                            await redis_client.xack(stream_name, group_name, message_id)
+                            logger.error(f"❌ 메시지 파싱 중 오류 (ID {message_id}): {e}")
+
+                # 1. 수집된 최신 쿼트들을 백엔드로 전송 (배치 모드)
+                if target_quotes and sio_client.connected:
+                    quotes_list = list(target_quotes.values())
+                    try:
+                        logger.debug(f"📤 [BATCH BROADCAST] {len(quotes_list)} tickers")
+                        await sio_client.emit('broadcast_quotes_batch', quotes_list)
+                    except Exception as e:
+                        logger.error(f"❌ BROADCAST Batch Emit 오류: {e}")
+
+                # 2. 모든 처리된 메시지 배치 ACK
+                for s_name, msg_ids in acks.items():
+                    if msg_ids:
+                        try:
+                            g_name = realtime_streams.get(s_name)
+                            await redis_client.xack(s_name, g_name, *msg_ids)
+                        except Exception as e:
+                            logger.error(f"❌ Batch ACK 오류 ({s_name}): {e}")
 
         except asyncio.CancelledError:
             logger.info("🛑 Redis listener task was cancelled.")

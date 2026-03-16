@@ -142,17 +142,64 @@ class CommodityOHLCVAggregatorCollector(BaseCollector):
             logger.warning(f"Skipping aggregation for table {table_name} (interval: {interval})")
             return 0
         
+        # 집계 전용 SELECT SQL
+        select_sql = text(f"""
+            SELECT 
+                r.asset_id,
+                {truncate_sql} as timestamp_utc,
+                (array_agg(r.price ORDER BY r.timestamp_utc ASC))[1] as open,
+                MAX(r.price) as high,
+                MIN(r.price) as low,
+                (array_agg(r.price ORDER BY r.timestamp_utc DESC))[1] as close,
+                COALESCE(SUM(r.volume), 0) as volume
+            FROM realtime_quotes_time_delay r
+            JOIN assets a ON r.asset_id = a.asset_id
+            JOIN asset_types at ON a.asset_type_id = at.asset_type_id
+            WHERE at.type_name = 'Commodities'
+              AND r.timestamp_utc >= :start_time
+              AND r.timestamp_utc < :end_time
+            GROUP BY r.asset_id, {truncate_sql}
+        """)
+        
         try:
-            result = self.db.execute(aggregate_sql, {
-                "interval": interval,
+            result = self.db.execute(select_sql, {
                 "start_time": start_time,
                 "end_time": now
             })
-            self.db.commit()
-            count = result.rowcount
-            logger.info(f"[{self.collector_name}] {interval} aggregation: {count} rows affected")
-            return count if count else 0
+            
+            rows = result.fetchall()
+            if not rows:
+                return 0
+                
+            items = []
+            for row in rows:
+                items.append({
+                    "asset_id": row.asset_id,
+                    "timestamp_utc": row.timestamp_utc.isoformat(),
+                    "data_interval": interval,
+                    "open": float(row.open),
+                    "high": float(row.high),
+                    "low": float(row.low),
+                    "close": float(row.close),
+                    "volume": float(row.volume),
+                    "data_source": "aggregated"
+                })
+            
+            if items and self.redis_queue_manager:
+                await self.redis_queue_manager.push_batch_task(
+                    "ohlcv_intraday_data",
+                    {
+                        "items": items,
+                        "metadata": {
+                            "interval": interval,
+                            "data_type": "commodity_aggregated"
+                        }
+                    }
+                )
+                logger.info(f"[{self.collector_name}] Enqueued {len(items)} aggregated records for {interval}")
+                return len(items)
+            
+            return 0
         except Exception as e:
-            self.db.rollback()
-            logger.error(f"[{self.collector_name}] SQL error for {interval}: {e}")
+            logger.error(f"[{self.collector_name}] error for {interval}: {e}")
             raise

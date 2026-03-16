@@ -197,24 +197,25 @@ class DataRepository:
             # SQLAlchemy 모델에 맞게 변환
             rows = []
             for b in bars:
-                # Redis에서 온 데이터는 문자열일 수 있으므로 변환 필요
                 try:
                     open_p = float(b.get('open'))
                     close_p = float(b.get('close'))
+                    source = b.get('data_source') or 'binance'
+                    interval = b.get('interval') or '1m'
                     row = {
                         'asset_id': int(b.get('asset_id')),
                         'timestamp_utc': b.get('timestamp_utc'),
-                        'data_interval': b.get('interval'),
+                        'data_interval': interval,
                         'open_price': open_p,
                         'high_price': float(b.get('high')),
                         'low_price': float(b.get('low')),
                         'close_price': close_p,
                         'volume': float(b.get('volume')),
                         'change_amount': close_p - open_p,
-                        'data_source': 'binance',  # Default to binance for now
+                        'data_source': source,
                         'updated_at': func.now()
                     }
-                    if row['open_price'] != 0:
+                    if row['open_price'] and row['open_price'] != 0:
                         row['change_percent'] = (row['change_amount'] / row['open_price']) * 100
                     else:
                         row['change_percent'] = 0
@@ -226,7 +227,7 @@ class DataRepository:
             if not rows:
                 return True
 
-            # UPSERT 처리
+            # 1. RealtimeQuotesTimeBar UPSERT
             stmt = pg_insert(RealtimeQuotesTimeBar).values(rows)
             stmt = stmt.on_conflict_do_update(
                 index_elements=['asset_id', 'timestamp_utc', 'data_interval'],
@@ -241,6 +242,37 @@ class DataRepository:
                 }
             )
             pg_db.execute(stmt)
+
+            # 2. 1분봉인 경우 RealtimeQuoteTimeDelay에도 저장 (영구 백업용)
+            delay_rows = []
+            for r in rows:
+                if r['data_interval'] == '1m':
+                    delay_rows.append({
+                        'asset_id': r['asset_id'],
+                        'timestamp_utc': r['timestamp_utc'],
+                        'price': r['close_price'],
+                        'volume': r['volume'],
+                        'change_amount': r['change_amount'],
+                        'change_percent': r['change_percent'],
+                        'data_source': r['data_source'],
+                        'data_interval': '1m',
+                        'updated_at': func.now()
+                    })
+            
+            if delay_rows:
+                stmt_delay = pg_insert(RealtimeQuoteTimeDelay).values(delay_rows)
+                stmt_delay = stmt_delay.on_conflict_do_update(
+                    index_elements=['asset_id', 'timestamp_utc'],
+                    set_={
+                        'price': stmt_delay.excluded.price,
+                        'volume': stmt_delay.excluded.volume,
+                        'change_amount': stmt_delay.excluded.change_amount,
+                        'change_percent': stmt_delay.excluded.change_percent,
+                        'updated_at': func.now()
+                    }
+                )
+                pg_db.execute(stmt_delay)
+
             pg_db.commit()
             logger.info(f"💾 Redis 바구니 데이터 DB 저장 완료: {len(rows)}건 ({rows[0]['data_interval']})")
             return True

@@ -5,12 +5,14 @@ import { io, Socket } from 'socket.io-client'
 import { resolveApiBaseUrl, apiClient } from '@/lib/api'
 
 // 타입 정의
-interface RealtimePrice {
+export interface RealtimePrice {
   price: number
   volume?: number
   timestamp: string
   dataSource: string
   changePercent?: number // 일일 증감율 (%)
+  asset_id?: number | string // 🚨 추가: 데이터의 자산 ID 유지
+  ticker?: string            // 🚨 추가: 데이터의 티커 이름 유지
 }
 
 interface BroadcastData {
@@ -386,15 +388,29 @@ export const useRealtimePrices = (assetIdentifier: string) => {
     }
 
     const receivedTicker = String(data.ticker || '').trim().toUpperCase()
+    const receivedAssetId = String(data.asset_id || '').trim()
     const targetTicker = String(targetAsset || '').trim().toUpperCase()
 
+    // 🚨 수신된 데이터의 티커나 자산ID 중 하나라도 차트와 정확히 일치할 때만 통과 (교차 수신 원천 차단)
+    // includes 는 너무 광범위함 (예: BTC 가 ETHBTC 에 매칭됨). 따라서 명확한 규칙 기반 매칭으로 변경.
+    const isMatch = (receivedTicker === targetTicker) || 
+                   (receivedAssetId === targetTicker) || 
+                   (receivedTicker === `${targetTicker}USDT`) ||
+                   (receivedTicker === `${targetTicker}-USDT`) ||
+                   (receivedTicker === `${targetTicker}-USD`) ||
+                   (receivedTicker === `BINANCE:${targetTicker}USDT`);
+
+
     // 티커가 일치하지 않으면 즉시 리턴 (다른 컴포넌트용 메시지)
-    if (receivedTicker !== targetTicker) {
+    if (!isMatch) {
       return
     }
 
 
+
     const currentPrice = data.price
+
+
     const cacheKey = `${targetAsset}_previous_close`
     const cached = changePercentCacheRef.current.get(cacheKey)
     const now = Date.now()
@@ -414,6 +430,8 @@ export const useRealtimePrices = (assetIdentifier: string) => {
       timestamp: data.timestamp_utc,
       dataSource: data.data_source,
       changePercent: changePercent ?? undefined,
+      asset_id: data.asset_id, // 🚨 추가: 차트로 이름표 전달
+      ticker: data.ticker,     // 🚨 추가: 차트로 이름표 전달
     }
 
     // processPriceUpdate 함수로 처리 (스로틀링 적용됨)
@@ -614,7 +632,7 @@ export const useRealtimePrices = (assetIdentifier: string) => {
 // 브로드캐스트 데이터 수신 훅
 export const useBroadcastData = () => {
   const { socket, isConnected } = useSocket()
-  const [broadcastData, setBroadcastData] = useState<BroadcastData[]>([])
+  const [broadcastData, setBroadcastData] = useState<{ [key: string]: BroadcastData }>({})
   const [isUsingDummyData, setIsUsingDummyData] = useState<boolean>(false)
 
   // 연결 상태 체크 및 더미 데이터 모드 감지
@@ -631,17 +649,18 @@ export const useBroadcastData = () => {
     }
 
     const handleBroadcastQuote = (data: any) => {
-      setBroadcastData((prev: BroadcastData[]) => {
-        const newData = [...prev, {
+      if (!data.ticker) return;
+      setBroadcastData(prev => ({
+        ...prev,
+        [data.ticker]: {
           assetId: data.asset_id,
           ticker: data.ticker,
           price: data.price,
           volume: data.volume,
           timestamp: data.timestamp_utc,
           dataSource: data.data_source,
-        }]
-        return newData.slice(-50) // 최근 50개만 유지
-      })
+        }
+      }));
     }
 
     // 이벤트 리스너 등록 (연결 상태와 무관하게 항상 등록)

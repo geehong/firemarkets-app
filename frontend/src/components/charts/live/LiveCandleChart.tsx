@@ -163,6 +163,9 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
   const [currentInterval, setCurrentInterval] = useState(dataInterval)
   const [chartStats, setChartStats] = useState({ first: 0, last: 0, prevClose: 0 })
 
+  // 로컬 타임존 오프셋 계산 (한국의 경우 +9시간 = 32400초)
+  const localOffset = useMemo(() => -new Date().getTimezoneOffset() * 60, []);
+
   // 1. 자산 정보 및 과거 데이터 로드
   const { data: assetDetail } = useAssetDetail(assetIdentifier)
   
@@ -302,7 +305,7 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
       const dateStr = typeof ts === 'string' && !ts.includes('Z') && !ts.includes('+') ? `${ts}Z` : ts;
       
       return {
-        time: (new Date(dateStr).getTime() / 1000) as Time,
+        time: ((new Date(dateStr).getTime() / 1000) + localOffset) as Time, // 브라우저 로컬(KST 등) 시간으로 차트 표시 보정
         open: Number(d.open_price ?? d.open ?? 0),
         high: Number(d.high_price ?? d.high ?? 0),
         low: Number(d.low_price ?? d.low ?? 0),
@@ -340,7 +343,7 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
     }
 
     // 모드별 필터링 (UTC 기준 절대 시간 비교)
-    const nowTimestamp = Date.now() / 1000
+    const nowTimestamp = (Date.now() / 1000) + localOffset;
     
     let startTimeSeconds = 0;
     
@@ -351,7 +354,7 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
         ? new Date(new Date(historyData[historyData.length - 1].timestamp_utc || historyData[historyData.length - 1].timestamp).getTime())
         : new Date();
         
-      startTimeSeconds = getDynamicSessionStartUTC(sessionStartTime, isUSMarket, referenceDate);
+      startTimeSeconds = getDynamicSessionStartUTC(sessionStartTime, isUSMarket, referenceDate) + localOffset;
       
       // 세션의 종료 시간 계산 (충분히 넉넉하게 23시간으로 설정하여 해당 일의 상하장 전후 데이터를 모두 포함)
       const sessionDurationSeconds = 23 * 3600;
@@ -422,8 +425,8 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
         const sessionEndSeconds = startTimeSeconds + sessionDurationSeconds;
         
         // 현재 NY 시간이 세션 종료 전인 경우만 rightOffset 주입
-        const nowUTC = Date.now() / 1000;
-        if (nowUTC < sessionEndSeconds) {
+        const nowWithOffset = (Date.now() / 1000) + localOffset;
+        if (nowWithOffset < sessionEndSeconds) {
             let intervalSeconds = 300; // default 5m
             if (currentInterval === "1m") intervalSeconds = 60;
             else if (currentInterval === "15m") intervalSeconds = 900;
@@ -454,7 +457,33 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
   useEffect(() => {
     if (!seriesRef.current || !latestPrice || !lastCandleRef.current) return
 
-    const tickTime = new Date(latestPrice.timestamp).getTime() / 1000
+    // 🚨 교차 수신 방지 필터링: 수신된 웹소켓 틱이 현재 차트의 자산과 일치하는지 100% 검증
+    // (비트코인 차트에 이더리움 등 타 자산 데이터가 섞여 들어와 캔들이 튀는 현상 원천 차단)
+    const lpAny = latestPrice as any;
+    if (lpAny.asset_id && assetDetail?.asset_id) {
+      if (String(lpAny.asset_id) !== String(assetDetail.asset_id)) return;
+    } else {
+      // asset_id가 없을 경우 심볼/티커 이름으로 교차 검증
+      const receivedSymbol = (lpAny.symbol || lpAny.ticker || "").toUpperCase();
+      const targetId = String(assetIdentifier).toUpperCase();
+      const targetTicker = (assetDetail?.ticker || "").toUpperCase();
+      
+      const checkMatch = (received: string, target: string) => {
+        if (!received || !target) return false;
+        return received === target || 
+               received === `${target}USDT` || 
+               received === `${target}-USDT` || 
+               received === `${target}-USD`;
+      };
+
+      if (receivedSymbol && targetTicker) {
+        if (!checkMatch(receivedSymbol, targetTicker)) return;
+      } else if (receivedSymbol && targetId && isNaN(Number(targetId))) {
+        if (!checkMatch(receivedSymbol, targetId)) return;
+      }
+    }
+
+    const tickTime = (new Date(latestPrice.timestamp).getTime() / 1000) + localOffset;
     const tickPrice = Number(latestPrice.price)
     
     // 현재 인터벌 계산 (예: 15m = 900초)
@@ -497,7 +526,7 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
     const timer = setInterval(() => {
       if (!seriesRef.current || !lastCandleRef.current) return;
       
-      const nowSeconds = Math.floor(Date.now() / 1000);
+      const nowSeconds = Math.floor(Date.now() / 1000) + localOffset;
       
       // 현재 인터벌 계산
       let intervalSeconds = 300;

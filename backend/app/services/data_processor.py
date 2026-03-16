@@ -196,35 +196,42 @@ class DataProcessor:
         
         while self.running:
             try:
-                # 1분봉 처리
-                bars_1m = await self.bucket_manager.get_completed_bars("1m")
-                if bars_1m:
-                    success = await self.repository.save_realtime_bars_batch(bars_1m)
-                    if success:
-                        # 성공 시 Redis에서 해당 키 삭제 (get_completed_bars에서 이미 index에서는 제거됨)
-                        # 개별 데이터 키 삭제
-                        for bar in bars_1m:
-                            # 키 재구성 (asset_id와 timestamp 기반)
-                            ts_str = bar['timestamp_utc'].strftime("%Y%m%d%H%M")
-                            key = f"realtime:bars:1m:{bar['asset_id']}:{ts_str}"
-                            await self.bucket_manager.delete_bar_key(key)
+                # 1. 1분봉 및 5분봉 처리 (Realtime Bars)
+                # 이 데이터들은 RealtimeQuotesTimeBar(실시간용)와 OHLCVIntradayData(과거용) 양쪽에 저장
+                for interval in ["1m", "5m"]:
+                    bars = await self.bucket_manager.get_completed_bars(interval)
+                    if bars:
+                        # Realtime 테이블 저장
+                        success_rt = await self.repository.save_realtime_bars_batch(bars)
+                        
+                        # Intraday 테이블 저장용 포맷 변환
+                        formatted_intraday = []
+                        for b in bars:
+                            formatted_intraday.append({
+                                'asset_id': b['asset_id'],
+                                'timestamp_utc': b['timestamp_utc'],
+                                'open_price': b['open'],
+                                'high_price': b['high'],
+                                'low_price': b['low'],
+                                'close_price': b['close'],
+                                'volume': b['volume'],
+                                'interval': interval
+                            })
+                        success_hist = await self.repository.save_ohlcv_data(formatted_intraday)
+                        
+                        if success_rt and success_hist:
+                            # 성공 시 Redis에서 해당 키 삭제
+                            for bar in bars:
+                                ts_str = bar['timestamp_utc'].strftime("%Y%m%d%H%M")
+                                key = f"realtime:bars:{interval}:{bar['asset_id']}:{ts_str}"
+                                await self.bucket_manager.delete_bar_key(key)
+                            logger.info(f"💾 Flush: Redis Bucket -> DB ({interval}, {len(bars)}건)")
                 
-                # 5분봉 처리
-                bars_5m = await self.bucket_manager.get_completed_bars("5m")
-                if bars_5m:
-                    success = await self.repository.save_realtime_bars_batch(bars_5m)
-                    if success:
-                        for bar in bars_5m:
-                            ts_str = bar['timestamp_utc'].strftime("%Y%m%d%H%M")
-                            key = f"realtime:bars:5m:{bar['asset_id']}:{ts_str}"
-                            await self.bucket_manager.delete_bar_key(key)
-                
-                # [Optimization Task 3] 1일봉(Daily) 및 기타 간격 처리
+                # 2. [Optimization Task 3] 1일봉(Daily), 주봉(Weekly), 월봉(Monthly) 처리
+                # 이 데이터들은 OHLCVData(일봉용) 테이블에 저장
                 for interval in ["1d", "1w", "1M"]:
                     bars = await self.bucket_manager.get_completed_bars(interval)
                     if bars:
-                        # save_ohlcv_data는 이미 bulk upsert를 지원함
-                        # 포맷 변환 (asset_id, timestamp_utc, 등등)
                         formatted_items = []
                         for b in bars:
                             formatted_items.append({
@@ -241,6 +248,8 @@ class DataProcessor:
                         if success:
                             logger.info(f"💾 Flush: Redis Bucket -> DB ({interval}, {len(formatted_items)}건)")
                             for b in bars:
+                                # 일봉 이상의 데이터는 날짜 기반 키를 가질 수 있으므로 적절히 삭제
+                                # (add_bars_batch에서 생성한 키 형식과 일치해야 함)
                                 ts_str = b['timestamp_utc'].strftime("%Y%m%d%H%M")
                                 key = f"realtime:bars:{interval}:{b['asset_id']}:{ts_str}"
                                 await self.bucket_manager.delete_bar_key(key)

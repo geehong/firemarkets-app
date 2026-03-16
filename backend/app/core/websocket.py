@@ -63,15 +63,21 @@ broadcast_stats = defaultdict(lambda: 0)
 last_stat_log_time = time.time()
 
 @sio.event
-
 async def broadcast_quote(sid, data):
-    """websocket_broadcaster 서비스로부터 받은 데이터를 클라이언트에게 브로드캐스트합니다."""
-    ticker = data.get('ticker')
-    price = data.get('price')
-    provider = data.get('data_source', 'unknown')
-    # print(f"📢 [BACKEND←BROADCASTER] 수신: {ticker} = ${price} (provider: {provider})")
+    """websocket_broadcaster 서비스로부터 받은 단일 데이터를 클라이언트에게 브로드캐스트합니다."""
     await broadcast_realtime_quote(data)
-    # print(f"✅ [BACKEND←BROADCASTER] 브로드캐스트 완료: {ticker}")
+
+@sio.event
+async def broadcast_quotes_batch(sid, data_list):
+    """websocket_broadcaster 서비스로부터 받은 배치 데이터를 처리합니다."""
+    if not isinstance(data_list, list):
+        return
+    
+    # print(f"📦 [BACKEND←BROADCASTER] 배치 수신: {len(data_list)}건")
+    # 병렬 브로드캐스트 (속도 최적화)
+    tasks = [broadcast_realtime_quote(item) for item in data_list]
+    if tasks:
+        await asyncio.gather(*tasks)
 
 # 실시간 가격 데이터 구독 이벤트
 @sio.event
@@ -185,6 +191,7 @@ async def broadcast_realtime_quote(quote_data):
         # print(f"🚀 Broadcasting 'realtime_quote' to room '{target_room}': ${price} ({change_percent_str})")
         
         # 특정 룸으로만 이벤트 전송
+        # logger.debug(f"📤 [ROOM BROADCAST] {ticker} -> {target_room}")
         await sio.emit('realtime_quote', quote_data, room=target_room)
         # print(f"✅ Broadcasted to room '{target_room}' successfully.")
         
