@@ -24,6 +24,7 @@ from .processor.validator import DataValidator
 from .processor.adapters import AdapterFactory
 from .processor.repository import DataRepository
 from .processor.consumer import StreamConsumer
+from .processor.redis_bucket_manager import RedisBucketManager
 
 class DataProcessor:
     """
@@ -62,6 +63,9 @@ class DataProcessor:
             repository=self.repository,
             batch_size=GLOBAL_APP_CONFIGS.get("BATCH_SIZE", 100)
         )
+        
+        # Redis Bucket Manager
+        self.bucket_manager = RedisBucketManager(self.redis_url)
         
         self.redis_client = None # 직접 사용 최소화, Consumer가 관리
         
@@ -116,6 +120,10 @@ class DataProcessor:
         stream_task = asyncio.create_task(self._stream_processing_loop())
         logger.info("📡 실시간 스트림 처리 태스크 시작")
 
+        # Redis 바구니 처리 태스크 시작
+        bucket_task = asyncio.create_task(self._redis_bucket_processing_loop())
+        logger.info("🪣 Redis 바구니 처리 태스크 시작")
+
         # 메인 루프 (배치 처리 전담)
         loop_count = 0
         while self.running:
@@ -152,8 +160,9 @@ class DataProcessor:
         
         # 종료 시 스트림 task도 취소
         stream_task.cancel()
+        bucket_task.cancel()
         try:
-            await stream_task
+            await asyncio.gather(stream_task, bucket_task, return_exceptions=True)
         except asyncio.CancelledError:
             pass
 
@@ -179,6 +188,71 @@ class DataProcessor:
                 logger.error(f"스트림 처리 오류: {e}", exc_info=True)
                 self.stats["errors"] += 1
                 await asyncio.sleep(2)  # 에러 시 더 긴 대기
+
+    async def _redis_bucket_processing_loop(self):
+        """Redis 바구니에 쌓인 완성된 봉 데이터를 DB로 전송하는 루프"""
+        logger.info("🪣 Redis 바구니 처리 루프 시작")
+        await self.bucket_manager.connect()
+        
+        while self.running:
+            try:
+                # 1분봉 처리
+                bars_1m = await self.bucket_manager.get_completed_bars("1m")
+                if bars_1m:
+                    success = await self.repository.save_realtime_bars_batch(bars_1m)
+                    if success:
+                        # 성공 시 Redis에서 해당 키 삭제 (get_completed_bars에서 이미 index에서는 제거됨)
+                        # 개별 데이터 키 삭제
+                        for bar in bars_1m:
+                            # 키 재구성 (asset_id와 timestamp 기반)
+                            ts_str = bar['timestamp_utc'].strftime("%Y%m%d%H%M")
+                            key = f"realtime:bars:1m:{bar['asset_id']}:{ts_str}"
+                            await self.bucket_manager.delete_bar_key(key)
+                
+                # 5분봉 처리
+                bars_5m = await self.bucket_manager.get_completed_bars("5m")
+                if bars_5m:
+                    success = await self.repository.save_realtime_bars_batch(bars_5m)
+                    if success:
+                        for bar in bars_5m:
+                            ts_str = bar['timestamp_utc'].strftime("%Y%m%d%H%M")
+                            key = f"realtime:bars:5m:{bar['asset_id']}:{ts_str}"
+                            await self.bucket_manager.delete_bar_key(key)
+                
+                # [Optimization Task 3] 1일봉(Daily) 및 기타 간격 처리
+                for interval in ["1d", "1w", "1M"]:
+                    bars = await self.bucket_manager.get_completed_bars(interval)
+                    if bars:
+                        # save_ohlcv_data는 이미 bulk upsert를 지원함
+                        # 포맷 변환 (asset_id, timestamp_utc, 등등)
+                        formatted_items = []
+                        for b in bars:
+                            formatted_items.append({
+                                'asset_id': b['asset_id'],
+                                'timestamp_utc': b['timestamp_utc'],
+                                'open_price': b['open'],
+                                'high_price': b['high'],
+                                'low_price': b['low'],
+                                'close_price': b['close'],
+                                'volume': b['volume'],
+                                'interval': interval
+                            })
+                        success = await self.repository.save_ohlcv_data(formatted_items)
+                        if success:
+                            logger.info(f"💾 Flush: Redis Bucket -> DB ({interval}, {len(formatted_items)}건)")
+                            for b in bars:
+                                ts_str = b['timestamp_utc'].strftime("%Y%m%d%H%M")
+                                key = f"realtime:bars:{interval}:{b['asset_id']}:{ts_str}"
+                                await self.bucket_manager.delete_bar_key(key)
+
+                # 처리 주기를 조절 (10초마다 확인)
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                logger.info("🪣 Redis 바구니 처리 루프 종료")
+                break
+            except Exception as e:
+                logger.error(f"❌ Redis 바구니 처리 오류: {e}", exc_info=True)
+                await asyncio.sleep(5)
 
     async def stop(self):
         """서비스 종료"""
@@ -293,7 +367,13 @@ class DataProcessor:
             elif task_type in ("crypto_info", "crypto_data"):
                 return await self.repository.save_crypto_data(items)
             elif task_type in ("ohlcv_data", "ohlcv_day_data", "ohlcv_intraday_data"):
-                return await self.repository.save_ohlcv_data(items, meta)
+                # [Optimization Task 3] Redirect to Redis Bucket instead of Direct DB save
+                for it in items:
+                    it['asset_id'] = it.get('asset_id') or meta.get('asset_id')
+                    it['interval'] = it.get('interval') or it.get('data_interval') or meta.get('interval')
+                await self.bucket_manager.add_bars_batch(items)
+                logger.info(f"🪣 Redirected {len(items)} OHLCV items to Redis Bucket ({task_type})")
+                return True
             elif task_type == "world_assets_ranking":
                 return await self.repository.save_world_assets_ranking(items, meta)
             elif task_type == "macrotrends_financials":

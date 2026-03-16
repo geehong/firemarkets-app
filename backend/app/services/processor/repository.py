@@ -120,45 +120,10 @@ class DataRepository:
 
                 realtime_rows = list(dedup_rt.values())
 
-                # 실시간 봉 테이블 (1m, 5m) 집계 및 추가
+                # 실시간 봉 테이블 집계 - REDIS로 대체됨 (중복 계산 방지를 위해 주석 처리)
                 rt_bar_rows = []
-                for interval in ["1m", "5m"]:
-                    win_size = 1 if interval == "1m" else 5
-                    bar_dedup = {}
-                    for rec in batch:
-                        ts = rec['timestamp_utc']
-                        tw = self._get_time_window(ts, win_size)
-                        price = self._sanitize_number(rec.get('price'))
-                        if price is None: continue
-                        
-                        key = (rec['asset_id'], tw, interval, rec.get('data_source', 'unknown'))
-                        if key not in bar_dedup:
-                            bar_dedup[key] = {
-                                'asset_id': rec['asset_id'],
-                                'timestamp_utc': tw,
-                                'data_interval': interval,
-                                'data_source': rec.get('data_source', 'unknown'),
-                                'open_price': price,
-                                'high_price': price,
-                                'low_price': price,
-                                'close_price': price,
-                                'volume': self._sanitize_number(rec.get('volume')) or 0
-                            }
-                        else:
-                            bar = bar_dedup[key]
-                            bar['high_price'] = max(bar['high_price'], price)
-                            bar['low_price'] = min(bar['low_price'], price)
-                            bar['close_price'] = price
-                            bar['volume'] += self._sanitize_number(rec.get('volume')) or 0
-                    
-                    for bar in bar_dedup.values():
-                        bar['change_amount'] = bar['close_price'] - bar['open_price']
-                        if bar['open_price'] != 0:
-                            bar['change_percent'] = (bar['change_amount'] / bar['open_price']) * 100
-                        else:
-                            bar['change_percent'] = 0
-                            
-                    rt_bar_rows.extend(list(bar_dedup.values()))
+                # for interval in ["1m", "5m"]:
+                #     ...
 
                 try:
                     # 1. 실시간 테이블 UPSERT
@@ -193,22 +158,22 @@ class DataRepository:
                         )
                         pg_db.execute(stmt)
 
-                    # 3. 실시간 봉 테이블 (1m, 5m) UPSERT
-                    if rt_bar_rows:
-                        stmt = pg_insert(RealtimeQuotesTimeBar).values(rt_bar_rows)
-                        stmt = stmt.on_conflict_do_update(
-                            index_elements=['asset_id', 'timestamp_utc', 'data_interval'],
-                            set_={
-                                'high_price': func.greatest(RealtimeQuotesTimeBar.high_price, stmt.excluded.high_price),
-                                'low_price': func.least(RealtimeQuotesTimeBar.low_price, stmt.excluded.low_price),
-                                'close_price': stmt.excluded.close_price,
-                                'volume': RealtimeQuotesTimeBar.volume + stmt.excluded.volume,
-                                'change_amount': stmt.excluded.close_price - RealtimeQuotesTimeBar.open_price,
-                                'change_percent': ((stmt.excluded.close_price - RealtimeQuotesTimeBar.open_price) / RealtimeQuotesTimeBar.open_price) * 100,
-                                'updated_at': func.now()
-                            }
-                        )
-                        pg_db.execute(stmt)
+                    # 3. 실시간 봉 테이블 (1m, 5m) UPSERT - REDIS로 대체됨
+                    # if rt_bar_rows:
+                    #     stmt = pg_insert(RealtimeQuotesTimeBar).values(rt_bar_rows)
+                    #     stmt = stmt.on_conflict_do_update(
+                    #         index_elements=['asset_id', 'timestamp_utc', 'data_interval'],
+                    #         set_={
+                    #             'high_price': func.greatest(RealtimeQuotesTimeBar.high_price, stmt.excluded.high_price),
+                    #             'low_price': func.least(RealtimeQuotesTimeBar.low_price, stmt.excluded.low_price),
+                    #             'close_price': stmt.excluded.close_price,
+                    #             'volume': RealtimeQuotesTimeBar.volume + stmt.excluded.volume,
+                    #             'change_amount': stmt.excluded.close_price - RealtimeQuotesTimeBar.open_price,
+                    #             'change_percent': ((stmt.excluded.close_price - RealtimeQuotesTimeBar.open_price) / RealtimeQuotesTimeBar.open_price) * 100,
+                    #             'updated_at': func.now()
+                    #         }
+                    #     )
+                    #     pg_db.execute(stmt)
 
                     pg_db.commit()
                     success_count += len(batch)
@@ -219,6 +184,70 @@ class DataRepository:
 
             logger.info(f"💾 총 저장 완료: {success_count}/{len(validated_records)}개")
             return success_count > 0
+        finally:
+            pg_db.close()
+
+    async def save_realtime_bars_batch(self, bars: List[Dict[str, Any]]) -> bool:
+        """Redis 바구니에서 넘어온 집계된 봉 데이터를 DB에 일괄 저장"""
+        if not bars:
+            return True
+            
+        pg_db = next(get_postgres_db())
+        try:
+            # SQLAlchemy 모델에 맞게 변환
+            rows = []
+            for b in bars:
+                # Redis에서 온 데이터는 문자열일 수 있으므로 변환 필요
+                try:
+                    open_p = float(b.get('open'))
+                    close_p = float(b.get('close'))
+                    row = {
+                        'asset_id': int(b.get('asset_id')),
+                        'timestamp_utc': b.get('timestamp_utc'),
+                        'data_interval': b.get('interval'),
+                        'open_price': open_p,
+                        'high_price': float(b.get('high')),
+                        'low_price': float(b.get('low')),
+                        'close_price': close_p,
+                        'volume': float(b.get('volume')),
+                        'change_amount': close_p - open_p,
+                        'data_source': 'binance',  # Default to binance for now
+                        'updated_at': func.now()
+                    }
+                    if row['open_price'] != 0:
+                        row['change_percent'] = (row['change_amount'] / row['open_price']) * 100
+                    else:
+                        row['change_percent'] = 0
+                    rows.append(row)
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"⚠️ 바구니 데이터 데이터 변환 실패: {e} | bar: {b}")
+                    continue
+
+            if not rows:
+                return True
+
+            # UPSERT 처리
+            stmt = pg_insert(RealtimeQuotesTimeBar).values(rows)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=['asset_id', 'timestamp_utc', 'data_interval'],
+                set_={
+                    'high_price': func.greatest(RealtimeQuotesTimeBar.high_price, stmt.excluded.high_price),
+                    'low_price': func.least(RealtimeQuotesTimeBar.low_price, stmt.excluded.low_price),
+                    'close_price': stmt.excluded.close_price,
+                    'volume': RealtimeQuotesTimeBar.volume + stmt.excluded.volume,
+                    'change_amount': stmt.excluded.change_amount,
+                    'change_percent': stmt.excluded.change_percent,
+                    'updated_at': func.now()
+                }
+            )
+            pg_db.execute(stmt)
+            pg_db.commit()
+            logger.info(f"💾 Redis 바구니 데이터 DB 저장 완료: {len(rows)}건 ({rows[0]['data_interval']})")
+            return True
+        except Exception as e:
+            pg_db.rollback()
+            logger.error(f"❌ Redis 바구니 데이터 DB 저장 실패: {e}", exc_info=True)
+            return False
         finally:
             pg_db.close()
 
