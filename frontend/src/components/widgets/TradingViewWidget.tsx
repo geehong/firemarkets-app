@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 interface TradingViewWidgetProps {
     symbol?: string;
@@ -39,10 +39,16 @@ const TradingViewWidget: React.FC<TradingViewWidgetProps> = ({
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const uniqueId = useRef(`tv-widget-${Math.random().toString(36).substr(2, 9)}`);
-    const id = container_id || uniqueId.current;
+    const [mounted, setMounted] = useState(false);
+    const [id, setId] = useState<string | undefined>(undefined);
 
     useEffect(() => {
-        if (!containerRef.current) return;
+        setMounted(true);
+        setId(container_id || uniqueId.current);
+    }, [container_id]);
+
+    useEffect(() => {
+        if (!mounted || !id || !containerRef.current) return;
 
         const script = document.createElement('script');
         script.type = 'text/javascript';
@@ -70,12 +76,12 @@ const TradingViewWidget: React.FC<TradingViewWidgetProps> = ({
             script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js';
             script.innerHTML = JSON.stringify({
                 "symbols": [
-                    { "proName": "FOREXCOM:SPX500", "title": "S&P 500" },
-                    { "proName": "FOREXCOM:NSXUSD", "title": "US tech 100" },
-                    { "fx_id": "REUTERS:SIUSD", "title": "Silver" },
-                    { "fx_id": "REUTERS:GCUSD", "title": "Gold" },
-                    { "proName": "BITSTAMP:BTCUSD", "title": "Bitcoin" },
-                    { "proName": "BITSTAMP:ETHUSD", "title": "Ethereum" }
+                    { "description": "S&P 500", "proName": "FOREXCOM:SPX500" },
+                    { "description": "US Tech 100", "proName": "FOREXCOM:NSXUSD" },
+                    { "description": "Gold", "proName": "FX_IDC:XAUUSD" },
+                    { "description": "Silver", "proName": "FX_IDC:XAGUSD" },
+                    { "description": "Bitcoin", "proName": "BITSTAMP:BTCUSD" },
+                    { "description": "Ethereum", "proName": "BITSTAMP:ETHUSD" }
                 ],
                 "showSymbolLogo": true,
                 "colorTheme": theme,
@@ -113,7 +119,7 @@ const TradingViewWidget: React.FC<TradingViewWidgetProps> = ({
                 containerRef.current.innerHTML = '';
             }
         };
-    }, [id, symbol, width, height, interval, theme, locale, isHeatmap, isTickerTape]);
+    }, [mounted, id, symbol, width, height, interval, theme, locale, isHeatmap, isTickerTape]);
 
     return (
         <div id={id} ref={containerRef} className="tradingview-widget-container" style={{ width: '100%', height }}>

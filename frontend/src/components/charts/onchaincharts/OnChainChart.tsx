@@ -16,6 +16,9 @@ interface OnChainChartProps {
     metricId?: string;
     metricName?: string;
     locale?: string;
+    showControls?: boolean;
+    transparent?: boolean;
+    useLogScale?: boolean;
 }
 
 const OnChainChart: React.FC<OnChainChartProps> = ({
@@ -28,10 +31,13 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
     showExporting = true,
     metricId = 'mvrv_z_score',
     metricName,
-    locale = 'en'
+    locale = 'en',
+    showControls = true,
+    transparent = false,
+    useLogScale
 }) => {
     const displayMetricName = metricName || (metricId === 'mvrv_z_score' ? 'MVRV Z-Score' : metricId);
-    const chartTitle = title || `Bitcoin Price vs ${displayMetricName} Correlation`;
+    const chartTitle = title !== undefined ? title : `Bitcoin Price vs ${displayMetricName} Correlation`;
     const [priceData, setPriceData] = useState<number[][]>([]);
     const [mvrvData, setMvrvData] = useState<number[][]>([]);
 
@@ -40,7 +46,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
     const [error, setError] = useState<string | null>(null);
     const [chartType, setChartType] = useState<'line' | 'spline' | 'area' | 'areaspline'>('line');
     const [showFlags, setShowFlags] = useState(true);
-    const [useLogScale, setUseLogScale] = useState(false);
+    const [useLogScaleInternal, setUseLogScaleInternal] = useState(false);
     const [isAreaMode, setIsAreaMode] = useState(false);
     const [lineSplineMode, setLineSplineMode] = useState<'line' | 'spline'>('line');
     const [colorMode, setColorMode] = useState<'dark' | 'vivid' | 'high-contrast' | 'simple'>('vivid');
@@ -99,6 +105,19 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
 
         loadHighcharts()
     }, [])
+
+    // 외부 prop(useLogScale)과 내부 상태 동기화
+    useEffect(() => {
+        if (useLogScale !== undefined && useLogScale !== useLogScaleInternal) {
+            setUseLogScaleInternal(useLogScale);
+            const chart = chartRef.current?.chart;
+            if (chart && chart.yAxis[0]) {
+                chart.yAxis[0].update({
+                    type: useLogScale ? 'logarithmic' : 'linear'
+                }, true);
+            }
+        }
+    }, [useLogScale, useLogScaleInternal]);
 
     // 모바일 감지
     useEffect(() => {
@@ -162,13 +181,14 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
 
     // 로그 스케일 토글 핸들러
     const handleLogScaleToggle = () => {
-        setUseLogScale(!useLogScale);
+        const newValue = !useLogScaleInternal;
+        setUseLogScaleInternal(newValue);
         const chart = chartRef.current?.chart;
         if (chart) {
             // 첫 번째 Y축(비트코인 가격)만 로그 스케일로 변경
             if (chart.yAxis[0]) {
                 chart.yAxis[0].update({
-                    type: !useLogScale ? 'logarithmic' : 'linear'
+                    type: newValue ? 'logarithmic' : 'linear'
                 }, false);
             }
             chart.redraw();
@@ -420,7 +440,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
     const chartOptions: any = {
         chart: {
             height: height,
-            backgroundColor: '#ffffff',
+            backgroundColor: transparent ? 'transparent' : '#ffffff',
             style: {
                 fontFamily: 'Inter, system-ui, sans-serif'
             },
@@ -519,7 +539,7 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
                 },
                 gridLineColor: '#e5e7eb',
                 opposite: false,
-                type: useLogScale ? 'logarithmic' : 'linear'
+                type: useLogScaleInternal ? 'logarithmic' : 'linear'
             },
             {
                 title: {
@@ -821,20 +841,22 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
     }
 
     return (
-        <div className="bg-white rounded-lg p-4">
-            <ChartControls
-                chartType={lineSplineMode}
-                onChartTypeChange={handleLineSplineToggle}
-                isAreaMode={isAreaMode}
-                onAreaModeToggle={handleAreaModeToggle}
-                showFlags={showFlags}
-                onFlagsToggle={() => setShowFlags(!showFlags)}
-                useLogScale={useLogScale}
-                onLogScaleToggle={handleLogScaleToggle}
-                colorMode={colorMode}
-                onColorModeChange={setColorMode}
-                showFlagsButton={false}
-            />
+        <div className={transparent ? "" : "bg-white rounded-lg p-4"}>
+            {showControls && (
+                <ChartControls
+                    chartType={lineSplineMode}
+                    onChartTypeChange={handleLineSplineToggle}
+                    isAreaMode={isAreaMode}
+                    onAreaModeToggle={handleAreaModeToggle}
+                    showFlags={showFlags}
+                    onFlagsToggle={() => setShowFlags(!showFlags)}
+                    useLogScale={useLogScaleInternal}
+                    onLogScaleToggle={handleLogScaleToggle}
+                    colorMode={colorMode}
+                    onColorModeChange={setColorMode}
+                    showFlagsButton={false}
+                />
+            )}
 
             <div style={{ height: `${height}px` }}>
                 <HighchartsReact

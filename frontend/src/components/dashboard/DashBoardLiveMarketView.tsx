@@ -10,6 +10,18 @@ import { useMacroData } from '@/hooks/analysis/useMacroData';
 import SimpleAreaChart from '@/components/charts/SimpleAreaChart';
 import { useFearAndGreed } from '@/hooks/analysis/useFearAndGreed';
 import { Link } from '@/i18n/navigation';
+import CombinedCryptoIndicatorChart from '@/components/charts/CombinedCryptoIndicatorChart';
+import PerformanceTreeMapToday from '@/components/charts/treemap/PerformanceTreeMapToday';
+import OHLCVVolumeChart from '@/components/charts/ohlcvcharts/OHLCVVolumeChart';
+import LightWeightChart from '@/components/charts/minicharts/LightWeightChart';
+import { useOnchainMetrics } from '@/hooks/useOnchain';
+import { Time } from 'lightweight-charts';
+import dynamic from 'next/dynamic';
+
+const OnChainChart = dynamic(() => import('@/components/charts/onchaincharts/OnChainChart'), {
+    ssr: false,
+    loading: () => <div className="flex-1 w-full bg-slate-50 dark:bg-slate-900/50 animate-pulse rounded-lg mt-2" />
+});
 
 // Helper to check if US Market is open
 const isUSMarketOpen = () => {
@@ -41,6 +53,9 @@ const DashBoardLiveMarketView = () => {
     const { theme } = useTheme();
     const [isOpen, setIsOpen] = useState(false);
     const [mounted, setMounted] = useState(false);
+    const [selectedOnchainMetric, setSelectedOnchainMetric] = useState('mvrv_z_score');
+    const [onchainLogScale, setOnchainLogScale] = useState(false);
+    const { metrics: onchainMetrics } = useOnchainMetrics();
 
     useEffect(() => {
         setMounted(true);
@@ -79,27 +94,50 @@ const DashBoardLiveMarketView = () => {
             change: change,
             changePercent: changePercent,
             lastUpdate: latest.date,
-            history: data.map((d: any) => ({ date: d.date, value: d.year10 }))
+            history: data.map((d: any) => ({ date: d.date, value: d.year10 })),
+            historyLW: data.map((d: any) => ({ 
+                time: (new Date(d.date).getTime() / 1000) as Time, 
+                value: d.year10 
+            })).sort((a: any, b: any) => a.time - b.time)
         };
     }, [macroData]);
 
     // Fear & Greed Data
     const { history: fngHistory, loading: fngLoading } = useFearAndGreed();
-    const fngChartData = useMemo(() => {
+    const fngChartDataLW = useMemo(() => {
         if (!fngHistory) return [];
         return fngHistory.map((item: any) => ({
-            date: new Date(parseInt(item.timestamp) * 1000).toISOString(),
+            time: parseInt(item.timestamp) as Time,
             value: parseInt(item.value)
-        }));
+        })).sort((a: any, b: any) => a.time - b.time);
     }, [fngHistory]);
 
-    // Asset rows configuration
-    const rows = [
+
+    // US Market Open Rows (Current Style)
+    const openRows = [
         { items: [{ symbol: 'QQQ', title: 'Nasdaq 100 (QQQ)' }, { symbol: 'GCUSD', title: 'Gold (GCUSD)' }] },
         { items: [{ symbol: 'SPY', title: 'S&P 500 (SPY)' }, { symbol: 'SIUSD', title: 'Silver (SIUSD)' }] },
         { items: [{ symbol: 'FearAndGreed', title: 'Fear & Greed' }, { symbol: 'US10Y', title: 'US 10Y Yield' }] },
         { items: [{ symbol: 'NVDA', title: 'NVIDIA (NVDA)' }, { symbol: 'BTCUSDT', title: 'Bitcoin (BTC)' }] }
     ];
+
+    // US Market Closed Rows (Requested Layout)
+    const closedRows = [
+        { items: [{ symbol: 'BTCUSDT', title: 'Bitcoin (BTC)' }, { symbol: 'GCUSD', title: 'Gold (GCUSD)' }] },
+        { items: [{ symbol: 'ETHUSDT', title: 'Ethereum (ETH)' }, { symbol: 'SIUSD', title: 'Silver (SIUSD)' }] },
+        { items: [{ symbol: 'OnChain', title: 'On-chain: MVRV Z-Score' }] },
+        { items: [{ symbol: 'SOLUSDT', title: 'Solana (SOL)' }, { symbol: 'BNBUSDT', title: 'BNB' }] }
+    ];
+
+    const currentRows = isOpen ? openRows : closedRows;
+
+    if (!mounted) {
+        return (
+            <div className="space-y-6 bg-slate-50 dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden min-h-[600px] flex items-center justify-center">
+                <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6 bg-slate-50 dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden transition-colors duration-300">
@@ -116,87 +154,148 @@ const DashBoardLiveMarketView = () => {
                 </div>
             </div>
 
-            {/* Chart Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {rows.map((row, rowIndex) => (
+                {currentRows.map((row, rowIndex) => (
                     <React.Fragment key={rowIndex}>
-                        {row.items.map((item, colIndex) => (
-                            <div key={`${rowIndex}-${colIndex}`} className="relative group">
-                                {item.symbol === 'FearAndGreed' ? (
-                                    <Link href="/onchain/analysis/speculative" className="block cursor-pointer hover:opacity-95 transition-all">
-                                        <div className="bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-slate-800/50 rounded-xl p-4 h-[300px] flex flex-col relative shadow-lg group-hover:bg-slate-50 dark:group-hover:bg-slate-900/60 transition-all overflow-hidden">
-                                            <div className="flex justify-between items-center mb-4 z-10">
+                        {row.items.map((item: any, colIndex) => (
+                            <div key={`${rowIndex}-${colIndex}`} className={`${(item.symbol === 'CombinedIndicators' || item.symbol === 'OnChain') ? 'lg:col-span-2' : ''} relative group`}>
+                                {item.symbol === 'CombinedIndicators' ? (
+                                    <CombinedCryptoIndicatorChart height={320} />
+                                ) : item.symbol === 'OnChain' ? (
+                                    <div className="bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-slate-800/50 rounded-xl p-4 h-[480px] flex flex-col relative shadow-lg group-hover:bg-slate-50 dark:group-hover:bg-slate-900/60 transition-all overflow-hidden">
+                                        <div className="flex justify-between items-center mb-4 z-10">
+                                            <div className="flex items-center gap-4">
+                                                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                                                    <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                                                    On-chain Analysis
+                                                </h3>
+                                                <select
+                                                    value={selectedOnchainMetric}
+                                                    onChange={(e) => setSelectedOnchainMetric(e.target.value)}
+                                                    className="text-[11px] font-bold bg-slate-100 dark:bg-slate-800 border-none rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 dark:text-slate-300 cursor-pointer"
+                                                >
+                                                    {onchainMetrics.length > 0 ? (
+                                                        onchainMetrics.map(m => (
+                                                            <option key={m.id} value={m.id}>{m.name.replace(/\s*\([^)]*\)/g, '')}</option>
+                                                        ))
+                                                    ) : (
+                                                        <option value="mvrv_z_score">MVRV Z-Score</option>
+                                                    )}
+                                                </select>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => setOnchainLogScale(!onchainLogScale)}
+                                                    className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider transition-colors ${onchainLogScale ? 'bg-indigo-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+                                                >
+                                                    Log
+                                                </button>
+                                                <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">Glassnode Style</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex-1 -mx-4 -mb-4">
+                                            <OnChainChart 
+                                                assetId="BTCUSDT"
+                                                metricId={selectedOnchainMetric}
+                                                height={420}
+                                                showRangeSelector={false}
+                                                showExporting={false}
+                                                showControls={false}
+                                                transparent={true}
+                                                useLogScale={onchainLogScale}
+                                                title=""
+                                            />
+                                        </div>
+                                    </div>
+                                ) : item.symbol === 'FearAndGreed' ? (
+                                    <div className="bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-slate-800/50 rounded-xl p-4 h-[320px] flex flex-col relative shadow-lg hover:bg-slate-50 dark:group-hover:bg-slate-900/60 transition-all overflow-hidden">
+                                        <div className="flex justify-between items-center mb-4 z-10">
+                                            <Link href="/onchain/analysis/speculative" className="hover:opacity-80 transition-opacity">
                                                 <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                                                     <span className="w-2 h-2 rounded-full bg-violet-500" />
                                                     Fear & Greed Index
                                                 </h3>
-                                                <div className="w-12 h-12">
-                                                    <FearAndGreedGauge height={48} hideTitle noBackground />
-                                                </div>
-                                            </div>
-                                            
-                                            <div className="flex-1 -mx-4 -mb-4">
-                                                {fngLoading ? (
-                                                    <div className="h-full w-full bg-slate-100 dark:bg-slate-800 animate-pulse" />
-                                                ) : (
-                                                    <SimpleAreaChart data={fngChartData} height={220} color="#8b5cf6" />
-                                                )}
-                                            </div>
-                                            
-                                            <div className="absolute top-12 left-4 z-10 pointer-events-none">
-                                                <div className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter">
-                                                    {fngHistory[0]?.value || '--'}
-                                                </div>
-                                                <div className="text-[10px] font-bold uppercase text-violet-500">
-                                                    {fngHistory[0]?.value_classification || 'Loading...'}
-                                                </div>
+                                            </Link>
+                                            <div className="w-12 h-12">
+                                                <FearAndGreedGauge height={48} hideTitle noBackground />
                                             </div>
                                         </div>
-                                    </Link>
+                                        <div className="flex-1 -mx-2 -mb-2">
+                                            {fngLoading ? (
+                                                <div className="h-full w-full bg-slate-100 dark:bg-slate-800 animate-pulse" />
+                                            ) : (
+                                                <LightWeightChart 
+                                                    assetIdentifier="" 
+                                                    data={fngChartDataLW} 
+                                                    title=""
+                                                />
+                                            )}
+                                        </div>
+                                        <div className="absolute top-12 left-4 z-10 pointer-events-none">
+                                            <div className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter">
+                                                {fngHistory[0]?.value || '--'}
+                                            </div>
+                                            <div className="text-[10px] font-bold uppercase text-violet-500">
+                                                {fngHistory[0]?.value_classification || 'Loading...'}
+                                            </div>
+                                        </div>
+                                    </div>
                                 ) : item.symbol === 'US10Y' ? (
-                                    <Link href="/onchain/analysis/fundamental" className="block cursor-pointer hover:opacity-95 transition-all">
-                                        <div className="bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-slate-800/50 rounded-xl p-4 h-[300px] flex flex-col relative shadow-lg group-hover:bg-slate-50 dark:group-hover:bg-slate-900/60 transition-all overflow-hidden">
-                                            <div className="flex justify-between items-start mb-2 z-10">
+                                    <div className="bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-slate-800/50 rounded-xl p-4 h-[320px] flex flex-col relative shadow-lg hover:bg-slate-50 dark:group-hover:bg-slate-900/60 transition-all overflow-hidden">
+                                        <div className="flex justify-between items-start mb-2 z-10">
+                                            <Link href="/onchain/analysis/fundamental" className="hover:opacity-80 transition-opacity">
                                                 <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                                                     <span className="w-2 h-2 rounded-full bg-indigo-500" />
                                                     US 10Y Yield
                                                 </h3>
-                                                <span className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">FRED</span>
-                                            </div>
-                                            
-                                            <div className="flex-1 -mx-4 -mb-4">
-                                                {macroLoading ? (
-                                                    <div className="h-full w-full bg-slate-100 dark:bg-slate-800 animate-pulse" />
-                                                ) : us10yValue?.history ? (
-                                                    <SimpleAreaChart data={us10yValue.history} height={220} color="#6366f1" />
-                                                ) : (
-                                                    <div className="flex items-center justify-center h-full text-slate-400 text-xs italic">Data Unavailable</div>
-                                                )}
-                                            </div>
-                                            
-                                            <div className="absolute top-12 right-6 text-right z-10 pointer-events-none">
-                                                {us10yValue && (
-                                                    <>
-                                                        <div className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter -mb-1">
-                                                            {us10yValue.value}%
-                                                        </div>
-                                                        <div className={`text-xs font-bold ${Number(us10yValue.change) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                            {Number(us10yValue.change) >= 0 ? '▲' : '▼'} {Math.abs(Number(us10yValue.change))} ({us10yValue.changePercent}%)
-                                                        </div>
-                                                    </>
-                                                )}
-                                            </div>
+                                            </Link>
+                                            <span className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">FRED</span>
                                         </div>
-                                    </Link>
+                                        <div className="flex-1 -mx-2 -mb-2">
+                                            {macroLoading ? (
+                                                <div className="h-full w-full bg-slate-100 dark:bg-slate-800 animate-pulse" />
+                                            ) : us10yValue?.historyLW ? (
+                                                <LightWeightChart 
+                                                    assetIdentifier="" 
+                                                    data={us10yValue.historyLW} 
+                                                    title=""
+                                                />
+                                            ) : (
+                                                <div className="flex items-center justify-center h-full text-slate-400 text-xs italic">Data Unavailable</div>
+                                            )}
+                                        </div>
+                                        <div className="absolute top-12 right-6 text-right z-10 pointer-events-none">
+                                            {us10yValue && (
+                                                <>
+                                                    <div className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter -mb-1">
+                                                        {us10yValue.value}%
+                                                    </div>
+                                                    <div className={`text-xs font-bold ${Number(us10yValue.change) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                        {Number(us10yValue.change) >= 0 ? '▲' : '▼'} {Math.abs(Number(us10yValue.change))} ({us10yValue.changePercent}%)
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : item.type === 'volume' ? (
+                                    <div className="bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-slate-800/50 rounded-xl p-4 h-[320px] overflow-hidden shadow-lg">
+                                    <OHLCVVolumeChart 
+                                        assetIdentifier={item.symbol} 
+                                        title={item.title} 
+                                        height={280} 
+                                        dataInterval="1h"
+                                    />
+                                </div>
                                 ) : (
-                                    <Link href={`/assets/${item.symbol}`} className="block cursor-pointer hover:opacity-95 transition-all">
+                                    <div className="bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-slate-800/50 rounded-xl p-4 h-fit shadow-lg transition-all overflow-hidden hover:shadow-xl">
                                         <SessionLiveChart
                                             assetIdentifier={item.symbol}
                                             title={item.title}
                                             height={300}
                                             dataInterval="15m"
+                                            href={`/assets/${item.symbol}`}
                                         />
-                                    </Link>
+                                    </div>
                                 )}
                             </div>
                         ))}
@@ -211,12 +310,16 @@ const DashBoardLiveMarketView = () => {
                         <svg className="w-5 h-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                         </svg>
-                        S&P 500 Market Heatmap
+                        {isOpen ? 'S&P 500 Market Heatmap' : 'Global Asset Performance Treemap'}
                     </h3>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Global Data</span>
                 </div>
                 <div className="w-full bg-slate-50 dark:bg-slate-900">
-                    <TradingViewWidget isHeatmap height={500} theme={currentTheme as any} />
+                    {isOpen ? (
+                        <TradingViewWidget isHeatmap height={500} theme={currentTheme as any} />
+                    ) : (
+                        <PerformanceTreeMapToday height={600} />
+                    )}
                 </div>
             </div>
 

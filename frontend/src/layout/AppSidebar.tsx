@@ -291,16 +291,6 @@ const AppSidebar: React.FC = () => {
       name: t('calendar'), // Previously in navItems
       path: "/calendar",
     },
-    {
-      icon: <UserCircleIcon />,
-      name: t('profile'),
-      path: "/profile",
-    },
-    {
-      name: t('widgets'),
-      icon: <GridIcon />,
-      path: "/widgets",
-    },
     // Hidden demo and non-functional pages for production
     /*
     {

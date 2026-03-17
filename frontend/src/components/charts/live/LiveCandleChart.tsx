@@ -12,6 +12,7 @@ import {
 import { useIntradayOhlcv, useDelayedQuoteLast } from "@/hooks/data/useRealtime"
 import { useRealtimePrices } from "@/hooks/data/useSocket"
 import { useAssetDetail } from "@/hooks/assets/useAssets"
+import { Link } from '@/i18n/navigation';
 
 // ==========================================
 // [차트 설정] 기본 봉 크기 설정 (코드 상단에서 직접 변경 가능)
@@ -43,7 +44,19 @@ const getNYParts = (date: Date) => {
 };
 
 // 세션 시작 시각을UTC 초 단위로 변환해주는 유틸리티 (미국 주식 서머타임 자동 대응)
-const getDynamicSessionStartUTC = (sessionStartTime: string, isUSMarket: boolean, baseDate: Date = new Date()) => {
+const getDynamicSessionStartUTC = (sessionStartTime: string, isUSMarket: boolean, baseDate: Date = new Date(), is24h: boolean = false) => {
+  if (is24h) {
+    // 24시간 시장(코인, 원자재 등)은 당일 00:00 UTC(KST 09:00) 또는 세션 시작 시각을 기준으로 합니다.
+    const [sHour, sMin] = sessionStartTime.split(":").map(Number);
+    // 기본적으로 KST 09:00 시작이라면 UTC 00:00입니다. (KST=UTC+9)
+    const target = new Date(baseDate);
+    target.setUTCHours(sHour - 9, sMin, 0, 0); 
+    if (target.getTime() > baseDate.getTime()) {
+      target.setUTCDate(target.getUTCDate() - 1);
+    }
+    return target.getTime() / 1000;
+  }
+
   const ny = getNYParts(baseDate);
   let targetDate = new Date(baseDate);
 
@@ -70,8 +83,6 @@ const getDynamicSessionStartUTC = (sessionStartTime: string, isUSMarket: boolean
     const tny = getNYParts(targetDate);
     
     // 해당 날짜의 09:30 ET가 UTC로 몇 시인지 판별 (DST 확인)
-    // 3월 중순~11월 초는 EDT(UTC-4), 그 외는 EST(UTC-5)
-    // 2026년 서머타임 시작은 3월 8일 일요일입니다. 현재는 서머타임 적용 중(EDT).
     const isDST = new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/New_York',
       timeZoneName: 'short'
@@ -80,20 +91,21 @@ const getDynamicSessionStartUTC = (sessionStartTime: string, isUSMarket: boolean
     const utcHours = isDST ? 13 : 14;
     return Date.UTC(tny.y, tny.m - 1, tny.d, utcHours, 30, 0, 0) / 1000;
   } else {
-    // 일반 한국 시장/크립토 등 (KST 기준 09:00 등)
-    const [sHour, sMin] = sessionStartTime.split(":").map(Number);
-    const kst = new Intl.DateTimeFormat('ko-KR', {
+    const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: 'Asia/Seoul',
       year: 'numeric', month: 'numeric', day: 'numeric',
-      hour: 'numeric', minute: 'numeric'
+      hour: 'numeric', minute: 'numeric', hour12: false
     }).formatToParts(targetDate);
-    const kp = Object.fromEntries(kst.map(x => [x.type, x.value]));
+    const p = Object.fromEntries(parts.map(x => [x.type, x.value]));
     
-    let sessionStart = new Date(Date.UTC(parseInt(kp.year), parseInt(kp.month) - 1, parseInt(kp.day), sHour - 9, sMin, 0, 0));
-    if (baseDate < sessionStart) {
-      sessionStart.setUTCDate(sessionStart.getUTCDate() - 1);
+    const [sHour, sMin] = sessionStartTime.split(":").map(Number);
+    const sessionUTC = Date.UTC(parseInt(p.year), parseInt(p.month) - 1, parseInt(p.day), sHour - 9, sMin, 0, 0) / 1000;
+    const baseUTC = baseDate.getTime() / 1000;
+    
+    if (baseUTC < sessionUTC) {
+      return sessionUTC - 86400; // 하루 전 세션
     }
-    return sessionStart.getTime() / 1000;
+    return sessionUTC;
   }
 }
 
@@ -110,7 +122,7 @@ const isUSRegularMarketHours = () => {
   const parts = formatter.formatToParts(now);
   const partMap = Object.fromEntries(parts.map(p => [p.type, p.value]));
   
-  const day = partMap.weekday; // Mon, Tue...
+  const day = partMap.weekday;
   const hour = parseInt(partMap.hour);
   const minute = parseInt(partMap.minute);
   
@@ -134,17 +146,14 @@ interface LiveCandleChartProps {
   assetIdentifier: string
   title?: string
   mode?: LiveChartMode
-  sessionStartTime?: string // HH:mm format, e.g., "09:00"
+  sessionStartTime?: string // HH:mm format
   lookbackHours?: number
-  dataInterval?: string // "1m", "5m", "15m", "1h"
+  dataInterval?: string 
   chartType?: "candle" | "line"
   height?: number | string
+  href?: string
 }
 
-/**
- * 실시간 초/분/시 봉을 지원하는 라이브 차트 컴포넌트
- * Lightweight-charts 5.0+ API 사용
- */
 const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
   assetIdentifier,
   title,
@@ -154,6 +163,7 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
   dataInterval = DEFAULT_CANDLE_INTERVAL,
   chartType = "candle",
   height = 400,
+  href
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const chartRef = useRef<any | null>(null)
@@ -163,29 +173,22 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
   const [currentInterval, setCurrentInterval] = useState(dataInterval)
   const [chartStats, setChartStats] = useState({ first: 0, last: 0, prevClose: 0 })
 
-  // 로컬 타임존 오프셋 계산 (한국의 경우 +9시간 = 32400초)
   const localOffset = useMemo(() => -new Date().getTimezoneOffset() * 60, []);
-
-  // 1. 자산 정보 및 과거 데이터 로드
   const { data: assetDetail } = useAssetDetail(assetIdentifier)
   
-  // 과도한 날짜 자르기 방지를 위해 days 조건 없이 절대 포인트 2016개(7일치 5분봉 기준)만 요청합니다.
-  // 이렇게 해야 MSFT/SPY 등 비24h 자산에서 start_date에 의한 미래 데이터 잘림 현상이 일어나지 않고 확실한 '최근 2016개'를 받아옵니다.
   const calcLimit = Math.floor(
     (currentInterval === "1m" ? 1440 : 
      currentInterval === "15m" ? 96 : 
      currentInterval === "1h" ? 24 : 288) * 7
   )
   
-  // 1-1. Reset refs on asset/interval change
   useEffect(() => {
     lastCandleRef.current = null;
     setChartStats({ first: 0, last: 0, prevClose: 0 });
   }, [assetIdentifier, currentInterval]);
 
-  // dataInterval에 따른 로컬 refetch interval 동기화 (과부하 방지)
   const dynamicRefetchInterval = useMemo(() => {
-    let seconds = 300 // 기본 5m
+    let seconds = 300 
     if (currentInterval === "1m") seconds = 60
     else if (currentInterval === "15m") seconds = 900
     else if (currentInterval === "30m") seconds = 1800
@@ -199,8 +202,6 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
     refetchInterval: dynamicRefetchInterval 
   })
   const historyData = ohlcvQuery.data?.data || []
-
-  // 2. 실시간 웹소켓 구독
   const { latestPrice } = useRealtimePrices(assetIdentifier)
 
   const { data: lastQuoteResponse } = useDelayedQuoteLast(
@@ -217,8 +218,7 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
     for (let i = historyData.length - 1; i >= 0; i--) {
       const d = historyData[i];
       const tsStr = d.timestamp_utc || d.timestamp || d.time;
-      const dateStr = typeof tsStr === 'string' && !tsStr.includes('Z') && !tsStr.includes('+') ? `${tsStr}Z` : tsStr;
-      const ts = new Date(dateStr).getTime();
+      const ts = new Date(tsStr).getTime();
       const price = Number(d.close_price ?? d.close ?? 0);
       if (ts <= todayStartUtc) {
         candidate = price;
@@ -228,7 +228,6 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
     return candidate;
   }, [historyData]);
 
-  // 3. 차트 초기화
   useEffect(() => {
     if (!containerRef.current || chartRef.current) return
 
@@ -245,13 +244,17 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
         borderVisible: false,
         timeVisible: true,
         secondsVisible: dataInterval === "1m" || dataInterval === "1s",
-        fixLeftEdge: mode === "session", // 세션 모드일 때 좌측(시작점) 고정
+        fixLeftEdge: mode === "session",
         fixRightEdge: false,
-        rightOffset: mode === "session" ? 12 : 5, // 빈 공간 확보를 위해 기본 오프셋 설정
+        rightOffset: mode === "session" ? 12 : 5,
       },
       rightPriceScale: {
         borderVisible: false,
         autoScale: true,
+        scaleMargins: {
+          top: 0.1,
+          bottom: 0.1,
+        },
       },
       handleScale: {
         axisDoubleClickReset: true,
@@ -296,16 +299,13 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
     }
   }, [chartType, currentInterval])
 
-  // 4. 데이터 필터링 및 업데이트 (Mode 1, 2 적용)
   useEffect(() => {
     if (!seriesRef.current || !historyData.length) return
 
     let processed: CandlePoint[] = historyData.map((d: any) => {
       const ts = d.timestamp_utc || d.timestamp || d.time;
-      const dateStr = typeof ts === 'string' && !ts.includes('Z') && !ts.includes('+') ? `${ts}Z` : ts;
-      
       return {
-        time: ((new Date(dateStr).getTime() / 1000) + localOffset) as Time, // 브라우저 로컬(KST 등) 시간으로 차트 표시 보정
+        time: ((new Date(ts).getTime() / 1000) + localOffset) as Time,
         open: Number(d.open_price ?? d.open ?? 0),
         high: Number(d.high_price ?? d.high ?? 0),
         low: Number(d.low_price ?? d.low ?? 0),
@@ -313,50 +313,41 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
       };
     })
 
-    // Client-side에서 추가된 실시간 데이터를 병합하여 유실 방지
     const lastHistoryTime = processed.length > 0 ? (processed[processed.length - 1].time as number) : 0;
     if (lastCandleRef.current && (lastCandleRef.current.time as number) > lastHistoryTime) {
-      // 서버 데이터보다 최신인 클라이언트 데이터가 있으면 추가
       processed.push(lastCandleRef.current);
     }
-
-    // 오름차순 정렬
     processed.sort((a, b) => (a.time as number) - (b.time as number))
-
-    // 중복 제거
     processed = processed.filter((v, i, arr) => i === 0 || v.time !== arr[i - 1].time)
 
-    // 미국 시장 개장/폐장 및 24시간 여부 판별
     let isUSMarket = false;
     let is24hMarket = true;
     if (assetDetail) {
       const typeName = (assetDetail.asset_type || assetDetail.asset_type_name || assetDetail.type_name || '').toLowerCase();
       const exchange = (assetDetail.exchange || '').toUpperCase();
       const currency = (assetDetail.currency || '').toUpperCase();
+      const symbol = (assetDetail.ticker || assetDetail.symbol || '').toUpperCase();
       
-      if (typeName.includes('stock') || typeName.includes('etf') || typeName === 'stocks' || typeName === 'etfs' || typeName.includes('commodity') || typeName.includes('index')) {
-        is24hMarket = false; // 주식, ETF, 원자재, 지수는 24시간 시장이 아님 (주말 휴장)
-        if (currency === 'USD' || exchange === 'NASDAQ' || exchange === 'NYSE' || exchange === 'AMEX' || exchange === 'ICE' || exchange === 'COMEX' || exchange === 'NYMEX' || exchange === 'CME') {
+      if (typeName.includes('stock') || typeName.includes('etf')) {
+        is24hMarket = false;
+        if (currency === 'USD' || exchange === 'NASDAQ' || exchange === 'NYSE' || exchange === 'AMEX') {
           isUSMarket = true;
         }
+      } else if (typeName.includes('commodity') || symbol.includes('GC') || symbol.includes('SI')) {
+        is24hMarket = true;
+        isUSMarket = false;
       }
     }
 
-    // 모드별 필터링 (UTC 기준 절대 시간 비교)
     const nowTimestamp = (Date.now() / 1000) + localOffset;
-    
     let startTimeSeconds = 0;
     
     if (mode === "session") {
-      // API에서 불러온 실제 데이터의 '마지막 지점'을 기준으로 세션을 잡습니다. (가장 확실함)
-      // historyData가 존재하면 그 데이터를 기반으로, 없으면 현재 시각 기반으로 계산
       const referenceDate = historyData.length > 0 
         ? new Date(new Date(historyData[historyData.length - 1].timestamp_utc || historyData[historyData.length - 1].timestamp).getTime())
         : new Date();
         
-      startTimeSeconds = getDynamicSessionStartUTC(sessionStartTime, isUSMarket, referenceDate) + localOffset;
-      
-      // 세션의 종료 시간 계산 (충분히 넉넉하게 23시간으로 설정하여 해당 일의 상하장 전후 데이터를 모두 포함)
+      startTimeSeconds = getDynamicSessionStartUTC(sessionStartTime, isUSMarket, referenceDate, is24hMarket) + localOffset;
       const sessionDurationSeconds = 23 * 3600;
       let endTimeSeconds = startTimeSeconds + sessionDurationSeconds;
 
@@ -365,31 +356,36 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
         return t >= startTimeSeconds && t <= endTimeSeconds;
       });
     } else {
-      // 2번 모드: 최근 N시간 롤링 (유지)
       let effectiveLookback = lookbackHours
       if (!is24hMarket && lookbackHours < 96) {
-        // 주식/ETF 롤링 차트에서도 주말을 건너뛰고 '전날 시세'가 보이도록 최소 4일 확보
         effectiveLookback = 96
       }
       startTimeSeconds = nowTimestamp - (effectiveLookback * 3600)
       processed = processed.filter(d => (d.time as number) >= startTimeSeconds)
     }
 
-    // Y축 스케일 독립적 재설계
     if (processed.length > 0) {
       if (mode === "session") {
-        // 세션 차트는 화면에 표시되는 가장 최근 거래가격(마지막 봉의 종가) 기준 ±2%
-        const currentRefPrice = processed[processed.length - 1].close;
-        seriesRef.current.applyOptions({
-          autoscaleInfoProvider: () => ({
-            priceRange: {
-              minValue: currentRefPrice * 0.98,
-              maxValue: currentRefPrice * 1.02,
-            },
-          }),
+        let min = Infinity;
+        let max = -Infinity;
+        processed.forEach(p => {
+          if (p.low < min) min = p.low;
+          if (p.high > max) max = p.high;
         });
+        
+        if (min !== Infinity && max !== -Infinity) {
+          const range = max - min;
+          const padding = Math.max(range * 0.1, min * 0.01);
+          seriesRef.current.applyOptions({
+            autoscaleInfoProvider: () => ({
+              priceRange: {
+                minValue: min - padding,
+                maxValue: max + padding,
+              },
+            }),
+          });
+        }
       } else {
-        // 롤링 차트는 필터링된 범위(최대 24h 등)의 실제 Max/Min 값 * 1% 여백
         let viewMin = Infinity;
         let viewMax = -Infinity;
         processed.forEach(p => {
@@ -398,11 +394,13 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
         });
         
         if (viewMin !== Infinity && viewMax !== -Infinity) {
+          const range = viewMax - viewMin;
+          const padding = range * 0.05;
           seriesRef.current.applyOptions({
             autoscaleInfoProvider: () => ({
               priceRange: {
-                minValue: viewMin * 0.99,
-                maxValue: viewMax * 1.01,
+                minValue: viewMin - padding,
+                maxValue: viewMax + padding,
               },
             }),
           });
@@ -413,57 +411,44 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
     if (processed.length > 0) {
       seriesRef.current.setData(processed)
       lastCandleRef.current = processed[processed.length - 1]
-      const prevClose = processed.length > 0 ? processed[0].open : processed[0].close // approximation based on earliest data if previous close isn't accurate
+      const prevClose = processed.length > 0 ? processed[0].open : processed[0].close 
       setChartStats({ first: processed[0].close, last: processed[processed.length - 1].close, prevClose })
 
       if (mode === "session") {
-        // 세션 차트의 경우, 현재 시간이 세션 종료 전이라면 미래 공간을 확보
         const lastTime = processed[processed.length - 1].time as number;
-        
-        // 세션 종료는 시작 + 6.5시간(주식 정규장) 또는 24시간
         const sessionDurationSeconds = isUSMarket ? (6.5 * 3600) : (24 * 3600);
         const sessionEndSeconds = startTimeSeconds + sessionDurationSeconds;
-        
-        // 현재 NY 시간이 세션 종료 전인 경우만 rightOffset 주입
         const nowWithOffset = (Date.now() / 1000) + localOffset;
         if (nowWithOffset < sessionEndSeconds) {
-            let intervalSeconds = 300; // default 5m
+            let intervalSeconds = 300; 
             if (currentInterval === "1m") intervalSeconds = 60;
             else if (currentInterval === "15m") intervalSeconds = 900;
             else if (currentInterval === "30m") intervalSeconds = 1800;
             else if (currentInterval === "1h") intervalSeconds = 3600;
 
             const missingCandlesCount = Math.max(0, Math.floor((sessionEndSeconds - lastTime) / intervalSeconds));
-            
             chartRef.current.timeScale().applyOptions({
                rightOffset: missingCandlesCount,
                fixLeftEdge: true,
             });
         } else {
-            // 이미 세션이 종료된 과거 데이터라면 꽉 채움
             chartRef.current.timeScale().applyOptions({
                 rightOffset: 0,
                 fixLeftEdge: true,
             });
         }
       }
-      
-      // 어떤 차트 모드든 (세션의 우측 여백을 포함하여) 화면 레이아웃에 맞게 한눈에 들어오도록 강제 압축
       chartRef.current.timeScale().fitContent();
     }
   }, [historyData, mode, sessionStartTime, lookbackHours, assetDetail])
 
-  // 5. 실시간 웹소켓 틱(Tick) 처리 (캔들 높이 실시간 반영)
   useEffect(() => {
     if (!seriesRef.current || !latestPrice || !lastCandleRef.current) return
 
-    // 🚨 교차 수신 방지 필터링: 수신된 웹소켓 틱이 현재 차트의 자산과 일치하는지 100% 검증
-    // (비트코인 차트에 이더리움 등 타 자산 데이터가 섞여 들어와 캔들이 튀는 현상 원천 차단)
     const lpAny = latestPrice as any;
     if (lpAny.asset_id && assetDetail?.asset_id) {
       if (String(lpAny.asset_id) !== String(assetDetail.asset_id)) return;
     } else {
-      // asset_id가 없을 경우 심볼/티커 이름으로 교차 검증
       const receivedSymbol = (lpAny.symbol || lpAny.ticker || "").toUpperCase();
       const targetId = String(assetIdentifier).toUpperCase();
       const targetTicker = (assetDetail?.ticker || "").toUpperCase();
@@ -486,7 +471,6 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
     const tickTime = (new Date(latestPrice.timestamp).getTime() / 1000) + localOffset;
     const tickPrice = Number(latestPrice.price)
     
-    // 현재 인터벌 계산 (예: 15m = 900초)
     let intervalSeconds = 900
     if (currentInterval === "1m") intervalSeconds = 60
     else if (currentInterval === "5m") intervalSeconds = 300
@@ -498,7 +482,6 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
     const lastCandle = lastCandleRef.current
 
     if (candleStartTime > (lastCandle.time as number)) {
-      // 새로운 봉 시작
       const newCandle = {
         time: candleStartTime as Time,
         open: lastCandle.close,
@@ -521,14 +504,10 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
     setChartStats(prev => ({ ...prev, last: tickPrice }))
   }, [latestPrice, currentInterval])
 
-  // 6. 타이머를 통한 빈 봉 자동 생성 및 롤링 유지 (거래가 없을 때도 차트가 흐르게 함)
   useEffect(() => {
     const timer = setInterval(() => {
       if (!seriesRef.current || !lastCandleRef.current) return;
-      
       const nowSeconds = Math.floor(Date.now() / 1000) + localOffset;
-      
-      // 현재 인터벌 계산
       let intervalSeconds = 300;
       if (currentInterval === "1m") intervalSeconds = 60;
       else if (currentInterval === "5m") intervalSeconds = 300;
@@ -538,24 +517,18 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
 
       const candleStartTime = Math.floor(nowSeconds / intervalSeconds) * intervalSeconds;
       const lastCandle = lastCandleRef.current;
-
-      // 자산 정보 (정규장 여부 판별용)
       let isUSMarket = false;
       let is24hMarket = true;
       if (assetDetail) {
         const typeName = (assetDetail.asset_type || assetDetail.type_name || '').toLowerCase();
-        if (typeName.includes('stock') || typeName.includes('etf') || typeName === 'stocks' || typeName === 'etfs') {
+        if (typeName.includes('stock') || typeName.includes('etf')) {
           is24hMarket = false;
           const currency = (assetDetail.currency || '').toUpperCase();
           if (currency === 'USD') isUSMarket = true;
         }
       }
-
-      // 정규장 시간이거나 24시간 시장인 경우에만 새로운 봉 자동 생성
-      const marketOpen = is24hMarket || (isUSMarket ? isUSRegularMarketHours() : true); // 일단 한국장은 편의상 항상 열린것으로 간주(시간로직 추가가능)
-
+      const marketOpen = is24hMarket || (isUSMarket ? isUSRegularMarketHours() : true);
       if (marketOpen && candleStartTime > (lastCandle.time as number)) {
-        // 새로운 봉 시간이 되었는데 웹소켓이 안 왔을 경우, 이전 종가로 시가/종가 생성
         const ghostCandle = {
           time: candleStartTime as Time,
           open: lastCandle.close,
@@ -567,13 +540,10 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
         lastCandleRef.current = ghostCandle;
       }
     }, 1000);
-
     return () => clearInterval(timer);
   }, [currentInterval, assetDetail]);
 
-  // Change percent matching legacy logic (comparing to previous close from websocket or lastQuoteResponse)
   const currentPrice = chartStats.last > 0 ? chartStats.last : (latestPrice?.price ? Number(latestPrice.price) : 0);
-  
   let computedChangePercent = 0;
   let computedChangeAmount = 0;
 
@@ -595,20 +565,17 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
       computedChangeAmount = currentPrice - prevClosePrice;
       computedChangePercent = (computedChangeAmount / prevClosePrice) * 100;
   } else if (chartStats.prevClose > 0) {
-      // fallback to chart's initial point
       computedChangeAmount = currentPrice - chartStats.prevClose;
       computedChangePercent = (computedChangeAmount / chartStats.prevClose) * 100;
   }
 
   const isPositive = computedChangePercent >= 0;
   const changeSign = computedChangePercent > 0 ? '+' : (computedChangePercent < 0 ? '-' : '');
-
-  // Get color based on change percent (matching Legacy logic)
   const getChangeColor = (percent: number) => {
     if (percent <= -3) return 'text-[#f73539]';
     if (percent >= 3) return 'text-[#2ecc59]';
-    if (percent < 0) return 'text-[#f73539]'; // Changed to use exact hex for consistency
-    if (percent > 0) return 'text-[#2ecc59]'; // Changed to use exact hex for consistency
+    if (percent < 0) return 'text-[#f73539]'; 
+    if (percent > 0) return 'text-[#2ecc59]'; 
     return 'text-gray-500';
   }
   const colorClass = getChangeColor(computedChangePercent)
@@ -621,11 +588,29 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
       <div className="flex items-center justify-between px-1">
         <div className="flex flex-col">
           <div className="flex items-baseline gap-2">
-            <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              {title || assetIdentifier}
-            </h3>
+            {href ? (
+              <Link href={href} className="hover:opacity-75 transition-opacity">
+                <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  {title || assetIdentifier}
+                </h3>
+              </Link>
+            ) : (
+              <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                {title || assetIdentifier}
+              </h3>
+            )}
             <div className={`flex items-baseline gap-2 ${colorClass}`}>
+              <span className={`text-base font-black mr-1 bg-clip-text text-transparent bg-gradient-to-br ${
+                computedChangePercent > 0 
+                  ? 'from-green-400 to-green-600' 
+                  : computedChangePercent < 0 
+                    ? 'from-red-400 to-red-600' 
+                    : 'from-slate-400 to-slate-600'
+              }`}>
+                {currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: (currentPrice < 10 ? 4 : 2) })}
+              </span>
               <span className="font-semibold text-sm">{changeSign}{Math.abs(computedChangePercent).toFixed(2)}%</span>
               <span className="text-xs font-medium">{changeSign}{Math.abs(computedChangeAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
@@ -650,10 +635,8 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
            </span>
         </div>
       </div>
-      
       <div className="flex-1 min-h-0 relative">
         <div ref={containerRef} className="absolute inset-0 w-full h-full" />
-        
         {ohlcvQuery.isLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/10 dark:bg-black/10 backdrop-blur-[2px] rounded-md z-10">
             <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />

@@ -20,7 +20,17 @@ export interface OnchainDataPoint {
 
 export interface OnchainData {
     metric: string
-    data: OnchainDataPoint[]
+    data?: OnchainDataPoint[]
+    series?: {
+        [key: string]: any[] | undefined
+        date?: any[]
+        price?: any[]
+    }
+    analysis?: {
+        correlation?: {
+            [key: string]: any
+        }
+    }
     correlation?: number
     last_updated?: string
 }

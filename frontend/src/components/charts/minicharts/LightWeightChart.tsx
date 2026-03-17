@@ -9,6 +9,7 @@ import {
   Time,
   IChartApi,
   ISeriesApi,
+  LineSeries,
 } from "lightweight-charts"
 import { useDelayedQuotes, useSparklinePrice } from "@/hooks/data/useRealtime"
 import { useRealtimePrices } from "@/hooks/data/useSocket"
@@ -19,6 +20,7 @@ type LightWeightChartProps = {
   title?: string
   chartType?: "crypto" | "stocks"
   dataSource?: string
+  data?: LineDataPoint[]
 }
 
 type ApiResponsePoint = {
@@ -40,17 +42,24 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
   title,
   chartType = "crypto",
   dataSource,
+  data: propsData,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<"Line"> | null>(null)
 
   const [dataInterval, setDataInterval] = useState("15m")
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // 데이터/자산 정보 훅
-  const { data: assetDetail } = useAssetDetail(assetIdentifier)
+  const { data: assetDetail } = useAssetDetail(assetIdentifier || "")
 
   const isStocksOrEtf = useMemo(() => {
+    if (!assetIdentifier) return false
     return (
       chartType === "stocks" ||
       assetDetail?.asset_type_id === 2 ||
@@ -58,25 +67,27 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
       assetDetail?.type_name?.toLowerCase() === "stocks" ||
       assetDetail?.type_name?.toLowerCase() === "etfs"
     )
-  }, [chartType, assetDetail])
+  }, [chartType, assetDetail, assetIdentifier])
 
   const delayedQuotesQuery = useDelayedQuotes(
     [assetIdentifier],
     { dataSource, dataInterval },
-    { enabled: !isStocksOrEtf }
+    { enabled: !isStocksOrEtf && !!assetIdentifier && !propsData }
   )
 
   const sparklineQuery = useSparklinePrice(
     assetIdentifier,
     { dataInterval, days: 1, dataSource },
-    { enabled: isStocksOrEtf }
+    { enabled: isStocksOrEtf && !!assetIdentifier && !propsData }
   )
 
   const apiResponse: any = isStocksOrEtf ? sparklineQuery.data : delayedQuotesQuery.data
-  const { latestPrice } = useRealtimePrices(assetIdentifier)
+  const { latestPrice } = useRealtimePrices(assetIdentifier || "")
 
   // API 응답을 lightweight-charts 형식으로 다운샘플/매핑
   const seriesData = useMemo(() => {
+    if (propsData && propsData.length > 0) return propsData
+
     let raw: ApiResponsePoint[] = []
 
     if (apiResponse && Array.isArray(apiResponse)) {
@@ -131,7 +142,7 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
     )
 
     return uniqueSampled
-  }, [apiResponse, assetIdentifier])
+  }, [apiResponse, assetIdentifier, propsData])
 
   // 가격 계산 로직 (useMemo로 연산 최소화)
   const { firstPrice, currentPrice, changeAmount, changePercent, isPositive } = useMemo(() => {
@@ -176,11 +187,10 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
       crosshair: { mode: 1 },
       handleScroll: { mouseWheel: true, pressedMouseMove: true },
       handleScale: { axisDoubleClickReset: true, mouseWheel: true, pinch: true },
-      // watermark: { visible: false }, // CSS에서 처리하므로 제거
-      autoSize: true, // v4/v5 기능: ResizeObserver 수동 구현 대체
+      autoSize: true, 
     })
 
-    const series = chart.addLineSeries({
+    const series = chart.addSeries(LineSeries, {
       color: "#22c55e", 
       lineWidth: 2,
       priceLineVisible: true,
@@ -206,7 +216,7 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
     
     seriesRef.current.setData(seriesData)
     seriesRef.current.applyOptions({
-      color: isPositive ? "#22c55e" : "#ef4444" // 상승 초록, 하락 빨강
+      color: isPositive ? "#22c55e" : "#ef4444" 
     })
     
     if (chartRef.current) {
@@ -229,6 +239,14 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
       console.warn("Chart realtime update skipped:", error)
     }
   }, [latestPrice])
+
+  if (!mounted) {
+    return (
+      <div className="flex flex-col gap-1 h-full w-full">
+        <div className="flex-1 min-h-[160px] bg-slate-100 dark:bg-slate-800 animate-pulse rounded-md" />
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-1 h-full w-full">
@@ -253,18 +271,20 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
         </div>
         
         <div className="flex items-center gap-2">
-          <select 
-            className="bg-transparent border border-gray-200 dark:border-gray-800 rounded px-1 min-w-[50px] text-[10px] text-gray-500 dark:text-gray-400 outline-none hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
-            value={dataInterval}
-            onChange={(e) => setDataInterval(e.target.value)}
-          >
-            <option value="1m">1m</option>
-            <option value="5m">5m</option>
-            <option value="15m">15m</option>
-            <option value="30m">30m</option>
-          </select>
+          {!propsData && (
+             <select 
+                className="bg-transparent border border-gray-200 dark:border-gray-800 rounded px-1 min-w-[50px] text-[10px] text-gray-500 dark:text-gray-400 outline-none hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+                value={dataInterval}
+                onChange={(e) => setDataInterval(e.target.value)}
+              >
+                <option value="1m">1m</option>
+                <option value="5m">5m</option>
+                <option value="15m">15m</option>
+                <option value="30m">30m</option>
+              </select>
+          )}
           <span className="font-medium truncate uppercase bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded text-[10px]">
-            {assetIdentifier}
+            {assetIdentifier || "Data"}
           </span>
         </div>
       </div>
