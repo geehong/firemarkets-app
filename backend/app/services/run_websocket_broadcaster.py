@@ -137,12 +137,14 @@ async def _refresh_asset_cache():
                 
                 new_id_cache[t] = aid
                 new_id_to_ticker_cache[aid] = t
-                new_type_cache[t] = asset_type_obj.type_name if asset_type_obj else "Unknown"
+                asset_type_str = asset_type_obj.type_name if asset_type_obj else "Unknown"
+                new_type_cache[t] = asset_type_str
                 
                 # 변형 심볼 매핑 (USDT 등)
-                for variant in [f"{t}USDT", f"{t}-USD"]:
+                for variant in [f"{t}USDT", f"{t}-USDT", f"{t}-USD"]:
                     if variant not in new_id_cache:
                         new_id_cache[variant] = aid
+                        new_type_cache[variant] = asset_type_str
             
             ticker_to_asset_id_cache = new_id_cache
             asset_id_to_ticker_cache = new_id_to_ticker_cache
@@ -150,6 +152,10 @@ async def _refresh_asset_cache():
             
             last_asset_cache_refresh = datetime.now(timezone.utc)
             logger.info(f"✅ Ticker-AssetID Cache updated from DB: {len(ticker_to_asset_id_cache)} entries")
+            # 디버그: 주요 자산 매핑 확인
+            for test_s in ['BTC', 'ETH', 'QQQ', 'SPY', 'NVDA', 'TSLA']:
+                if test_s in ticker_to_asset_id_cache:
+                    logger.info(f"📌 [Cache-Check] {test_s} -> ID: {ticker_to_asset_id_cache[test_s]}, Type: {ticker_to_asset_type_cache.get(test_s)}")
         finally:
             db.close()
     except Exception as e:
@@ -297,10 +303,16 @@ async def listen_to_redis_and_broadcast():
                             # 2. 가능한 모든 변형으로 매핑 조회
                             for s in search_symbols:
                                 asset_id = ticker_to_asset_id_cache.get(s)
+                                if not asset_id and provider == 'binance':
+                                    # "BINANCE:BTCUSDT" 형태 처리
+                                    s_clean = s.replace('BINANCE:', '')
+                                    asset_id = ticker_to_asset_id_cache.get(s_clean)
+                                    if asset_id: s = s_clean
+
                                 if asset_id:
                                     ticker_for_broadcast = s
-                                    # [MAPPING TRACE]
-                                    if symbol in ['SOL', 'ETHUSDT', 'BTCUSDT']:
+                                    # [MAPPING TRACE] - Stocks/ETFs도 추적 대상에 추가
+                                    if symbol in ['SOL', 'ETHUSDT', 'BTCUSDT', 'QQQ', 'SPY', 'NVDA', 'TSLA']:
                                         logger.info(f"🔍 [MAPPING-TRACE] {provider} | {symbol} -> Internal: {ticker_for_broadcast} (ID: {asset_id})")
                                     break
                             

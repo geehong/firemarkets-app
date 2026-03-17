@@ -151,6 +151,11 @@ class AlpacaWSConsumer(BaseWSConsumer):
                         is_auth_success = True
                 
                 if not is_auth_success:
+                    if any(err_msg in str(auth_msg).lower() for err_msg in ["limit exceeded", "connection limit"]):
+                        logger.warning(f"⚠️ {self.client_name} connection limit exceeded. Waiting longer...")
+                        # 연결 제한 초과 시 기존 연결이 정리될 때까지 더 길게 대기
+                        await asyncio.sleep(5)
+                    
                     logger.error(f"❌ Alpaca authentication failed: {auth_msg}")
                     failed_key = self.current_key_info.get('key', 'unknown') if self.current_key_info and isinstance(self.current_key_info, dict) else "unknown"
                     self.api_key_manager.mark_key_failed(self.current_key_info)
@@ -174,6 +179,7 @@ class AlpacaWSConsumer(BaseWSConsumer):
                     )
                     log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries, f"Authentication failed: {error_detail}")
                     
+                    await self.disconnect()
                     retry_count += 1
                     continue
                 
@@ -190,6 +196,9 @@ class AlpacaWSConsumer(BaseWSConsumer):
                 logger.error(f"❌ {self.client_name} error type: {type(e).__name__}")
                 failed_key = self.current_key_info.get('key', 'unknown') if self.current_key_info else "unknown"
                 self.api_key_manager.mark_key_failed(self.current_key_info)
+                
+                # Close connection on exception before retry
+                await self.disconnect()
                 
                 # API 키 fallback 로그
                 from app.services.websocket_orchestrator import log_api_key_fallback, log_consumer_connection_attempt
@@ -372,7 +381,9 @@ class AlpacaWSConsumer(BaseWSConsumer):
             tickers = sorted(list(self.subscribed_tickers))
             subscribe_msg = {
                 "action": "subscribe", 
-                "trades": tickers
+                "trades": tickers,
+                "quotes": tickers,
+                "bars": tickers
             }
             await self._ws.send(json.dumps(subscribe_msg))
             logger.info(f"📋 {self.client_name} subscribed trades/quotes: {tickers}")
@@ -412,9 +423,12 @@ class AlpacaWSConsumer(BaseWSConsumer):
                 ts = item.get('t')
                 logger.debug(f"📈 {self.client_name} trade: {symbol} = ${price} (vol: {size})")
             elif msg_type == 'q':  # quote
-                # Ignore quotes to prevent barcode patterns caused by Bid/Ask spreads
-                logger.debug(f"📊 {self.client_name} ignoring quote: {symbol}")
-                return
+                # 거래가 없는 시간대(애프터마켓 등)를 위해 Quote 데이터도 활용합니다.
+                # Bid 가격을 현재가로 취급하여 변경 사항을 알립니다.
+                price = item.get('bp')  # bid price
+                size = item.get('bs')   # bid size
+                ts = item.get('t')
+                logger.debug(f"📊 {self.client_name} quote: {symbol} Bid=${price} (size: {size})")
             elif msg_type == 'b':  # bar (1분 캔들)
                 close = item.get('c')
                 volume = item.get('v')
@@ -432,12 +446,32 @@ class AlpacaWSConsumer(BaseWSConsumer):
                 if isinstance(ts, int):
                     ts_ms = int(ts / 1_000_000)  # epoch ns → ms
                 elif isinstance(ts, str):
-                    # RFC3339 형식 처리
+                    # RFC3339 형식 처리 (Alpaca는 나노초까지 제공할 수 있음. fromisoformat은 마이크로초까지만 지원)
+                    # 예: 2026-03-16T19:54:19.371298601Z
+                    ts_fixed = ts
+                    if '.' in ts:
+                        # 소수점 이하 자리수를 6자리(마이크로초)로 제한
+                        prefix, suffix = ts.split('.')
+                        # 'Z' 또는 타임존(+) 위치 찾기
+                        end_index = -1
+                        for i, char in enumerate(suffix):
+                            if char in ('Z', '+', '-'):
+                                end_index = i
+                                break
+                        
+                        if end_index != -1:
+                            fractional = suffix[:min(end_index, 6)]
+                            tz_part = suffix[end_index:]
+                            ts_fixed = f"{prefix}.{fractional}{tz_part}"
+                        else:
+                            fractional = suffix[:6]
+                            ts_fixed = f"{prefix}.{fractional}"
+                    
                     from datetime import datetime
-                    dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                    dt = datetime.fromisoformat(ts_fixed.replace('Z', '+00:00'))
                     ts_ms = int(dt.timestamp() * 1000)
             except Exception as e:
-                logger.debug(f"⏰ {self.client_name} timestamp parse error: {e}")
+                logger.debug(f"⏰ {self.client_name} timestamp parse error: {e} (Original: {ts})")
                 ts_ms = None
             
             # 유효한 가격 데이터가 있을 때만 저장

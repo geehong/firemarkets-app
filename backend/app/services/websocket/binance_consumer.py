@@ -10,7 +10,6 @@ import redis.asyncio as redis
 from datetime import datetime, timezone
 from app.services.websocket.base_consumer import BaseWSConsumer, ConsumerConfig, AssetType
 from app.utils.asset_mapping_loader import get_symbol_for_provider
-from app.services.processor.redis_bucket_manager import RedisBucketManager
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +21,7 @@ class BinanceWSConsumer(BaseWSConsumer):
         self._ws = None
         self._request_id = 0
         self._redis_url = self._build_redis_url()
-        self.bucket_manager = RedisBucketManager(self._redis_url)
+        self.redis_client = None
         self.subscribed_tickers = []
         self._is_subscribed = False
         self._asset_id_map = {}
@@ -44,8 +43,9 @@ class BinanceWSConsumer(BaseWSConsumer):
         logger.info("🚩 [BINANCE] connect() START")
         try:
             # 1. Redis Connect
-            await self.bucket_manager.connect()
-            logger.info("🚩 [BINANCE] Redis Bucket Manager Connected")
+            if not self.redis_client:
+                self.redis_client = await redis.from_url(self._redis_url)
+            logger.info("🚩 [BINANCE] Redis Connected")
             
             # 2. WebSocket Connect
             logger.info(f"🔌 [BINANCE] Connecting to {self.ws_url} (timeout 30s)")
@@ -65,7 +65,7 @@ class BinanceWSConsumer(BaseWSConsumer):
 
     async def _load_asset_ids(self):
         """DB에서 자산 목록을 로드하여 바이낸스 심볼과 매핑"""
-        from app.db.session import SessionLocal
+        from app.core.database import SessionLocal
         from app.models.asset import Asset
         try:
             with SessionLocal() as db:
@@ -169,10 +169,6 @@ class BinanceWSConsumer(BaseWSConsumer):
 
             dt = datetime.fromtimestamp(data.get('E', 0)/1000.0, tz=timezone.utc)
             
-            # OHLCV 버킷 업데이트
-            await self.bucket_manager.aggregate_tick(asset_id, "1m", p, q, dt)
-            await self.bucket_manager.aggregate_tick(asset_id, "5m", p, q, dt)
-            
             # 웹소켓 브로드캐스트용 Redis Stream 저장
             await self._store_to_redis_stream(data, p, q, "trade")
             
@@ -186,7 +182,7 @@ class BinanceWSConsumer(BaseWSConsumer):
 
     async def _store_to_redis_stream(self, data: dict, price: float, volume: float, mtype: str):
         """Redis Stream에 저장 (브로드캐스터 전용)"""
-        r = self.bucket_manager.redis_client
+        r = self.redis_client
         if not r: return
         
         # 브로드캐스터가 오해하지 않도록 'price'와 'volume'을 명시적으로 전달
@@ -207,7 +203,7 @@ class BinanceWSConsumer(BaseWSConsumer):
                 f.write(f"[{mtype}] {json.dumps(data)}\n")
         except: pass
 
-        r = self.bucket_manager.redis_client
+        r = self.redis_client
         if r:
             # mtype에 따라 필드 매핑 분기 (Binance API 규격 준수)
             if mtype == "trade":

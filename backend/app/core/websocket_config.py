@@ -22,7 +22,7 @@ class WebSocketConfig:
     PROVIDERS = {
         'finnhub': ProviderConfig(
             max_subscriptions=45,
-            supported_asset_types=[AssetType.STOCK, AssetType.FOREX],
+            supported_asset_types=[AssetType.STOCK, AssetType.ETF, AssetType.FOREX],
             rate_limit_per_minute=60,
             priority=1,  # 동일 우선순위로 분산 배정
             reconnect_interval=30,

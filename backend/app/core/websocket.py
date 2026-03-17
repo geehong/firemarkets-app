@@ -185,15 +185,16 @@ async def broadcast_realtime_quote(quote_data):
         # 로그 출력 시 None 값 안전하게 처리
         change_percent_str = f"{change_percent:+.2f}%" if change_percent is not None else "N/A"
 
-        # 데이터를 전송할 룸 이름 지정
-        target_room = f"prices_{ticker}"
+        # 방송할 룸 목록 (티커와 ID 둘 다 지원하여 프론트엔드 호환성 확보)
+        rooms = [f"prices_{ticker}"]
+        if asset_id:
+            rooms.append(f"prices_{asset_id}")
         
-        # print(f"🚀 Broadcasting 'realtime_quote' to room '{target_room}': ${price} ({change_percent_str})")
+        # 각 룸으로 이벤트 전송
+        for room in rooms:
+            await sio.emit('realtime_quote', quote_data, room=room)
         
-        # 특정 룸으로만 이벤트 전송
-        # logger.debug(f"📤 [ROOM BROADCAST] {ticker} -> {target_room}")
-        await sio.emit('realtime_quote', quote_data, room=target_room)
-        # print(f"✅ Broadcasted to room '{target_room}' successfully.")
+        # print(f"✅ Broadcasted {ticker} to rooms: {rooms}")
         
         # 통계 집계
         global last_stat_log_time

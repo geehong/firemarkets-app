@@ -262,7 +262,7 @@ class DataRepository:
             if delay_rows:
                 stmt_delay = pg_insert(RealtimeQuoteTimeDelay).values(delay_rows)
                 stmt_delay = stmt_delay.on_conflict_do_update(
-                    index_elements=['asset_id', 'timestamp_utc'],
+                    index_elements=['asset_id', 'timestamp_utc', 'data_source', 'data_interval'],
                     set_={
                         'price': stmt_delay.excluded.price,
                         'volume': stmt_delay.excluded.volume,

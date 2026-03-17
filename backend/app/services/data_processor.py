@@ -56,16 +56,17 @@ class DataProcessor:
         self.redis_password = GLOBAL_APP_CONFIGS.get("REDIS_PASSWORD")
         self.redis_url = f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
         
+        # Redis Bucket Manager
+        self.bucket_manager = RedisBucketManager(self.redis_url)
+        
         # StreamConsumer 초기화
         self.stream_consumer = StreamConsumer(
             redis_url=self.redis_url,
             adapter_factory=self.adapter_factory,
             repository=self.repository,
+            bucket_manager=self.bucket_manager,
             batch_size=GLOBAL_APP_CONFIGS.get("BATCH_SIZE", 100)
         )
-        
-        # Redis Bucket Manager
-        self.bucket_manager = RedisBucketManager(self.redis_url)
         
         self.redis_client = None # 직접 사용 최소화, Consumer가 관리
         

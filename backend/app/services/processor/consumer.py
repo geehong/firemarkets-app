@@ -11,11 +11,12 @@ logger = logging.getLogger(__name__)
 class StreamConsumer:
     """Redis Stream 소비 및 처리를 담당하는 클래스"""
 
-    def __init__(self, redis_url: str, adapter_factory, repository, batch_size: int = 100):
+    def __init__(self, redis_url: str, adapter_factory, repository, bucket_manager=None, batch_size: int = 100):
         self.redis_url = redis_url
         self.redis_client = None
         self.adapter_factory = adapter_factory
         self.repository = repository
+        self.bucket_manager = bucket_manager
         self.batch_size = batch_size
         self.realtime_streams = {
             # Highest priority: Stocks (Finnhub)
@@ -155,11 +156,36 @@ class StreamConsumer:
             else:
                 logger.debug(f"📥 처리할 레코드: {len(records_to_save)}개")
 
-            # DB 저장
+            # DB 저장 및 Redis Bucket 집계
             if records_to_save:
                 tickers_in_batch = [r.get('ticker') for r in records_to_save]
                 logger.info(f"💾 DB 저장 시도: {len(records_to_save)}개 레코드 (Tickers: {tickers_in_batch[:5]}...)")
+                
+                # 1. DB 저장 (RT, Delay)
                 success = await self.repository.bulk_save_realtime_quotes(records_to_save)
+                
+                # 2. Redis Bucket 집계 (OHLCV Bars)
+                if self.bucket_manager:
+                    for r in records_to_save:
+                        try:
+                            # Ticks are aggregated into 1m and 5m bars
+                            await self.bucket_manager.aggregate_tick(
+                                asset_id=r['asset_id'],
+                                interval="1m",
+                                price=r['price'],
+                                volume=r.get('volume') or 0,
+                                timestamp_utc=r['timestamp_utc']
+                            )
+                            await self.bucket_manager.aggregate_tick(
+                                asset_id=r['asset_id'],
+                                interval="5m",
+                                price=r['price'],
+                                volume=r.get('volume') or 0,
+                                timestamp_utc=r['timestamp_utc']
+                            )
+                        except Exception as aggregation_error:
+                            logger.error(f"❌ Aggregation tick failed for {r.get('ticker')}: {aggregation_error}")
+
                 if success:
                     processed_count = len(records_to_save)
                     # logger.info(f"✅ DB 저장 성공: {processed_count}개")
