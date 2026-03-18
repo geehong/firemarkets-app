@@ -313,103 +313,75 @@ const SparklineTableRow = ({
   };
 
   return (
-    <TableRow key={asset.ticker}>
-      {/* Name - 모바일: 티커만, 데스크톱: 로고+티커+이름 */}
-      <TableCell className="px-5 py-4 sm:px-6 text-start md:w-auto w-[40%]">
-        <Link
-          href={`/assets/${asset.ticker || asset.assetId}`}
-          className="flex items-center gap-3 hover:opacity-80 transition-opacity"
-        >
-          {/* 로고 - 데스크톱에서만 표시 */}
-          {asset.logo_url ? (
-            <div className="w-10 h-10 relative overflow-hidden rounded-full hidden md:block">
+    <TableRow key={asset.ticker} className="hover:bg-gray-50 dark:hover:bg-white/[0.02] border-b border-gray-100 dark:border-white/[0.05]">
+      {/* 상징 (Ticker) */}
+      <TableCell className="px-3 py-2 text-start font-bold text-blue-600 dark:text-blue-400 text-sm">
+        <Link href={`/assets/${asset.ticker || asset.assetId}`}>
+          {asset.ticker}
+        </Link>
+      </TableCell>
+      
+      {/* 이름 (Name) */}
+      <TableCell className="px-3 py-2 text-start text-gray-700 dark:text-gray-300 min-w-[150px] text-xs">
+        <div className="flex items-center gap-2">
+          {asset.logo_url && (
+            <div className="w-5 h-5 relative overflow-hidden rounded-full shrink-0">
               <Image
                 fill
                 src={asset.logo_url}
                 alt={`${asset.ticker} logo`}
                 className="object-cover"
-                sizes="40px"
+                sizes="20px"
               />
             </div>
-          ) : (
-            <div className="w-10 h-10 flex items-center justify-center bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-full hidden md:flex shrink-0">
-              <span className="text-base font-bold text-gray-600 dark:text-white/70 leading-none">
-                {asset.ticker.charAt(0).toUpperCase()}
-              </span>
-            </div>
           )}
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <span className="block font-medium text-gray-800 text-theme-sm dark:text-white/90">
-                {asset.ticker}
-              </span>
-              {/* 구독 상태 표시 */}
-              {asset.subscriptionStatus && (
-                <span
-                  className={`text-xs px-1.5 py-0.5 rounded ${asset.subscriptionStatus === 'subscribed'
-                    ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                    : asset.subscriptionStatus === 'loading'
-                      ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
-                      : asset.subscriptionStatus === 'error'
-                        ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
-                        : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
-                    }`}
-                  title={
-                    asset.subscriptionStatus === 'subscribed'
-                      ? '구독됨'
-                      : asset.subscriptionStatus === 'loading'
-                        ? '로딩 중'
-                        : asset.subscriptionStatus === 'error'
-                          ? '에러'
-                          : '데이터 없음'
-                  }
-                >
-                  {asset.subscriptionStatus === 'subscribed'
-                    ? '✓'
-                    : asset.subscriptionStatus === 'loading'
-                      ? '⋯'
-                      : asset.subscriptionStatus === 'error'
-                        ? '✗'
-                        : '○'}
-                </span>
-              )}
-            </div>
-            <span className="block text-gray-500 text-theme-xs dark:text-gray-400 hidden md:block">
-              {asset.name}
-            </span>
-          </div>
-        </Link>
-      </TableCell>
-      {/* Chart - 데스크톱에서만 표시 */}
-      <TableCell className="px-4 py-3 text-start hidden md:table-cell">
-        {isDesktop && <SparklineChart data={asset.timeline} />}
-      </TableCell>
-      {/* Price + Change - 모바일 전용 */}
-      <TableCell className="px-4 py-3 text-start text-theme-sm dark:text-gray-400 md:hidden w-[60%]">
-        <div className="flex items-center gap-2">
-          <PriceWidget ticker={asset.ticker} assetType={asset.assetType} treemapData={treemapData} realtimeData={realtimeData} />
-          <ChangePercentWidget ticker={asset.ticker} assetType={asset.assetType} treemapData={treemapData} realtimeData={realtimeData} />
+          <span className="truncate max-w-[180px]">{asset.name}</span>
         </div>
       </TableCell>
-      {/* Price - 데스크톱 전용 */}
-      <TableCell className="px-4 py-3 text-start text-theme-sm dark:text-gray-400 hidden md:table-cell">
+
+      {/* 미니 차트 (Sparkline) */}
+      <TableCell className="px-3 py-2 w-24">
+        <SparklineChart data={asset.timeline} />
+      </TableCell>
+
+      {/* 가격 (Price) */}
+      <TableCell className="px-3 py-2 text-end font-semibold text-sm">
         <PriceWidget ticker={asset.ticker} assetType={asset.assetType} treemapData={treemapData} realtimeData={realtimeData} />
       </TableCell>
-      {/* Change - 데스크톱 전용 */}
-      <TableCell className="px-4 py-3 text-start text-theme-sm dark:text-gray-400 hidden md:table-cell">
+
+      {/* 변화 (Change Abs) */}
+      <TableCell className="px-3 py-2 text-end text-sm">
+         <span className={asset.change24h >= 0 ? "text-green-600 font-medium" : "text-red-600 font-medium"}>
+           {asset.change24h >= 0 ? "+" : ""}{(asset.price * (asset.change24h / 100)).toFixed(2)}
+         </span>
+      </TableCell>
+
+      {/* 변화 % (Change %) */}
+      <TableCell className="px-3 py-2 text-end text-sm">
         <ChangePercentWidget ticker={asset.ticker} assetType={asset.assetType} treemapData={treemapData} realtimeData={realtimeData} />
       </TableCell>
-      {/* Volume - 데스크톱에서만 표시 */}
-      <TableCell className="px-4 py-3 text-start text-theme-sm dark:text-gray-400 w-32 hidden md:table-cell">
+
+      {/* 용량 (Volume) */}
+      <TableCell className="px-3 py-2 text-end text-gray-600 dark:text-gray-400 text-xs">
         <VolumeWidget ticker={asset.ticker} assetType={asset.assetType} treemapData={treemapData} realtimeData={realtimeData} />
       </TableCell>
-      {/* Market Cap - 데스크톱에서만 표시 */}
-      <TableCell className="px-4 py-3 text-gray-500 text-start text-theme-sm dark:text-gray-400 hidden md:table-cell">
+
+      {/* 평균 거래량 */}
+      <TableCell className="px-3 py-2 text-end text-gray-500 text-xs">
         {asset.marketCap >= 1e9
-          ? `$${(asset.marketCap / 1e9).toFixed(2)}B`
+          ? `${(asset.marketCap / 1e9).toFixed(1)}B`
           : asset.marketCap >= 1e6
-            ? `$${(asset.marketCap / 1e6).toFixed(2)}M`
-            : `$${asset.marketCap.toFixed(2)}`}
+            ? `${(asset.marketCap / 1e6).toFixed(1)}M`
+            : `${asset.marketCap.toLocaleString()}`}
+      </TableCell>
+
+      {/* 시가총액 (Market Cap) */}
+      <TableCell className="px-3 py-2 text-end text-gray-500 text-xs">
+        {asset.marketCap >= 1e9
+          ? `${(asset.marketCap / 1e9).toFixed(2)}B`
+          : asset.marketCap >= 1e6
+            ? `${(asset.marketCap / 1e6).toFixed(2)}M`
+            : `${asset.marketCap.toLocaleString()}`}
       </TableCell>
     </TableRow>
   );
@@ -674,47 +646,32 @@ export default function SparklineTable({
           <Table>
             {/* Table Header */}
             <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
-              <TableRow>
-                <TableCell
-                  isHeader
-                  className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400 md:w-auto w-[40%]"
-                >
+              <TableRow className="bg-gray-50/50 dark:bg-white/[0.01]">
+                <TableCell isHeader className="px-3 py-2 font-semibold text-gray-500 text-start text-[11px] uppercase tracking-wider">
+                  Symbol
+                </TableCell>
+                <TableCell isHeader className="px-3 py-2 font-semibold text-gray-500 text-start text-[11px] uppercase tracking-wider">
                   Name
                 </TableCell>
-                <TableCell
-                  isHeader
-                  className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400 hidden md:table-cell"
-                >
-                  Chart (1Day)
+                <TableCell isHeader className="px-3 py-2 font-semibold text-gray-500 text-start text-[11px] uppercase tracking-wider">
+                  Intraday
                 </TableCell>
-                <TableCell
-                  isHeader
-                  className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400 md:hidden w-[60%]"
-                >
+                <TableCell isHeader className="px-3 py-2 font-semibold text-gray-500 text-end text-[11px] uppercase tracking-wider">
                   Price
                 </TableCell>
-                <TableCell
-                  isHeader
-                  className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400 hidden md:table-cell"
-                >
-                  Price
+                <TableCell isHeader className="px-3 py-2 font-semibold text-gray-500 text-end text-[11px] uppercase tracking-wider">
+                  Change
                 </TableCell>
-                <TableCell
-                  isHeader
-                  className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400 hidden md:table-cell"
-                >
-                  Change (%)
+                <TableCell isHeader className="px-3 py-2 font-semibold text-gray-500 text-end text-[11px] uppercase tracking-wider">
+                  Change %
                 </TableCell>
-                <TableCell
-                  isHeader
-                  className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400 w-32 hidden md:table-cell"
-                >
+                <TableCell isHeader className="px-3 py-2 font-semibold text-gray-500 text-end text-[11px] uppercase tracking-wider">
                   Volume
                 </TableCell>
-                <TableCell
-                  isHeader
-                  className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400 hidden md:table-cell"
-                >
+                <TableCell isHeader className="px-3 py-2 font-semibold text-gray-500 text-end text-[11px] uppercase tracking-wider">
+                  Avg Vol(3m)
+                </TableCell>
+                <TableCell isHeader className="px-3 py-2 font-semibold text-gray-500 text-end text-[11px] uppercase tracking-wider">
                   Market Cap
                 </TableCell>
               </TableRow>
