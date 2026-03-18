@@ -14,13 +14,13 @@ from app.core.database import SessionLocal
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def cleanup_strange_values(asset_id=None, threshold=0.03, dry_run=False):
+def cleanup_strange_values(asset_id=None, threshold=0.03, dry_run=False, interval=None):
     """
     realtime_quotes_time_bar 테이블에서 이상값(Outlier)을 정리하는 스크립트.
     """
     db = SessionLocal()
     try:
-        logger.info(f"실시간 OHLCV 데이터 정리 시작 (Asset: {asset_id or 'All'}, Threshold: {threshold*100}%, Dry-Run: {dry_run})...")
+        logger.info(f"실시간 OHLCV 데이터 정리 시작 (Asset: {asset_id or 'All'}, Interval: {interval or 'All'}, Threshold: {threshold*100}%, Dry-Run: {dry_run})...")
         
         # 1. 논리적 오류 수정 (H < L, H < O 등)
         fix_logic_sql = """
@@ -34,9 +34,10 @@ def cleanup_strange_values(asset_id=None, threshold=0.03, dry_run=False):
         """
         if asset_id:
             fix_logic_sql += " AND asset_id = :asset_id"
-            params = {"asset_id": asset_id}
-        else:
-            params = {}
+        if interval:
+            fix_logic_sql += " AND data_interval = :interval"
+            
+        params = {"asset_id": asset_id, "interval": interval}
             
         if dry_run:
             find_logic_sql = fix_logic_sql.replace("UPDATE realtime_quotes_time_bar SET high_price = GREATEST(open_price, high_price, low_price, close_price), low_price = LEAST(open_price, high_price, low_price, close_price)", "SELECT count(*) FROM realtime_quotes_time_bar")
@@ -64,14 +65,17 @@ def cleanup_strange_values(asset_id=None, threshold=0.03, dry_run=False):
             WHERE 
                 (high_price > open_price * (1 + :threshold) OR low_price < open_price * (1 - :threshold))
         """
-        params_spike = {"threshold": threshold}
         if asset_id:
             spike_sql += " AND asset_id = :asset_id"
-            params_spike["asset_id"] = asset_id
+        if interval:
+            spike_sql += " AND data_interval = :interval"
+            
+        params_spike = {"threshold": threshold, "asset_id": asset_id, "interval": interval}
             
         if dry_run:
             find_spike_sql = "SELECT count(*) FROM realtime_quotes_time_bar WHERE (high_price > open_price * (1 + :threshold) OR low_price < open_price * (1 - :threshold))"
             if asset_id: find_spike_sql += " AND asset_id = :asset_id"
+            if interval: find_spike_sql += " AND data_interval = :interval"
             result = db.execute(text(find_spike_sql), params_spike)
             count = result.scalar()
             logger.info(f"[Dry-Run] 비정상 스파이크 예상: {count}건")
@@ -80,7 +84,6 @@ def cleanup_strange_values(asset_id=None, threshold=0.03, dry_run=False):
             logger.info(f"비정상 스파이크(Outlier) {result.rowcount}건 조정 완료.")
 
         # 3. Isolated Spikes 처리
-        # Using a safer approach with a temporary table if CTE update is failing in some envs
         isolated_spike_sql = """
             WITH price_neighbors AS (
                 SELECT 
@@ -90,6 +93,7 @@ def cleanup_strange_values(asset_id=None, threshold=0.03, dry_run=False):
                     LEAD(close_price) OVER (PARTITION BY asset_id, data_interval ORDER BY timestamp_utc) as next_close
                 FROM realtime_quotes_time_bar
                 WHERE (:asset_id IS NULL OR asset_id = :asset_id)
+                  AND (:interval IS NULL OR data_interval = :interval)
             )
             UPDATE realtime_quotes_time_bar t
             SET 
@@ -106,12 +110,12 @@ def cleanup_strange_values(asset_id=None, threshold=0.03, dry_run=False):
               AND ABS(n.prev_close - n.next_close) / n.next_close < :threshold / 3
         """
         
-        params_iso = {"threshold": threshold, "asset_id": asset_id}
+        params_iso = {"threshold": threshold, "asset_id": asset_id, "interval": interval}
         if not dry_run:
             result = db.execute(text(isolated_spike_sql), params_iso)
             logger.info(f"고립된 스파이크(Isolated Outliers) {result.rowcount}건 제거 완료.")
         else:
-            logger.info("[Dry-Run] 고립된 스파이크 단계 건너뜀 (복잡한 쿼리)")
+            logger.info("[Dry-Run] 고립된 스파이크 단계 건너뜀")
 
         # 4. 빗 형태(Teeth/Square Wave) 제거
         teeth_removal_sql = """
@@ -123,6 +127,7 @@ def cleanup_strange_values(asset_id=None, threshold=0.03, dry_run=False):
                     LEAD(open_price) OVER (PARTITION BY asset_id, data_interval ORDER BY timestamp_utc) as next_open
                 FROM realtime_quotes_time_bar
                 WHERE (:asset_id IS NULL OR asset_id = :asset_id)
+                  AND (:interval IS NULL OR data_interval = :interval)
             )
             UPDATE realtime_quotes_time_bar t
             SET 
@@ -143,6 +148,40 @@ def cleanup_strange_values(asset_id=None, threshold=0.03, dry_run=False):
         else:
             logger.info("[Dry-Run] 빗 형태 단계 건너뜀")
 
+        # 5. 박스형 점프(Square Wave / Shifted Candle) 제거
+        shifted_candle_sql = """
+            WITH price_context AS (
+                SELECT 
+                    id,
+                    open_price,
+                    close_price,
+                    LAG(close_price) OVER (PARTITION BY asset_id, data_interval ORDER BY timestamp_utc) as prev_close,
+                    LEAD(open_price) OVER (PARTITION BY asset_id, data_interval ORDER BY timestamp_utc) as next_open
+                FROM realtime_quotes_time_bar
+                WHERE (:asset_id IS NULL OR asset_id = :asset_id)
+                  AND (:interval IS NULL OR data_interval = :interval)
+            )
+            UPDATE realtime_quotes_time_bar t
+            SET 
+                open_price = n.prev_close,
+                high_price = n.prev_close,
+                low_price = n.prev_close,
+                close_price = n.prev_close
+            FROM price_context n
+            WHERE t.id = n.id
+              AND n.prev_close IS NOT NULL 
+              AND n.next_open IS NOT NULL
+              AND ABS(n.open_price - n.prev_close) / n.prev_close > :threshold / 2
+              AND ABS(n.open_price - n.next_open) / n.next_open > :threshold / 2
+              AND ABS(n.prev_close - n.next_open) / n.next_open < :threshold / 5
+        """
+        
+        if not dry_run:
+            result = db.execute(text(shifted_candle_sql), params_iso)
+            logger.info(f"박스형 점프(Shifted Candles) {result.rowcount}건 제거 완료.")
+        else:
+            logger.info("[Dry-Run] 박스형 점프 단계 건너뜀")
+
         if not dry_run:
             db.commit()
             logger.info("변경 사항이 데이터베이스에 반영되었습니다.")
@@ -156,8 +195,9 @@ def cleanup_strange_values(asset_id=None, threshold=0.03, dry_run=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Cleanup anomalous OHLCV data")
     parser.add_argument("--asset_id", type=int, help="Target asset ID (None for all)")
+    parser.add_argument("--interval", type=str, help="Target interval (e.g., '1m', '5m', None for all)")
     parser.add_argument("--threshold", type=float, default=0.03, help="Spike threshold (e.g., 0.03 for 3%)")
     parser.add_argument("--dry_run", action="store_true", help="Dry run mode")
     
     args = parser.parse_args()
-    cleanup_strange_values(args.asset_id, args.threshold, args.dry_run)
+    cleanup_strange_values(args.asset_id, args.threshold, args.dry_run, args.interval)

@@ -40,6 +40,7 @@ class AlpacaWSConsumer(BaseWSConsumer):
         # 동시성 제어를 위한 락
         self._run_lock = asyncio.Lock()
         self._recv_lock = asyncio.Lock()
+        self._conn_lock = asyncio.Lock()
         self._is_running_task = False
         self.last_save_time = 0
     
@@ -61,157 +62,170 @@ class AlpacaWSConsumer(BaseWSConsumer):
     
     async def connect(self) -> bool:
         """WebSocket 연결 (API 키 Fallback 지원)"""
-        max_retries = 3
-        retry_count = 0
-        
-        while retry_count < max_retries:
-            try:
-                # 현재 API 키 정보 가져오기
-                self.current_key_info = self.api_key_manager.get_current_key()
-                if not self.current_key_info:
-                    # 환경 변수에서 직접 읽기
-                    import os
-                    api_key = os.getenv("ALPACA_API_KEY")
-                    secret_key = os.getenv("ALPACA_SECRET_KEY")
-                    if api_key and secret_key:
-                        self.current_key_info = {
-                            "key": api_key,
-                            "secret": secret_key,
-                            "priority": 1,
-                            "is_active": True
-                        }
-                        logger.info(f"🔑 Using Alpaca API key from environment variables")
-                    else:
-                        logger.error("❌ No active Alpaca API keys available")
-                        return False
-                
-                # API 키 정보가 딕셔너리가 아닌 경우 처리
-                if not isinstance(self.current_key_info, dict):
-                    logger.error(f"❌ Invalid API key format: {type(self.current_key_info)}")
-                    # 리스트인 경우 첫 번째 요소 사용
-                    if isinstance(self.current_key_info, list) and len(self.current_key_info) > 0:
-                        self.current_key_info = self.current_key_info[0]
-                        logger.info(f"🔄 Using first API key from list: {type(self.current_key_info)}")
-                    else:
+        async with self._conn_lock:
+            max_retries = 3
+            retry_count = 0
+            
+            while retry_count < max_retries:
+                try:
+                    # 기존 연결이 있다면 명시적으로 종료 (2중 접속 방지)
+                    await self.disconnect()
+                    
+                    # 현재 API 키 정보 가져오기
+                    self.current_key_info = self.api_key_manager.get_current_key()
+                    if not self.current_key_info:
+                        # 환경 변수에서 직접 읽기
+                        import os
+                        api_key = os.getenv("ALPACA_API_KEY")
+                        secret_key = os.getenv("ALPACA_SECRET_KEY")
+                        if api_key and secret_key:
+                            self.current_key_info = {
+                                "key": api_key,
+                                "secret": secret_key,
+                                "priority": 1,
+                                "is_active": True
+                            }
+                            logger.info(f"🔑 Using Alpaca API key from environment variables")
+                        else:
+                            logger.error("❌ No active Alpaca API keys available")
+                            return False
+                    
+                    # API 키 정보가 딕셔너리가 아닌 경우 처리
+                    if not isinstance(self.current_key_info, dict):
+                        logger.error(f"❌ Invalid API key format: {type(self.current_key_info)}")
+                        # 리스트인 경우 첫 번째 요소 사용
+                        if isinstance(self.current_key_info, list) and len(self.current_key_info) > 0:
+                            self.current_key_info = self.current_key_info[0]
+                            logger.info(f"🔄 Using first API key from list: {type(self.current_key_info)}")
+                        else:
+                            retry_count += 1
+                            continue
+                    
+                    if not self.api_key or not self.secret_key:
+                        logger.error("❌ alpaca api/secret not set")
+                        failed_key = self.current_key_info.get('key', 'unknown') if self.current_key_info else "unknown"
+                        self.api_key_manager.mark_key_failed(self.current_key_info)
+                        
+                        # API 키 fallback 로그
+                        from app.services.websocket_orchestrator import log_api_key_fallback, log_consumer_connection_attempt
+                        log_api_key_fallback(
+                            self.client_name, 
+                            failed_key, 
+                            "fallback_attempt", 
+                            "API key or secret not set"
+                        )
+                        log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries, "API key or secret not set")
+                        
                         retry_count += 1
                         continue
-                
-                if not self.api_key or not self.secret_key:
-                    logger.error("❌ alpaca api/secret not set")
+                    
+                    logger.info(f"🔑 Using Alpaca API key: {self.api_key_manager.get_key_info_for_logging()}")
+                    
+                    # 연결 시도 로그
+                    from app.services.websocket_orchestrator import log_consumer_connection_attempt
+                    log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries)
+                    
+                    self._ws = await asyncio.wait_for(
+                        websockets.connect(self.ws_url, ping_interval=20, ping_timeout=20),
+                        timeout=60.0  # 60초 타임아웃
+                    )
+                    
+                    # Consume welcome message: [{"T":"success","msg":"connected"}]
+                    welcome_msg = await asyncio.wait_for(self._ws.recv(), timeout=10)
+                    logger.debug(f"Alpaca welcome message: {welcome_msg}")
+                    
+                    # 인증 전송
+                    await self._ws.send(json.dumps({"action": "auth", "key": self.api_key, "secret": self.secret_key}))
+                    
+                    # Read auth response: [{"T":"success","msg":"authenticated"}]
+                    resp = await asyncio.wait_for(self._ws.recv(), timeout=10)
+                    try:
+                        auth_msg = json.loads(resp)
+                    except Exception:
+                        auth_msg = resp
+                    
+                    # 인증 실패 확인
+                    is_auth_success = False
+                    if isinstance(auth_msg, list) and len(auth_msg) > 0:
+                        first_msg = auth_msg[0]
+                        if first_msg.get('T') == 'success' and first_msg.get('msg') == 'authenticated':
+                            is_auth_success = True
+                    elif isinstance(auth_msg, dict):
+                        if auth_msg.get('T') == 'success' and auth_msg.get('msg') == 'authenticated':
+                            is_auth_success = True
+                    
+                    if not is_auth_success:
+                        # 인증 실패 시 즉시 연결 종료 (2중 접속 및 리소스 점유 방지)
+                        await self.disconnect()
+                        
+                        is_limit_error = any(err_msg in str(auth_msg).lower() for err_msg in ["limit exceeded", "connection limit"])
+                        
+                        if is_limit_error:
+                            logger.warning(f"⚠️ {self.client_name} connection limit exceeded. Waiting longer (30s)...")
+                            # 연결 제한 초과 시 기존 연결이 정리될 때까지 더 길게 대기
+                            await asyncio.sleep(30)
+                        
+                        logger.error(f"❌ Alpaca authentication failed: {auth_msg}")
+                        
+                        # 인계 제한 에러인 경우 API 키를 실패로 표시하지 않음 (단순히 대기 후 재시도)
+                        if not is_limit_error:
+                            failed_key = self.current_key_info.get('key', 'unknown') if self.current_key_info and isinstance(self.current_key_info, dict) else "unknown"
+                            self.api_key_manager.mark_key_failed(self.current_key_info)
+                        
+                        # 에러 메시지 추출
+                        error_detail = "Unknown error"
+                        if isinstance(auth_msg, list) and len(auth_msg) > 0:
+                            error_detail = auth_msg[0].get('msg', 'Unknown error')
+                        elif isinstance(auth_msg, dict):
+                            error_detail = auth_msg.get('msg', 'Unknown error')
+                        elif isinstance(auth_msg, str):
+                            error_detail = auth_msg
+                        
+                        # API 키 fallback 로그
+                        from app.services.websocket_orchestrator import log_api_key_fallback, log_consumer_connection_attempt
+                        
+                        if not is_limit_error:
+                            log_api_key_fallback(
+                                self.client_name, 
+                                self.current_key_info.get('key', 'unknown') if self.current_key_info and isinstance(self.current_key_info, dict) else "unknown", 
+                                "fallback_attempt", 
+                                f"Authentication failed: {error_detail}"
+                            )
+                        
+                        log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries, f"Authentication failed: {error_detail}")
+                        
+                        retry_count += 1
+                        continue
+                    
+                    logger.info(f"alpaca auth response: {auth_msg}")
+                    self.is_connected = True
+                    self.connection_errors = 0
+                    logger.info(f"✅ {self.client_name} connected with key: {self.api_key_manager.get_key_info_for_logging()}")
+                    # 구독 초기화
+                    await self._send_subscribe()
+                    return True
+                except Exception as e:
+                    error_msg = str(e) if e else "Unknown connection error"
+                    logger.error(f"❌ {self.client_name} connection failed: {error_msg}")
+                    logger.error(f"❌ {self.client_name} error type: {type(e).__name__}")
                     failed_key = self.current_key_info.get('key', 'unknown') if self.current_key_info else "unknown"
                     self.api_key_manager.mark_key_failed(self.current_key_info)
                     
-                    # API 키 fallback 로그
-                    from app.services.websocket_orchestrator import log_api_key_fallback, log_consumer_connection_attempt
-                    log_api_key_fallback(
-                        self.client_name, 
-                        failed_key, 
-                        "fallback_attempt", 
-                        "API key or secret not set"
-                    )
-                    log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries, "API key or secret not set")
-                    
-                    retry_count += 1
-                    continue
-                
-                logger.info(f"🔑 Using Alpaca API key: {self.api_key_manager.get_key_info_for_logging()}")
-                
-                # 연결 시도 로그
-                from app.services.websocket_orchestrator import log_consumer_connection_attempt
-                log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries)
-                
-                self._ws = await asyncio.wait_for(
-                    websockets.connect(self.ws_url, ping_interval=20, ping_timeout=20),
-                    timeout=60.0  # 60초 타임아웃
-                )
-                
-                # Consume welcome message: [{"T":"success","msg":"connected"}]
-                welcome_msg = await asyncio.wait_for(self._ws.recv(), timeout=10)
-                logger.debug(f"Alpaca welcome message: {welcome_msg}")
-                
-                # 인증 전송
-                await self._ws.send(json.dumps({"action": "auth", "key": self.api_key, "secret": self.secret_key}))
-                
-                # Read auth response: [{"T":"success","msg":"authenticated"}]
-                resp = await asyncio.wait_for(self._ws.recv(), timeout=10)
-                try:
-                    auth_msg = json.loads(resp)
-                except Exception:
-                    auth_msg = resp
-                
-                # 인증 실패 확인
-                # Alpaca auth response can be a list or a dict
-                is_auth_success = False
-                if isinstance(auth_msg, list) and len(auth_msg) > 0:
-                    first_msg = auth_msg[0]
-                    if first_msg.get('T') == 'success' and first_msg.get('msg') == 'authenticated':
-                        is_auth_success = True
-                elif isinstance(auth_msg, dict):
-                    if auth_msg.get('T') == 'success' and auth_msg.get('msg') == 'authenticated':
-                        is_auth_success = True
-                
-                if not is_auth_success:
-                    if any(err_msg in str(auth_msg).lower() for err_msg in ["limit exceeded", "connection limit"]):
-                        logger.warning(f"⚠️ {self.client_name} connection limit exceeded. Waiting longer...")
-                        # 연결 제한 초과 시 기존 연결이 정리될 때까지 더 길게 대기
-                        await asyncio.sleep(5)
-                    
-                    logger.error(f"❌ Alpaca authentication failed: {auth_msg}")
-                    failed_key = self.current_key_info.get('key', 'unknown') if self.current_key_info and isinstance(self.current_key_info, dict) else "unknown"
-                    self.api_key_manager.mark_key_failed(self.current_key_info)
-                    
-                    # 에러 메시지 추출
-                    error_detail = "Unknown error"
-                    if isinstance(auth_msg, list) and len(auth_msg) > 0:
-                        error_detail = auth_msg[0].get('msg', 'Unknown error')
-                    elif isinstance(auth_msg, dict):
-                        error_detail = auth_msg.get('msg', 'Unknown error')
-                    elif isinstance(auth_msg, str):
-                        error_detail = auth_msg
-                    
-                    # API 키 fallback 로그
-                    from app.services.websocket_orchestrator import log_api_key_fallback, log_consumer_connection_attempt
-                    log_api_key_fallback(
-                        self.client_name, 
-                        failed_key, 
-                        "fallback_attempt", 
-                        f"Authentication failed: {error_detail}"
-                    )
-                    log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries, f"Authentication failed: {error_detail}")
-                    
+                    # Close connection on exception before retry
                     await self.disconnect()
+                    
+                    # API 키 fallback 로그
+                    from app.services.websocket_orchestrator import log_api_key_fallback, log_consumer_connection_attempt
+                    log_api_key_fallback(
+                        self.client_name, 
+                        failed_key, 
+                        "fallback_attempt", 
+                        f"Connection failed: {str(e)}"
+                    )
+                    log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries, f"Connection failed: {str(e)}")
+                    
                     retry_count += 1
                     continue
-                
-                logger.info(f"alpaca auth response: {auth_msg}")
-                self.is_connected = True
-                self.connection_errors = 0
-                logger.info(f"✅ {self.client_name} connected with key: {self.api_key_manager.get_key_info_for_logging()}")
-                # 구독 초기화
-                await self._send_subscribe()
-                return True
-            except Exception as e:
-                error_msg = str(e) if e else "Unknown connection error"
-                logger.error(f"❌ {self.client_name} connection failed: {error_msg}")
-                logger.error(f"❌ {self.client_name} error type: {type(e).__name__}")
-                failed_key = self.current_key_info.get('key', 'unknown') if self.current_key_info else "unknown"
-                self.api_key_manager.mark_key_failed(self.current_key_info)
-                
-                # Close connection on exception before retry
-                await self.disconnect()
-                
-                # API 키 fallback 로그
-                from app.services.websocket_orchestrator import log_api_key_fallback, log_consumer_connection_attempt
-                log_api_key_fallback(
-                    self.client_name, 
-                    failed_key, 
-                    "fallback_attempt", 
-                    f"Connection failed: {str(e)}"
-                )
-                log_consumer_connection_attempt(self.client_name, retry_count + 1, max_retries, f"Connection failed: {str(e)}")
-                
-                retry_count += 1
-                continue
         
         # 모든 재시도 실패
         logger.error(f"❌ {self.client_name} connection failed after {max_retries} attempts")
@@ -224,7 +238,11 @@ class AlpacaWSConsumer(BaseWSConsumer):
             self.is_connected = False
             
             if self._ws is not None:
-                await self._ws.close()
+                try:
+                    # 연결 종료 시 타임아웃 적용 (좀 더 강제적으로 종료)
+                    await asyncio.wait_for(self._ws.close(), timeout=5.0)
+                except Exception as e:
+                    logger.warning(f"⚠️ {self.client_name} websockets close error: {e}")
         except Exception:
             pass
         self._ws = None
@@ -309,10 +327,10 @@ class AlpacaWSConsumer(BaseWSConsumer):
             try:
                 while self.is_running:
                     try:
-                        # 연결이 끊어진 경우 재연결 시도
-                        if not self.is_connected and reconnect_attempts < max_reconnect_attempts:
+                        # 연결이 끊어진 경우 재연결 시도 (지속적으로 재시도)
+                        if not self.is_connected:
                             reconnect_attempts += 1
-                            logger.info(f"🔄 {self.client_name} attempting reconnection {reconnect_attempts}/{max_reconnect_attempts}")
+                            logger.info(f"🔄 {self.client_name} attempting reconnection {reconnect_attempts}")
                             
                             # 재연결 대기
                             await asyncio.sleep(reconnect_delay)
@@ -381,12 +399,12 @@ class AlpacaWSConsumer(BaseWSConsumer):
             tickers = sorted(list(self.subscribed_tickers))
             subscribe_msg = {
                 "action": "subscribe", 
-                "trades": tickers,
-                "quotes": tickers,
-                "bars": tickers
+                # "trades": tickers,   # trades 대신 quotes만 사용하여 심볼 제한(30개) 준수 및 빈도 확보
+                "quotes": tickers, 
+                # "bars": tickers
             }
             await self._ws.send(json.dumps(subscribe_msg))
-            logger.info(f"📋 {self.client_name} subscribed trades/quotes: {tickers}")
+            logger.info(f"📋 {self.client_name} subscribed quotes only for {len(tickers)} symbols (higher frequency)")
         except Exception as e:
             logger.warning(f"❌ subscribe send failed: {e}")
     
@@ -399,9 +417,10 @@ class AlpacaWSConsumer(BaseWSConsumer):
         
         # 폐장 시간 디버깅을 위한 로깅 추가
         if isinstance(msg, list) and msg and msg[0].get('T') == 'subscription':
-             logger.info(f"📨 {self.client_name} subscription confirmation received")
+             logger.info(f"📨 {self.client_name} subscription confirmation received: {msg[0]}")
         else:
-             logger.info(f"📨 {self.client_name} received message: {msg}")
+             # 임시 디버깅: 수신된 모든 메시지를 INFO로 출력
+             logger.info(f"📨 {self.client_name} RAW received: {msg}")
         
         # 메시지는 리스트 형태로 배달되는 경우가 많음
         if isinstance(msg, list):

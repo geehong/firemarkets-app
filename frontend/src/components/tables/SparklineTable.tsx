@@ -11,7 +11,7 @@ import {
 import Badge from "../ui/badge/Badge";
 import Image from "next/image";
 import Link from "next/link";
-import { LineChart, Line, ResponsiveContainer, YAxis, Tooltip, Area, AreaChart } from "recharts";
+// import { LineChart, Line, ResponsiveContainer, YAxis, Tooltip, Area, AreaChart } from "recharts";
 import { useQueries } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api";
 import { useTreemapLive } from "@/hooks/assets/useAssets";
@@ -40,45 +40,8 @@ interface AssetData {
   subscriptionStatus?: 'loading' | 'error' | 'subscribed' | 'no-data' | string;
 }
 
-// 스파클라인 컴포넌트
-const SparklineChart = ({ data }: { data: number[] }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
-
-  useEffect(() => {
-    // 컨테이너 크기가 유효한지 확인하고 상태 업데이트
-    const updateSize = () => {
-      if (containerRef.current) {
-        const { width, height } = containerRef.current.getBoundingClientRect();
-        if (width > 0 && height > 0) {
-          setDimensions({ width, height });
-        }
-      }
-    };
-
-    // 초기 체크 (레이아웃 안정을 위해 약간의 지연 추가)
-    const timer = setTimeout(updateSize, 100);
-    
-    // ResizeObserver를 사용하여 크기 변경 감지
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) {
-          setDimensions({ width, height });
-        }
-      }
-    });
-
-    if (containerRef.current) {
-      resizeObserver.observe(containerRef.current);
-    }
-
-    return () => {
-      clearTimeout(timer);
-      resizeObserver.disconnect();
-    };
-  }, []);
-
+// 스파클라인 컴포넌트 - 순수 SVG로 경량화 및 React.memo 적용
+const SparklineChart = React.memo(({ data }: { data: number[] }) => {
   if (!data || data.length === 0) {
     return (
       <div className="w-full h-10 flex items-center justify-center text-gray-400 text-xs">
@@ -87,64 +50,66 @@ const SparklineChart = ({ data }: { data: number[] }) => {
     );
   }
 
-  // 데이터 가공
-  const chartData = data.map((value, index) => ({
-    index,
-    value,
-  }));
+  // 데이터 가공 및 경로 생성 (ViewBox 0 0 100 100 기준)
+  const { pathString, areaPath, strokeColor, gradientId } = useMemo(() => {
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const range = max - min || 1;
+    
+    const points = data.map((val, index) => {
+      const x = (index / (data.length - 1)) * 100;
+      const y = 98 - ((val - min) / range) * 96; // 상하 2% 여백
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    });
 
-  const minValue = Math.min(...data);
-  const maxValue = Math.max(...data);
-  const range = maxValue - minValue || 1;
-  const firstValue = data[0];
-  const lastValue = data[data.length - 1];
-  const isPositive = lastValue >= firstValue;
+    const isPositive = data[data.length - 1] >= data[0];
+    const color = isPositive ? "#3b82f6" : "#ef4444";
+    const gId = `grad-${isPositive ? 'up' : 'down'}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    const pString = `M ${points.join(' L ')}`;
+    const aPath = `${pString} L 100,100 L 0,100 Z`;
 
-  const yAxisMin = data.length === 1 ? minValue - (minValue * 0.05) : minValue - (range * 0.1);
-  const yAxisMax = data.length === 1 ? maxValue + (maxValue * 0.05) : maxValue + (range * 0.1);
-
-  const strokeColor = isPositive ? "#3b82f6" : "#ef4444";
-  const gradientId = `gradient-${isPositive ? 'blue' : 'red'}`;
+    return { 
+      pathString: pString, 
+      areaPath: aPath, 
+      strokeColor: color, 
+      gradientId: gId 
+    };
+  }, [data]);
 
   return (
-    <div 
-      ref={containerRef}
-      className="w-full h-10 min-w-[60px] min-h-[40px] relative rounded overflow-hidden"
-    >
-      {dimensions.width > 0 && dimensions.height > 0 && (
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart
-            data={chartData}
-            margin={{ top: 2, right: 2, bottom: 2, left: 2 }}
-          >
-            <defs>
-              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={strokeColor} stopOpacity={0.4} />
-                <stop offset="100%" stopColor={strokeColor} stopOpacity={0.05} />
-              </linearGradient>
-            </defs>
-            <YAxis
-              domain={[yAxisMin, yAxisMax]}
-              hide={true}
-              allowDataOverflow={true}
-            />
-            <Tooltip content={() => null} cursor={false} />
-            <Area
-              type="monotone"
-              dataKey="value"
-              stroke={strokeColor}
-              fill={`url(#${gradientId})`}
-              strokeWidth={2}
-              dot={false}
-              isAnimationActive={false}
-              connectNulls={false}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      )}
+    <div className="w-full h-10 min-w-[60px] min-h-[40px] relative rounded overflow-hidden">
+      <svg
+        width="100%"
+        height="100%"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        className="block"
+      >
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={strokeColor} stopOpacity={0.4} />
+            <stop offset="100%" stopColor={strokeColor} stopOpacity={0.05} />
+          </linearGradient>
+        </defs>
+        <path
+          d={areaPath}
+          fill={`url(#${gradientId})`}
+          stroke="none"
+        />
+        <path
+          d={pathString}
+          fill="none"
+          stroke={strokeColor}
+          strokeWidth={2}
+          vectorEffect="non-scaling-stroke"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+      </svg>
     </div>
   );
-};
+});
 
 // 미국시장 개장시간 체크 함수 (한국시간 기준)
 const checkUSMarketHours = (): boolean => {

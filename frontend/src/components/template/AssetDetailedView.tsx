@@ -141,21 +141,23 @@ const AssetDetailedView: React.FC<AssetDetailedViewProps> = ({ asset, locale }) 
     }, [identifier, typeName]);
 
     // Derived Display values
-    const isCryptoOrCommodity = isCrypto || isCommodity;
+    const isAlwaysRealtime = isCrypto || isCommodity || isETF;
     const websocketPrice = latestPrice?.price;
     const apiPrice = Number(techData?.current_price);
     const apiPrevClose = Number(techData?.prev_close);
 
-    // Heuristic for Market Open (simplified US hours)
+    // Heuristic for Market Open (simplified US hours: ~9:30 AM to ~4:00 PM EST)
+    // KST: 23:30 ~ 06:00 (Standard), 22:30 ~ 05:00 (Daylight)
     const now = new Date();
     const kstHour = now.getHours();
-    const isMarketHours = (kstHour >= 23 || kstHour <= 6); 
+    const isMarketHours = (kstHour >= 22 || kstHour <= 7); // Extended range for pre/post market
 
     let displayPrice: number | null = null;
-    if (isCryptoOrCommodity) {
+    if (isAlwaysRealtime) {
+        // For Crypto, Commodity, and ETF, always prefer websocket
         displayPrice = websocketPrice || apiPrice || apiPrevClose;
     } else {
-        // For stocks, prefer websocket if available during market hours
+        // For regular stocks, prefer websocket if available during (extended) market hours
         displayPrice = (isMarketHours && websocketPrice) ? websocketPrice : (apiPrice || apiPrevClose);
     }
     

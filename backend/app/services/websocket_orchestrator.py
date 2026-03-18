@@ -775,15 +775,17 @@ class WebSocketOrchestrator:
                 
                 # 이미 실행 중이면 중복 시작 방지
                 if is_running or is_running_task:
-                    # 연결 상태도 확인하여 재연결이 필요한지 판단
+                    # 연결 상태에 상관없이 이미 태스크가 떠 있으면 중복 실행하지 않음
+                    # (Consumer 내부에서 재연결 로직이 돌아가고 있기 때문)
                     if not is_connected:
-                        logger.warning(f"⚠️ {provider_name} is running but not connected, allowing restart")
-                        # 연결되지 않은 상태면 재시작 허용
+                        logger.warning(f"⚠️ {provider_name} is running but not connected, allowing internal reconnection")
+                        # 내부 재연결 로직에 맡김
                     else:
                         logger.info(f"⏭️ Skipping start for {provider_name}: already running and connected")
-                        skipped_consumers.append(provider_name)
-                        log_consumer_status_change(provider_name, "stopped", "running", "Already running and connected, skipping restart")
-                        continue
+                    
+                    skipped_consumers.append(provider_name)
+                    log_consumer_status_change(provider_name, "stopped", "running", f"Already running (task active), skipping restart (connected: {is_connected})")
+                    continue
                     
                 logger.info(f"🔧 Creating task for {provider_name} with {len(assignment.assigned_tickers)} tickers")
                 logger.debug(f"Assigned tickers: {assignment.assigned_tickers}")
@@ -901,6 +903,9 @@ class WebSocketOrchestrator:
         
         # Consumer 실행 시작 로그
         log_consumer_status_change(consumer.client_name, "starting", "connecting", f"Starting with {len(tickers)} tickers")
+        
+        # 중복 실행 방지를 위한 상태 설정 (connect 시작 전)
+        consumer.is_running = True
         
         try:
             # 연결
