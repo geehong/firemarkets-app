@@ -17,7 +17,7 @@ export function useCorrelation(defaultTickers: string = "BTCUSDT,ETHUSDT,SPY,QQQ
     const fetchData = async () => {
       try {
         setLoading(true);
-        const url = `/api/v1/analysis/correlation?tickers=${defaultTickers}&days=${days}`;
+        const url = `/api/v2/assets/analysis/correlation?tickers=${defaultTickers}&days=${days}`;
         const response = await fetch(url);
         const result = await response.json();
         

@@ -18,10 +18,8 @@ from .endpoints import (
     open_interest,
     realtime,
     auth,
-    auth,
-    analysis,
-    sentiment_stats,
     posts,
+    navigation,
     docker_control  # Added
 )
 from .external_apis import router as external_apis_router
@@ -37,13 +35,14 @@ async def api_v1_root():
         "version": "1.0.0",
         "endpoints": {
             "world_assets": "/api/v1/world-assets",
-            "external_apis": "/api/v1/test-connections",
-            "assets": "/api/v1/assets",
+            "external_apis": "/api/v1/external-apis",
+            "assets": "/api/v2/assets",
             "crypto": "/api/v1/crypto",
             "dashboard": "/api/v1/dashboard",
             "metrics": "/api/v1/metrics",
             "realtime": "/api/v1/realtime",
-            "docker": "/api/v1/docker"
+            "docker": "/api/v1/docker",
+            "open_interest": "/api/v1/onchain/open-interest"
         }
     }
 
@@ -62,17 +61,18 @@ api_router.include_router(scheduler.router, prefix="/scheduler", tags=["schedule
 api_router.include_router(collectors.router, prefix="/collectors", tags=["collectors"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(metrics.router, prefix="/metrics", tags=["metrics"])
-api_router.include_router(open_interest.router, prefix="/open-interest", tags=["open-interest"])
+api_router.include_router(open_interest.router, prefix="/onchain/open-interest", tags=["onchain"])
 api_router.include_router(realtime.router, prefix="/realtime", tags=["realtime"])
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
+api_router.include_router(navigation.router, prefix="/navigation", tags=["navigation"])
 # api_router.include_router(sentiment_stats.router, prefix="/sentiment-check", tags=["sentiment-stats"])
 # Remounted to match frontend path /api/v1/analysis/sentiment/history
-api_router.include_router(sentiment_stats.router, prefix="/analysis/sentiment", tags=["sentiment-statistics"])
+# api_router.include_router(sentiment_stats.router, prefix="/analysis/sentiment", tags=["sentiment-statistics"])
 
-api_router.include_router(analysis.router, prefix="/analysis", tags=["analysis"])
+# api_router.include_router(analysis.router, prefix="/analysis", tags=["analysis"])
 api_router.include_router(posts.router, prefix="/posts", tags=["posts"])
 api_router.include_router(docker_control.router, prefix="/docker", tags=["docker-control"])
 
 
 # External APIs router
-api_router.include_router(external_apis_router, tags=["external-apis"])
+api_router.include_router(external_apis_router, prefix="/external-apis", tags=["external-apis"])

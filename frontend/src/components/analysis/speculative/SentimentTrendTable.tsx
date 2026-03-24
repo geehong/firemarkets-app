@@ -163,7 +163,7 @@ export default function SentimentTrendTable() {
         const fetchDashboard = async () => {
             try {
                 // Fetch 30d of 1h data (approx 720 points)
-                const res = await fetch(`/api/v1/analysis/sentiment/history?period=30d&interval=1h`);
+                const res = await fetch(`/api/v2/assets/analysis/sentiment/history?period=30d&interval=1h`);
                 if (!res.ok) return;
                 const json: SentimentStat[] = await res.json();
                 
@@ -201,7 +201,7 @@ export default function SentimentTrendTable() {
                 if (interval === '1w') fetchPeriod = '1y'; // 1 year of weekly
                 if (interval === '30d') fetchPeriod = '1y'; // 1 year of monthly
 
-                const res = await fetch(`/api/v1/analysis/sentiment/history?period=${fetchPeriod}&interval=${interval}`);
+                const res = await fetch(`/api/v2/assets/analysis/sentiment/history?period=${fetchPeriod}&interval=${interval}`);
                 if (!res.ok) throw new Error("Failed to fetch");
                 const json = await res.json();
                 

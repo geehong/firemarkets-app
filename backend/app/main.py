@@ -7,9 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.endpoints import (
     realtime, scheduler, collectors, world_assets, crypto, 
     onchain, etf, dashboard, configurations, admin, logs, metrics, 
-    open_interest, tickers, navigation, posts,
-    auth, analysis, sentiment_stats
+    auth, navigation, posts
 )
+from app.api.v1 import api as v1_api
 from app.api.v1 import external_apis
 from app.api.v2.api import api_router as api_v2_router  # v2 API
 from app.core.database import engine
@@ -78,31 +78,8 @@ app.add_middleware(
 # Socket.IO 애플리케이션 생성
 socket_app = socketio.ASGIApp(sio, app)
 
-# 인증 API 엔드포인트
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
-
-# v1 API 엔드포인트들
-app.include_router(realtime.router, prefix="/api/v1/realtime", tags=["realtime"])
-app.include_router(scheduler.router, prefix="/api/v1/scheduler", tags=["scheduler"])
-app.include_router(collectors.router, prefix="/api/v1/collectors", tags=["collectors"])
-# app.include_router(assets.router, prefix="/api/v1/assets", tags=["assets"]) # Removed
-app.include_router(world_assets.router, prefix="/api/v1/world-assets", tags=["world-assets"])
-app.include_router(crypto.router, prefix="/api/v1/crypto", tags=["crypto"])
-app.include_router(onchain.router, prefix="/api/v1/onchain", tags=["onchain"])
-app.include_router(etf.router, prefix="/api/v1/etf", tags=["etf"])
-app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboard"])
-app.include_router(configurations.router, prefix="/api/v1/configurations", tags=["configurations"])
-app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
-app.include_router(logs.router, prefix="/api/v1/logs", tags=["logs"])
-app.include_router(metrics.router, prefix="/api/v1/metrics", tags=["metrics"])
-app.include_router(open_interest.router, prefix="/api/v1/open-interest", tags=["open-interest"])
-app.include_router(tickers.router, prefix="/api/v1/tickers", tags=["tickers"])
-app.include_router(navigation.router, prefix="/api/v1/navigation", tags=["navigation"])
-app.include_router(posts.router, prefix="/api/v1/posts", tags=["posts"])
-# app.include_router(asset_overviews.router, prefix="/api/v1/asset-overviews", tags=["asset-overviews"]) # Removed
-app.include_router(sentiment_stats.router, prefix="/api/v1/analysis/sentiment", tags=["sentiment-stats"])
-app.include_router(analysis.router, prefix="/api/v1/analysis", tags=["analysis"])
-app.include_router(external_apis.router, prefix="/api/v1/external-apis", tags=["external-apis"])
+# v1 API 엔드포인트
+app.include_router(v1_api.api_router, prefix="/api/v1")
 
 # v2 API 엔드포인트 (모듈화된 자산 API)
 app.include_router(api_v2_router, prefix="/api/v2")

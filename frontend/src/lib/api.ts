@@ -858,6 +858,42 @@ export class ApiClient {
     return this.requestV2(`/assets/analysis/${assetIdentifier}/technicals${qs ? `?${qs}` : ''}`)
   }
 
+  v2GetMA(ticker: string, params?: { periods?: string; days?: number }) {
+    const search = new URLSearchParams()
+    search.append('ticker', ticker)
+    if (params?.periods) search.append('periods', params.periods)
+    if (params?.days) search.append('days', String(params.days))
+    const qs = search.toString()
+    return this.requestV2(`/assets/analysis/ma${qs ? `?${qs}` : ''}`)
+  }
+
+  v2AnalyzeSentiment(text: string) {
+    return this.requestV2(`/assets/analysis/sentiment?text=${encodeURIComponent(text)}`)
+  }
+
+  v2AnalyzeNewsSentiment(newsItems: any[]) {
+    return this.requestV2(`/assets/analysis/sentiment/news`, {
+      method: 'POST',
+      body: JSON.stringify(newsItems)
+    })
+  }
+
+  v2GetCorrelation(tickers: string[], days: number = 90) {
+    return this.requestV2(`/assets/analysis/correlation?tickers=${tickers.join(',')}&days=${days}`)
+  }
+
+  v2GetSpread(ticker1: string, ticker2: string, days: number = 90) {
+    return this.requestV2(`/assets/analysis/spread?ticker1=${ticker1}&ticker2=${ticker2}&days=${days}`)
+  }
+
+  v2GetSentimentHistory(params?: { period?: string; interval?: string }) {
+    const search = new URLSearchParams()
+    if (params?.period) search.append('period', params.period)
+    if (params?.interval) search.append('interval', params.interval)
+    const qs = search.toString()
+    return this.requestV2(`/assets/analysis/sentiment/history${qs ? `?${qs}` : ''}`)
+  }
+
   v2GetEstimates(assetIdentifier: string, limit: number = 10) {
     return this.requestV2(`/assets/analysis/${assetIdentifier}/estimates?limit=${limit}`)
   }

@@ -14,9 +14,14 @@ import logging
 from fastapi_cache.decorator import cache
 from app.core.database import get_postgres_db
 from app.models import OHLCVData, Asset, AssetType
+from app.models.blog import Post
 from .shared.resolvers import resolve_asset_identifier, get_asset_type
 from .shared.validators import validate_asset_type_for_endpoint
 from .shared.constants import DATA_SOURCE_PRIORITY
+
+from app.analysis.speculative import sentiment_analyzer
+from app.analysis.quantitative import calculate_correlation_matrix, calculate_spread_analysis
+from app.analysis.technical import calculate_moving_averages
 
 logger = logging.getLogger(__name__)
 
@@ -517,3 +522,183 @@ async def get_market_caps_v2(
     except Exception as e:
         logger.exception("Failed to get market caps")
         raise HTTPException(status_code=500, detail=f"Failed to get market caps: {str(e)}")
+
+
+# ============================================================================
+# Migrated v1 Analysis Endpoints
+# ============================================================================
+
+@router.get("/ma", response_model=Any)
+def get_moving_averages_v2(
+    ticker: str = Query(..., description="Asset Ticker"),
+    periods: str = Query("10,20,50,111,200,365,700", description="Comma separated periods"),
+    days: int = 1000,
+    db: Session = Depends(get_postgres_db)
+):
+    """
+    Moving Averages (Migrated from v1)
+    """
+    try:
+        period_list = [int(p) for p in periods.split(",")]
+        return calculate_moving_averages(db, ticker, period_list, days)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sentiment", response_model=Any)
+def analyze_sentiment_text_v2(
+    text: str = Query(..., min_length=1, description="Text to analyze sentiment for")
+):
+    """
+    Analyze sentiment of a given text (Migrated from v1)
+    """
+    return sentiment_analyzer.analyze(text)
+
+
+@router.post("/sentiment/news", response_model=Any)
+def analyze_news_sentiment_v2(
+    news_items: List[dict]
+):
+    """
+    Batch analyze sentiment for news items (Migrated from v1)
+    """
+    results = []
+    for item in news_items:
+        text = item.get("title", "") + " " + item.get("summary", "")
+        # Truncate if too long
+        sentiment = sentiment_analyzer.analyze(text[:500])
+        results.append({
+            "id": item.get("id"),
+            "sentiment": sentiment
+        })
+    return results
+
+
+@router.get("/correlation", response_model=Any)
+def get_asset_correlation_v2(
+    tickers: List[str] = Query(..., description="List of tickers to correlate"),
+    days: int = Query(90, ge=30, le=10000),
+    db: Session = Depends(get_postgres_db)
+):
+    """
+    Correlation Matrix (Migrated from v1)
+    """
+    if len(tickers) == 1 and "," in tickers[0]:
+        tickers = tickers[0].split(",")
+
+    if len(tickers) < 2:
+        raise HTTPException(status_code=400, detail="At least 2 tickers required")
+    
+    return calculate_correlation_matrix(db, tickers, days)
+
+
+@router.get("/spread", response_model=Any)
+def get_spread_analysis_v2(
+    ticker1: str,
+    ticker2: str,
+    days: int = 90,
+    db: Session = Depends(get_postgres_db)
+):
+    """
+    Spread Analysis (Migrated from v1)
+    """
+    return calculate_spread_analysis(db, ticker1, ticker2, days)
+
+
+@router.get("/sentiment/history", response_model=Any)
+def get_sentiment_history_v2(
+    period: str = Query("24h", description="Time period (24h, 7d, 30d, 1y)"),
+    interval: str = Query("1h", description="Grouping interval (1h, 4h, 1d)"),
+    db: Session = Depends(get_postgres_db)
+):
+    """
+    Aggregated News Sentiment History (Migrated from v1 sentiment_stats)
+    """
+    # Logic copied from v1/endpoints/sentiment_stats.py
+    now = datetime.utcnow()
+    periods_map = {
+        "1h": timedelta(hours=1),
+        "4h": timedelta(hours=4),
+        "8h": timedelta(hours=8),
+        "24h": timedelta(hours=24),
+        "7d": timedelta(days=7),
+        "30d": timedelta(days=30),
+        "1y": timedelta(days=365)
+    }
+    start_date = now - periods_map.get(period, timedelta(hours=24))
+
+    sql_interval = 'hour'
+    needs_aggregation = False
+    agg_hours = 1
+
+    if interval == '4h':
+        needs_aggregation = True
+        agg_hours = 4
+    elif interval == '8h':
+        needs_aggregation = True
+        agg_hours = 8
+    elif interval == '1d' or interval == '24h':
+        sql_interval = 'day'
+    elif interval == '1w' or interval == '7d':
+        sql_interval = 'week'
+    elif interval == '1M' or interval == '30d':
+        sql_interval = 'month'
+
+    query = text(f"""
+        SELECT 
+            date_trunc(:interval, published_at) as time_bucket,
+            AVG(CAST(post_info->'sentiment'->>'score' AS FLOAT)) as avg_score,
+            COUNT(*) as total_count,
+            SUM(CASE WHEN post_info->'sentiment'->>'label' = 'positive' THEN 1 ELSE 0 END) as pos_count,
+            SUM(CASE WHEN post_info->'sentiment'->>'label' = 'negative' THEN 1 ELSE 0 END) as neg_count,
+            SUM(CASE WHEN post_info->'sentiment'->>'label' = 'neutral' THEN 1 ELSE 0 END) as neu_count
+        FROM posts
+        WHERE post_type = 'raw_news'
+          AND published_at >= :start_date
+          AND post_info->'sentiment' IS NOT NULL
+        GROUP BY time_bucket
+        ORDER BY time_bucket ASC
+    """)
+    
+    rows = db.execute(query, {"interval": sql_interval, "start_date": start_date}).fetchall()
+    
+    if not needs_aggregation:
+        return [
+            {
+                "time": r[0].isoformat() if r[0] else None,
+                "avg_score": r[1],
+                "total_count": r[2],
+                "sentiment_counts": {
+                    "positive": r[3],
+                    "negative": r[4],
+                    "neutral": r[5]
+                }
+            } for r in rows
+        ]
+
+    buckets = {}
+    for r in rows:
+        dt: datetime = r[0]
+        if not dt: continue
+        base_hour = (dt.hour // agg_hours) * agg_hours
+        bucket_dt = dt.replace(hour=base_hour, minute=0, second=0, microsecond=0)
+        key = bucket_dt.isoformat()
+        
+        if key not in buckets:
+            buckets[key] = {"score_sum": 0.0, "total_count": 0, "pos": 0, "neg": 0, "neu": 0}
+        
+        buckets[key]["score_sum"] += (r[1] or 0.5) * r[2]
+        buckets[key]["total_count"] += r[2]
+        buckets[key]["pos"] += r[3]
+        buckets[key]["neg"] += r[4]
+        buckets[key]["neu"] += r[5]
+        
+    return [
+        {
+            "time": k,
+            "avg_score": b["score_sum"] / b["total_count"] if b["total_count"] > 0 else 0.5,
+            "total_count": b["total_count"],
+            "sentiment_counts": {"positive": b["pos"], "negative": b["neg"], "neutral": b["neu"]}
+        } for k, b in sorted(buckets.items())
+    ]
+

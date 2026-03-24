@@ -11,7 +11,7 @@ export function useSentiment() {
     
     setLoading(true);
     try {
-      const response = await fetch(`/api/v1/analysis/sentiment?text=${encodeURIComponent(inputText)}`);
+      const response = await fetch(`/api/v2/assets/analysis/sentiment?text=${encodeURIComponent(inputText)}`);
       const data = await response.json();
       setResult(data);
     } catch (e) {

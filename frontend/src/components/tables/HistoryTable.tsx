@@ -21,7 +21,7 @@ type OhlcvRow = {
 
 interface HistoryTableProps {
     assetIdentifier?: string
-    initialInterval?: '1d' | '1w' | '1m'
+    initialInterval?: '1d' | '1w' | '1M'
     showVolume?: boolean
     showChangePercent?: boolean
     height?: number
@@ -35,7 +35,7 @@ export default function HistoryTable({
     height = 600,
 }: HistoryTableProps) {
     const gridRef = useRef<AgGridReact>(null)
-    const [interval, setInterval] = useState<'1d' | '1w' | '1m'>(initialInterval)
+    const [interval, setInterval] = useState<'1d' | '1w' | '1M'>(initialInterval)
     const [range, setRange] = useState<number>(7) // Default 7 days (1W)
 
     // 오늘자(실시간/딜레이) 가격을 위해 자산 타입 조회
@@ -185,7 +185,7 @@ export default function HistoryTable({
             if (diffDays < 7) {
                 isCurrentPeriod = true
             }
-        } else if (interval === '1m') {
+        } else if (interval === '1M') {
             if (
                 todayDate.getFullYear() === latestDate.getFullYear() &&
                 todayDate.getMonth() === latestDate.getMonth()
@@ -296,12 +296,12 @@ export default function HistoryTable({
                     <span className="text-sm text-gray-500 dark:text-gray-400">Interval:</span>
                     <select
                         value={interval}
-                        onChange={(e) => setInterval(e.target.value as '1d' | '1w' | '1m')}
+                        onChange={(e) => setInterval(e.target.value as '1d' | '1w' | '1M')}
                         className="rounded border border-gray-300 bg-white px-2 py-1 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 focus:border-blue-500 focus:outline-none"
                     >
                         <option value="1d">Daily</option>
                         <option value="1w">Weekly</option>
-                        <option value="1m">Monthly</option>
+                        <option value="1M">Monthly</option>
                     </select>
                 </div>
 

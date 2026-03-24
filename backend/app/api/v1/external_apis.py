@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from ...schemas.common import MarketDataResponse, ExternalAPITestResponse
 # GlobalCryptoMetricsResponse,  # Commented out - duplicate API
 
-router = APIRouter(tags=["External APIs"])
+router = APIRouter(tags=["external-apis"])
 @router.post("/macrotrends/{asset_id}/{ticker}/ingest")
 async def macrotrends_ingest(
     asset_id: int,

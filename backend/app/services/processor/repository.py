@@ -876,7 +876,7 @@ class DataRepository:
                 'reserve_risk', 'rhodl_ratio', 'nvts', 'nrpl_usd',
                 'utxos_in_profit_pct', 'utxos_in_loss_pct', 'realized_cap',
                 'etf_btc_flow', 'etf_btc_total', 'hodl_waves_supply', 'cdd_90dma',
-                'hodl_age_distribution',
+                'hodl_age_distribution', 'open_interest_futures', 'funding_rate', 'bitcoin_dominance'
             ]
             
             # 2. 데이터 유효성 검사 및 정제

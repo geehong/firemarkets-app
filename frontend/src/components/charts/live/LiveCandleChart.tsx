@@ -302,8 +302,43 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
   useEffect(() => {
     if (!seriesRef.current || !historyData.length) return
 
+    let isUSMarket = false;
+    let is24hMarket = true;
+    let isCrypto = false;
+
+    if (assetDetail) {
+      const typeName = (assetDetail.asset_type || assetDetail.asset_type_name || assetDetail.type_name || '').toLowerCase();
+      const typeId = Number(assetDetail.asset_type_id || assetDetail.type_id);
+      const exchange = (assetDetail.exchange || '').toUpperCase();
+      const currency = (assetDetail.currency || '').toUpperCase();
+      const symbol = (assetDetail.ticker || assetDetail.symbol || '').toUpperCase();
+      
+      if (typeId === 8 || typeName.includes('crypto') || typeName.includes('coin') || typeName.includes('virtual')) {
+        isCrypto = true;
+        is24hMarket = true;
+        isUSMarket = false;
+      } else if (typeId === 2 || typeId === 5 || typeName.includes('stock') || typeName.includes('etf')) {
+        is24hMarket = false;
+        if (currency === 'USD' || exchange === 'NASDAQ' || exchange === 'NYSE' || exchange === 'AMEX') {
+          isUSMarket = true;
+        }
+      } else if (typeId === 3 || typeName.includes('commodity') || symbol.includes('GC') || symbol.includes('SI')) {
+        is24hMarket = true;
+        isUSMarket = false;
+      }
+    } else {
+        const sid = assetIdentifier.toUpperCase();
+        if (sid.includes('USDT') || sid.includes('BTC') || sid.includes('ETH') || sid.includes('SOL') || sid.includes('BNB') || sid.includes('XRP')) {
+            isCrypto = true;
+        }
+    }
+
     let processed: CandlePoint[] = historyData.map((d: any) => {
-      const ts = d.timestamp_utc || d.timestamp || d.time;
+      const tsRaw = d.timestamp_utc || d.timestamp || d.time;
+      const ts = (isCrypto && typeof tsRaw === 'string' && !tsRaw.includes('Z') && !tsRaw.includes('+')) 
+        ? `${tsRaw}Z` 
+        : tsRaw;
+        
       return {
         time: ((new Date(ts).getTime() / 1000) + localOffset) as Time,
         open: Number(d.open_price ?? d.open ?? 0),
@@ -320,35 +355,14 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
     processed.sort((a, b) => (a.time as number) - (b.time as number))
     processed = processed.filter((v, i, arr) => i === 0 || v.time !== arr[i - 1].time)
 
-    let isUSMarket = false;
-    let is24hMarket = true;
-    if (assetDetail) {
-      const typeName = (assetDetail.asset_type || assetDetail.asset_type_name || assetDetail.type_name || '').toLowerCase();
-      const exchange = (assetDetail.exchange || '').toUpperCase();
-      const currency = (assetDetail.currency || '').toUpperCase();
-      const symbol = (assetDetail.ticker || assetDetail.symbol || '').toUpperCase();
-      
-      if (typeName.includes('stock') || typeName.includes('etf')) {
-        is24hMarket = false;
-        if (currency === 'USD' || exchange === 'NASDAQ' || exchange === 'NYSE' || exchange === 'AMEX') {
-          isUSMarket = true;
-        }
-      } else if (typeName.includes('commodity') || symbol.includes('GC') || symbol.includes('SI')) {
-        is24hMarket = true;
-        isUSMarket = false;
-      }
-    }
-
     const nowTimestamp = (Date.now() / 1000) + localOffset;
     let startTimeSeconds = 0;
     
     if (mode === "session") {
-      const referenceDate = historyData.length > 0 
-        ? new Date(new Date(historyData[historyData.length - 1].timestamp_utc || historyData[historyData.length - 1].timestamp).getTime())
-        : new Date();
-        
+      const referenceDate = new Date();
+      
       startTimeSeconds = getDynamicSessionStartUTC(sessionStartTime, isUSMarket, referenceDate, is24hMarket) + localOffset;
-      const sessionDurationSeconds = 23 * 3600;
+      const sessionDurationSeconds = isUSMarket ? (6.5 * 3600) : (24 * 3600);
       let endTimeSeconds = startTimeSeconds + sessionDurationSeconds;
 
       processed = processed.filter(d => {
@@ -422,6 +436,7 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
         if (nowWithOffset < sessionEndSeconds) {
             let intervalSeconds = 300; 
             if (currentInterval === "1m") intervalSeconds = 60;
+            else if (currentInterval === "5m") intervalSeconds = 300;
             else if (currentInterval === "15m") intervalSeconds = 900;
             else if (currentInterval === "30m") intervalSeconds = 1800;
             else if (currentInterval === "1h") intervalSeconds = 3600;

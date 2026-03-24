@@ -330,7 +330,7 @@ const GlobalWeeklyGauge = () => {
         const fetchWeekly = async () => {
             try {
                 // Fetch last 7 days daily data
-                const res = await fetch('/api/v1/analysis/sentiment/history?period=7d&interval=1d');
+                const res = await fetch('/api/v2/assets/analysis/sentiment/history?period=7d&interval=1d');
                 if(!res.ok) return;
                 const json = await res.json();
                 if(Array.isArray(json) && json.length > 0) {

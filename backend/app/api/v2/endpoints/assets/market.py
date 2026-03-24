@@ -692,16 +692,15 @@ def get_ohlcv_data_v2(
             native_rows = db_get_intraday_data(db, asset_id, start_date, end_date, data_interval, limit)
             native_data = _format_ohlcv_rows(native_rows)
 
-            # 누락 방지를 위해 하위 분봉 로드 (5M~30M은 1M에서, 1H 이상은 5M에서)
+            # 누락 방지를 위해 하위 분봉 로드 (5M~30M은 5M에서, 1H 이상은 5M/1H에서 유동적으로)
             # 중요: 과거 테이블과 실시간 테이블 양쪽에서 소스 데이터를 가져와야 오늘자 리샘플링이 가능함
-            if target_min <= 30:
+            if target_min <= 5:
                 source_int = '1m'
-                raw_hist = db_get_intraday_data(db, asset_id, start_date, end_date, source_int, limit * target_min)
-                raw_rt = db_get_realtime_bar_data(db, asset_id, start_date, end_date, source_int, limit * target_min)
             else:
                 source_int = '5m'
-                raw_hist = db_get_intraday_data(db, asset_id, start_date, end_date, source_int, limit * (target_min // 5))
-                raw_rt = db_get_realtime_bar_data(db, asset_id, start_date, end_date, source_int, limit * (target_min // 5))
+            
+            raw_hist = db_get_intraday_data(db, asset_id, start_date, end_date, source_int, limit * (target_min // 5 if source_int == '5m' else target_min))
+            raw_rt = db_get_realtime_bar_data(db, asset_id, start_date, end_date, source_int, limit * (target_min // 5 if source_int == '5m' else target_min))
 
             raw_data = _format_ohlcv_rows(raw_hist + raw_rt)
 

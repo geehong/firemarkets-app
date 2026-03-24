@@ -30,7 +30,7 @@ interface CycleComparisonChartProps {
 
 interface HistoryTableProps {
     assetIdentifier?: string;
-    initialInterval?: '1d' | '1m' | '1w';
+    initialInterval?: '1d' | '1w' | '1M';
     showVolume?: boolean;
     showChangePercent?: boolean;
     height?: number;

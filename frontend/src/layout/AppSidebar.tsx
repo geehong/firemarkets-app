@@ -155,8 +155,14 @@ const AppSidebar: React.FC = () => {
             { name: t('deltaPriceUsd'), path: "/onchain/delta_price_usd", icon: dotIcon },
             { name: t('trueMarketMean'), path: "/onchain/true_market_mean", icon: dotIcon },
             { name: t('aviv'), path: "/onchain/aviv", icon: dotIcon },
-            { name: t('openInterestFutures'), path: "/onchain/open_interest_futures", icon: dotIcon }, // Added
-            { name: t('fundingRate'), path: "/onchain/funding_rate", icon: dotIcon }, // Added
+          ],
+        },
+        {
+          name: t('derivatives'),
+          icon: <DollarLineIcon />,
+          subItems: [
+            { name: t('openInterestFutures'), path: "/onchain/open_interest_futures", icon: dotIcon },
+            { name: t('fundingRate'), path: "/onchain/funding_rate", icon: dotIcon },
           ],
         },
         {

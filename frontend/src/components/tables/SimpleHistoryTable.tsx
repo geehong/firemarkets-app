@@ -16,7 +16,7 @@ type OhlcvRow = {
 
 interface SimpleHistoryTableProps {
   assetIdentifier?: string
-  initialInterval?: '1d' | '1w' | '1m'
+  initialInterval?: '1d' | '1w' | '1M'
   showVolume?: boolean
   showChangePercent?: boolean
   height?: number
@@ -29,7 +29,7 @@ export default function SimpleHistoryTable({
   showChangePercent = true,
   height = 600,
 }: SimpleHistoryTableProps) {
-  const [interval, setInterval] = useState<'1d' | '1w' | '1m'>(initialInterval)
+  const [interval, setInterval] = useState<'1d' | '1w' | '1M'>(initialInterval)
 
   const { data, isLoading, error } = useOhlcvData(assetIdentifier, {
     dataInterval: interval,
@@ -110,7 +110,7 @@ export default function SimpleHistoryTable({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        {(['1d', '1w', '1m'] as const).map(iv => (
+        {(['1d', '1w', '1M'] as const).map(iv => (
           <button
             key={iv}
             onClick={() => setInterval(iv)}

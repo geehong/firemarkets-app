@@ -112,7 +112,9 @@ docker-compose restart data_processor
 docker-compose restart websocket_orchestrator
 docker-compose restart websocket_broadcaster
 docker-compose restart adminer
+docker-compose restart db_postgres
 
+docker-compose build backend scheduler data_processor websocket_orchestrator websocket_broadcaster && docker-compose up -d backend scheduler data_processor websocket_orchestrator websocket_broadcaster
 
 docker-compose logs data_processor --tail 50 -f
 docker-compose logs websocket_orchestrator --tail 50 -f

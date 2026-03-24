@@ -543,7 +543,7 @@ class CryptoMetric(Base):
     market_cap = Column(DECIMAL(30, 2), nullable=True)
     
     # New metrics (2026-02-10)
-    open_interest_futures = Column(DECIMAL(24, 10), nullable=True)
+    open_interest_futures = Column(JSON, nullable=True)
     funding_rate = Column(DECIMAL(18, 10), nullable=True)
     bitcoin_dominance = Column(DECIMAL(10, 4), nullable=True)
     

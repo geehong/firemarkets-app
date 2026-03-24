@@ -212,24 +212,42 @@ def create_data_points(records: List, metric_def: OnchainMetricsInfo) -> List[Me
     data_points = []
     for i, record in enumerate(records):
         value = getattr(record, db_field)
-        if value is None:
+        # JSON 데이터 처리 (open_interest_futures 등)
+        if isinstance(value, dict):
+            value_to_use = value.get('total', 0)
+        else:
+            value_to_use = value
+
+        if value_to_use is None:
             continue
             
         # 변화량 계산
         change = None
         change_percent = None
         if i < len(records) - 1:
-            prev_value = getattr(records[i + 1], db_field)
+            prev_record = records[i + 1]
+            prev_val_raw = getattr(prev_record, db_field)
+            if isinstance(prev_val_raw, dict):
+                prev_value = prev_val_raw.get('total', 0)
+            else:
+                prev_value = prev_val_raw
+                
             if prev_value is not None:
-                change = float(value) - float(prev_value)
-                change_percent = (change / float(prev_value)) * 100 if prev_value != 0 else None
+                try:
+                    change = float(value_to_use) - float(prev_value)
+                    change_percent = (change / float(prev_value)) * 100 if float(prev_value) != 0 else None
+                except (ValueError, TypeError):
+                    pass
         
-        data_points.append(MetricDataPoint(
-            date=record.timestamp_utc,
-            value=float(value),
-            change=change,
-            change_percent=change_percent
-        ))
+        try:
+            data_points.append(MetricDataPoint(
+                date=record.timestamp_utc,
+                value=float(value_to_use),
+                change=change,
+                change_percent=change_percent
+            ))
+        except (ValueError, TypeError):
+            continue
     
     return data_points
 
@@ -491,6 +509,94 @@ async def get_hodl_waves_distribution(
     except Exception as e:
         logger.error(f"Error getting HODL Waves distribution: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get HODL Waves distribution: {str(e)}")
+
+@router.get("/metrics/open_interest/distribution")
+async def get_open_interest_distribution(
+    ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"),
+    start_date: Optional[date] = Query(None, description="시작 날짜 (YYYY-MM-DD)"),
+    end_date: Optional[date] = Query(None, description="종료 날짜 (YYYY-MM-DD)"),
+    limit: int = Query(1000, ge=1, le=100000, description="데이터 개수 제한"),
+    db: Session = Depends(get_postgres_db)
+):
+    """거래소별 Open Interest 분포 데이터를 시계열로 조회합니다."""
+    try:
+        clean_ticker = ticker.strip() if ticker else None
+        bitcoin_asset = get_bitcoin_asset(db, clean_ticker)
+        if not bitcoin_asset:
+            raise HTTPException(status_code=404, detail="Bitcoin asset not found")
+        
+        # 쿼리 구성
+        query = db.query(
+            CryptoMetric.timestamp_utc,
+            CryptoMetric.open_interest_futures,
+            OHLCVData.close_price.label("price")
+        ).outerjoin(
+            OHLCVData, 
+            and_(
+                OHLCVData.asset_id == CryptoMetric.asset_id,
+                cast(OHLCVData.timestamp_utc, Date) == CryptoMetric.timestamp_utc,
+                OHLCVData.data_interval == '1d'
+            )
+        ).filter(
+            CryptoMetric.asset_id == bitcoin_asset.asset_id,
+            CryptoMetric.open_interest_futures.isnot(None)
+        )
+        
+        if start_date:
+            query = query.filter(CryptoMetric.timestamp_utc >= start_date)
+        if end_date:
+            query = query.filter(CryptoMetric.timestamp_utc <= end_date)
+        
+        records = query.order_by(desc(CryptoMetric.timestamp_utc)).limit(limit).all()
+        
+        # 데이터 변환
+        data = []
+        all_exchanges = set()
+        
+        for record in records:
+            oi_data = record.open_interest_futures
+            if isinstance(oi_data, dict):
+                exchanges = oi_data.get('exchanges', {})
+                for ex in exchanges.keys():
+                    all_exchanges.add(ex)
+                
+                data.append({
+                    "date": record.timestamp_utc.isoformat() if hasattr(record.timestamp_utc, 'isoformat') else str(record.timestamp_utc),
+                    "total": float(oi_data.get('total', 0)),
+                    "price": float(record.price) if record.price else None,
+                    "exchanges": exchanges
+                })
+        
+        # 시리즈 데이터 구조 변환 (차트용)
+        exchanges_list = sorted(list(all_exchanges))
+        series = {ex: [] for ex in exchanges_list}
+        
+        # 시간순 정렬
+        for item in reversed(data):
+            timestamp = item["date"]
+            ex_dist = item["exchanges"]
+            for ex in exchanges_list:
+                val = ex_dist.get(ex, 0)
+                series[ex].append({
+                    "date": timestamp,
+                    "value": val
+                })
+        
+        return {
+            "metric_id": "open_interest_futures",
+            "metric_name": "Open Interest Distribution",
+            "data": data,
+            "series": series,
+            "exchanges": exchanges_list,
+            "metadata": {
+                "total_count": len(data),
+                "date_range": f"{data[-1]['date'] if data else 'N/A'} to {data[0]['date'] if data else 'N/A'}",
+                "last_updated": datetime.now().isoformat() + "Z"
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error getting Open Interest distribution: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get Open Interest distribution: {str(e)}")
 
 @router.get("/metrics/{metric_id}/stats", response_model=MetricStatsResponse)
 async def get_metric_stats(

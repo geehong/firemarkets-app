@@ -10,13 +10,13 @@ ModuleRegistry.registerModules([AllCommunityModule])
 
 interface Props {
   assetIdentifier?: string
-  dataInterval?: '1d' | '1w' | '1m'
+  dataInterval?: '1d' | '1w' | '1M'
   height?: number
 }
 
 export default function AgGridHistoryTable({ assetIdentifier = 'BTCUSDT', dataInterval = '1d', height = 600 }: Props) {
   const gridRef = useRef<AgGridReact<any>>(null)
-  const [interval, setInterval] = useState<'1d' | '1w' | '1m'>(dataInterval)
+  const [interval, setInterval] = useState<'1d' | '1w' | '1M'>(dataInterval)
   
   // Use DateRange type for state
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined)
@@ -108,7 +108,7 @@ export default function AgGridHistoryTable({ assetIdentifier = 'BTCUSDT', dataIn
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-4 px-2">
         <div className="flex gap-2">
-            {(['1d', '1w', '1m'] as const).map(iv => (
+            {(['1d', '1w', '1M'] as const).map(iv => (
             <button
                 key={iv}
                 onClick={() => {

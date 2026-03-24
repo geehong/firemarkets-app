@@ -468,9 +468,34 @@ class OnchainCollector(BaseCollector):
                                 value = value.iloc[0] if hasattr(value, 'iloc') else value.values[0]
                             else:
                                 continue
-                        # 숫자로 변환 시도
                         try:
-                            converted[db_field] = float(value)
+                            # open_interest_futures 특수 처리: JSON으로 거래소별 상세 내역 포함하여 저장
+                            if db_field == "open_interest_futures":
+                                exchanges_list = ['binance', 'bybit', 'okx', 'bitget', 'deribit', 'bitmex', 'huobi', 'bitfinex', 'gateIo', 'kucoin', 'kraken', 'cryptoCom', 'dydx', 'deltaExchange']
+                                exchange_data = {}
+                                total_oi_calc = 0.0
+                                for ex in exchanges_list:
+                                    ex_val = item.get(ex)
+                                    if ex_val is not None:
+                                        try:
+                                            f_val = float(ex_val)
+                                            exchange_data[ex] = f_val
+                                            total_oi_calc += f_val
+                                        except (ValueError, TypeError):
+                                            continue
+                                
+                                # API에서 제공하는 총계가 있으면 우선 사용, 없으면 합산값 사용
+                                total_oi = float(value) if value is not None else total_oi_calc
+                                
+                                if total_oi > 0:
+                                    converted[db_field] = {
+                                        "total": total_oi,
+                                        "exchanges": exchange_data
+                                    }
+                                continue
+
+                            if value is not None:
+                                converted[db_field] = float(value)
                         except (ValueError, TypeError) as e:
                             self.logging_helper.log_warning(f"[OnchainCollector] 메트릭 '{metric_name}' 필드 '{api_field}' 변환 실패: {type(value)} - {e}")
                             continue

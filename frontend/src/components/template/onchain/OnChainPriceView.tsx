@@ -38,6 +38,7 @@ const LiveChart = dynamic(() => import('@/components/charts/live/LiveChart'), { 
 const BitcoinMonthlyReturns = dynamic(() => import('@/components/widgets/BitcoinMonthlyReturns').then(mod => mod.BitcoinMonthlyReturns), { ssr: false })
 const BitcoinPredictionChart = dynamic(() => import('@/components/charts/BitcoinPredictionChart'), { ssr: false })
 const HODLWavesChart = dynamic(() => import('@/components/charts/onchaincharts/HODLWavesChart'), { ssr: false })
+const OpenInterestChart = dynamic(() => import('@/components/charts/onchaincharts/OpenInterestChart'), { ssr: false })
 
 // Analysis Views
 const TechnicalAnalysisView = dynamic(() => import('@/components/analysis/views/TechnicalAnalysisView'), { ssr: false })
@@ -517,6 +518,8 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
                                                         <BitcoinPredictionChart />
                                                     ) : (fullPath.includes('/onchain/hodl_waves_supply') || metricId === 'hodl_waves_supply') ? (
                                                         <HODLWavesChart height={700} locale={locale} />
+                                                    ) : (fullPath.includes('/onchain/open_interest_futures') || metricId === 'open_interest_futures') ? (
+                                                        <OpenInterestChart height={700} locale={locale} />
                                                     ) : (
                                                         <OnChainChart
                                                             assetId="BTCUSDT"

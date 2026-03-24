@@ -17,7 +17,7 @@ export function useSpreadAnalysis(
         try {
             setLoading(true);
             setError(null);
-            const url = `/api/v1/analysis/spread?ticker1=${tickerA}&ticker2=${tickerB}&days=${days}`;
+            const url = `/api/v2/assets/analysis/spread?ticker1=${tickerA}&ticker2=${tickerB}&days=${days}`;
             const response = await fetch(url);
             const result = await response.json();
             

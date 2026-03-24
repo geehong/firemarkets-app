@@ -197,9 +197,9 @@ class DataProcessor:
         
         while self.running:
             try:
-                # 1. 1분봉 및 5분봉 처리 (Realtime Bars)
+                # 1. 분봉 및 시간봉 처리 (Realtime Bars)
                 # 이 데이터들은 RealtimeQuotesTimeBar(실시간용)와 OHLCVIntradayData(과거용) 양쪽에 저장
-                for interval in ["1m", "5m"]:
+                for interval in ["1m", "5m", "15m", "30m", "1h", "4h"]:
                     bars = await self.bucket_manager.get_completed_bars(interval)
                     if bars:
                         # Realtime 테이블 저장

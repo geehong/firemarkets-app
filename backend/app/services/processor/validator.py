@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Dict, Optional, Any, Tuple
 from ...models import Asset
@@ -14,6 +15,7 @@ class DataValidator:
         self.price_ranges = self._initialize_price_ranges()
         self._ticker_cache: Dict[int, str] = {}
         self.last_prices: Dict[int, float] = {} # {asset_id: last_price}
+        self.last_update_times: Dict[int, float] = {} # {asset_id: last_time}
 
     def _initialize_price_ranges(self) -> Dict[str, tuple]:
         """자산별 가격 범위 초기화 (최소값, 최대값)"""
@@ -67,15 +69,24 @@ class DataValidator:
                 # 동적 변동성 검증 (최근 가격 대비 급격한 변화 차단)
                 if asset_id in self.last_prices:
                     last_price = self.last_prices[asset_id]
+                    last_time = self.last_update_times.get(asset_id, 0)
+                    now_time = time.time()
+                    time_diff = now_time - last_time
+
                     if last_price > 0:
                         deviation = abs(price - last_price) / last_price
-                        # 5% 이상 급격한 변화는 Bad Tick으로 간주 (코인 변동성 고려)
-                        if deviation > 0.05:
+                        # 20% 이상 급격한 변화는 Bad Tick으로 간주 (코인 변동성 고려)
+                        # 단, 마지막 업데이트 이후 5분 이상 경과했다면 가격 점프로 인정하고 통과시킴
+                        if deviation > 0.20 and time_diff < 300:
                             logger.warning(f"🚨 급격한 가격 변동 감지(차단): {ticker} {last_price} -> {price} ({deviation*100:.2f}%)")
                             return False
+                        
+                        if deviation > 0.20 and time_diff >= 300:
+                            logger.info(f"ℹ️ 상당한 가격 변동 허용(시간 경과): {ticker} {last_price} -> {price} ({deviation*100:.2f}%, {time_diff:.0f}s 경과)")
                 
                 # 검증 성공 시 마지막 가격 업데이트
                 self.last_prices[asset_id] = price
+                self.last_update_times[asset_id] = time.time()
                 logger.debug(f"✅ 기본 가격 검증 통과: {ticker}={price:.2f}")
             
             return True

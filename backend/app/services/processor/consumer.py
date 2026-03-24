@@ -32,6 +32,7 @@ class StreamConsumer:
             "kis:realtime": "kis_group",
         }
         self.last_heartbeat = 0
+        self.last_lag_check = 0
         self.consecutive_errors = 0
 
     async def connect(self) -> bool:
@@ -125,9 +126,30 @@ class StreamConsumer:
                         raise e
                     logger.debug(f"Pending 처리 실패 {stream_name}: {e}")
 
-            # 각 스트림별로 개별 처리
+            # 각 스트림별로 개별 처리 및 Lag 모니터링
             for stream_name, group_name in self.realtime_streams.items():
                 try:
+                    # 🚀 Lag 모니터링 및 자동 리셋 (실시간성 유지)
+                    # 15분(900초)마다 체크하도록 주기를 조정
+                    if now - self.last_lag_check > 900:
+                        try:
+                            self.last_lag_check = now
+                            groups_info = await self.redis_client.xinfo_groups(stream_name)
+                            for g in groups_info:
+                                if g.get('name') == group_name.encode('utf-8') or g.get('name') == group_name:
+                                    lag = g.get('lag')
+                                    # 사용자 요청 공식: (수집 수 * 시간 * 0.5)
+                                    # 예: 200개 자산 * 15분 * (분당 10개 틱 예상) * 0.5 = 15,000
+                                    asset_count = len(getattr(self, 'ticker_to_asset_id', {})) or 100
+                                    # 한도는 넉넉하게 설정 (최소 30,000개 이상 적체 시 실시간성 저하로 판단)
+                                    dynamic_threshold = max(30000, int(asset_count * 15 * 10 * 0.5))
+                                    
+                                    if lag is not None and lag > dynamic_threshold:
+                                        logger.warning(f"🚨 [StreamConsumer] {stream_name} Lag {lag} (임계치 {dynamic_threshold}) 초과! 최신 지점으로 리셋합니다.")
+                                        await self.redis_client.xgroup_setid(stream_name, group_name, "$")
+                        except Exception as xinfo_error:
+                            logger.debug(f"XINFO check failed for {stream_name}: {xinfo_error}")
+
                     block_time = 100 
                     
                     new_data = await self.redis_client.xreadgroup(
