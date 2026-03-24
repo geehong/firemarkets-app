@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
-import SessionLiveChart from '@/components/charts/live/SessionLiveChart';
+import RollingLiveChart from '@/components/charts/live/RollingLiveChart';
 import TradingViewWidget from '@/components/widgets/TradingViewWidget';
 import FearAndGreedGauge from '@/components/analysis/speculative/FearAndGreedGauge';
 import { useTheme } from 'next-themes';
@@ -208,36 +208,20 @@ const DashBoardLiveMarketView = () => {
                                         </div>
                                     </div>
                                 ) : item.symbol === 'FearAndGreed' ? (
-                                    <div className="bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-slate-800/50 rounded-xl p-4 h-[320px] flex flex-col relative shadow-lg hover:bg-slate-50 dark:group-hover:bg-slate-900/60 transition-all overflow-hidden">
-                                        <div className="flex justify-between items-center mb-4 z-10">
+                                    <div className="bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-slate-800/50 rounded-xl p-4 h-[320px] flex flex-col relative shadow-lg hover:bg-slate-50 dark:group-hover:bg-slate-900/60 transition-all overflow-hidden text-center">
+                                        <div className="flex justify-between items-center mb-2 z-10">
                                             <Link href="/onchain/analysis/speculative" className="hover:opacity-80 transition-opacity">
                                                 <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                                                     <span className="w-2 h-2 rounded-full bg-violet-500" />
                                                     Fear & Greed Index
                                                 </h3>
                                             </Link>
-                                            <div className="w-12 h-12">
-                                                <FearAndGreedGauge height={48} hideTitle noBackground />
-                                            </div>
+                                            <span className="bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">LIVE</span>
                                         </div>
-                                        <div className="flex-1 -mx-2 -mb-2">
-                                            {fngLoading ? (
-                                                <div className="h-full w-full bg-slate-100 dark:bg-slate-800 animate-pulse" />
-                                            ) : (
-                                                <LightWeightChart 
-                                                    assetIdentifier="" 
-                                                    data={fngChartDataLW} 
-                                                    title=""
-                                                />
-                                            )}
-                                        </div>
-                                        <div className="absolute top-12 left-4 z-10 pointer-events-none">
-                                            <div className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter">
-                                                {fngHistory[0]?.value || '--'}
-                                            </div>
-                                            <div className="text-[10px] font-bold uppercase text-violet-500">
-                                                {fngHistory[0]?.value_classification || 'Loading...'}
-                                            </div>
+                                        
+                                        <div className="flex-1 flex flex-col items-center justify-center -mt-4">
+                                            {/* FearAndGreedGauge already includes a gauge and a trend line */}
+                                            <FearAndGreedGauge height={200} hideTitle noBackground />
                                         </div>
                                     </div>
                                 ) : item.symbol === 'US10Y' ? (
@@ -249,31 +233,35 @@ const DashBoardLiveMarketView = () => {
                                                     US 10Y Yield
                                                 </h3>
                                             </Link>
-                                            <span className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">FRED</span>
+                                            <div className="text-right">
+                                                <span className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider block mb-1">FRED DATA</span>
+                                                {us10yValue && (
+                                                    <div className={`text-xs font-bold ${Number(us10yValue.change) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                        {Number(us10yValue.change) >= 0 ? '▲' : '▼'} {Math.abs(Number(us10yValue.change))} ({us10yValue.changePercent}%)
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
-                                        <div className="flex-1 -mx-2 -mb-2">
+
+                                        <div className="flex-1 relative -mx-2 -mb-2">
                                             {macroLoading ? (
                                                 <div className="h-full w-full bg-slate-100 dark:bg-slate-800 animate-pulse" />
                                             ) : us10yValue?.historyLW ? (
                                                 <LightWeightChart 
-                                                    assetIdentifier="" 
+                                                    assetIdentifier="US10Y" 
                                                     data={us10yValue.historyLW} 
                                                     title=""
                                                 />
                                             ) : (
                                                 <div className="flex items-center justify-center h-full text-slate-400 text-xs italic">Data Unavailable</div>
                                             )}
-                                        </div>
-                                        <div className="absolute top-12 right-6 text-right z-10 pointer-events-none">
+                                            
                                             {us10yValue && (
-                                                <>
-                                                    <div className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter -mb-1">
+                                                <div className="absolute top-2 left-4 pointer-events-none z-10">
+                                                    <div className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter">
                                                         {us10yValue.value}%
                                                     </div>
-                                                    <div className={`text-xs font-bold ${Number(us10yValue.change) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                        {Number(us10yValue.change) >= 0 ? '▲' : '▼'} {Math.abs(Number(us10yValue.change))} ({us10yValue.changePercent}%)
-                                                    </div>
-                                                </>
+                                                </div>
                                             )}
                                         </div>
                                     </div>
@@ -288,11 +276,12 @@ const DashBoardLiveMarketView = () => {
                                 </div>
                                 ) : (
                                     <div className="bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-slate-800/50 rounded-xl p-4 h-fit shadow-lg transition-all overflow-hidden hover:shadow-xl">
-                                        <SessionLiveChart
+                                        <RollingLiveChart
                                             assetIdentifier={item.symbol}
                                             title={item.title}
                                             height={300}
                                             dataInterval="15m"
+                                            lookbackHours={72}
                                             href={`/assets/${item.symbol}`}
                                         />
                                     </div>
@@ -310,16 +299,12 @@ const DashBoardLiveMarketView = () => {
                         <svg className="w-5 h-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                         </svg>
-                        {isOpen ? 'S&P 500 Market Heatmap' : 'Global Asset Performance Treemap'}
+                        {isOpen ? 'Global Asset Performance Treemap (Market Open)' : 'Global Asset Performance Treemap'}
                     </h3>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Global Data</span>
                 </div>
                 <div className="w-full bg-slate-50 dark:bg-slate-900">
-                    {isOpen ? (
-                        <TradingViewWidget isHeatmap height={500} theme={currentTheme as any} />
-                    ) : (
-                        <PerformanceTreeMapToday height={600} />
-                    )}
+                    <PerformanceTreeMapToday height={600} />
                 </div>
             </div>
 

@@ -10,6 +10,7 @@ interface RollingLiveChartProps {
   dataInterval?: "1m" | "5m" | "15m" | "1h"
   chartType?: "candle" | "line"
   height?: number | string
+  href?: string
 }
 
 /**

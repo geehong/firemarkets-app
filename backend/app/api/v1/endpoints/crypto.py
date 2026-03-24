@@ -758,6 +758,7 @@ async def get_comparison_cycle_data(
             "asset_count": len(assets_data)
         }
         
+        
         return ComparisonCycleDataResponse(
             era_number=era_number,
             start_date=start_date_obj,
@@ -772,4 +773,35 @@ async def get_comparison_cycle_data(
     except Exception as e:
         logger.error(f"Error getting comparison cycle data for ERA {era_number}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get comparison cycle data: {str(e)}")
+
+@router.get("/bitcoin/quant-timeseries")
+async def get_bitcoin_quant_timeseries(
+    db: Session = Depends(get_postgres_db)
+):
+    """비트코인 전체 시계열 퀀트 분석 데이터(다이버전스, 컴포넌트, 정규화된 스코어)를 반환합니다."""
+    try:
+        btc_assets = db.query(Asset).filter(Asset.ticker.in_(["BTC", "BTCUSDT"])).all()
+        btc_asset = next((a for a in btc_assets if a.ticker == "BTCUSDT"), None) or \
+                    next((a for a in btc_assets if a.ticker == "BTC"), None)
+                    
+        if not btc_asset:
+            raise HTTPException(status_code=404, detail="BTC asset not found.")
+            
+        from app.services.quant_scoring import QuantScoringEngine
+        engine = QuantScoringEngine(db)
+        
+        # Get full timeseries data based on the requested intervals and dynamic percentiles
+        timeseries_results = engine.get_timeseries_quant_data(btc_asset.asset_id)
+        
+        if not timeseries_results:
+            raise HTTPException(status_code=404, detail="Not enough data for quant analysis.")
+            
+        return {
+            "asset": btc_asset.ticker,
+            "data_count": len(timeseries_results),
+            "timeseries_data": timeseries_results
+        }
+    except Exception as e:
+        logger.error(f"Quant Engine Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Quant analysis failed: {str(e)}")
 

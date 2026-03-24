@@ -1,6 +1,6 @@
 "use client"
 
-import React from 'react'
+import React, { useState } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import dynamic from 'next/dynamic'
@@ -38,36 +38,45 @@ interface HistoryTableProps {
 
 const HalvingChart = dynamic<HalvingChartProps>(() => import('@/components/charts/onchaincharts/HalvingChart'), { ssr: false })
 const CycleComparisonChart = dynamic<CycleComparisonChartProps>(() => import('@/components/charts/onchaincharts/CycleComparisonChart'), { ssr: false })
+const QuantAnalysisChart = dynamic(() => import('@/components/charts/onchaincharts/QuantAnalysisChart'), { ssr: false })
+const QuantComponentsChart = dynamic(() => import('@/components/charts/onchaincharts/QuantComponentsChart'), { ssr: false })
 const HistoryTable = dynamic<HistoryTableProps>(() => import('@/components/tables/HistoryTable'), { ssr: false })
 
 interface OnChainHalvingViewProps {
     locale: string
     isCycleComparisonMode: boolean
     isHalvingMode: boolean
+    isQuantMode?: boolean
 }
 
 const OnChainHalvingView: React.FC<OnChainHalvingViewProps> = ({
     locale,
     isCycleComparisonMode,
-    isHalvingMode
+    isHalvingMode,
+    isQuantMode = false
 }) => {
     const { isAdmin } = useAuth()
     const router = useRouter()
     const pathname = usePathname()
 
-    // Post slug determination
-    const postSlug = isCycleComparisonMode ? 'cycle-comparison' : 'halving-bull-chart'
+    // 퀀트 하단 차트와 동기화하기 위한 X축 타임레인지 상태
+    const [quantTimeRange, setQuantTimeRange] = useState<{ min: number; max: number } | null>(null)
+
+    // Post slug determination (isQuantMode does not have a post yet, prevent 404)
+    const postSlug = isQuantMode ? undefined : (isCycleComparisonMode ? 'cycle-comparison' : 'halving-bull-chart')
 
     // Data Fetching
     const { data: postData, isLoading: postLoading, error: postError } = usePostBySlug(postSlug)
 
     // Metric Name for Display
-    const cleanMetricNameValue = isCycleComparisonMode
-        ? (locale === 'ko' ? '비트코인 사이클 비교' : 'Bitcoin Cycle Comparison')
-        : (locale === 'ko' ? '비트코인 반감기' : 'Bitcoin Halving');
+    const cleanMetricNameValue = isQuantMode
+        ? (locale === 'ko' ? '비트코인 퀀트 분석 엔진' : 'Bitcoin Quant Analysis Engine')
+        : (isCycleComparisonMode
+            ? (locale === 'ko' ? '비트코인 사이클 비교' : 'Bitcoin Cycle Comparison')
+            : (locale === 'ko' ? '비트코인 반감기' : 'Bitcoin Halving'));
 
     // Header Description
-    const headerDescription = (isHalvingMode || isCycleComparisonMode)
+    const headerDescription = (isHalvingMode || isCycleComparisonMode || isQuantMode)
         ? (locale === 'ko' ? '비트코인 반감기 사이클 및 가격 분석' : 'Historical Bitcoin halving cycles and price analysis')
         : '';
 
@@ -118,7 +127,7 @@ const OnChainHalvingView: React.FC<OnChainHalvingViewProps> = ({
 
     const metricSelector = (
         <select
-            value={isCycleComparisonMode ? 'cycle-comparison' : 'halving-bull-chart'}
+            value={isQuantMode ? 'quant-analysis' : (isCycleComparisonMode ? 'cycle-comparison' : 'halving-bull-chart')}
             onChange={handleMetricChange}
             className="w-64 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200 text-sm"
         >
@@ -127,6 +136,9 @@ const OnChainHalvingView: React.FC<OnChainHalvingViewProps> = ({
             </option>
             <option value="cycle-comparison">
                 {locale === 'ko' ? '비트코인 사이클 비교' : 'Bitcoin Cycle Comparison'}
+            </option>
+            <option value="quant-analysis">
+                {locale === 'ko' ? '비트코인 퀀트 분석 엔진' : 'Bitcoin Quant Analysis Engine'}
             </option>
         </select>
     );
@@ -140,7 +152,24 @@ const OnChainHalvingView: React.FC<OnChainHalvingViewProps> = ({
                 <div className="space-y-6">
                     {/* CHART SECTION */}
                     <ComponentCard title={locale === 'ko' ? `${cleanMetricNameValue} 차트` : `${cleanMetricNameValue} Chart`}>
-                        {isCycleComparisonMode ? (
+                        {isQuantMode ? (
+                            <>
+                                <QuantAnalysisChart
+                                    title={locale === 'ko' ? "비트코인 총합 퀀트 스코어링 (Time-Series)" : "Bitcoin Total Quant Score (Time-Series)"}
+                                    height={600}
+                                    showExporting={true}
+                                    onTimeRangeChange={(min, max) => setQuantTimeRange({ min, max })}
+                                />
+                                <div className="mt-8 border-t border-gray-200 dark:border-gray-800 pt-8">
+                                    <QuantComponentsChart
+                                        title={locale === 'ko' ? "기간별 지표 평균 분포 (Gauge Columns)" : "Indicator Average Distribution (Selected Period)"}
+                                        height={450}
+                                        showExporting={true}
+                                        timeRange={quantTimeRange}
+                                    />
+                                </div>
+                            </>
+                        ) : isCycleComparisonMode ? (
                             <CycleComparisonChart
                                 title={locale === 'ko' ? "비트코인 사이클 비교 (저점 대비 고점)" : "Bitcoin Cycle Comparison (Low to High)"}
                                 height={600}

@@ -9,7 +9,7 @@ import {
   Time,
   IChartApi,
   ISeriesApi,
-  LineSeries,
+  AreaSeries,
 } from "lightweight-charts"
 import { useDelayedQuotes, useSparklinePrice } from "@/hooks/data/useRealtime"
 import { useRealtimePrices } from "@/hooks/data/useSocket"
@@ -190,10 +190,12 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
       autoSize: true, 
     })
 
-    const series = chart.addSeries(LineSeries, {
-      color: "#22c55e", 
+    const series = chart.addSeries(AreaSeries, {
+      lineColor: "#22c55e", 
+      topColor: "rgba(34, 197, 94, 0.4)",
+      bottomColor: "rgba(34, 197, 94, 0.05)",
       lineWidth: 2,
-      priceLineVisible: true,
+      priceLineVisible: false,
       lastValueVisible: true,
       priceFormat: { type: "price", precision: 2, minMove: 0.01 },
       crosshairMarkerVisible: true,
@@ -215,12 +217,20 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
     if (!seriesRef.current || !seriesData.length) return
     
     seriesRef.current.setData(seriesData)
+    const color = isPositive ? "#22c55e" : "#ef4444"
+    const topColor = isPositive ? "rgba(34, 197, 94, 0.4)" : "rgba(239, 68, 68, 0.4)"
+    const bottomColor = isPositive ? "rgba(34, 197, 94, 0.05)" : "rgba(239, 68, 68, 0.05)"
+
     seriesRef.current.applyOptions({
-      color: isPositive ? "#22c55e" : "#ef4444" 
+      lineColor: color,
+      topColor: topColor,
+      bottomColor: bottomColor
     })
     
     if (chartRef.current) {
-      chartRef.current.timeScale().fitContent()
+      setTimeout(() => {
+          if (chartRef.current) chartRef.current.timeScale().fitContent()
+      }, 50)
     }
   }, [seriesData, isPositive])
 

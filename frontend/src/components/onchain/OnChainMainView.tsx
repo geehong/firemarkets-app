@@ -18,6 +18,7 @@ const OnChainMainView: React.FC<OnChainMainViewProps> = ({ className, initialMet
     const [metricId, setMetricId] = useState<string | null>(null)
     const [isHalvingMode, setIsHalvingMode] = useState(false)
     const [isCycleComparisonMode, setIsCycleComparisonMode] = useState(false)
+    const [isQuantMode, setIsQuantMode] = useState(false)
     const [isDashboardView, setIsDashboardView] = useState(false)
     const [fullPath, setFullPath] = useState<string>('')
 
@@ -35,8 +36,9 @@ const OnChainMainView: React.FC<OnChainMainViewProps> = ({ className, initialMet
         // Check modes first
         const _isHalving = pathname.includes('/onchain/halving/halving-bull-chart') || lastPart === 'halving-bull-chart' || (searchParams?.get('halving') === 'true');
         const _isCycle = pathname.includes('/onchain/halving/cycle-comparison') || lastPart === 'cycle-comparison';
+        const _isQuant = pathname.includes('/onchain/halving/quant-analysis') || lastPart === 'quant-analysis';
 
-        if (_isHalving || _isCycle) {
+        if (_isHalving || _isCycle || _isQuant) {
             calculatedMetricId = lastPart;
         } else if (lastPart === 'onchain' || lastPart === 'halving' || !lastPart) {
             calculatedMetricId = searchMetric || null;
@@ -61,17 +63,19 @@ const OnChainMainView: React.FC<OnChainMainViewProps> = ({ className, initialMet
         setMetricId(calculatedMetricId);
         setIsHalvingMode(_isHalving);
         setIsCycleComparisonMode(_isCycle);
+        setIsQuantMode(_isQuant);
         setIsDashboardView(_isDashboard);
 
     }, [pathname, searchParams]);
 
     // Route to appropriate sub-view
-    if (isHalvingMode || isCycleComparisonMode) {
+    if (isHalvingMode || isCycleComparisonMode || isQuantMode) {
         return (
             <OnChainHalvingView
                 locale={locale}
                 isCycleComparisonMode={isCycleComparisonMode}
                 isHalvingMode={isHalvingMode}
+                isQuantMode={isQuantMode}
             />
         )
     }
