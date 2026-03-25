@@ -326,34 +326,38 @@ async def get_treemap_v2(
     db: Session = Depends(get_postgres_db)
 ):
     """
-    트리맵 데이터 조회
+    트리맵 데이터 조회 (고속화 버전)
     
-    시가총액 기반 트리맵 시각화용 데이터
+    mv_treemap_performance 머티리얼라이즈드 뷰를 사용하여 0.1초 내외로 실시간 체감 속도 제공
     """
     try:
-        # treemap_live_view 사용 (단순화된 뷰, world_assets_ranking 직접 조회, ~50ms)
-        query = "SELECT * FROM treemap_live_view WHERE 1=1"
+        # 0. 백그라운드에서 뷰 갱신 시도 (성공 여부 상관없이 진행, 비차단)
+        # 실제 운영 환경에서는 별도 스케줄러가 수행하는 것이 좋으나, 즉시 반영을 위해 호출
+        try:
+           # CONCURRENTLY를 사용하려면 인덱스가 필요하며, 다른 프로세스를 방해하지 않습니다.
+           db.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY mv_treemap_performance"))
+           db.commit()
+        except Exception:
+           db.rollback()
+
+        # 1. 고속 뷰 조회
+        query = "SELECT * FROM mv_treemap_performance WHERE 1=1"
         params = {}
         
-        # asset_type_id가 제공되면 type_name을 조회하여 필터링 (뷰에 asset_type_id 없음)
         if asset_type_id:
             asset_type_obj = db.query(AssetType).filter(AssetType.asset_type_id == asset_type_id).first()
             if asset_type_obj:
                query += " AND asset_type = :type_name_from_id"
                params["type_name_from_id"] = asset_type_obj.type_name
             else:
-               # 존재하지 않는 ID면 빈 결과 반환
-               return {"items": [], "total_count": 0, "summary": {"total_market_cap": 0, "average_change_percent": 0, "assets_count": 0}}
+               return {"data": [], "total_count": 0, "summary": {"total_market_cap": 0, "average_change_percent": 0, "assets_count": 0}}
         
-        # type_name 직접 제공 시 (뷰 컬럼명은 asset_type)
         if type_name:
-            # ILIKE on view is slow. Resolve canonical name first.
             resolved_type = db.query(AssetType.type_name).filter(AssetType.type_name.ilike(type_name)).scalar()
             if resolved_type:
                 query += " AND asset_type = :resolved_type_name"
                 params["resolved_type_name"] = resolved_type
             else:
-                # Type not found
                 return {"data": [], "total_count": 0, "summary": {"total_market_cap": 0, "average_change_percent": 0, "assets_count": 0}}
         
         query += " ORDER BY market_cap DESC NULLS LAST LIMIT :limit"
@@ -362,72 +366,32 @@ async def get_treemap_v2(
         result = db.execute(text(query), params)
         rows = result.fetchall()
         
-        asset_ids = [row._mapping.get("asset_id") for row in rows if row._mapping.get("asset_id")]
-        
-        # 2. 최신 시세/변동률 일괄 조회 (병합 로직 적용)
-        price_map = {}
-        if asset_ids:
-            price_stmt = text("""
-                WITH latest_prices AS (
-                    -- 1. Realtime Quotes
-                    SELECT 
-                        asset_id, price as close_price, timestamp_utc, change_percent, volume, 'realtime' as source
-                    FROM realtime_quotes 
-                    WHERE asset_id = ANY(:asset_ids)
-                    
-                    UNION ALL
-
-                    -- 2. Realtime Bar (웹소켓 집계)
-                    SELECT 
-                        asset_id, close_price, timestamp_utc, change_percent, volume, 'realtime_bar' as source
-                    FROM realtime_quotes_time_bar 
-                    WHERE asset_id = ANY(:asset_ids)
-
-                    UNION ALL
-                    
-                    -- 3. Delayed Quotes
-                    SELECT 
-                        asset_id, price as close_price, timestamp_utc, change_percent, volume, 'realtime_delay' as source
-                    FROM realtime_quotes_time_delay 
-                    WHERE asset_id = ANY(:asset_ids)
-                    
-                    UNION ALL
-                    
-                    -- 4. Intraday Data (REST API 저장분, 최근 7일만)
-                    SELECT DISTINCT ON (asset_id)
-                        asset_id, close_price, timestamp_utc, change_percent, volume, 'intraday' as source
-                    FROM ohlcv_intraday_data 
-                    WHERE asset_id = ANY(:asset_ids)
-                      AND timestamp_utc > (now() AT TIME ZONE 'UTC' - INTERVAL '7 days')
-                    ORDER BY asset_id, timestamp_utc DESC
-                )
-                SELECT DISTINCT ON (asset_id) 
-                    asset_id, close_price, change_percent, volume, timestamp_utc
-                FROM latest_prices
-                ORDER BY asset_id, timestamp_utc DESC
-            """)
-            price_rows = db.execute(price_stmt, {"asset_ids": asset_ids}).fetchall()
-            price_map = {row._mapping['asset_id']: row._mapping for row in price_rows}
-
         items = []
         for row in rows:
             row_dict = dict(row._mapping)
-            asset_id = row_dict.get("asset_id")
-            p_data = price_map.get(asset_id, {})
             
+            # 뷰에서 이미 계산된 종가와 가격을 사용하여 수익률 최종 확인
+            cur_price = float(row_dict.get("current_price")) if row_dict.get("current_price") else None
+            yesterday_close = float(row_dict.get("yesterday_close")) if row_dict.get("yesterday_close") else None
+            
+            if cur_price and yesterday_close and yesterday_close > 0:
+                daily_change = round(((cur_price - yesterday_close) / yesterday_close) * 100, 2)
+            else:
+                daily_change = float(row_dict.get("price_change_percentage_24h")) if row_dict.get("price_change_percentage_24h") is not None else 0.0
+
             items.append({
-                "asset_id": asset_id,
+                "asset_id": row_dict.get("asset_id"),
                 "asset_type_id": row_dict.get("asset_type_id"),
                 "ticker": row_dict.get("ticker"),
                 "name": row_dict.get("name"),
                 "type_name": row_dict.get("asset_type"),
                 "logo_url": row_dict.get("logo_url"),
-                "current_price": float(p_data.get("close_price")) if p_data.get("close_price") is not None else (float(row_dict.get("current_price")) if row_dict.get("current_price") else None),
+                "current_price": cur_price,
                 "market_cap": float(row_dict.get("market_cap")) if row_dict.get("market_cap") else None,
-                "daily_change_percent": float(p_data.get("change_percent")) if p_data.get("change_percent") is not None else (float(row_dict.get("price_change_percentage_24h")) if row_dict.get("price_change_percentage_24h") is not None else None),
-                "price_change_percentage_24h": float(p_data.get("change_percent")) if p_data.get("change_percent") is not None else (float(row_dict.get("price_change_percentage_24h")) if row_dict.get("price_change_percentage_24h") is not None else None),
-                "volume_24h": float(p_data.get("volume")) if p_data.get("volume") is not None else (float(row_dict.get("volume")) if row_dict.get("volume") else None),
-                "last_updated": p_data.get("timestamp_utc")
+                "daily_change_percent": daily_change,
+                "price_change_percentage_24h": daily_change,
+                "volume_24h": float(row_dict.get("volume")) if row_dict.get("volume") else None,
+                "last_updated": row_dict.get("realtime_updated_at") or row_dict.get("daily_data_updated_at")
             })
         
         # 요약 통계

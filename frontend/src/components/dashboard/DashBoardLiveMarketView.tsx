@@ -94,11 +94,12 @@ const DashBoardLiveMarketView = () => {
             change: change,
             changePercent: changePercent,
             lastUpdate: latest.date,
-            history: data.map((d: any) => ({ date: d.date, value: d.year10 })),
-            historyLW: data.map((d: any) => ({ 
-                time: (new Date(d.date).getTime() / 1000) as Time, 
-                value: d.year10 
-            })).sort((a: any, b: any) => a.time - b.time)
+            historyLW: data
+                .filter((d: any) => d.year10 !== null && d.year10 !== undefined)
+                .map((d: any) => ({ 
+                    time: (new Date(d.date).getTime() / 1000) as Time, 
+                    value: d.year10 
+                })).sort((a: any, b: any) => a.time - b.time)
         };
     }, [macroData]);
 
