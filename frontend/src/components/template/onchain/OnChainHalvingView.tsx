@@ -19,6 +19,7 @@ interface HalvingChartProps {
     showRangeSelector?: boolean;
     showExporting?: boolean;
     singlePeriod?: number | null;
+    locale?: string;
 }
 
 interface CycleComparisonChartProps {
@@ -182,6 +183,7 @@ const OnChainHalvingView: React.FC<OnChainHalvingViewProps> = ({
                                 height={600}
                                 showRangeSelector={true}
                                 showExporting={true}
+                                locale={locale}
                             />
                         )}
                     </ComponentCard>

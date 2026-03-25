@@ -171,20 +171,18 @@ const QuantComponentsChart: React.FC<QuantComponentsChartProps> = ({
 
         const scatterData: any[] = [];
         const dynamicPlotBands: any[] = [];
+        const customTickPositions: number[] = [];
+        const customTickLabels: Record<number, string> = {};
 
         // Add 1. Total Score
         const totalScoreX = activeMin + (bucketWidth * 0.5);
+        customTickPositions.push(totalScoreX);
+        customTickLabels[totalScoreX] = 'Total Score';
+
         dynamicPlotBands.push({
             from: activeMin,
             to: activeMin + bucketWidth,
             color: getCustomGradient(avgTotalScore),
-            label: {
-                text: 'Total Score',
-                align: 'center',
-                verticalAlign: 'top',
-                y: 15,
-                style: { color: currentColors.coin, fontWeight: 'bold', fontSize: '12px' }
-            }
         });
         scatterData.push({
             x: totalScoreX,
@@ -202,17 +200,13 @@ const QuantComponentsChart: React.FC<QuantComponentsChartProps> = ({
             const bucketTo = activeMin + (bucketWidth * (idx + 2));
             const bucketCenterX = bucketFrom + (bucketWidth * 0.5);
 
+            customTickPositions.push(bucketCenterX);
+            customTickLabels[bucketCenterX] = m.label;
+
             dynamicPlotBands.push({
                 from: bucketFrom,
                 to: bucketTo,
                 color: getCustomGradient(avgScore),
-                label: {
-                    text: m.label,
-                    align: 'center',
-                    verticalAlign: 'top',
-                    y: 15,
-                    style: { color: currentColors.coin, fontWeight: 'bold', fontSize: '12px' }
-                }
             });
 
             scatterData.push({
@@ -234,7 +228,7 @@ const QuantComponentsChart: React.FC<QuantComponentsChartProps> = ({
             },
             navigator: { 
                 enabled: true,
-                xAxis: { labels: { enabled: false } }, 
+                xAxis: { labels: { enabled: true } }, 
                 baseSeries: 'btc-price' 
             },
             rangeSelector: {
@@ -253,12 +247,24 @@ const QuantComponentsChart: React.FC<QuantComponentsChartProps> = ({
 
             xAxis: {
                 type: 'datetime',
+                min: activeTimeRange?.min, // Ensure React state strictly controls standard display
+                max: activeTimeRange?.max,
                 crosshair: true,
                 plotBands: dynamicPlotBands, // This magically renders our 9 colored columns in the background!
+                tickPositions: customTickPositions,
+                labels: {
+                    style: { fontSize: '12px', fontWeight: 'bold', color: currentColors.coin },
+                    formatter: function(this: any) {
+                        return customTickLabels[this.value] || '';
+                    }
+                },
                 events: {
                     setExtremes: function(e: any) {
-                        if (e.min && e.max) {
+                        // Highcharts trigger e.min / e.max undefined on "All" button or full reset
+                        if (e.min !== undefined && e.max !== undefined) {
                             setTimeout(() => setInternalTimeRange({ min: e.min, max: e.max }), 0);
+                        } else if (e.trigger === 'rangeSelectorButton') {
+                            setTimeout(() => setInternalTimeRange(null), 0); // fallback all
                         }
                     }
                 }
@@ -286,10 +292,23 @@ const QuantComponentsChart: React.FC<QuantComponentsChartProps> = ({
 
             series: [
                 {
+                    type: 'line',
+                    id: 'btc-price',
+                    name: 'BTC Price',
+                    xAxis: 0,
+                    yAxis: 1,
+                    data: btcPriceData,
+                    color: '#ffffff', // High contrast white above the colorful plotbands
+                    lineWidth: 3,
+                    shadow: true,
+                    tooltip: { valueDecimals: 2, valuePrefix: '$' },
+                    zIndex: 5,
+                },
+                {
                     type: 'scatter',
                     name: 'Indicator Averages',
-                    xAxis: 0, // Bound safely to main datetime axis
-                    yAxis: 0, // 0-100 position axis
+                    xAxis: 0,
+                    yAxis: 0,
                     data: scatterData,
                     marker: { symbol: 'diamond', radius: 6, fillColor: '#000000' },
                     dataLabels: {
@@ -305,19 +324,6 @@ const QuantComponentsChart: React.FC<QuantComponentsChartProps> = ({
                     showInLegend: false,
                     enableMouseTracking: false,
                     zIndex: 3,
-                },
-                {
-                    type: 'line',
-                    id: 'btc-price',
-                    name: 'BTC Price',
-                    xAxis: 0,
-                    yAxis: 1,
-                    data: btcPriceData,
-                    color: '#ffffff', // High contrast white above the colorful plotbands
-                    lineWidth: 3,
-                    shadow: true,
-                    tooltip: { valueDecimals: 2, valuePrefix: '$' },
-                    zIndex: 5,
                 }
             ],
             credits: { enabled: false },

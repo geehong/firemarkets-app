@@ -174,21 +174,19 @@ const QuantAnalysisChart: React.FC<QuantAnalysisChartProps> = ({
             tooltip: { split: true, valueDecimals: 2 },
             yAxis: [
                 {
-                    // Price Y-Axis (Logarithmic, Top Panel)
-                    labels: { align: 'right', x: -3 },
-                    title: { text: null },
-                    height: '60%',
-                    lineWidth: 2,
+                    // Price Y-Axis (Logarithmic, Right Side)
+                    labels: { style: { color: currentColors.coin, fontWeight: 'bold' } },
+                    title: { text: 'Bitcoin Price', style: { color: currentColors.coin } },
+                    opposite: true,
+                    lineWidth: 1,
                     type: 'logarithmic'
                 },
                 {
-                    // Quant Score Y-Axis (Linear, Bottom Panel)
-                    labels: { align: 'right', x: -3 },
-                    title: { text: null },
-                    top: '65%',
-                    height: '35%',
-                    offset: 0,
-                    lineWidth: 2,
+                    // Quant Score Y-Axis (Linear, Left Side)
+                    labels: { style: { color: currentColors.moving_average, fontWeight: 'bold' } },
+                    title: { text: 'Total Quant Score (%)', style: { color: currentColors.moving_average } },
+                    opposite: false,
+                    lineWidth: 1,
                     min: 0,
                     max: 100,
                     plotBands: [
@@ -216,6 +214,7 @@ const QuantAnalysisChart: React.FC<QuantAnalysisChartProps> = ({
                     yAxis: 0,
                     color: currentColors.coin,
                     lineWidth: 2,
+                    zIndex: 5,
                     tooltip: { valuePrefix: '$' }
                 },
                 {
@@ -228,7 +227,8 @@ const QuantAnalysisChart: React.FC<QuantAnalysisChartProps> = ({
                     color: '#00FA9A',
                     fillColor: '#00FA9A',
                     style: { color: 'white', fontSize: '10px' },
-                    yAxis: 0
+                    yAxis: 0,
+                    zIndex: 10
                 },
                 {
                     name: 'Sell Signals',
@@ -240,22 +240,24 @@ const QuantAnalysisChart: React.FC<QuantAnalysisChartProps> = ({
                     color: '#FF6347',
                     fillColor: '#FF6347',
                     style: { color: 'white', fontSize: '10px' },
-                    yAxis: 0
+                    yAxis: 0,
+                    zIndex: 10
                 },
                 {
                     name: 'Total Quant Score',
                     type: 'area', // Histogram and area blend
                     data: scoreData,
                     yAxis: 1,
-                    color: currentColors.moving_average,
+                    color: '#e74c3c', // User mockup requested stunning red quant area
                     fillColor: {
                         linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
                         stops: [
-                            [0, Highcharts.color(currentColors.moving_average).setOpacity(0.5).get('rgba')],
-                            [1, Highcharts.color(currentColors.moving_average).setOpacity(0.0).get('rgba')]
+                            [0, 'rgba(231, 76, 60, 0.6)'],
+                            [1, 'rgba(231, 76, 60, 0.05)']
                         ]
                     },
                     lineWidth: 1.5,
+                    zIndex: 1,
                     tooltip: { valueSuffix: ' pts' }
                 },
                 {
