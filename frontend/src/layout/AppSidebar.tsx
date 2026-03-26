@@ -202,6 +202,12 @@ const AppSidebar: React.FC = () => {
         },
       ],
     },
+    // 5-1. Virtual Trading
+    {
+      icon: <BoltIcon />,
+      name: t('virtualTrading'),
+      path: "/virtual-trading",
+    },
     // 6. Assets
     {
       name: t('assets'),

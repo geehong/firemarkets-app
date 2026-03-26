@@ -20,7 +20,8 @@ from .endpoints import (
     auth,
     posts,
     navigation,
-    docker_control  # Added
+    docker_control,  # Added
+    virtual_trading,
 )
 from .external_apis import router as external_apis_router
 from app.schemas.common import ApiV1RootResponse
@@ -42,7 +43,8 @@ async def api_v1_root():
             "metrics": "/api/v1/metrics",
             "realtime": "/api/v1/realtime",
             "docker": "/api/v1/docker",
-            "open_interest": "/api/v1/onchain/open-interest"
+            "open_interest": "/api/v1/onchain/open-interest",
+            "virtual_trading": "/api/v1/virtual-trading"
         }
     }
 
@@ -72,6 +74,7 @@ api_router.include_router(navigation.router, prefix="/navigation", tags=["naviga
 # api_router.include_router(analysis.router, prefix="/analysis", tags=["analysis"])
 api_router.include_router(posts.router, prefix="/posts", tags=["posts"])
 api_router.include_router(docker_control.router, prefix="/docker", tags=["docker-control"])
+api_router.include_router(virtual_trading.router, prefix="/virtual-trading", tags=["virtual-trading"])
 
 
 # External APIs router

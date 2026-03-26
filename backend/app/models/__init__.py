@@ -88,6 +88,14 @@ from .blog import (
     PostTagAssociation,
 )
 
+# Virtual Trading models
+from .virtual_trading import (
+    VirtualWallet,
+    VirtualPosition,
+    VirtualOrder,
+    VirtualTradeHistory,
+)
+
 # Export all models
 __all__ = [
     "Base",
@@ -160,4 +168,10 @@ __all__ = [
     "PostProduct",
     "PostChart",
     "PostTagAssociation",
+    
+    # Virtual Trading models
+    "VirtualWallet",
+    "VirtualPosition",
+    "VirtualOrder",
+    "VirtualTradeHistory",
 ]

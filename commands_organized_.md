@@ -254,6 +254,10 @@ docker-compose exec db mysql -u geehong -pPower6100 markets -e "SHOW INDEX FROM 
 docker-compose exec db mysql -u geehong -pPower6100 markets -e "SELECT asset_id, timestamp_utc, COUNT(*) as count FROM ohlcv_day_data GROUP BY asset_id, timestamp_utc HAVING COUNT(*) > 1 LIMIT 10;"
 # 컬럼 정보만 SQL로 확인
 docker-compose exec db_postgres psql -U geehong -d markets -c "\d app_configurations"
+
+# 트리맵 머티리얼라이즈드 뷰(mv_treemap_performance) 생성 (장애 복구용)
+# backend/sql/treemap_live_view.sql 기반
+docker-compose exec db_postgres psql -U geehong -d markets -c "CREATE MATERIALIZED VIEW mv_treemap_performance AS SELECT * FROM treemap_live_view; CREATE UNIQUE INDEX idx_mv_treemap_asset_id ON mv_treemap_performance(asset_id);"
 ```
 ## 📊 로그 모니터링
 

@@ -3,4 +3,24 @@
 API v1 endpoints package
 """
 
-# Removed analysis import as it is migrated to v2
+from . import (
+    admin,
+    auth,
+    collectors,
+    configurations,
+    crypto,
+    dashboard,
+    docker_control,
+    etf,
+    logs,
+    metrics,
+    navigation,
+    onchain,
+    open_interest,
+    posts,
+    realtime,
+    scheduler,
+    tickers,
+    world_assets,
+    virtual_trading,
+)

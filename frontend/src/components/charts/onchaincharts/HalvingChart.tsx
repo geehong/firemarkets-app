@@ -63,15 +63,16 @@ const HalvingChart: React.FC<HalvingChartProps> = ({
     const { currentMenuItem } = useNavigation();
 
     // 반감기 데이터 - 훅 사용
-    const periodsToLoad = singlePeriod ? [singlePeriod] : [1, 2, 3, 4];
+    const periodsToLoad = React.useMemo(() => singlePeriod ? [singlePeriod] : [1, 2, 3, 4], [singlePeriod]);
+    
     const { queries: rawQueries, isLoading, errors } = useMultipleHalvingData(
         periodsToLoad,
         startPrice,
         !!startPrice && startPrice > 0
     );
 
-    // queries 레퍼런스 안정화 (중요: 리렌더링 체인 방지)
-    const halvingQueries = React.useMemo(() => rawQueries, [rawQueries]);
+    // queries 레퍼런스 안정화
+    const halvingQueries = rawQueries;
 
     // 에러 확인
     const error = errors && errors.length > 0 ? errors[0] : null;
@@ -225,46 +226,31 @@ const HalvingChart: React.FC<HalvingChartProps> = ({
         return numerator / denominator;
     };
 
-    // 특정 stretchFactor에서의 상관관계 계산 함수
-    const getCorrelationsAt = React.useCallback((sFactor: number, cOffset: number) => {
-        if (!halvingQueries || halvingQueries.length < 2) return {};
+    // 사이클 데이터 미리처리 (계산 최적화)
+    const processedChartData = React.useMemo(() => {
+        if (!halvingQueries || halvingQueries.length < 2) return null;
 
-        const q4Index = periodsToLoad.indexOf(4);
-        if (q4Index === -1) return {};
-        
-        const q4Query = halvingQueries[q4Index];
-        if (!q4Query || !q4Query.data) return {};
+        const results: {
+            hMaps: Record<number, Record<number, number>>,
+            priceData4: { days: number, close: number }[]
+        } = { hMaps: {}, priceData4: [] };
 
-        const priceData4 = q4Query.data.ohlcv_data || q4Query.data.close_price_data || [];
-        if (priceData4.length === 0) return {};
+        const hStartDates = {
+            1: new Date('2012-11-28T00:00:00.000Z'),
+            2: new Date('2016-07-09T00:00:00.000Z'),
+            3: new Date('2020-05-11T00:00:00.000Z')
+        };
 
-        const results: Record<number, number | null> = {};
-
+        // 1, 2, 3차 데이터 맵 생성
         [1, 2, 3].forEach(period => {
             const hIndex = periodsToLoad.indexOf(period);
-            if (hIndex === -1) {
-                results[period] = null;
-                return;
-            }
+            if (hIndex === -1) return;
             
             const hQuery = halvingQueries[hIndex];
-            if (!hQuery || !hQuery.data) {
-                results[period] = null;
-                return;
-            }
+            if (!hQuery || !hQuery.data) return;
 
             const hPriceData = hQuery.data.ohlcv_data || hQuery.data.close_price_data || [];
-            if (hPriceData.length === 0) {
-                results[period] = null;
-                return;
-            }
-
             const hMap: Record<number, number> = {};
-            const hStartDates = {
-                1: new Date('2012-11-28T00:00:00.000Z'),
-                2: new Date('2016-07-09T00:00:00.000Z'),
-                3: new Date('2020-05-11T00:00:00.000Z')
-            };
             const hStart = hStartDates[period as keyof typeof hStartDates];
 
             hPriceData.forEach((p: any) => {
@@ -273,18 +259,50 @@ const HalvingChart: React.FC<HalvingChartProps> = ({
                 const days = Math.floor((date.getTime() - hStart.getTime()) / (24 * 60 * 60 * 1000));
                 hMap[days] = p.close_price;
             });
+            results.hMaps[period] = hMap;
+        });
 
-            const q4Start = new Date('2024-04-20T00:00:00.000Z');
+        // 4차 데이터 일수 전처리
+        const q4Index = periodsToLoad.indexOf(4);
+        if (q4Index !== -1) {
+            const q4Query = halvingQueries[q4Index];
+            if (q4Query && q4Query.data) {
+                const rawPriceData4 = q4Query.data.ohlcv_data || q4Query.data.close_price_data || [];
+                const q4Start = new Date('2024-04-20T00:00:00.000Z');
+                
+                results.priceData4 = rawPriceData4.map((p: any) => {
+                    const dateStr = p.timestamp_utc.includes('T') ? p.timestamp_utc : p.timestamp_utc + 'T00:00:00.000Z';
+                    const date = new Date(dateStr);
+                    const days = Math.floor((date.getTime() - q4Start.getTime()) / (24 * 60 * 60 * 1000));
+                    return { days, close: p.close_price };
+                });
+            }
+        }
+
+        return results;
+    }, [halvingQueries, periodsToLoad]);
+
+    // 특정 stretchFactor에서의 상관관계 계산 함수 (최적화 버전)
+    const getCorrelationsAt = React.useCallback((sFactor: number, cOffset: number) => {
+        if (!processedChartData) return {};
+        
+        const results: Record<number, number | null> = {};
+        const { hMaps, priceData4 } = processedChartData;
+
+        [1, 2, 3].forEach(period => {
+            const hMap = hMaps[period];
+            if (!hMap || priceData4.length === 0) {
+                results[period] = null;
+                return;
+            }
+
             const x4: number[] = [];
             const yH: number[] = [];
 
-            priceData4.forEach((p: any) => {
-                const dateStr = p.timestamp_utc.includes('T') ? p.timestamp_utc : p.timestamp_utc + 'T00:00:00.000Z';
-                const date = new Date(dateStr);
-                const days = Math.floor((date.getTime() - q4Start.getTime()) / (24 * 60 * 60 * 1000));
-                const finalDay = Math.round((days + cOffset) * sFactor);
+            priceData4.forEach((p) => {
+                const finalDay = Math.round((p.days + cOffset) * sFactor);
                 if (hMap[finalDay] !== undefined) {
-                    x4.push(p.close_price);
+                    x4.push(p.close);
                     yH.push(hMap[finalDay]);
                 }
             });
@@ -293,7 +311,7 @@ const HalvingChart: React.FC<HalvingChartProps> = ({
         });
 
         return results;
-    }, [halvingQueries, periodsToLoad]);
+    }, [processedChartData]);
 
     // 최적의 stretchFactor 찾기 (Auto 버튼 클릭 시)
     const handleAutoStretch = (targetPeriod?: number) => {
@@ -325,43 +343,52 @@ const HalvingChart: React.FC<HalvingChartProps> = ({
 
     // 권장 배수 주기적 계산 (또는 데이터 로드 시)
     useEffect(() => {
-        if (isLoading || !halvingQueries || halvingQueries.length < 2) return;
+        if (isLoading || !processedChartData) return;
 
         const recs: Record<string, number | null> = {};
-        
-        // 각 주기별 최적 배수 계산
-        [1, 2, 3].forEach(period => {
-            let bestS = 1.0;
-            let maxCor = -2;
-            for (let s = 0.5; s <= 2.5; s += 0.05) { // 계산 부하를 줄이기 위해 0.05 간격으로 검색
-                const cors = getCorrelationsAt(s, cycleOffset);
-                const score = cors[period] || -2;
-                if (score > maxCor) {
-                    maxCor = score;
-                    bestS = s;
-                }
-            }
-            recs[period] = Math.round(bestS * 100) / 100;
-        });
+        const scoreMakers: Record<string, { bestS: number, maxCor: number }> = {
+            '1': { bestS: 1.0, maxCor: -2 },
+            '2': { bestS: 1.0, maxCor: -2 },
+            '3': { bestS: 1.0, maxCor: -2 },
+            'all': { bestS: 1.0, maxCor: -2 }
+        };
 
-        // 전체 평균 최적 배수 계산
-        let bestAllS = 1.0;
-        let maxAllCor = -2;
+        // 0.5 ~ 2.5 범위에서 0.05 간격으로 탐색 (단일 루프로 최적화)
         for (let s = 0.5; s <= 2.5; s += 0.05) {
             const cors = getCorrelationsAt(s, cycleOffset);
+            
+            // 각 개별 주기 점수 업데이트
+            [1, 2, 3].forEach(period => {
+                const score = cors[period] || -2;
+                if (score > scoreMakers[period.toString()].maxCor) {
+                    scoreMakers[period.toString()].maxCor = score;
+                    scoreMakers[period.toString()].bestS = s;
+                }
+            });
+
+            // 전체 평균 점수 업데이트
             const validCors = [1, 2, 3].map(p => cors[p]).filter(v => v !== null) as number[];
             if (validCors.length > 0) {
                 const avg = validCors.reduce((a, b) => a + b, 0) / validCors.length;
-                if (avg > maxAllCor) {
-                    maxAllCor = avg;
-                    bestAllS = s;
+                if (avg > scoreMakers['all'].maxCor) {
+                    scoreMakers['all'].maxCor = avg;
+                    scoreMakers['all'].bestS = s;
                 }
             }
         }
-        recs['all'] = Math.round(bestAllS * 100) / 100;
 
-        setRecommendations(recs);
-    }, [halvingQueries, cycleOffset, isLoading, getCorrelationsAt]);
+        // 결과 저장
+        recs['1'] = Math.round(scoreMakers['1'].bestS * 100) / 100;
+        recs['2'] = Math.round(scoreMakers['2'].bestS * 100) / 100;
+        recs['3'] = Math.round(scoreMakers['3'].bestS * 100) / 100;
+        recs['all'] = Math.round(scoreMakers['all'].bestS * 100) / 100;
+
+        setRecommendations(prev => {
+            // 값이 실제로 변경된 경우에만 업데이트하여 불필요한 리렌더링 방지
+            if (JSON.stringify(prev) === JSON.stringify(recs)) return prev;
+            return recs;
+        });
+    }, [processedChartData, cycleOffset, isLoading, getCorrelationsAt]);
 
     // 4차 사이클과 다른 사이클 간의 실시간 상관관계 계산
     const correlations = React.useMemo(() => {
