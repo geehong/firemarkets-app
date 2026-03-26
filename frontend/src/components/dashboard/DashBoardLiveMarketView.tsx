@@ -17,8 +17,9 @@ import LightWeightChart from '@/components/charts/minicharts/LightWeightChart';
 import { useOnchainMetrics } from '@/hooks/useOnchain';
 import { Time } from 'lightweight-charts';
 import dynamic from 'next/dynamic';
+import type { OnChainChartProps } from '@/components/charts/onchaincharts/OnChainChart';
 
-const OnChainChart = dynamic(() => import('@/components/charts/onchaincharts/OnChainChart'), {
+const OnChainChart = dynamic<OnChainChartProps>(() => import('@/components/charts/onchaincharts/OnChainChart'), {
     ssr: false,
     loading: () => <div className="flex-1 w-full bg-slate-50 dark:bg-slate-900/50 animate-pulse rounded-lg mt-2" />
 });
@@ -77,7 +78,6 @@ const DashBoardLiveMarketView = () => {
         const data = macroData.treasury.data;
         if (data.length === 0) return null;
         
-        // Backend sorts by date DESC (latest first)
         const latest = data[0];
         const prev = data[1] || latest;
         
@@ -101,6 +101,49 @@ const DashBoardLiveMarketView = () => {
                     value: d.year10 
                 })).sort((a: any, b: any) => a.time - b.time)
         };
+    }, [macroData]);
+
+    const macroStats = useMemo(() => {
+        if (!macroData) return [];
+        
+        const formatData = (source: any[], valKey: string, label: string, color: string) => {
+            if (!source || source.length === 0) return null;
+            const latest = source[0];
+            const prev = source[1] || latest;
+            const currentVal = latest[valKey] !== undefined ? latest[valKey] : latest.value;
+            const prevVal = prev[valKey] !== undefined ? prev[valKey] : prev.value;
+            
+            if (currentVal === undefined || currentVal === null) return null;
+
+            const slice = source.slice(0, 60);
+            const oldest = slice[slice.length - 1];
+            const oldestVal = oldest[valKey] !== undefined ? oldest[valKey] : oldest.value;
+            const sparklineChange = (currentVal - oldestVal).toFixed(2);
+            const sparklineChangePercent = oldestVal !== 0 ? ((currentVal - oldestVal) / oldestVal * 100).toFixed(2) : "0";
+
+            return {
+                label,
+                value: currentVal.toFixed(2),
+                change: (currentVal - prevVal).toFixed(2),
+                changePercent: prevVal !== 0 ? ((currentVal - prevVal) / prevVal * 100).toFixed(2) : "0",
+                sparklineChange,
+                sparklineChangePercent,
+                color,
+                history: slice.map((d: any) => ({
+                    time: (new Date(d.date).getTime() / 1000) as Time,
+                    value: d[valKey] !== undefined ? d[valKey] : d.value
+                })).filter(d => d.value !== undefined && d.value !== null).sort((a: any, b: any) => a.time - b.time)
+            };
+        };
+
+        return [
+            formatData(macroData.treasury?.data, 'year10', 'US 10Y Yield', '#6366f1'),
+            formatData(macroData.treasury?.data, 'year2', 'US 2Y Yield', '#3b82f6'),
+            formatData(macroData.yield_spread?.data, 'spread', '10Y-2Y Spread', '#8b5cf6'),
+            formatData(macroData.indicators?.CPI, 'value', 'Inflation (CPI)', '#f43f5e'),
+            formatData(macroData.indicators?.unemploymentRate, 'value', 'Unemployment', '#10b981'),
+            formatData(macroData.indicators?.m2Growth, 'value', 'M2 Growth (YoY)', '#f59e0b'),
+        ].filter(Boolean);
     }, [macroData]);
 
     // Fear & Greed Data
@@ -291,6 +334,47 @@ const DashBoardLiveMarketView = () => {
                         ))}
                     </React.Fragment>
                 ))}
+            </div>
+
+            {/* Economic Indicators Snapshot */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mt-8">
+                {macroLoading ? (
+                    Array(6).fill(0).map((_, i) => (
+                        <div key={i} className="h-28 bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl animate-pulse" />
+                    ))
+                ) : (
+                    macroStats.map((stat: any, i: number) => (
+                        <div key={i} className="bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-slate-800/50 p-3 rounded-xl shadow-sm hover:shadow-md transition-all group overflow-hidden h-full flex flex-col justify-between">
+                            <div className="flex justify-between items-start mb-1">
+                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-tight">{stat.label}</span>
+                                <div className={`text-[10px] font-bold ${Number(stat.change) >= 0 ? (stat.label.includes('Yield') || stat.label.includes('Inflation') ? 'text-red-500' : 'text-green-500') : (stat.label.includes('Yield') || stat.label.includes('Inflation') ? 'text-green-500' : 'text-red-500')}`}>
+                                    {Number(stat.change) >= 0 ? '+' : ''}{stat.change}
+                                </div>
+                            </div>
+                            <div className="text-xl font-black text-slate-900 dark:text-white tracking-tighter mb-1">
+                                {stat.value}<span className="text-[10px] ml-0.5 opacity-50 font-medium">%</span>
+                            </div>
+                            <div className="h-10 -mx-3 -mb-3 opacity-40 group-hover:opacity-100 transition-opacity">
+                                <div className="absolute bottom-4 left-4 pointer-events-none z-10 flex items-baseline gap-1">
+                                    <span className={`text-[10px] font-black ${Number(stat.sparklineChange) >= 0 ? (stat.label.includes('Yield') || stat.label.includes('Inflation') ? 'text-red-500' : 'text-green-500') : (stat.label.includes('Yield') || stat.label.includes('Inflation') ? 'text-green-500' : 'text-red-500')}`}>
+                                        {Number(stat.sparklineChange) >= 0 ? '+' : ''}{stat.sparklineChange}
+                                    </span>
+                                    <span className={`text-[9px] font-bold opacity-60 ${Number(stat.sparklineChange) >= 0 ? (stat.label.includes('Yield') || stat.label.includes('Inflation') ? 'text-red-500' : 'text-green-500') : (stat.label.includes('Yield') || stat.label.includes('Inflation') ? 'text-green-500' : 'text-red-500')}`}>
+                                        ({Number(stat.sparklineChangePercent) >= 0 ? '+' : ''}{stat.sparklineChangePercent}%)
+                                    </span>
+                                </div>
+                                <LightWeightChart 
+                                    data={stat.history} 
+                                    assetIdentifier={`macro-${stat.label}`}
+                                    height={40}
+                                    title=""
+                                    color={stat.color}
+                                    minimal={true}
+                                />
+                            </div>
+                        </div>
+                    ))
+                )}
             </div>
 
             {/* Heatmap Section */}

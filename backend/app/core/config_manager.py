@@ -236,6 +236,9 @@ class ConfigManager:
     def is_world_assets_collection_enabled(self) -> bool:
         return self._get_config("ENABLE_WORLD_ASSETS_COLLECTION", True, _str_to_bool)
         
+    def is_fred_collection_enabled(self) -> bool:
+        return self._get_config("ENABLE_FRED_COLLECTION", True, _str_to_bool)
+        
     def get_fred_api_key(self) -> Optional[str]:
         # Check env var first
         env_key = os.getenv("FRED_API_KEY")

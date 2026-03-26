@@ -20,6 +20,8 @@ router = APIRouter()
 #
 # Interest Rates & Yields:
 # - DFF: Federal Funds Effective Rate
+# - DGS30: Market Yield on U.S. Treasury Securities at 30-Year Constant Maturity
+# - DGS20: Market Yield on U.S. Treasury Securities at 20-Year Constant Maturity
 # - DGS10: Market Yield on U.S. Treasury Securities at 10-Year Constant Maturity
 # - DGS2: Market Yield on U.S. Treasury Securities at 2-Year Constant Maturity
 # - DGS1: Market Yield on U.S. Treasury Securities at 1-Year Constant Maturity
@@ -62,9 +64,9 @@ def get_fred_indicators(
         query = text("""
             SELECT timestamp, indicator_code, value 
             FROM economic_indicators 
-            WHERE indicator_code IN ('DGS10', 'DGS2', 'DGS1', 'TB3MS', 'DFF') 
+            WHERE indicator_code IN ('DGS30', 'DGS20', 'DGS10', 'DGS2', 'DGS1', 'TB3MS', 'DFF') 
             ORDER BY timestamp DESC
-            LIMIT 2000
+            LIMIT 4000
         """)
         rows = db.execute(query).fetchall()
         
@@ -75,7 +77,11 @@ def get_fred_indicators(
                 data_map[date_str] = {"date": date_str}
             
             val = float(r.value)
-            if r.indicator_code == 'DGS10':
+            if r.indicator_code == 'DGS30':
+                data_map[date_str]["year30"] = val
+            elif r.indicator_code == 'DGS20':
+                data_map[date_str]["year20"] = val
+            elif r.indicator_code == 'DGS10':
                 data_map[date_str]["year10"] = val
             elif r.indicator_code == 'DGS2':
                 data_map[date_str]["year2"] = val

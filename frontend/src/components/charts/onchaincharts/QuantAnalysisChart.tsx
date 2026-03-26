@@ -29,20 +29,36 @@ const QuantAnalysisChart: React.FC<QuantAnalysisChartProps> = ({
         const loadHighcharts = async () => {
             try {
                 const [
-                    { default: HighchartsReactComponent },
-                    { default: HighchartsCore }
+                    HighchartsReactComponentModule,
+                    HighchartsCoreModule
                 ] = await Promise.all([
                     import('highcharts-react-official'),
                     import('highcharts/highstock')
                 ]);
 
-                await Promise.all([
+                const HighchartsReactComponent = HighchartsReactComponentModule.default || HighchartsReactComponentModule;
+                const HighchartsCore = HighchartsCoreModule.default || HighchartsCoreModule;
+
+                if (!HighchartsCore) {
+                    throw new Error('Highcharts Core could not be loaded');
+                }
+
+                // Highcharts 모듈들 로드 및 초기화
+                const moduleImports = await Promise.all([
                     import('highcharts/modules/stock'),
                     import('highcharts/modules/exporting'),
                     import('highcharts/modules/accessibility'),
                     import('highcharts/modules/drag-panes'),
                     import('highcharts/modules/navigator')
                 ]);
+
+                // 각 모듈 초기화 (CJS/ESM 공통 대응)
+                moduleImports.forEach((mod) => {
+                    const init = mod.default || mod;
+                    if (typeof init === 'function') {
+                        (init as any)(HighchartsCore);
+                    }
+                });
 
                 setHighchartsReact(() => HighchartsReactComponent);
                 setHighcharts(HighchartsCore);
@@ -72,7 +88,7 @@ const QuantAnalysisChart: React.FC<QuantAnalysisChartProps> = ({
         staleTime: 1000 * 60 * 60 // 1 hour
     });
 
-    const getChartOptions = () => {
+    const chartOptions = useMemo(() => {
         console.log('[QuantChart] getChartOptions called, quantData:', quantData);
         if (!quantData || !quantData.timeseries_data || !Highcharts) {
             console.log('[QuantChart] Skipping render due to missing data or Highcharts instance');
@@ -138,7 +154,10 @@ const QuantAnalysisChart: React.FC<QuantAnalysisChartProps> = ({
                 height: height,
                 type: 'line',
                 backgroundColor: 'transparent',
-                style: { fontFamily: 'inherit' }
+                style: { fontFamily: 'inherit' },
+                zooming: {
+                    type: 'xy'
+                }
             },
             xAxis: {
                 events: {
@@ -282,9 +301,10 @@ const QuantAnalysisChart: React.FC<QuantAnalysisChartProps> = ({
                 }
             ],
             credits: { enabled: false },
-            exporting: { enabled: showExporting }
+            exporting: { enabled: showExporting },
+            accessibility: { enabled: false }
         };
-    };
+    }, [quantData, colorMode, Highcharts, height, onTimeRangeChange, showExporting]);
 
     if (!isClient || !HighchartsReact || !Highcharts) {
         return (
@@ -326,7 +346,7 @@ const QuantAnalysisChart: React.FC<QuantAnalysisChartProps> = ({
                 <HighchartsReact
                     highcharts={Highcharts}
                     constructorType={'stockChart'}
-                    options={getChartOptions()}
+                    options={chartOptions}
                     ref={chartRef}
                 />
             </div>

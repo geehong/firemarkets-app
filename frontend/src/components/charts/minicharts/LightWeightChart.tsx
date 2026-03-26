@@ -14,13 +14,15 @@ import {
 import { useDelayedQuotes, useSparklinePrice } from "@/hooks/data/useRealtime"
 import { useRealtimePrices } from "@/hooks/data/useSocket"
 import { useAssetDetail } from "@/hooks/assets/useAssets"
-
 type LightWeightChartProps = {
   assetIdentifier: string
   title?: string
   chartType?: "crypto" | "stocks"
   dataSource?: string
   data?: LineDataPoint[]
+  height?: number
+  color?: string
+  minimal?: boolean
 }
 
 type ApiResponsePoint = {
@@ -36,13 +38,15 @@ type LineDataPoint = {
   time: Time
   value: number
 }
-
 const LightWeightChart: React.FC<LightWeightChartProps> = ({
   assetIdentifier,
   title,
   chartType = "crypto",
   dataSource,
   data: propsData,
+  height,
+  color: propColor,
+  minimal = false,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -55,8 +59,11 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
     setMounted(true)
   }, [])
 
-  // 데이터/자산 정보 훅
-  const { data: assetDetail } = useAssetDetail(assetIdentifier || "")
+  const isExternalData = useMemo(() => !!(propsData && propsData.length > 0) || assetIdentifier?.startsWith('macro-'), [propsData, assetIdentifier])
+
+  // 데이터/자산 정보 훅 (외부 데이터가 없을 때만 실행)
+  // useAssetDetail은 현재 options를 지원하지 않으므로 isExternalData일 경우 빈 문자열 전달로 fetch 방지
+  const { data: assetDetail } = useAssetDetail(!isExternalData ? (assetIdentifier || "") : "")
 
   const isStocksOrEtf = useMemo(() => {
     if (!assetIdentifier) return false
@@ -72,17 +79,17 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
   const delayedQuotesQuery = useDelayedQuotes(
     [assetIdentifier],
     { dataSource, dataInterval },
-    { enabled: !isStocksOrEtf && !!assetIdentifier && !propsData }
+    { enabled: !isExternalData && !isStocksOrEtf && !!assetIdentifier }
   )
 
   const sparklineQuery = useSparklinePrice(
     assetIdentifier,
     { dataInterval, days: 1, dataSource },
-    { enabled: isStocksOrEtf && !!assetIdentifier && !propsData }
+    { enabled: !isExternalData && isStocksOrEtf && !!assetIdentifier }
   )
 
   const apiResponse: any = isStocksOrEtf ? sparklineQuery.data : delayedQuotesQuery.data
-  const { latestPrice } = useRealtimePrices(assetIdentifier || "")
+  const { latestPrice } = useRealtimePrices(assetIdentifier || "", { enabled: !isExternalData && !!assetIdentifier })
 
   // API 응답을 lightweight-charts 형식으로 다운샘플/매핑
   const seriesData = useMemo(() => {
@@ -176,8 +183,12 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
         vertLines: { color: "rgba(148, 163, 184, 0.12)" },
         horzLines: { color: "rgba(148, 163, 184, 0.12)" },
       },
-      rightPriceScale: { visible: true, borderVisible: false },
+      rightPriceScale: { 
+        visible: !minimal, 
+        borderVisible: false 
+      },
       timeScale: {
+        visible: !minimal,
         borderVisible: false,
         rightOffset: 4,
         barSpacing: 6,
@@ -217,9 +228,9 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
     if (!seriesRef.current || !seriesData.length) return
     
     seriesRef.current.setData(seriesData)
-    const color = isPositive ? "#22c55e" : "#ef4444"
-    const topColor = isPositive ? "rgba(34, 197, 94, 0.4)" : "rgba(239, 68, 68, 0.4)"
-    const bottomColor = isPositive ? "rgba(34, 197, 94, 0.05)" : "rgba(239, 68, 68, 0.05)"
+    const color = propColor || (isPositive ? "#22c55e" : "#ef4444")
+    const topColor = propColor ? `${propColor}66` : (isPositive ? "rgba(34, 197, 94, 0.4)" : "rgba(239, 68, 68, 0.4)")
+    const bottomColor = propColor ? `${propColor}0D` : (isPositive ? "rgba(34, 197, 94, 0.05)" : "rgba(239, 68, 68, 0.05)")
 
     seriesRef.current.applyOptions({
       lineColor: color,
@@ -252,56 +263,63 @@ const LightWeightChart: React.FC<LightWeightChartProps> = ({
 
   if (!mounted) {
     return (
-      <div className="flex flex-col gap-1 h-full w-full">
-        <div className="flex-1 min-h-[160px] bg-slate-100 dark:bg-slate-800 animate-pulse rounded-md" />
+      <div className="flex flex-col gap-1 h-full w-full" style={{ height: height ? `${height}px` : 'auto' }}>
+        <div className={`flex-1 min-h-[${height || 160}px] bg-slate-100 dark:bg-slate-800 animate-pulse rounded-md`} 
+             style={{ minHeight: height ? `${height}px` : '160px' }} />
       </div>
     )
   }
 
   return (
     <div className="flex flex-col gap-1 h-full w-full">
-      <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-        <div className="flex items-baseline gap-2">
-          {title && (
-            <span className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full animate-pulse ${isPositive ? 'bg-green-500' : 'bg-red-500'}`} />
-              {title}
+      {!minimal && (
+        <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+          <div className="flex items-baseline gap-2">
+            {title && (
+              <span className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full animate-pulse ${isPositive ? 'bg-green-500' : 'bg-red-500'}`} />
+                {title}
+              </span>
+            )}
+            {firstPrice > 0 && (
+              <div className={`flex items-baseline gap-1 ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
+                <span className="font-semibold">
+                  {isPositive ? '+' : ''}{changeAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+                <span className="text-[10px] opacity-80">
+                  ({isPositive ? '+' : ''}{changePercent.toFixed(2)}%)
+                </span>
+              </div>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-2">
+            {!propsData && (
+               <select 
+                  className="bg-transparent border border-gray-200 dark:border-gray-800 rounded px-1 min-w-[50px] text-[10px] text-gray-500 dark:text-gray-400 outline-none hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+                  value={dataInterval}
+                  onChange={(e) => setDataInterval(e.target.value)}
+                >
+                  <option value="1m">1m</option>
+                  <option value="5m">5m</option>
+                  <option value="15m">15m</option>
+                  <option value="30m">30m</option>
+                </select>
+            )}
+            <span className="font-medium truncate uppercase bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded text-[10px]">
+              {assetIdentifier || "Data"}
             </span>
-          )}
-          {firstPrice > 0 && (
-            <div className={`flex items-baseline gap-1 ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
-              <span className="font-semibold">
-                {isPositive ? '+' : ''}{changeAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-              <span className="text-[10px] opacity-80">
-                ({isPositive ? '+' : ''}{changePercent.toFixed(2)}%)
-              </span>
-            </div>
-          )}
+          </div>
         </div>
-        
-        <div className="flex items-center gap-2">
-          {!propsData && (
-             <select 
-                className="bg-transparent border border-gray-200 dark:border-gray-800 rounded px-1 min-w-[50px] text-[10px] text-gray-500 dark:text-gray-400 outline-none hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
-                value={dataInterval}
-                onChange={(e) => setDataInterval(e.target.value)}
-              >
-                <option value="1m">1m</option>
-                <option value="5m">5m</option>
-                <option value="15m">15m</option>
-                <option value="30m">30m</option>
-              </select>
-          )}
-          <span className="font-medium truncate uppercase bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded text-[10px]">
-            {assetIdentifier || "Data"}
-          </span>
-        </div>
-      </div>
+      )}
       
       <div
         ref={containerRef}
-        className="relative w-full h-full min-h-[160px] rounded-md bg-white/60 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800 overflow-hidden"
+        className={`relative w-full h-full rounded-md overflow-hidden ${!minimal ? 'bg-white/60 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800' : ''}`}
+        style={{ 
+          minHeight: height ? `${height}px` : '160px',
+          height: height ? `${height}px` : '100%'
+        }}
       />
     </div>
   )

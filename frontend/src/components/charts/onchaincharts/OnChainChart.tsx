@@ -1,12 +1,12 @@
 "use client"
 
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
 import ChartControls from '@/components/common/ChartControls';
 import { getColorMode } from '@/constants/colorModes';
 
-interface OnChainChartProps {
+export interface OnChainChartProps {
     assetId?: string;
     title?: string;
     height?: number;
@@ -78,25 +78,40 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
         const loadHighcharts = async () => {
             try {
                 const [
-                    { default: HighchartsReactComponent },
-                    { default: HighchartsCore }
+                    HighchartsReactComponentModule,
+                    HighchartsCoreModule
                 ] = await Promise.all([
                     import('highcharts-react-official'),
                     import('highcharts/highstock')
-                ])
+                ]);
 
-                // Highcharts 모듈들 동적 로드
-                await Promise.all([
+                const HighchartsReactComponent = HighchartsReactComponentModule.default || HighchartsReactComponentModule;
+                const HighchartsCore = HighchartsCoreModule.default || HighchartsCoreModule;
+
+                if (!HighchartsCore) {
+                    throw new Error('Highcharts Core could not be loaded');
+                }
+
+                // Highcharts 모듈들 로드 및 초기화
+                const moduleImports = await Promise.all([
                     import('highcharts/modules/stock'),
                     import('highcharts/modules/exporting'),
                     import('highcharts/modules/accessibility'),
                     import('highcharts/modules/drag-panes'),
                     import('highcharts/modules/navigator')
-                ])
+                ]);
 
-                setHighchartsReact(() => HighchartsReactComponent)
-                setHighcharts(HighchartsCore)
-                setIsClient(true)
+                // 각 모듈 초기화 (CJS/ESM 공통 대응)
+                moduleImports.forEach((mod) => {
+                    const init = mod.default || mod;
+                    if (typeof init === 'function') {
+                        (init as any)(HighchartsCore);
+                    }
+                });
+
+                setHighchartsReact(() => HighchartsReactComponent);
+                setHighcharts(HighchartsCore);
+                setIsClient(true);
             } catch (error) {
                 console.error('Failed to load Highcharts:', error)
                 setError('Failed to load chart library')
@@ -437,363 +452,370 @@ const OnChainChart: React.FC<OnChainChartProps> = ({
 
     const currentTheme = getColorMode(colorMode);
     
-    const chartOptions: any = {
-        chart: {
-            height: height,
-            backgroundColor: transparent ? 'transparent' : '#ffffff',
-            style: {
-                fontFamily: 'Inter, system-ui, sans-serif'
-            },
-            // 모바일 설정
-            zoomType: 'xy',
-            panning: {
-                enabled: true,
-                type: 'xy'
-            },
-            pinchType: 'xy',
-            events: {
-                load: function () {
-                    console.log('차트 로드 완료');
-                    // 초기 상관관계 계산
-
-                    // @ts-ignore
-                    const extremes = this.xAxis[0].getExtremes();
-                    const initialCorrelation = calculateCorrelationForRange(extremes.min, extremes.max);
-                    if (initialCorrelation) {
-                        setCurrentCorrelation(initialCorrelation);
-                        previousCorrelationRef.current = initialCorrelation;
-                    }
-                },
-                render: function () {
-                    console.log('차트 렌더링 완료');
-                }
-            }
-        },
-        title: {
-            text: chartTitle,
-            style: {
-                color: '#1f2937',
-                fontSize: isMobile ? '16px' : '20px'
-            }
-        },
-        subtitle: {
-            text: currentCorrelation
-                ? `${locale === 'ko' ? '상관계수' : 'Correlation'}: ${currentCorrelation.correlation} (${currentCorrelation.interpretation})`
-                : (locale === 'ko' ? '데이터 로딩 중...' : 'Loading data...'),
-            style: {
-                color: currentCorrelation ? (
-                    Math.abs(currentCorrelation.correlation) >= 0.7 ? '#dc2626' :
-                        Math.abs(currentCorrelation.correlation) >= 0.5 ? '#ea580c' :
-                            Math.abs(currentCorrelation.correlation) >= 0.3 ? '#d97706' :
-                                '#6b7280'
-                ) : '#6b7280',
-                fontSize: '14px',
-                fontWeight: 'bold'
-            }
-        },
-        xAxis: {
-            type: 'datetime',
-            labels: {
+    const chartOptions = useMemo(() => {
+        if (!Highcharts) return {};
+        
+        return {
+            chart: {
+                height: height,
+                backgroundColor: transparent ? 'transparent' : '#ffffff',
                 style: {
-                    color: '#374151'
-                }
-            },
-            gridLineColor: '#e5e7eb',
-            events: {
-                afterSetExtremes: function () {
-
-                    // @ts-ignore
-                    const extremes = this.getExtremes();
-                    const newCorrelation = calculateCorrelationForRange(extremes.min, extremes.max);
-
-                    // 이전 값과 비교하여 변경사항이 있을 때만 상태 업데이트
-                    if (newCorrelation && (!currentCorrelation ||
-                        currentCorrelation.correlation !== newCorrelation.correlation ||
-                        currentCorrelation.start_date !== newCorrelation.start_date ||
-                        currentCorrelation.end_date !== newCorrelation.end_date)) {
-                        setCurrentCorrelation(newCorrelation);
-                        console.log('범위 변경 - 새로운 상관관계:', newCorrelation);
-                    }
-                }
-            }
-        },
-        yAxis: [
-            {
-                title: {
-                    text: 'Bitcoin Price (USD)',
-                    style: {
-                        color: '#1f2937',
-                        fontSize: isMobile ? '0px' : '12px' // 모바일에서 제목 숨김
-                    }
+                    fontFamily: 'Inter, system-ui, sans-serif'
                 },
-                labels: {
-                    style: {
-                        color: '#374151',
-                        fontSize: isMobile ? '0px' : '12px' // 모바일에서 라벨 숨김
-                    },
-                    formatter: function () {
-
+                // 모바일 설정
+                zooming: {
+                    type: 'xy'
+                },
+                panning: {
+                    enabled: true,
+                    type: 'xy'
+                },
+                events: {
+                    load: function () {
+                        console.log('차트 로드 완료');
                         // @ts-ignore
-                        return '$' + this.value.toLocaleString('en-US');
+                        if (this.xAxis && this.xAxis[0]) {
+                            // @ts-ignore
+                            const extremes = this.xAxis[0].getExtremes();
+                            const initialCorrelation = calculateCorrelationForRange(extremes.min, extremes.max);
+                            if (initialCorrelation) {
+                                setCurrentCorrelation(initialCorrelation);
+                                previousCorrelationRef.current = initialCorrelation;
+                            }
+                        }
+                    },
+                    render: function () {
+                        console.log('차트 렌더링 완료');
                     }
-                },
-                gridLineColor: '#e5e7eb',
-                opposite: false,
-                type: useLogScaleInternal ? 'logarithmic' : 'linear'
+                }
             },
-            {
-                title: {
-                    text: displayMetricName,
-                    style: {
-                        color: '#1f2937',
-                        fontSize: isMobile ? '0px' : '12px' // 모바일에서 제목 숨김
-                    }
-                },
+            title: {
+                text: chartTitle,
+                style: {
+                    color: '#1f2937',
+                    fontSize: isMobile ? '16px' : '20px'
+                }
+            },
+            subtitle: {
+                text: currentCorrelation
+                    ? `${locale === 'ko' ? '상관계수' : 'Correlation'}: ${currentCorrelation.correlation} (${currentCorrelation.interpretation})`
+                    : (locale === 'ko' ? '데이터 로딩 중...' : 'Loading data...'),
+                style: {
+                    color: currentCorrelation ? (
+                        Math.abs(currentCorrelation.correlation) >= 0.7 ? '#dc2626' :
+                            Math.abs(currentCorrelation.correlation) >= 0.5 ? '#ea580c' :
+                                Math.abs(currentCorrelation.correlation) >= 0.3 ? '#d97706' :
+                                    '#6b7280'
+                    ) : '#6b7280',
+                    fontSize: '14px',
+                    fontWeight: 'bold'
+                }
+            },
+            xAxis: {
+                type: 'datetime',
                 labels: {
                     style: {
-                        color: '#374151',
-                        fontSize: isMobile ? '0px' : '12px' // 모바일에서 라벨 숨김
+                        color: '#374151'
                     }
                 },
                 gridLineColor: '#e5e7eb',
-                opposite: true,
-                type: 'linear' // MVRV Z-Score는 항상 선형 스케일 유지
-            }
-        ],
-        tooltip: {
-            shared: true,
-            backgroundColor: '#ffffff',
-            borderColor: '#d1d5db',
-            style: {
-                color: '#1f2937'
-            },
-            formatter: function () {
-
-                // @ts-ignore
-                const points = this.points || [];
-
-                // @ts-ignore
-                let tooltip = `<b>${Highcharts.dateFormat('%Y-%m-%d', this.x)}</b><br/>`;
-
-
-                points.forEach((point: any) => {
-                    if (point.series.name === 'Bitcoin Price') {
-                        tooltip += `${point.series.name}: $${point.y.toLocaleString('en-US')}<br/>`;
-                    } else {
-                        tooltip += `${point.series.name}: ${point.y.toFixed(3)}<br/>`;
+                events: {
+                    afterSetExtremes: function () {
+                        // @ts-ignore
+                        if (!this.getExtremes) return;
+                        
+                        // @ts-ignore
+                        const extremes = this.getExtremes();
+                        const newCorrelation = calculateCorrelationForRange(extremes.min, extremes.max);
+    
+                        // 이전 값과 비교하여 변경사항이 있을 때만 상태 업데이트
+                        if (newCorrelation && (!currentCorrelation ||
+                            currentCorrelation.correlation !== newCorrelation.correlation ||
+                            currentCorrelation.start_date !== newCorrelation.start_date ||
+                            currentCorrelation.end_date !== newCorrelation.end_date)) {
+                            setCurrentCorrelation(newCorrelation);
+                            console.log('범위 변경 - 새로운 상관관계:', newCorrelation);
+                        }
                     }
-                });
-
-                return tooltip;
-            }
-        },
-        legend: {
-            itemStyle: {
-                color: '#1f2937'
-            },
-            itemHoverStyle: {
-                color: '#374151'
-            }
-        },
-        plotOptions: {
-            series: {
-                marker: {
-                    enabled: false
-                },
-                // 모바일 터치 설정
-                stickyTracking: false,
-                enableMouseTracking: true
-            }
-        },
-        series: [
-            {
-                name: 'Bitcoin Price',
-                type: chartType,
-                data: priceData,
-                color: currentTheme.coin,
-                yAxis: 0,
-                // Area 차트일 때 그라데이션 효과 추가
-                ...(chartType === 'area' || chartType === 'areaspline') && {
-                    fillColor: {
-                        linearGradient: {
-                            x1: 0,
-                            y1: 0,
-                            x2: 0,
-                            y2: 1
-                        },
-                        stops: [
-                            [0, `${currentTheme.coin}B3`], // 0.7 opacity
-                            [0.5, `${currentTheme.coin}59`], // 0.35 opacity
-                            [0.8, `${currentTheme.coin}0D`], // 0.05 opacity
-                            [0.9, `${currentTheme.coin}05`], // 0.02 opacity
-                            [1, `${currentTheme.coin}03`] // 0.01 opacity
-                        ]
-                    }
-                },
-                tooltip: {
-                    valueDecimals: 2,
-                    valuePrefix: '$'
                 }
             },
-            {
-                name: displayMetricName,
-                type: chartType,
-                data: mvrvData,
-                color: currentTheme.metric,
-                yAxis: 1,
-                // Area 차트일 때 그라데이션 효과 추가
-                ...(chartType === 'area' || chartType === 'areaspline') && {
-                    fillColor: {
-                        linearGradient: {
-                            x1: 0,
-                            y1: 0,
-                            x2: 0,
-                            y2: 1
+            yAxis: [
+                {
+                    title: {
+                        text: 'Bitcoin Price (USD)',
+                        style: {
+                            color: '#1f2937',
+                            fontSize: isMobile ? '0px' : '12px' // 모바일에서 제목 숨김
+                        }
+                    },
+                    labels: {
+                        style: {
+                            color: '#374151',
+                            fontSize: isMobile ? '0px' : '12px' // 모바일에서 라벨 숨김
                         },
-                        stops: [
-                            [0, `${currentTheme.metric}B3`], // 0.7 opacity
-                            [0.5, `${currentTheme.metric}59`], // 0.35 opacity
-                            [0.8, `${currentTheme.metric}0D`], // 0.05 opacity
-                            [0.9, `${currentTheme.metric}05`], // 0.02 opacity
-                            [1, `${currentTheme.metric}03`] // 0.01 opacity
-                        ]
-                    }
-                },
-                tooltip: {
-                    valueDecimals: 3
-                }
-            }
-        ],
-        rangeSelector: showRangeSelector && !isMobile ? {
-            enabled: true,
-            selected: 5,
-            buttons: [
-                {
-                    type: 'month',
-                    count: 1,
-                    text: '1M'
+                        formatter: function () {
+                            // @ts-ignore
+                            return '$' + this.value.toLocaleString('en-US');
+                        }
+                    },
+                    gridLineColor: '#e5e7eb',
+                    opposite: false,
+                    type: useLogScaleInternal ? 'logarithmic' : 'linear'
                 },
                 {
-                    type: 'month',
-                    count: 3,
-                    text: '3M'
-                },
-                {
-                    type: 'month',
-                    count: 6,
-                    text: '6M'
-                },
-                {
-                    type: 'year',
-                    count: 3,
-                    text: '3Y'
-                },
-                {
-                    type: 'year',
-                    count: 5,
-                    text: '5Y'
-                },
-                {
-                    type: 'all',
-                    text: 'All'
+                    title: {
+                        text: displayMetricName,
+                        style: {
+                            color: '#1f2937',
+                            fontSize: isMobile ? '0px' : '12px' // 모바일에서 제목 숨김
+                        }
+                    },
+                    labels: {
+                        style: {
+                            color: '#374151',
+                            fontSize: isMobile ? '0px' : '12px' // 모바일에서 라벨 숨김
+                        }
+                    },
+                    gridLineColor: '#e5e7eb',
+                    opposite: true,
+                    type: 'linear' // MVRV Z-Score는 항상 선형 스케일 유지
                 }
             ],
-            buttonTheme: {
-                fill: '#f3f4f6',
-                stroke: '#d1d5db',
+            tooltip: {
+                shared: true,
+                backgroundColor: '#ffffff',
+                borderColor: '#d1d5db',
                 style: {
                     color: '#1f2937'
                 },
-                states: {
-                    hover: {
-                        fill: '#e5e7eb'
-                    },
-                    select: {
-                        fill: '#3b82f6',
-                        style: {
-                            color: '#ffffff'
+                formatter: function () {
+                    // @ts-ignore
+                    const points = this.points || [];
+                    // @ts-ignore
+                    let tooltip = `<b>${Highcharts.dateFormat('%Y-%m-%d', this.x)}</b><br/>`;
+    
+                    points.forEach((point: any) => {
+                        if (point.series.name === 'Bitcoin Price') {
+                            tooltip += `${point.series.name}: $${point.y.toLocaleString('en-US')}<br/>`;
+                        } else {
+                            tooltip += `${point.series.name}: ${point.y.toFixed(3)}<br/>`;
                         }
-                    }
+                    });
+    
+                    return tooltip;
                 }
             },
-            inputStyle: {
-                backgroundColor: '#ffffff',
-                color: '#1f2937'
-            },
-            labelStyle: {
-                color: '#1f2937'
-            }
-        } : {
-            enabled: false
-        },
-        navigator: {
-            enabled: showRangeSelector && !isMobile,
-            handles: {
-                backgroundColor: '#3b82f6',
-                borderColor: '#1d4ed8'
-            },
-            outlineColor: '#d1d5db',
-            maskFill: 'rgba(59, 130, 246, 0.1)',
-            series: {
-                color: '#6b7280'
-            }
-        },
-        scrollbar: {
-            enabled: showRangeSelector && !isMobile,
-            barBackgroundColor: '#f3f4f6',
-            barBorderRadius: 7,
-            barBorderWidth: 0,
-            buttonBackgroundColor: '#f3f4f6',
-            buttonBorderWidth: 0,
-            buttonBorderRadius: 7,
-            rifleColor: '#6b7280',
-            trackBackgroundColor: '#ffffff',
-            trackBorderWidth: 1,
-            trackBorderRadius: 8,
-            trackBorderColor: '#d1d5db'
-        },
-        exporting: {
-            enabled: showExporting,
-            buttons: {
-                contextButton: {
-                    theme: {
-                        fill: '#f3f4f6',
-                        stroke: '#d1d5db',
-                        style: {
-                            color: '#1f2937'
-                        }
-                    }
-                }
-            }
-        },
-        // 모바일 최적화 설정
-        responsive: {
-            rules: [{
-                condition: {
-                    maxWidth: 768
+            legend: {
+                itemStyle: {
+                    color: '#1f2937'
                 },
-                chartOptions: {
-                    chart: {
-                        height: Math.min(height, 800),
-                        spacing: [10, 10, 10, 10]
+                itemHoverStyle: {
+                    color: '#374151'
+                }
+            },
+            plotOptions: {
+                series: {
+                    marker: {
+                        enabled: false
                     },
-                    rangeSelector: {
-                        inputEnabled: false
+                    // 모바일 터치 설정
+                    stickyTracking: false,
+                    enableMouseTracking: true
+                }
+            },
+            series: [
+                {
+                    name: 'Bitcoin Price',
+                    type: chartType,
+                    data: priceData,
+                    color: currentTheme.coin,
+                    yAxis: 0,
+                    // Area 차트일 때 그라데이션 효과 추가
+                    ...(chartType === 'area' || chartType === 'areaspline') && {
+                        fillColor: {
+                            linearGradient: {
+                                x1: 0,
+                                y1: 0,
+                                x2: 0,
+                                y2: 1
+                            },
+                            stops: [
+                                [0, `${currentTheme.coin}B3`], // 0.7 opacity
+                                [0.5, `${currentTheme.coin}59`], // 0.35 opacity
+                                [0.8, `${currentTheme.coin}0D`], // 0.05 opacity
+                                [0.9, `${currentTheme.coin}05`], // 0.02 opacity
+                                [1, `${currentTheme.coin}03`] // 0.01 opacity
+                            ]
+                        }
                     },
                     tooltip: {
-                        positioner: function (labelWidth: number, labelHeight: number, point: any) {
-
-                            const chart = (this as any).chart;
-                            return {
-                                x: Math.min(point.plotX + chart.plotLeft, chart.chartWidth - labelWidth - 10),
-                                y: Math.max(point.plotY + chart.plotTop - labelHeight - 10, 10)
-                            };
+                        valueDecimals: 2,
+                        valuePrefix: '$'
+                    }
+                },
+                {
+                    name: displayMetricName,
+                    type: chartType,
+                    data: mvrvData,
+                    color: currentTheme.metric,
+                    yAxis: 1,
+                    // Area 차트일 때 그라데이션 효과 추가
+                    ...(chartType === 'area' || chartType === 'areaspline') && {
+                        fillColor: {
+                            linearGradient: {
+                                x1: 0,
+                                y1: 0,
+                                x2: 0,
+                                y2: 1
+                            },
+                            stops: [
+                                [0, `${currentTheme.metric}B3`], // 0.7 opacity
+                                [0.5, `${currentTheme.metric}59`], // 0.35 opacity
+                                [0.8, `${currentTheme.metric}0D`], // 0.05 opacity
+                                [0.9, `${currentTheme.metric}05`], // 0.02 opacity
+                                [1, `${currentTheme.metric}03`] // 0.01 opacity
+                            ]
+                        }
+                    },
+                    tooltip: {
+                        valueDecimals: 3
+                    }
+                }
+            ],
+            rangeSelector: showRangeSelector && !isMobile ? {
+                enabled: true,
+                selected: 5,
+                buttons: [
+                    {
+                        type: 'month',
+                        count: 1,
+                        text: '1M'
+                    },
+                    {
+                        type: 'month',
+                        count: 3,
+                        text: '3M'
+                    },
+                    {
+                        type: 'month',
+                        count: 6,
+                        text: '6M'
+                    },
+                    {
+                        type: 'year',
+                        count: 3,
+                        text: '3Y'
+                    },
+                    {
+                        type: 'year',
+                        count: 5,
+                        text: '5Y'
+                    },
+                    {
+                        type: 'all',
+                        text: 'All'
+                    }
+                ],
+                buttonTheme: {
+                    fill: '#f3f4f6',
+                    stroke: '#d1d5db',
+                    style: {
+                        color: '#1f2937'
+                    },
+                    states: {
+                        hover: {
+                            fill: '#e5e7eb'
+                        },
+                        select: {
+                            fill: '#3b82f6',
+                            style: {
+                                color: '#ffffff'
+                            }
+                        }
+                    }
+                },
+                inputStyle: {
+                    backgroundColor: '#ffffff',
+                    color: '#1f2937'
+                },
+                labelStyle: {
+                    color: '#1f2937'
+                }
+            } : {
+                enabled: false
+            },
+            navigator: {
+                enabled: showRangeSelector && !isMobile,
+                handles: {
+                    backgroundColor: '#3b82f6',
+                    borderColor: '#1d4ed8'
+                },
+                outlineColor: '#d1d5db',
+                maskFill: 'rgba(59, 130, 246, 0.1)',
+                series: {
+                    color: '#6b7280'
+                }
+            },
+            scrollbar: {
+                enabled: showRangeSelector && !isMobile,
+                barBackgroundColor: '#f3f4f6',
+                barBorderRadius: 7,
+                barBorderWidth: 0,
+                buttonBackgroundColor: '#f3f4f6',
+                buttonBorderWidth: 0,
+                buttonBorderRadius: 7,
+                rifleColor: '#6b7280',
+                trackBackgroundColor: '#ffffff',
+                trackBorderWidth: 1,
+                trackBorderRadius: 8,
+                trackBorderColor: '#d1d5db'
+            },
+            exporting: {
+                enabled: showExporting,
+                buttons: {
+                    contextButton: {
+                        theme: {
+                            fill: '#f3f4f6',
+                            stroke: '#d1d5db',
+                            style: {
+                                color: '#1f2937'
+                            }
                         }
                     }
                 }
-            }]
-        }
-    };
+            },
+            accessibility: {
+                enabled: false // Disable accessibility to prevent internal Highcharts errors when objects are inconsistent
+            },
+            // 모바일 최적화 설정
+            responsive: {
+                rules: [{
+                    condition: {
+                        maxWidth: 768
+                    },
+                    chartOptions: {
+                        chart: {
+                            height: Math.min(height, 800),
+                            spacing: [10, 10, 10, 10]
+                        },
+                        rangeSelector: {
+                            inputEnabled: false
+                        },
+                        tooltip: {
+                            positioner: function (labelWidth: number, labelHeight: number, point: any): { x: number; y: number } {
+                                // @ts-ignore
+                                const chart = this.chart;
+                                return {
+                                    x: Math.min(point.plotX + chart.plotLeft, chart.chartWidth - labelWidth - 10),
+                                    y: Math.max(point.plotY + chart.plotTop - labelHeight - 10, 10)
+                                };
+                            }
+                        }
+                    }
+                }]
+            }
+        };
+    }, [height, transparent, chartTitle, locale, currentCorrelation, isMobile, useLogScaleInternal, displayMetricName, chartType, priceData, mvrvData, showRangeSelector, showExporting, currentTheme]);
 
     if (loading) {
         return (

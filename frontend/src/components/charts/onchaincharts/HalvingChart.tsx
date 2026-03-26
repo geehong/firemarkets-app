@@ -81,32 +81,47 @@ const HalvingChart: React.FC<HalvingChartProps> = ({
         const loadHighcharts = async () => {
             try {
                 const [
-                    { default: HighchartsReactComponent },
-                    { default: HighchartsCore }
+                    HighchartsReactComponentModule,
+                    HighchartsCoreModule
                 ] = await Promise.all([
                     import('highcharts-react-official'),
                     import('highcharts/highstock')
-                ])
+                ]);
 
-                // Highcharts 모듈들 동적 로드
-                await Promise.all([
+                const HighchartsReactComponent = HighchartsReactComponentModule.default || HighchartsReactComponentModule;
+                const HighchartsCore = HighchartsCoreModule.default || HighchartsCoreModule;
+
+                if (!HighchartsCore) {
+                    throw new Error('Highcharts Core could not be loaded');
+                }
+
+                // Highcharts 모듈들 로드 및 초기화
+                const moduleImports = await Promise.all([
                     import('highcharts/modules/stock'),
                     import('highcharts/modules/exporting'),
                     import('highcharts/modules/accessibility'),
                     import('highcharts/modules/drag-panes'),
                     import('highcharts/modules/navigator')
-                ])
+                ]);
 
-                setHighchartsReact(() => HighchartsReactComponent)
-                setHighcharts(HighchartsCore)
-                setIsClient(true)
+                // 각 모듈 초기화 (CJS/ESM 공통 대응)
+                moduleImports.forEach((mod) => {
+                    const init = mod.default || mod;
+                    if (typeof init === 'function') {
+                        (init as any)(HighchartsCore);
+                    }
+                });
+
+                setHighchartsReact(() => HighchartsReactComponent);
+                setHighcharts(HighchartsCore);
+                setIsClient(true);
             } catch (error) {
-                console.error('Failed to load Highcharts:', error)
+                console.error('Failed to load Highcharts:', error);
             }
-        }
+        };
 
-        loadHighcharts()
-    }, [])
+        loadHighcharts();
+    }, []);
 
     // 화면 크기 변경 감지
     useEffect(() => {

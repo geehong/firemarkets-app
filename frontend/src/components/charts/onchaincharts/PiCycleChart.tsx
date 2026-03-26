@@ -39,18 +39,34 @@ const PiCycleChart: React.FC<PiCycleChartProps> = ({
         const loadHighcharts = async () => {
             try {
                 const [
-                    { default: HighchartsReactComponent },
-                    { default: HighchartsCore }
+                    HighchartsReactComponentModule,
+                    HighchartsCoreModule
                 ] = await Promise.all([
                     import('highcharts-react-official'),
                     import('highcharts/highstock')
-                ])
+                ]);
 
-                await Promise.all([
+                const HighchartsReactComponent = HighchartsReactComponentModule.default || HighchartsReactComponentModule;
+                const HighchartsCore = HighchartsCoreModule.default || HighchartsCoreModule;
+
+                if (!HighchartsCore) {
+                    throw new Error('Highcharts Core could not be loaded');
+                }
+
+                // Highcharts 모듈들 로드 및 초기화
+                const moduleImports = await Promise.all([
                     import('highcharts/modules/stock'),
                     import('highcharts/modules/exporting'),
                     import('highcharts/modules/accessibility')
-                ])
+                ]);
+
+                // 각 모듈 초기화 (CJS/ESM 공통 대응)
+                moduleImports.forEach((mod) => {
+                    const init = mod.default || mod;
+                    if (typeof init === 'function') {
+                        (init as any)(HighchartsCore);
+                    }
+                });
 
                 setHighchartsReact(() => HighchartsReactComponent)
                 setHighcharts(HighchartsCore)
