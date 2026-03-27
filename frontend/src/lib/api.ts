@@ -54,10 +54,9 @@ export function resolveApiBaseUrl(): string {
   if (isClient && window.location && window.location.hostname) {
     const hostname = window.location.hostname;
 
-    // 프로덕션 환경 (firemarkets.net) - 환경변수보다 우선순위 높임 (Relative path 방지)
+    // 프로덕션 환경 (firemarkets.net) - 상대 경로 기반으로 변경 (Next.js Rewrites 활용)
     if (hostname.includes('firemarkets.net')) {
-      // console.log('[resolveApiBaseUrl] Using Production API');
-      return 'https://backend.firemarkets.net/api/v1';
+      return '/api/v1';
     }
   }
 
@@ -761,6 +760,20 @@ export class ApiClient {
 
   getMe() {
     return this.request('/auth/me')
+  }
+
+  googleLogin(credential: string) {
+    return this.request('/auth/oauth/google', {
+      method: 'POST',
+      body: JSON.stringify({ credential })
+    })
+  }
+
+  xLogin(code: string, redirect_uri: string, code_verifier?: string) {
+    return this.request('/auth/oauth/x', {
+      method: 'POST',
+      body: JSON.stringify({ code, redirect_uri, code_verifier })
+    })
   }
 
   // ============================================================================

@@ -772,7 +772,9 @@ class User(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String(50), unique=True, nullable=False, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
-    password_hash = Column(String(255), nullable=False)
+    password_hash = Column(String(255), nullable=True)  # OAuth 유저는 null
+    oauth_provider = Column(String(20), nullable=True, index=True)  # 'google', 'x'
+    oauth_id = Column(String(255), nullable=True, unique=True)  # Provider별 고유 ID
     role = Column(String(30), nullable=False, default='user', index=True)
     permissions = Column(JSON, nullable=False)
     is_active = Column(Boolean, nullable=False, default=True)

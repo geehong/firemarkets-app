@@ -100,6 +100,20 @@ export function useAuth() {
     return result
   }, [syncSessionState])
 
+  // Google OAuth 로그인
+  const googleLogin = useCallback(async (credential: string) => {
+    const result = await sessionService.googleLogin(credential)
+    syncSessionState()
+    return result
+  }, [syncSessionState])
+
+  // X OAuth 로그인
+  const xLogin = useCallback(async (code: string, redirectUri: string, codeVerifier?: string) => {
+    const result = await sessionService.xLogin(code, redirectUri, codeVerifier)
+    syncSessionState()
+    return result
+  }, [syncSessionState])
+
   // 로그아웃
   const logout = useCallback(async () => {
     await sessionService.logout()
@@ -144,8 +158,11 @@ export function useAuth() {
     isAdmin,
     hasPermission,
     login,
+    googleLogin,
+    xLogin,
     logout,
     checkAuth,
     refreshToken,
   }
 }
+

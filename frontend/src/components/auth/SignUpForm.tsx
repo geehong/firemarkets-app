@@ -4,11 +4,63 @@ import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import { ChevronLeftIcon, EyeCloseIcon, EyeIcon } from "@/icons";
 import Link from "next/link";
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/hooks/auth/useAuthNew";
+import { loadGoogleScript, initGoogleLogin, triggerGoogleLogin, initiateXLogin } from "@/utils/oauth";
 
 export default function SignUpForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+
+  const { googleLogin } = useAuth();
+
+  // Google GSI 초기화
+  useEffect(() => {
+    loadGoogleScript()
+      .then(() => {
+        initGoogleLogin(
+          async (credential) => {
+            setError(null);
+            setLoading(true);
+            try {
+              const result = await googleLogin(credential);
+              if (result.success) {
+                window.alert("Google Sign-up Success! Redirecting...");
+                router.push("/dashboard");
+              } else {
+                window.alert("Google Sign-up Failed: " + (result.error || "unknown error"));
+                setError(result.error || "Google sign-up failed");
+              }
+            } catch (err: any) {
+              window.alert("Google Sign-up Error Exception: " + (err.message || String(err)));
+              setError("Google sign-up failed");
+            } finally {
+              setLoading(false);
+            }
+          },
+          (errorMsg) => {
+            window.alert(`Google GSI Library Error: ${errorMsg}`);
+            setError(errorMsg)
+          }
+        );
+      })
+      .catch(() => {
+        console.warn("Google GSI script failed to load");
+      });
+  }, [googleLogin, router]);
+
+  const handleGoogleClick = useCallback(() => {
+    triggerGoogleLogin();
+  }, []);
+
+  const handleXClick = useCallback(() => {
+    initiateXLogin();
+  }, []);
+
   return (
     <div className="flex flex-col flex-1 lg:w-1/2 w-full overflow-y-auto no-scrollbar">
       <div className="w-full max-w-md sm:pt-10 mx-auto mb-5">
@@ -32,7 +84,11 @@ export default function SignUpForm() {
           </div>
           <div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-5">
-              <button className="inline-flex items-center justify-center gap-3 py-3 text-sm font-normal text-gray-700 transition-colors bg-gray-100 rounded-lg px-7 hover:bg-gray-200 hover:text-gray-800 dark:bg-white/5 dark:text-white/90 dark:hover:bg-white/10">
+              <button
+                onClick={handleGoogleClick}
+                disabled={loading}
+                className="inline-flex items-center justify-center gap-3 py-3 text-sm font-normal text-gray-700 transition-colors bg-gray-100 rounded-lg px-7 hover:bg-gray-200 hover:text-gray-800 dark:bg-white/5 dark:text-white/90 dark:hover:bg-white/10"
+              >
                 <svg
                   width="20"
                   height="20"
@@ -59,7 +115,11 @@ export default function SignUpForm() {
                 </svg>
                 Sign up with Google
               </button>
-              <button className="inline-flex items-center justify-center gap-3 py-3 text-sm font-normal text-gray-700 transition-colors bg-gray-100 rounded-lg px-7 hover:bg-gray-200 hover:text-gray-800 dark:bg-white/5 dark:text-white/90 dark:hover:bg-white/10">
+              <button
+                onClick={handleXClick}
+                disabled={loading}
+                className="inline-flex items-center justify-center gap-3 py-3 text-sm font-normal text-gray-700 transition-colors bg-gray-100 rounded-lg px-7 hover:bg-gray-200 hover:text-gray-800 dark:bg-white/5 dark:text-white/90 dark:hover:bg-white/10"
+              >
                 <svg
                   width="21"
                   className="fill-current"
@@ -145,6 +205,13 @@ export default function SignUpForm() {
                     </span>
                   </div>
                 </div>
+
+                {error && (
+                  <div className="text-sm text-error-500">
+                    {error}
+                  </div>
+                )}
+
                 {/* <!-- Checkbox --> */}
                 <div className="flex items-center gap-3">
                   <Checkbox

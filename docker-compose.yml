@@ -374,8 +374,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: https://backend.firemarkets.net/api/v1
-        NEXT_PUBLIC_BACKEND_API_BASE: https://backend.firemarkets.net/api/v1
+        NEXT_PUBLIC_API_URL: /api/v1
+        NEXT_PUBLIC_BACKEND_API_BASE: /api/v1
         NEXT_PUBLIC_TINYMCE_API_KEY: ${NEXT_PUBLIC_TINYMCE_API_KEY}
     container_name: fire_markets_frontend
     restart: unless-stopped
@@ -387,8 +387,8 @@ services:
       NODE_ENV: production
       TZ: Asia/Seoul
       BACKEND_API_BASE: http://backend:8000/api/v1
-      NEXT_PUBLIC_API_URL: https://backend.firemarkets.net/api/v1
-      NEXT_PUBLIC_BACKEND_API_BASE: https://backend.firemarkets.net/api/v1
+      NEXT_PUBLIC_API_URL: /api/v1
+      NEXT_PUBLIC_BACKEND_API_BASE: /api/v1
       NEXT_TELEMETRY_DISABLED: 1
     # Production uses the built image, no need for source code volumes
     volumes:

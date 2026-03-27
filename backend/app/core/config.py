@@ -72,6 +72,9 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 CRYPTOPANIC_API_KEY = os.getenv("CRYPTOPANIC_API_KEY")
 
+# OAuth 설정
+GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID", os.getenv("GOOGLE_OAUTH_KEY", ""))
+
 # Redis 설정
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")  # Docker Compose에서는 'redis' 서비스명 사용
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))

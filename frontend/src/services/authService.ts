@@ -157,6 +157,58 @@ class AuthService {
     // Not implemented
     return { success: false, error: 'Not implemented' }
   }
+
+  // Google OAuth 로그인
+  async googleLogin(credential: string): Promise<{ success: boolean; data?: LoginResponse; error?: string }> {
+    try {
+      const data = await apiClient.googleLogin(credential)
+
+      if (data && data.access_token) {
+        apiClient.setAccessToken(data.access_token)
+        const user = await apiClient.getMe()
+
+        const combinedData: LoginResponse = {
+          ...data,
+          user: user,
+          session_id: "oauth-session",
+          expires_at: new Date(Date.now() + 3600 * 1000).toISOString()
+        }
+
+        return { success: true, data: combinedData }
+      } else {
+        return { success: false, error: 'Google login failed' }
+      }
+    } catch (error: any) {
+      console.error('Google login error:', error)
+      return { success: false, error: error.message || 'Google login failed' }
+    }
+  }
+
+  // X OAuth 로그인
+  async xLogin(code: string, redirectUri: string, codeVerifier?: string): Promise<{ success: boolean; data?: LoginResponse; error?: string }> {
+    try {
+      const data = await apiClient.xLogin(code, redirectUri, codeVerifier)
+
+      if (data && data.access_token) {
+        apiClient.setAccessToken(data.access_token)
+        const user = await apiClient.getMe()
+
+        const combinedData: LoginResponse = {
+          ...data,
+          user: user,
+          session_id: "oauth-session",
+          expires_at: new Date(Date.now() + 3600 * 1000).toISOString()
+        }
+
+        return { success: true, data: combinedData }
+      } else {
+        return { success: false, error: 'X login failed' }
+      }
+    } catch (error: any) {
+      console.error('X login error:', error)
+      return { success: false, error: error.message || 'X login failed' }
+    }
+  }
 }
 
 export const authService = new AuthService()

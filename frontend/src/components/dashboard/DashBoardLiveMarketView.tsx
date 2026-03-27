@@ -292,7 +292,7 @@ const DashBoardLiveMarketView = () => {
                                                 <div className="h-full w-full bg-slate-100 dark:bg-slate-800 animate-pulse" />
                                             ) : us10yValue?.historyLW ? (
                                                 <LightWeightChart 
-                                                    assetIdentifier="US10Y" 
+                                                    assetIdentifier="macro-US10Y" 
                                                     data={us10yValue.historyLW} 
                                                     title=""
                                                 />

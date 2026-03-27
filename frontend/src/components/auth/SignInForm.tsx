@@ -5,9 +5,10 @@ import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
 import { ChevronLeftIcon, EyeCloseIcon, EyeIcon } from "@/icons";
 import Link from "next/link";
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/auth/useAuthNew";
+import { loadGoogleScript, initGoogleLogin, triggerGoogleLogin, initiateXLogin } from "@/utils/oauth";
 
 export default function SignInForm() {
   const [showPassword, setShowPassword] = useState(false);
@@ -18,7 +19,50 @@ export default function SignInForm() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const { login } = useAuth();
+  const { login, googleLogin } = useAuth();
+
+  // Google GSI 초기화
+  useEffect(() => {
+    loadGoogleScript()
+      .then(() => {
+        initGoogleLogin(
+          async (credential) => {
+            setError(null);
+            setLoading(true);
+            try {
+              const result = await googleLogin(credential);
+              if (result.success) {
+                window.alert("Google Login Success! Redirecting...");
+                router.push("/dashboard");
+              } else {
+                window.alert("Google Login Failed (result.success=false): " + (result.error || "unknown error"));
+                setError(result.error || "Google sign-in failed");
+              }
+            } catch (err: any) {
+              window.alert(`Google Login Error (exception): ${err.message || String(err)}`);
+              setError("Google sign-in failed");
+            } finally {
+              setLoading(false);
+            }
+          },
+          (errorMsg) => {
+            window.alert(`Google GSI Library Error: ${errorMsg}`);
+            setError(errorMsg)
+          }
+        );
+      })
+      .catch(() => {
+        console.warn("Google GSI script failed to load");
+      });
+  }, [googleLogin, router]);
+
+  const handleGoogleClick = useCallback(() => {
+    triggerGoogleLogin();
+  }, []);
+
+  const handleXClick = useCallback(() => {
+    initiateXLogin();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,14 +77,16 @@ export default function SignInForm() {
       });
 
       if (result.success) {
-        // Redirect to dashboard
+        window.alert("Login Success! Redirecting to dashboard...");
         router.push('/dashboard');
       } else {
+        window.alert("Login Failed: " + (result.error || "Invalid credentials"));
         setError(result.error || "Invalid username or password");
       }
 
     } catch (err: any) {
       console.error("Login failed", err);
+      window.alert("Login Error Exception: " + (err.message || String(err)));
       setError("An unexpected error occurred");
     } finally {
       setLoading(false);
@@ -70,7 +116,11 @@ export default function SignInForm() {
           </div>
           <div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-5">
-              <button className="inline-flex items-center justify-center gap-3 py-3 text-sm font-normal text-gray-700 transition-colors bg-gray-100 rounded-lg px-7 hover:bg-gray-200 hover:text-gray-800 dark:bg-white/5 dark:text-white/90 dark:hover:bg-white/10">
+              <button
+                onClick={handleGoogleClick}
+                disabled={loading}
+                className="inline-flex items-center justify-center gap-3 py-3 text-sm font-normal text-gray-700 transition-colors bg-gray-100 rounded-lg px-7 hover:bg-gray-200 hover:text-gray-800 dark:bg-white/5 dark:text-white/90 dark:hover:bg-white/10"
+              >
                 {/* Google Icon */}
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M18.7511 10.1944C18.7511 9.47495 18.6915 8.94995 18.5626 8.40552H10.1797V11.6527H15.1003C15.0011 12.4597 14.4654 13.675 13.2749 14.4916L13.2582 14.6003L15.9087 16.6126L16.0924 16.6305C17.7788 15.1041 18.7511 12.8583 18.7511 10.1944Z" fill="#4285F4" />
@@ -80,7 +130,11 @@ export default function SignInForm() {
                 </svg>
                 Sign in with Google
               </button>
-              <button className="inline-flex items-center justify-center gap-3 py-3 text-sm font-normal text-gray-700 transition-colors bg-gray-100 rounded-lg px-7 hover:bg-gray-200 hover:text-gray-800 dark:bg-white/5 dark:text-white/90 dark:hover:bg-white/10">
+              <button
+                onClick={handleXClick}
+                disabled={loading}
+                className="inline-flex items-center justify-center gap-3 py-3 text-sm font-normal text-gray-700 transition-colors bg-gray-100 rounded-lg px-7 hover:bg-gray-200 hover:text-gray-800 dark:bg-white/5 dark:text-white/90 dark:hover:bg-white/10"
+              >
                 {/* X Icon */}
                 <svg width="21" className="fill-current" height="20" viewBox="0 0 21 20" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M15.6705 1.875H18.4272L12.4047 8.75833L19.4897 18.125H13.9422L9.59717 12.4442L4.62554 18.125H1.86721L8.30887 10.7625L1.51221 1.875H7.20054L11.128 7.0675L15.6705 1.875ZM14.703 16.475H16.2305L6.37054 3.43833H4.73137L14.703 16.475Z" />

@@ -266,7 +266,8 @@ const fetchLatestChangePercent = async (assetIdentifier: string): Promise<{ prev
 }
 
 // 실시간 가격 데이터 수신 훅
-export const useRealtimePrices = (assetIdentifier: string) => {
+export const useRealtimePrices = (assetIdentifier: string, options: { enabled?: boolean } = { enabled: true }) => {
+  const enabled = options.enabled !== false;
   const { socket, isConnected } = useSocket()
   const [latestPrice, setLatestPrice] = useState<RealtimePrice | null>(null)
   const [priceHistory, setPriceHistory] = useState<RealtimePrice[]>([])
@@ -518,7 +519,7 @@ export const useRealtimePrices = (assetIdentifier: string) => {
       return
     }
 
-    if (!socket || !assetIdentifier) {
+    if (!socket || !assetIdentifier || !enabled) {
       return
     }
 
@@ -556,7 +557,7 @@ export const useRealtimePrices = (assetIdentifier: string) => {
 
   // 초기 로드 시 전일 종가 미리 가져오기 (별도 useEffect)
   useEffect(() => {
-    if (!assetIdentifier || typeof window === 'undefined') {
+    if (!assetIdentifier || typeof window === 'undefined' || !enabled) {
       return
     }
 

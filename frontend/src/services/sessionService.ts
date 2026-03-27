@@ -327,6 +327,108 @@ class SessionService {
     }
   }
 
+  // Google OAuth 로그인
+  async googleLogin(credential: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.setState({ isLoading: true, error: null })
+
+      const loginResult = await authService.googleLogin(credential)
+
+      if (loginResult.success && loginResult.data) {
+        const tokenData: TokenData = {
+          accessToken: loginResult.data.access_token,
+          refreshToken: loginResult.data.refresh_token,
+          expiresAt: new Date(loginResult.data.expires_at).getTime(),
+          user: loginResult.data.user
+        }
+
+        tokenService.saveTokens(tokenData, true) // 소셜 로그인은 항상 remember
+        tokenService.setSessionId(loginResult.data.session_id)
+
+        this.setState({
+          isAuthenticated: true,
+          user: loginResult.data.user,
+          isLoading: false,
+          error: null,
+          lastActivity: Date.now()
+        })
+
+        this.startTokenRefreshTimer()
+        this.emitEvent({ type: 'login', data: loginResult.data.user, timestamp: Date.now() })
+
+        return { success: true }
+      } else {
+        this.setState({
+          isAuthenticated: false,
+          user: null,
+          isLoading: false,
+          error: loginResult.error || 'Google login failed'
+        })
+        return { success: false, error: loginResult.error }
+      }
+    } catch (error) {
+      console.error('Google login error:', error)
+      this.setState({
+        isAuthenticated: false,
+        user: null,
+        isLoading: false,
+        error: 'Google login failed'
+      })
+      return { success: false, error: 'Google login failed' }
+    }
+  }
+
+  // X OAuth 로그인
+  async xLogin(code: string, redirectUri: string, codeVerifier?: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.setState({ isLoading: true, error: null })
+
+      const loginResult = await authService.xLogin(code, redirectUri, codeVerifier)
+
+      if (loginResult.success && loginResult.data) {
+        const tokenData: TokenData = {
+          accessToken: loginResult.data.access_token,
+          refreshToken: loginResult.data.refresh_token,
+          expiresAt: new Date(loginResult.data.expires_at).getTime(),
+          user: loginResult.data.user
+        }
+
+        tokenService.saveTokens(tokenData, true)
+        tokenService.setSessionId(loginResult.data.session_id)
+
+        this.setState({
+          isAuthenticated: true,
+          user: loginResult.data.user,
+          isLoading: false,
+          error: null,
+          lastActivity: Date.now()
+        })
+
+        this.startTokenRefreshTimer()
+        this.emitEvent({ type: 'login', data: loginResult.data.user, timestamp: Date.now() })
+
+        return { success: true }
+      } else {
+        this.setState({
+          isAuthenticated: false,
+          user: null,
+          isLoading: false,
+          error: loginResult.error || 'X login failed'
+        })
+        return { success: false, error: loginResult.error }
+      }
+    } catch (error) {
+      console.error('X login error:', error)
+      this.setState({
+        isAuthenticated: false,
+        user: null,
+        isLoading: false,
+        error: 'X login failed'
+      })
+      return { success: false, error: 'X login failed' }
+    }
+  }
+
   // 로그아웃
   async logout(): Promise<void> {
     try {
