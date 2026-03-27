@@ -20,6 +20,11 @@ export default function FearAndGreedGauge({ height = 240, hideTitle = false, noB
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const [mode, setMode] = useState<'daily'|'weekly'|'monthly'>('daily');
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Calculate Values
   const getDisplayData = () => {
@@ -32,7 +37,7 @@ export default function FearAndGreedGauge({ height = 240, hideTitle = false, noB
              value: parseInt(history[0].value), 
              label: history[0].value_classification, 
              chartData: slice.map(d => parseInt(d.value)),
-             categories: slice.map(d => new Date(parseInt(d.timestamp) * 1000).toLocaleDateString(undefined, {month:'numeric', day:'numeric'}))
+             categories: slice.map(d => mounted ? new Date(parseInt(d.timestamp) * 1000).toLocaleDateString(undefined, {month:'numeric', day:'numeric'}) : '')
          };
      }
      
@@ -49,7 +54,7 @@ export default function FearAndGreedGauge({ height = 240, hideTitle = false, noB
              value: avg, 
              label: getClassification(avg),
              chartData: trendSlice.map(d => parseInt(d.value)),
-             categories: trendSlice.map(d => new Date(parseInt(d.timestamp) * 1000).toLocaleDateString(undefined, {month:'numeric', day:'numeric'}))
+             categories: trendSlice.map(d => mounted ? new Date(parseInt(d.timestamp) * 1000).toLocaleDateString(undefined, {month:'numeric', day:'numeric'}) : '')
          };
      }
      
@@ -64,7 +69,7 @@ export default function FearAndGreedGauge({ height = 240, hideTitle = false, noB
              value: avg, 
              label: getClassification(avg),
              chartData: trendSlice.map(d => parseInt(d.value)),
-             categories: trendSlice.map(d => new Date(parseInt(d.timestamp) * 1000).toLocaleDateString(undefined, {month:'numeric', day:'numeric'}))
+             categories: trendSlice.map(d => mounted ? new Date(parseInt(d.timestamp) * 1000).toLocaleDateString(undefined, {month:'numeric', day:'numeric'}) : '')
          };
      }
      return { value: 50, label: 'No Data', chartData: [], categories: [] };
@@ -140,7 +145,7 @@ export default function FearAndGreedGauge({ height = 240, hideTitle = false, noB
             <div className="relative w-full flex justify-center">
                 <ReactApexChart options={fngChartOptions} series={[fngValue]} type="radialBar" height={height} width={"100%"} />
                 <div className="absolute bottom-4 w-full text-center">
-                    <p className="text-xs text-gray-400">Next Update: {fngData ? new Date(parseInt(fngData.timestamp) * 1000 + 86400000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : 'Unknown'}</p>
+                    <p className="text-xs text-gray-400">Next Update: {fngData && mounted ? new Date(parseInt(fngData.timestamp) * 1000 + 86400000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : 'Unknown'}</p>
                 </div>
             </div>
             

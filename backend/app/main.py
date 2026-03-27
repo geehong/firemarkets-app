@@ -3,6 +3,7 @@ import asyncio
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 # from app.api import auth  <-- Removed legacy import
 from app.api.v1.endpoints import (
     realtime, scheduler, collectors, world_assets, crypto, 
@@ -74,6 +75,9 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+# GZip 압축 활성화 (큰 JSON 응답 최적화)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Socket.IO 애플리케이션 생성
 socket_app = socketio.ASGIApp(sio, app)

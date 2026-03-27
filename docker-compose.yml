@@ -109,7 +109,7 @@ services:
       PORT: 8000
       HOST: 0.0.0.0
       # 개발 모드 설정
-      RELOAD: "true"
+      RELOAD: "false"
       LOG_LEVEL: "info"
       DEBUG: "true"
       TZ: Asia/Seoul

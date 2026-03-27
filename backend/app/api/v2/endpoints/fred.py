@@ -7,6 +7,7 @@ from app.collectors.fred_collector import FredCollector
 from app.core.config_manager import ConfigManager
 from app.services.api_strategy_manager import ApiStrategyManager
 from app.utils.redis_queue_manager import RedisQueueManager
+from fastapi_cache.decorator import cache
 
 router = APIRouter()
 
@@ -42,6 +43,7 @@ router = APIRouter()
 
 
 @router.get("/indicators", response_model=Dict[str, Any])
+@cache(expire=3600)
 def get_fred_indicators(
     type: str = Query("all", enum=["all", "treasury", "indicators", "yield_spread"]),
     db: Session = Depends(deps.get_current_db)
@@ -125,32 +127,43 @@ def get_fred_indicators(
             "FinancialStress": "STLFSI4"
         }
         
-        indicators_data = {}
+        indicators_data = {key: [] for key in target_indicators.keys()}
+        codes = list(target_indicators.values())
+        code_to_key = {v: k for k, v in target_indicators.items()}
         
-        for key, code in target_indicators.items():
-            query = text("""
-                SELECT timestamp, value 
-                FROM economic_indicators 
-                WHERE indicator_code = :code 
-                ORDER BY timestamp DESC 
-                LIMIT 120
-            """) # LIMIT 120: 10 years for monthly
-            
-            rows = db.execute(query, {"code": code}).fetchall()
-            indicators_data[key] = [
-                {"date": r.timestamp.strftime("%Y-%m-%d"), "value": float(r.value)} 
-                for r in rows
-            ]
+        # 최적화: 15개의 쿼리를 1개로 통합 (PARTITION BY 사용)
+        query = text("""
+            SELECT timestamp, indicator_code, value
+            FROM (
+                SELECT timestamp, indicator_code, value,
+                       ROW_NUMBER() OVER(PARTITION BY indicator_code ORDER BY timestamp DESC) as rn
+                FROM economic_indicators
+                WHERE indicator_code IN :codes
+            ) t
+            WHERE rn <= 120
+            ORDER BY indicator_code, timestamp DESC
+        """)
+        
+        rows = db.execute(query, {"codes": tuple(codes)}).fetchall()
+        for r in rows:
+            key = code_to_key.get(r.indicator_code)
+            if key:
+                indicators_data[key].append({
+                    "date": r.timestamp.strftime("%Y-%m-%d"), 
+                    "value": float(r.value)
+                })
             
         response["indicators"] = indicators_data
 
     # 3. Yield Spread (10Y - 2Y)
     if type in ["all", "yield_spread"]:
         # FRED Series: T10Y2Y (Spread), DGS10, DGS2
+        # 최적화: 수십년치의 데이터를 모두 가져오는 대신 최근 2년치만 조회 (실제 반환은 1년치)
         query = text("""
             SELECT timestamp, indicator_code, value 
             FROM economic_indicators 
             WHERE indicator_code IN ('T10Y2Y', 'DGS10', 'DGS2') 
+              AND timestamp >= (CURRENT_DATE - INTERVAL '2 years')
             ORDER BY timestamp ASC
         """) 
         

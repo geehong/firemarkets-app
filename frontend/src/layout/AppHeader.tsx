@@ -27,9 +27,9 @@ import {
 
 const AppHeader: React.FC = () => {
   const [isApplicationMenuOpen, setApplicationMenuOpen] = useState(false);
-  const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+  const [isBreadcrumbVisible, setIsBreadcrumbVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
-  const { isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
+  const { isMobileOpen, toggleSidebar, toggleMobileSidebar, toggleSidebarVisibility } = useSidebar();
   const { isAuthenticated, user } = useAuth();
   const t = useTranslations('Sidebar');
 
@@ -39,7 +39,7 @@ const AppHeader: React.FC = () => {
 
   const handleToggle = () => {
     if (window.innerWidth >= 1024) {
-      toggleSidebar();
+      toggleSidebarVisibility();
     } else {
       toggleMobileSidebar();
     }
@@ -61,11 +61,13 @@ const AppHeader: React.FC = () => {
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
       
-      // Show header if scrolling up, hide if scrolling down more than 100px
-      if (currentScrollY > lastScrollY && currentScrollY > 100) {
-        setIsHeaderVisible(false);
-      } else {
-        setIsHeaderVisible(true);
+      // Use hysteresis to prevent flickering (different thresholds for hiding/showing)
+      if (currentScrollY <= 80) {
+        setIsBreadcrumbVisible(true);
+      } else if (currentScrollY > lastScrollY + 5) { // Down scroll more than 5px
+        setIsBreadcrumbVisible(false);
+      } else if (currentScrollY < lastScrollY - 20) { // Up scroll more than 20px
+        setIsBreadcrumbVisible(true);
       }
       
       setLastScrollY(currentScrollY);
@@ -82,8 +84,8 @@ const AppHeader: React.FC = () => {
 
   return (
     <>
-      <header className={`sticky top-0 flex flex-col w-full bg-white border-gray-200 z-40 dark:border-gray-800 dark:bg-gray-900 lg:border-b transition-transform duration-300 ${isHeaderVisible ? 'translate-y-0' : '-translate-y-full'}`}>
-        <div className="flex flex-col items-center justify-between grow lg:flex-row lg:px-[5%]">
+      <header className={`sticky top-0 flex flex-col w-full bg-white border-gray-200 z-40 dark:border-gray-800 dark:bg-gray-900 lg:border-b transition-transform duration-300 translate-y-0`}>
+        <div className="flex flex-col items-center justify-between grow lg:flex-row lg:px-6">
           <div className="flex items-center justify-between w-full gap-2 px-3 py-3 border-b border-gray-200 dark:border-gray-800 sm:gap-4 lg:justify-normal lg:border-b-0 lg:px-0 lg:py-4">
             <button
               className="items-center justify-center w-10 h-10 text-gray-500 border-gray-200 rounded-lg dark:border-gray-800 lg:flex dark:text-gray-400 lg:h-11 lg:w-11 lg:border"
@@ -288,7 +290,7 @@ const AppHeader: React.FC = () => {
 
       {/* Breadcrumb - Separate section below header as sibling element */}
       <div
-        className={`hidden w-full px-6 lg:px-[5%] py-2 border-t border-gray-200 dark:border-gray-800 lg:block transition-all duration-300 ease-in-out sticky z-30 bg-white dark:bg-gray-900 ${isHeaderVisible ? 'top-[76px]' : 'top-0 shadow-sm'}`}
+        className={`hidden w-full px-6 lg:px-6 py-2 border-t border-gray-200 dark:border-gray-800 lg:block transition-all duration-300 ease-in-out sticky z-30 bg-white dark:bg-gray-900 top-[76px] ${isBreadcrumbVisible ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0 pointer-events-none'}`}
       >
         <DynamicBreadcrumb />
       </div>

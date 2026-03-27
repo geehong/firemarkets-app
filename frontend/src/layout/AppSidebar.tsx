@@ -40,7 +40,7 @@ type NavItem = {
 };
 
 const AppSidebar: React.FC = () => {
-  const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
+  const { isExpanded, isMobileOpen, isHovered, setIsHovered, toggleSidebar, isSidebarVisible } = useSidebar();
   const pathname = usePathname();
   const t = useTranslations('Sidebar');
   const [broken, setBroken] = useState(false);
@@ -427,7 +427,7 @@ const AppSidebar: React.FC = () => {
   return (
     <aside
       className={`fixed top-0 left-0 z-50 h-screen transition-all duration-300 ease-in-out overflow-hidden bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 ${isExpanded || isMobileOpen || isHovered ? "w-[290px]" : "w-[90px]"
-        } ${isMobileOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0`}
+        } ${isMobileOpen ? "translate-x-0" : "-translate-x-full"} ${isSidebarVisible ? "lg:translate-x-0" : "lg:-translate-x-full"}`}
       onMouseEnter={() => !isExpanded && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -534,6 +534,63 @@ const AppSidebar: React.FC = () => {
 
         <div className={`transition-all duration-300 origin-bottom ${isExpanded || isHovered || isMobileOpen ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-4 scale-95 pointer-events-none h-0 overflow-hidden"}`}>
           <SidebarWidget />
+        </div>
+
+        <div className="mt-auto border-t border-gray-100 dark:border-gray-800/50 hidden lg:block overflow-hidden">
+          <div className="flex items-center justify-center h-16 px-4">
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                toggleSidebar();
+              }}
+              className="relative flex items-center group focus:outline-none"
+              aria-label="Toggle Sidebar Lock"
+            >
+              {/* Toggle Switch Background */}
+              <div className={`w-12 h-6 rounded-full transition-all duration-300 ease-in-out border ${
+                isExpanded 
+                  ? "bg-brand-500 border-brand-600 shadow-inner" 
+                  : "bg-gray-200 dark:bg-gray-800 border-gray-300 dark:border-gray-700"
+              }`}>
+                {/* Switch Handle (Circle) */}
+                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-md transition-all duration-300 ease-in-out ${
+                  isExpanded ? "left-7" : "left-1"
+                } flex items-center justify-center overflow-hidden`}>
+                  {isExpanded ? (
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="text-brand-500"
+                    >
+                      <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                  ) : (
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="text-gray-400"
+                    >
+                      <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                      <path d="M7 11V5a5 5 0 0 1 9.9-1" />
+                    </svg>
+                  )}
+                </div>
+              </div>
+            </button>
+          </div>
         </div>
       </Sidebar>
     </aside>

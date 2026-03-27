@@ -44,6 +44,11 @@ const LatestPostSection = ({ title, postType, linkUrl }: { title: string; postTy
     const posts = (data as any)?.posts || [];
     const locale = useLocale();
     const t = useTranslations('Dashboard');
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     if (isLoading) return <div className="h-60 bg-gray-100 dark:bg-gray-800 rounded-2xl animate-pulse"></div>;
 
@@ -91,7 +96,7 @@ const LatestPostSection = ({ title, postType, linkUrl }: { title: string; postTy
                                     {postTitle}
                                 </h4>
                                 <div className="flex items-center justify-between mt-auto text-xs text-slate-400 dark:text-gray-500">
-                                    <span>{new Date(post.created_at).toLocaleDateString()}</span>
+                                    <span>{mounted ? new Date(post.created_at).toLocaleDateString() : '---'}</span>
                                     {post.author?.username && <span>by {post.author.username}</span>}
                                 </div>
                             </Link>

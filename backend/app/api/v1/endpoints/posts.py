@@ -1,6 +1,6 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, subqueryload
 from sqlalchemy import text, cast, String, func
 from app.core.database import get_postgres_db
 from app.crud.blog import post, post_category, post_tag, post_comment, post_product, post_chart
@@ -12,6 +12,7 @@ from app.schemas.blog import (
     PostProductCreate, PostProductResponse, PostChartCreate, PostChartResponse,
     PostAuthorResponse, PostSyncRequest, PostSyncResponse, PostStatsResponse
 )
+from fastapi_cache.decorator import cache
 from app.models.blog import Post, PostCategory, PostTag, PostComment, PostTagAssociation, PostProduct, PostChart
 from app.models.asset import User
 from app.dependencies.auth_deps import get_current_user, get_current_user_optional, get_current_active_superuser
@@ -73,6 +74,7 @@ async def test_posts():
 
 
 @router.get("/")
+@cache(expire=300)
 def get_posts(
     page: int = Query(1, ge=1, description="페이지 번호"),
     page_size: int = Query(20, ge=1, le=1000, description="페이지당 항목 수"),
@@ -93,8 +95,12 @@ def get_posts(
         logger.info(f"[get_posts] status_filter={status_filter}, post_type={post_type}, page={page}, user={current_user}")
         skip = (page - 1) * page_size
 
-        # 기본 쿼리 구성
-        query = db.query(Post)
+        # Optimized: Use joinedload/subqueryload to avoid N+1 queries
+        query = db.query(Post).options(
+            joinedload(Post.author),
+            joinedload(Post.category),
+            subqueryload(Post.tags)
+        )
         
         # 필터 적용
         if post_type:
@@ -110,17 +116,10 @@ def get_posts(
             logger.info(f"[get_posts] Applying status filter: {status_filter}")
             query = query.filter(Post.status == status_filter)
         else:
-            # If no status is specified
-            
-            # EXCEPTION: If specific post_type is requested (e.g. ai_draft_news), allow seeing all statuses
-            # This is helpful for testing or if the frontend asks for a specific type without status filter
-            # Also covers cases where admin page selects a type but 'All Statuses'
+            # Default behavior: Show only 'published' for non-admin users
             if post_type:
                 pass
-            
-            # Default behavior: Show only 'published' for non-admin users
             elif not current_user or not current_user.is_superuser:
-                # If logged in user is regular user, only show published
                 query = query.filter(Post.status == 'published')
         
         if author_id:
@@ -155,22 +154,7 @@ def get_posts(
         if tag:
             # 태그 필터링 - tag slug 또는 tag name으로 검색
             # post_tag_associations 테이블을 통해 조인
-            tag_subquery = db.query(PostTag.id).filter(
-                (PostTag.slug == tag) | (PostTag.name.ilike(f"%{tag}%"))
-            ).subquery()
-            
-            # PostTagAssociation을 통해 해당 태그가 있는 포스트만 필터링
-            from sqlalchemy import exists, select
-            from app.models.blog import PostTagAssociation
-            
-            query = query.filter(
-                exists(
-                    select(PostTagAssociation.post_id).where(
-                        (PostTagAssociation.post_id == Post.id) &
-                        (PostTagAssociation.tag_id.in_(select(tag_subquery)))
-                    )
-                )
-            )
+            query = query.join(Post.tags).filter((PostTag.slug == tag) | (PostTag.name.ilike(f"%{tag}%")))
 
         # 정렬 적용
         if hasattr(Post, sort_by):
@@ -183,37 +167,53 @@ def get_posts(
             # 기본 정렬
             query = query.order_by(Post.created_at.desc())
         
-        # 총 개수 계산
-        total = query.count()
+        # 총 개수 계산 (총 개수는 별도 카운트 쿼리)
+        # Use a subquery to count distinct posts to avoid issues with joins multiplying rows
+        total_query = db.query(func.count(Post.id)).select_from(Post)
+        # Apply all filters to the total_query as well
+        if post_type:
+            if "," in post_type:
+                types = [t.strip() for t in post_type.split(",")]
+                total_query = total_query.filter(Post.post_type.in_(types))
+            else:
+                total_query = total_query.filter(Post.post_type == post_type)
+        if status_filter:
+            total_query = total_query.filter(Post.status == status_filter)
+        else:
+            if post_type:
+                pass
+            elif not current_user or not current_user.is_superuser:
+                total_query = total_query.filter(Post.status == 'published')
+        if author_id:
+            total_query = total_query.filter(Post.author_id == author_id)
+        if search:
+            total_query = total_query.filter(
+                cast(Post.title, String).ilike(f"%{search}%") |
+                Post.content.ilike(f"%{search}%") |
+                Post.content_ko.ilike(f"%{search}%") |
+                cast(Post.description, String).ilike(f"%{search}%")
+            )
+        if ticker:
+            total_query = total_query.filter(
+                cast(Post.post_info['tickers'], String).ilike(f'%"{ticker}"%')
+            )
+        if category:
+            try:
+                category_id = int(category)
+                total_query = total_query.filter(Post.category_id == category_id)
+            except ValueError:
+                total_query = total_query.join(PostCategory).filter(PostCategory.name.ilike(f"%{category}%"))
+        if tag:
+            total_query = total_query.join(Post.tags).filter((PostTag.slug == tag) | (PostTag.name.ilike(f"%{tag}%")))
+
+        total = total_query.scalar()
         
         # 페이지네이션 적용
         posts_list = query.offset(skip).limit(page_size).all()
 
-        # 응답 데이터 구성
+        # 응답 데이터 구성 (N+1 문제 해결됨)
         posts_data = []
         for post_obj in posts_list:
-            # 작성자 정보 조회
-            author = None
-            if post_obj.author_id:
-                author = db.query(User).filter(User.id == post_obj.author_id).first()
-            
-            # 카테고리 정보 조회
-            category = None
-            if post_obj.category_id:
-                category = db.query(PostCategory).filter(PostCategory.id == post_obj.category_id).first()
-            
-            # 태그 정보 조회 (blog_post_tags 테이블 사용)
-            tags = []
-            if post_obj.id:
-                # Raw SQL로 태그 조회
-                tag_result = db.execute(
-                    text("SELECT pt.id, pt.name, pt.slug FROM post_tags pt "
-                         "JOIN post_tag_associations pta ON pt.id = pta.tag_id "
-                         "WHERE pta.post_id = :post_id"),
-                    {"post_id": post_obj.id}
-                )
-                tags = [{"id": row[0], "name": row[1], "slug": row[2]} for row in tag_result.fetchall()]
-            
             post_dict = {
                 "id": post_obj.id,
                 "title": post_obj.title,
@@ -231,16 +231,16 @@ def get_posts(
                 "published_at": post_obj.published_at,
                 "author_id": post_obj.author_id,
                 "author": {
-                    "id": author.id,
-                    "username": author.username,
-                    "email": author.email
-                } if author else None,
+                    "id": post_obj.author.id,
+                    "username": post_obj.author.username,
+                    "email": post_obj.author.email
+                } if post_obj.author else None,
                 "category": {
-                    "id": category.id,
-                    "name": category.name,
-                    "slug": category.slug
-                } if category else None,
-                "tags": tags,
+                    "id": post_obj.category.id,
+                    "name": post_obj.category.name,
+                    "slug": post_obj.category.slug
+                } if post_obj.category else None,
+                "tags": [{"id": t.id, "name": t.name, "slug": t.slug} for t in post_obj.tags],
                 "post_info": post_obj.post_info,
                 "cover_image": post_obj.cover_image,
                 "cover_image_alt": post_obj.cover_image_alt

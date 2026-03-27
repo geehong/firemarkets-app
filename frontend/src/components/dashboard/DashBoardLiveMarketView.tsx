@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
+import dynamic from 'next/dynamic';
 import RollingLiveChart from '@/components/charts/live/RollingLiveChart';
 import TradingViewWidget from '@/components/widgets/TradingViewWidget';
 import FearAndGreedGauge from '@/components/analysis/speculative/FearAndGreedGauge';
@@ -11,13 +12,16 @@ import SimpleAreaChart from '@/components/charts/SimpleAreaChart';
 import { useFearAndGreed } from '@/hooks/analysis/useFearAndGreed';
 import { Link } from '@/i18n/navigation';
 import CombinedCryptoIndicatorChart from '@/components/charts/CombinedCryptoIndicatorChart';
-import PerformanceTreeMapToday from '@/components/charts/treemap/PerformanceTreeMapToday';
 import OHLCVVolumeChart from '@/components/charts/ohlcvcharts/OHLCVVolumeChart';
 import LightWeightChart from '@/components/charts/minicharts/LightWeightChart';
 import { useOnchainMetrics } from '@/hooks/useOnchain';
 import { Time } from 'lightweight-charts';
-import dynamic from 'next/dynamic';
 import type { OnChainChartProps } from '@/components/charts/onchaincharts/OnChainChart';
+
+const PerformanceTreeMapToday = dynamic(
+    () => import('@/components/charts/treemap/PerformanceTreeMapToday'),
+    { ssr: false, loading: () => <div className="w-full bg-[#252931] animate-pulse rounded-lg" style={{ height: '600px' }} /> }
+);
 
 const OnChainChart = dynamic<OnChainChartProps>(() => import('@/components/charts/onchaincharts/OnChainChart'), {
     ssr: false,
@@ -97,7 +101,7 @@ const DashBoardLiveMarketView = () => {
             historyLW: data
                 .filter((d: any) => d.year10 !== null && d.year10 !== undefined)
                 .map((d: any) => ({ 
-                    time: (new Date(d.date).getTime() / 1000) as Time, 
+                    time: (new Date(d.date + "T00:00:00Z").getTime() / 1000) as Time, 
                     value: d.year10 
                 })).sort((a: any, b: any) => a.time - b.time)
         };
@@ -130,7 +134,7 @@ const DashBoardLiveMarketView = () => {
                 sparklineChangePercent,
                 color,
                 history: slice.map((d: any) => ({
-                    time: (new Date(d.date).getTime() / 1000) as Time,
+                    time: (new Date(d.date + "T00:00:00Z").getTime() / 1000) as Time,
                     value: d[valKey] !== undefined ? d[valKey] : d.value
                 })).filter(d => d.value !== undefined && d.value !== null).sort((a: any, b: any) => a.time - b.time)
             };

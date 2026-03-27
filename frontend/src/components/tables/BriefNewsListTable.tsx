@@ -42,6 +42,11 @@ interface BriefNewsListTableProps {
 export const BriefNewsListTable: React.FC<BriefNewsListTableProps> = ({ data }) => {
     const locale = useLocale() as 'en' | 'ko';
     const { isAdmin } = useAuth();
+    const [mounted, setMounted] = React.useState(false);
+
+    React.useEffect(() => {
+        setMounted(true);
+    }, []);
 
     const handleEdit = (postId: number) => {
         window.open(`/admin/post/edit/${postId}`, '_blank');
@@ -71,8 +76,12 @@ export const BriefNewsListTable: React.FC<BriefNewsListTableProps> = ({ data }) 
                         }
 
                         // Format date (YYYY-MM-DD HH:mm) -> Simplified for tight mode
-                        const dateObj = new Date(item.created_at);
-                        const dateStr = dateObj.toLocaleDateString().slice(2) + ' ' + dateObj.getHours().toString().padStart(2, '0') + ':' + dateObj.getMinutes().toString().padStart(2, '0');
+                        // Hydration guard: only format date after mount
+                        let dateStr = '';
+                        if (mounted) {
+                            const dateObj = new Date(item.created_at);
+                            dateStr = dateObj.toLocaleDateString().slice(2) + ' ' + dateObj.getHours().toString().padStart(2, '0') + ':' + dateObj.getMinutes().toString().padStart(2, '0');
+                        }
 
                         return (
                             <tr key={item.id} className={`${TABLE_STYLE.ROW.HOVER} ${TABLE_STYLE.ROW.BORDER} transition-colors`}>

@@ -14,6 +14,7 @@ from ....schemas.common import (
     OnchainMetricCategoryResponse, OnchainMetricToggleResponse, 
     OnchainMetricRunResponse, OnchainMetricStatusResponse
 )
+from fastapi_cache.decorator import cache
 # from ....collectors.onchain_collector import OnchainCollector  # Temporarily disabled in v2 pipeline
 
 logger = logging.getLogger(__name__)
@@ -273,6 +274,7 @@ def get_bitcoin_asset(db: Session, ticker: Optional[str] = None) -> Optional[Ass
     return db.query(Asset).filter(Asset.ticker == 'BTC').first()
 
 @router.get("/metrics", response_model=List[OnchainMetricInfo])
+@cache(expire=600)
 async def get_onchain_metrics(ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"), db: Session = Depends(get_postgres_db)):
     """모든 온체인 메트릭 정보를 조회합니다."""
     try:
@@ -334,6 +336,7 @@ async def get_metric_categories(db: Session = Depends(get_postgres_db)):
 # --- 데이터 조회 API들 ---
 
 @router.get("/metrics/{metric_id}/data", response_model=MetricDataResponse)
+@cache(expire=300)
 async def get_metric_data(
     metric_id: str,
     ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"),
@@ -637,6 +640,7 @@ async def get_metric_stats(
     )
 
 @router.get("/metrics/dashboard", response_model=DashboardSummary)
+@cache(expire=3600)
 async def get_dashboard_summary(
     include: str = Query("latest,stats,trends", description="포함할 정보"),
     ticker: Optional[str] = Query(None, description="BTC 또는 BTCUSDT 선택"),

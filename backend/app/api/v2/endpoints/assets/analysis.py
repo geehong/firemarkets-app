@@ -331,14 +331,8 @@ async def get_treemap_v2(
     mv_treemap_performance 머티리얼라이즈드 뷰를 사용하여 0.1초 내외로 실시간 체감 속도 제공
     """
     try:
-        # 0. 백그라운드에서 뷰 갱신 시도 (성공 여부 상관없이 진행, 비차단)
-        # 실제 운영 환경에서는 별도 스케줄러가 수행하는 것이 좋으나, 즉시 반영을 위해 호출
-        try:
-           # CONCURRENTLY를 사용하려면 인덱스가 필요하며, 다른 프로세스를 방해하지 않습니다.
-           db.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY mv_treemap_performance"))
-           db.commit()
-        except Exception:
-           db.rollback()
+        # MATERIALIZED VIEW REFRESH: This was removed from here because it was blocking and causing 12s+ latency.
+        # Now it is handled by the SchedulerService in the background.
 
         # 1. 고속 뷰 조회
         query = "SELECT * FROM mv_treemap_performance WHERE 1=1"

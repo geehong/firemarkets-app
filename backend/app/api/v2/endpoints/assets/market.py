@@ -19,6 +19,7 @@ from app.models import (
 )
 from .shared.resolvers import resolve_asset_identifier
 from .shared.validators import validate_data_interval
+from fastapi_cache.decorator import cache
 
 logger = logging.getLogger(__name__)
 
@@ -429,6 +430,8 @@ def _format_ohlcv_rows(rows):
     # Use helper to fill any missing change_percent (though _format_ohlcv_rows usually handles raw data, this is safe)
     # Note: The previous logic inside here was removing the need for this, but to be consistent with
     # the new plan where we do it at the end, we can use the helper here too for simple calls.
+    # Optimized: do not recalculate change percent here if it's going to be merged later
+    # but keep it for simple calls. 
     return _recalculate_change_percent(res)
 
 
@@ -620,9 +623,10 @@ def _make_candle(rows, timestamp, interval_str):
 # ============================================================================
 
 @router.get("/{asset_identifier}/ohlcv")
+@cache(expire=30)
 def get_ohlcv_data_v2(
     asset_identifier: str = Path(..., description="Asset ID or Ticker"),
-    data_interval: str = Query("1d", description="데이터 간격: 1m(1분봉), 5m(5분봉), 1h(1시간봉), 1d(일봉), 1W(주봉), 1M 또는 1mo(월봉)"),
+    data_interval: str = Query("1d", description="데이터 간격 (1m, 5m, 1h, 1d, 1W, 1M)"),
     start_date: Optional[date] = Query(None, description="시작 날짜 (YYYY-MM-DD)"),
     end_date: Optional[date] = Query(None, description="종료 날짜 (YYYY-MM-DD)"),
     limit: int = Query(2000, ge=1, le=15000, description="최대 데이터 포인트 수"),

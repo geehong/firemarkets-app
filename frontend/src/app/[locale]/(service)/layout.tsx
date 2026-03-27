@@ -19,12 +19,12 @@ export default function ServiceLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { isExpanded, isHovered, isMobileOpen } = useSidebar();
+  const { isExpanded, isHovered, isMobileOpen, isSidebarVisible } = useSidebar();
   const pathname = usePathname();
   const locale = useLocale();
 
   // Dynamic class for main content margin based on sidebar state
-  const mainContentMargin = isMobileOpen
+  const mainContentMargin = isMobileOpen || !isSidebarVisible
     ? "ml-0"
     : isExpanded || isHovered
       ? "lg:ml-[290px]"

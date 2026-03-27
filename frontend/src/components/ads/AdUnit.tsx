@@ -24,24 +24,51 @@ const AdUnit: React.FC<AdUnitProps> = ({
     label
 }) => {
     const adRef = useRef<HTMLModElement>(null);
+    const [mounted, setMounted] = React.useState(false);
 
     useEffect(() => {
-        try {
-            if (adRef.current) {
-                // console.log(`[AdUnit Debug] Slot: ${slot}, Width: ${adRef.current.offsetWidth}, Height: ${adRef.current.offsetHeight}, ClientHeight: ${adRef.current.clientHeight}`);
-                if (adRef.current.offsetWidth === 0 || adRef.current.offsetHeight === 0) {
-                    // console.warn(`[AdUnit Warning] AdUnit ${slot} has 0 dimensions! Ads may not load.`);
+        setMounted(true);
+    }, []);
+
+    useEffect(() => {
+        if (!mounted) return;
+        
+        // Use a small timeout to ensure the DOM is fully updated with the 'ins' tag
+        const timer = setTimeout(() => {
+            try {
+                // Check if the ad unit has already been processed by AdSense
+                const adElement = adRef.current;
+                if (adElement && (adElement.getAttribute('data-adsbygoogle-status') === 'done')) {
+                    // console.log(`[AdUnit Debug] Ad already initialized for slot ${slot}`);
+                    return;
+                }
+
+                // Ensure window.adsbygoogle is available and then push
+                // @ts-ignore
+                (window.adsbygoogle = window.adsbygoogle || []).push({});
+                // console.log(`[AdUnit Debug] Successfully pushed ad request for slot ${slot}`);
+            } catch (e: any) {
+                // Handle the common error where push is called but tags are not yet ready or already filled
+                if (e && e.message && e.message.includes('All \'ins\' elements in the DOM')) {
+                    // console.warn(`[AdUnit Info] AdSense reported all units filled for slot ${slot}. This is common during navigation.`);
+                } else {
+                    console.error('AdSense error:', e);
                 }
             }
+        }, 100); // 100ms delay to be safe
 
-            // Check if window.adsbygoogle maps to an array before pushing
-            // console.log(`[AdUnit Debug] Pushing ad request for slot ${slot}`);
-            // @ts-ignore
-            (window.adsbygoogle = window.adsbygoogle || []).push({});
-        } catch (e) {
-            console.error('AdSense error:', e);
-        }
-    }, [slot]); // Rerun if slot changes, though usually static
+        return () => clearTimeout(timer);
+    }, [mounted, slot]); // Rerun if slot changes or on mount
+
+    // Hydration guard: only render ad units on the client side
+    if (!mounted) {
+        return (
+            <div 
+                className={`ad-placeholder w-full flex flex-col items-center ${className}`}
+                style={{ minHeight: style?.height || '90px', ...style }}
+            />
+        );
+    }
 
     // Development mode placeholder
     if (process.env.NODE_ENV === 'development') {

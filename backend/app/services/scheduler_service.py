@@ -448,6 +448,25 @@ class SchedulerService:
         
         return run_cleanup_sync
 
+    def _create_view_refresh_function(self):
+        """
+        Creates a sync wrapper to refresh materialized views in the background.
+        """
+        def run_refresh_sync():
+            db: Session = SessionLocal()
+            try:
+                self.logger.info("[ViewRefreshJob] Refreshing mv_treemap_performance...")
+                db.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY mv_treemap_performance"))
+                db.commit()
+                self.logger.info("[ViewRefreshJob] Successfully refreshed mv_treemap_performance.")
+            except Exception as e:
+                self.logger.error(f"[ViewRefreshJob] Failed to refresh view: {e}")
+                db.rollback()
+            finally:
+                db.close()
+        
+        return run_refresh_sync
+
     def setup_jobs(self, test_mode: bool = False):
         """
         Sets up all data collection jobs based on DB configuration.
@@ -747,6 +766,17 @@ class SchedulerService:
             replace_existing=True
         )
         self.logger.info(f"✅ Scheduled job: 'daily_raw_news_cleanup' (Daily at 00:30 {self.scheduler.timezone})")
+
+        # --- View Refresh Job (Treemap) ---
+        # Refresh every 15 minutes to keep it relatively fresh
+        self.scheduler.add_job(
+            self._create_view_refresh_function(),
+            'interval',
+            minutes=15,
+            id='treemap_view_refresh',
+            replace_existing=True
+        )
+        self.logger.info("✅ Scheduled job: 'treemap_view_refresh' (15m)")
 
         # --- Daily US Stock Backfill Job ---
         # Run at 06:00 KST / 21:00 UTC
