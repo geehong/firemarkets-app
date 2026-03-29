@@ -202,7 +202,7 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
     refetchInterval: dynamicRefetchInterval 
   })
   const historyData = ohlcvQuery.data?.data || []
-  const { latestPrice } = useRealtimePrices(assetIdentifier)
+  const { latestPrice, isConnected } = useRealtimePrices(assetIdentifier)
 
   const { data: lastQuoteResponse } = useDelayedQuoteLast(
     assetIdentifier,
@@ -458,32 +458,13 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
   }, [historyData, mode, sessionStartTime, lookbackHours, assetDetail])
 
   useEffect(() => {
-    if (!seriesRef.current || !latestPrice || !lastCandleRef.current) return
+    if (!latestPrice || isNaN(Number(latestPrice.price))) return;
 
-    const lpAny = latestPrice as any;
-    if (lpAny.asset_id && assetDetail?.asset_id) {
-      if (String(lpAny.asset_id) !== String(assetDetail.asset_id)) return;
-    } else {
-      const receivedSymbol = (lpAny.symbol || lpAny.ticker || "").toUpperCase();
-      const targetId = String(assetIdentifier).toUpperCase();
-      const targetTicker = (assetDetail?.ticker || "").toUpperCase();
-      
-      const checkMatch = (received: string, target: string) => {
-        if (!received || !target) return false;
-        return received === target || 
-               received === `${target}USDT` || 
-               received === `${target}-USDT` || 
-               received === `${target}-USD`;
-      };
+    const ts = (latestPrice.timestamp && !latestPrice.timestamp.includes('Z') && !latestPrice.timestamp.includes('+')) 
+      ? `${latestPrice.timestamp}Z` 
+      : latestPrice.timestamp;
 
-      if (receivedSymbol && targetTicker) {
-        if (!checkMatch(receivedSymbol, targetTicker)) return;
-      } else if (receivedSymbol && targetId && isNaN(Number(targetId))) {
-        if (!checkMatch(receivedSymbol, targetId)) return;
-      }
-    }
-
-    const tickTime = (new Date(latestPrice.timestamp).getTime() / 1000) + localOffset;
+    const tickTime = (new Date(ts).getTime() / 1000) + localOffset;
     const tickPrice = Number(latestPrice.price)
     
     let intervalSeconds = 900
@@ -495,6 +476,9 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
 
     const candleStartTime = Math.floor(tickTime / intervalSeconds) * intervalSeconds
     const lastCandle = lastCandleRef.current
+
+    // 데이터 로딩 전이거나 마지막 봉 정보가 없으면 처리 중단 (배경에서 히스토리 로드될 때까지 대기)
+    if (!lastCandle || !seriesRef.current) return;
 
     if (candleStartTime > (lastCandle.time as number)) {
       const newCandle = {
@@ -606,13 +590,13 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
             {href ? (
               <Link href={href} className="hover:opacity-75 transition-opacity">
                 <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]'}`} title={isConnected ? "Real-time Connected" : "Connection Lost"} />
                   {title || assetIdentifier}
                 </h3>
               </Link>
             ) : (
               <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]'}`} title={isConnected ? "Real-time Connected" : "Connection Lost"} />
                 {title || assetIdentifier}
               </h3>
             )}

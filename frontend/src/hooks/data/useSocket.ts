@@ -33,24 +33,26 @@ const getSocketURL = () => {
 
   const hostname = window.location.hostname
   const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:'
+  const port = window.location.port
 
-  // 로컬 개발 환경
+  // 1. 로컬 개발 환경 또는 루프백
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     return 'http://localhost:8001'
   }
 
-  // 프로덕션 환경 (firemarkets.net)
+  // 2. 프로덕션 환경 (firemarkets.net)
   if (hostname.includes('firemarkets.net')) {
     return 'https://backend.firemarkets.net'
   }
 
-  // 그 외 환경 (자동 감지 시도)
-  // 도메인/IP 접속 시, 기본적으로 Origin 사용 (Nginx Proxy 가정)
-  // return `${protocol}//backend.${hostname}` // 기존 로직은 서브도메인 가정이라 위험
-  if (typeof window !== 'undefined') {
-      return window.location.origin;
+  // 3. 커스텀 개발 포트 (3006) 사용 시 백엔드 포트(8001)로 자동 전환
+  if (port === '3006') {
+    return `${protocol}//${hostname}:8001`
   }
-  return 'http://localhost:8001';
+
+  // 4. 그 외 환경 (자동 감지 시도)
+  // 도메인/IP 접속 시, 기본적으로 Origin 사용 (Nginx Proxy 가정)
+  return window.location.origin;
 }
 
 // 전역 Socket 인스턴스 관리 (클라이언트 측에서만)
@@ -83,7 +85,8 @@ export const useSocket = () => {
 
     // 전역 Socket 인스턴스 사용
     if (!globalSocket) {
-
+      console.log(`🔌 Initializing WebSocket connection to: ${socketURL}`)
+      
       globalSocket = io(socketURL, {
         // WebSocket 우선, 실패시 Polling fallback
         transports: ['websocket', 'polling'],
@@ -100,10 +103,40 @@ export const useSocket = () => {
           EIO: "4"
         }
       })
+
+      const socketInstance = globalSocket
+
+      socketInstance.on('connect', () => {
+        console.log('✅ WebSocket Connected Successfully!')
+        setIsConnected(true)
+      })
+
+      socketInstance.on('disconnect', (reason) => {
+        console.warn(`[Socket.io] 🔌 Disconnected: ${reason}`)
+        setIsConnected(false)
+      })
+
+      socketInstance.on('connect_error', (error) => {
+          console.error('[Socket.io] 🛑 Connection error:', error.message);
+          // Attempt to fallback or log additional help
+          if (socketURL.startsWith('https') && error.message === 'xhr poll error') {
+              console.warn('[Socket.io] HTTPS Mixed Content or Proxy issue suspect.');
+          }
+          setConnectionError(error.message)
+          setIsConnected(false)
+      });
     }
 
     connectionCount++
     const socket = globalSocket
+    
+    // 🔥 중요: 초기 성태 동기화 (이미 연결되어 있다면 즉시 true 설정)
+    if (socket.connected && !isConnected) {
+        setIsConnected(true);
+        if (socket.io && socket.io.engine) {
+            setTransport(socket.io.engine.transport.name);
+        }
+    }
 
     // 연결 성공
     socket.on('connect', () => {
@@ -389,17 +422,39 @@ export const useRealtimePrices = (assetIdentifier: string, options: { enabled?: 
     }
 
     const receivedTicker = String(data.ticker || '').trim().toUpperCase()
-    const receivedAssetId = String(data.asset_id || '').trim()
+    const receivedAssetId = String(data.asset_id || '').trim().toUpperCase()
     const targetTicker = String(targetAsset || '').trim().toUpperCase()
 
     // 🚨 수신된 데이터의 티커나 자산ID 중 하나라도 차트와 정확히 일치할 때만 통과 (교차 수신 원천 차단)
-    // includes 는 너무 광범위함 (예: BTC 가 ETHBTC 에 매칭됨). 따라서 명확한 규칙 기반 매칭으로 변경.
-    const isMatch = (receivedTicker === targetTicker) || 
-                   (receivedAssetId === targetTicker) || 
-                   (receivedTicker === `${targetTicker}USDT`) ||
-                   (receivedTicker === `${targetTicker}-USDT`) ||
-                   (receivedTicker === `${targetTicker}-USD`) ||
-                   (receivedTicker === `BINANCE:${targetTicker}USDT`);
+    // BTCUSDT (received) matches BTC (target) or BTCUSDT (target)
+    const normalizedReceived = receivedTicker.replace(/[^A-Z0-9]/g, '')
+    const normalizedTarget = targetTicker.replace(/[^A-Z0-9]/g, '')
+    
+    // 기본 일치 확인
+    let isMatch = (receivedTicker === targetTicker) || 
+                  (receivedAssetId === targetTicker) ||
+                  (normalizedReceived === normalizedTarget);
+    
+    // 추가 변형 확인 (BTC -> BTCUSDT, BTC-USD -> BTCUSDT 등)
+    if (!isMatch) {
+      const suffixes = ['USDT', 'USD', 'KRW', 'BTC'];
+      let rBase = normalizedReceived;
+      let tBase = normalizedTarget;
+
+      for (const s of suffixes) {
+        if (rBase.endsWith(s) && rBase.length > s.length) rBase = rBase.slice(0, -s.length);
+        if (tBase.endsWith(s) && tBase.length > s.length) tBase = tBase.slice(0, -s.length);
+      }
+      
+      isMatch = rBase === tBase && rBase.length > 0;
+    }
+
+    // 디버깅을 위한 로그 (사용자 요청 시 활성화 가능)
+    if (process.env.NODE_ENV === 'development' || window.location.search.includes('debug=true')) {
+        if (isMatch || receivedTicker.includes(targetTicker) || targetTicker.includes(receivedTicker)) {
+            console.log(`[Socket Match] ${isMatch ? '✅' : '❌'} Received: ${receivedTicker} (ID: ${receivedAssetId}), Target: ${targetTicker}`);
+        }
+    }
 
 
     // 티커가 일치하지 않으면 즉시 리턴 (다른 컴포넌트용 메시지)
@@ -425,10 +480,14 @@ export const useRealtimePrices = (assetIdentifier: string, options: { enabled?: 
       }
     }
 
+    const ts = (data.timestamp_utc && typeof data.timestamp_utc === 'string' && !data.timestamp_utc.includes('Z') && !data.timestamp_utc.includes('+'))
+      ? `${data.timestamp_utc}Z`
+      : data.timestamp_utc;
+
     const priceData: RealtimePrice = {
       price: currentPrice,
       volume: data.volume,
-      timestamp: data.timestamp_utc,
+      timestamp: ts,
       dataSource: data.data_source,
       changePercent: changePercent ?? undefined,
       asset_id: data.asset_id, // 🚨 추가: 차트로 이름표 전달
@@ -460,10 +519,15 @@ export const useRealtimePrices = (assetIdentifier: string, options: { enabled?: 
               return
             }
 
-            const updatedData = {
-              ...currentData,
-              changePercent: rounded,
-            }
+            const priceData = {
+              ticker: receivedTicker,
+              price: Number(data.price || 0),
+              changePercent: Number(data.change_percent || data.changePercent || 0),
+              volume: Number(data.volume_24h || data.volume || 0),
+              timestamp: data.timestamp_utc || data.last_updated || new Date().toISOString()
+            };
+            
+            processPriceUpdate(priceData as any);
 
             isUpdatingRef.current = true
 
@@ -478,11 +542,11 @@ export const useRealtimePrices = (assetIdentifier: string, options: { enabled?: 
                 return prev
               }
 
-              previousPriceDataRef.current = updatedData
-              latestPriceRef.current = updatedData
+              previousPriceDataRef.current = priceData as any
+              latestPriceRef.current = priceData as any
               isUpdatingRef.current = false
 
-              return updatedData
+              return priceData as any
             })
           }
         }
