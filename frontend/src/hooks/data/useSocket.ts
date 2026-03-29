@@ -42,7 +42,10 @@ const getSocketURL = () => {
 
   // 2. 프로덕션 환경 (firemarkets.net)
   if (hostname.includes('firemarkets.net')) {
-    return 'https://backend.firemarkets.net'
+    // 🔔 중요: 메인 도메인을 거쳐서 Next.js Rewrite를 통해 백엔드(http://backend:8000)로 우회 접속
+    // 이렇게 하면 CORS나 SSL 인증서 문제를 피할 수 있고, 
+    // 브라우저의 'Mixed Content' 경고(HTTPS에서 HTTP 요청 시 차단)를 원천 차단 가능함.
+    return window.location.origin
   }
 
   // 3. 커스텀 개발 포트 (3006) 사용 시 백엔드 포트(8001)로 자동 전환
@@ -50,8 +53,7 @@ const getSocketURL = () => {
     return `${protocol}//${hostname}:8001`
   }
 
-  // 4. 그 외 환경 (자동 감지 시도)
-  // 도메인/IP 접속 시, 기본적으로 Origin 사용 (Nginx Proxy 가정)
+  // 4. 그 외 환경 (자동 감지 시도) 캐시된 origin 사용
   return window.location.origin;
 }
 
@@ -60,16 +62,26 @@ let globalSocket: Socket | null = null
 let connectionCount = 0
 let globalSubscriptions: Set<string> | null = null
 
+console.log('[useSocket] Module-level code loaded'); // 🔍 모듈 로드 확인용 로그
+
 export const useSocket = () => {
   const [isConnected, setIsConnected] = useState<boolean>(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [transport, setTransport] = useState<string>('unknown')
 
-  // 동적 URL 가져오기 (메모이제이션) - 클라이언트에서만 실행
+  // 동적 URL 가져오기 - 클라이언트에서만 실행 (하이드레이션 문제 방지)
   const socketURL = useMemo(() => {
-    if (typeof window === 'undefined') return 'http://localhost:8001'
+    // 서버 사이드에서는 더미 URL 반환 (어차피 useEffect에서 사용되지 않음)
+    if (typeof window === 'undefined') return ''
+    
+    // 🔔 프로덕션 환경(firemarkets.net)에서는 상대 경로를 사용하도록 설정
+    // 이렇게 하면 Next.js rewrite(/socket.io)가 올바르게 작동함
+    if (window.location.hostname.includes('firemarkets.net')) {
+      return '' // 빈 문자열 전달 시 현재 Origin 사용
+    }
+    
     return getSocketURL()
-  }, [])
+  }, []) // 클라이언트 사이드에서 한 번만 호출됨
 
   // 모바일 감지 (메모이제이션) - 클라이언트에서만 실행
   const isMobile = useMemo(() => {
@@ -78,6 +90,9 @@ export const useSocket = () => {
   }, [])
 
   useEffect(() => {
+    // 🔍 훅 마운트 로그
+    console.log(`[useSocket] Effect running. isConnected=${isConnected}, URL=${socketURL}`);
+
     // 클라이언트 사이드에서만 실행
     if (typeof window === 'undefined') {
       return
@@ -85,7 +100,7 @@ export const useSocket = () => {
 
     // 전역 Socket 인스턴스 사용
     if (!globalSocket) {
-      console.log(`🔌 Initializing WebSocket connection to: ${socketURL}`)
+      console.log(`🔌 Initializing NEW WebSocket connection to: ${socketURL}`)
       
       globalSocket = io(socketURL, {
         // WebSocket 우선, 실패시 Polling fallback
@@ -98,41 +113,42 @@ export const useSocket = () => {
         reconnectionDelayMax: 5000,
         reconnectionAttempts: 10,
         withCredentials: false,
-        // path: '/socket.io/', // 기본값 사용
+        path: '/socket.io', // Next.js 308 리다이렉션을 피하기 위해 슬래시 제거
         query: {
           EIO: "4"
         }
       })
 
-      const socketInstance = globalSocket
+      const initialSocket = globalSocket
 
-      socketInstance.on('connect', () => {
-        console.log('✅ WebSocket Connected Successfully!')
+      initialSocket.on('connect', () => {
+        console.log('✅ WebSocket [NEW] Connected Successfully!')
         setIsConnected(true)
       })
 
-      socketInstance.on('disconnect', (reason) => {
-        console.warn(`[Socket.io] 🔌 Disconnected: ${reason}`)
+      initialSocket.on('disconnect', (reason) => {
+        console.warn(`[Socket.io] 🔌 [NEW] Disconnected: ${reason}`)
         setIsConnected(false)
       })
 
-      socketInstance.on('connect_error', (error) => {
-          console.error('[Socket.io] 🛑 Connection error:', error.message);
-          // Attempt to fallback or log additional help
-          if (socketURL.startsWith('https') && error.message === 'xhr poll error') {
-              console.warn('[Socket.io] HTTPS Mixed Content or Proxy issue suspect.');
-          }
+      initialSocket.on('connect_error', (error) => {
+          console.error('[Socket.io] 🛑 [NEW] Connection error:', error.message);
           setConnectionError(error.message)
           setIsConnected(false)
       });
+    } else {
+        console.log(`[useSocket] Using existing globalSocket. Status: ${globalSocket.connected ? 'Connected' : 'Disconnected'}`);
     }
 
     connectionCount++
     const socket = globalSocket
     
-    // 🔥 중요: 초기 성태 동기화 (이미 연결되어 있다면 즉시 true 설정)
-    if (socket.connected && !isConnected) {
-        setIsConnected(true);
+    // 🔥 중요: 초기 상태 동기화 (이미 연결되어 있다면 즉시 true 설정)
+    if (socket && socket.connected) {
+        if (!isConnected) {
+            console.log('[useSocket] Syncing isConnected to true');
+            setIsConnected(true);
+        }
         if (socket.io && socket.io.engine) {
             setTransport(socket.io.engine.transport.name);
         }

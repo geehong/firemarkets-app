@@ -8,6 +8,7 @@ const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 const nextConfig: NextConfig = {
   /* config options here */
   output: 'standalone',
+  skipTrailingSlashRedirect: true,
   
   // 개발 모드 설정
   ...(process.env.NODE_ENV === 'development' && {
@@ -56,6 +57,14 @@ const nextConfig: NextConfig = {
       {
         source: '/api/v1/:path*',
         destination: 'http://backend:8000/api/v1/:path*',
+      },
+      {
+        source: '/socket.io',
+        destination: 'http://backend:8000/socket.io/',
+      },
+      {
+        source: '/socket.io/:path*',
+        destination: 'http://backend:8000/socket.io/:path*',
       },
     ];
   },
