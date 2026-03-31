@@ -737,3 +737,25 @@ class UnifiedFinancialsResponse(BaseModel):
     ratios_json: Optional[Dict[str, Dict[str, Any]]] = Field(None, description="Financial ratios data by snapshot_date (YYYY-MM-DD)")
 
 
+# ============================================================================
+# Bitcoin Rainbow Chart Schemas
+# ============================================================================
+
+class RainbowChartBand(BaseModel):
+    """레인보우 차트의 개별 밴드 정보"""
+    low: float = Field(..., description="밴드 하단 가격")
+    high: float = Field(..., description="밴드 상단 가격")
+    label: str = Field(..., description="밴드 레이블 (예: HODL!)")
+    color: str = Field(..., description="밴드 색상 (HEX 코드)")
+
+class RainbowChartDataPoint(BaseModel):
+    """레인보우 차트의 시점별 데이터 포인트"""
+    date: str = Field(..., description="날짜 (YYYY-MM-DD)")
+    price: Optional[float] = Field(None, description="비트코인 종가")
+    bands: Dict[str, RainbowChartBand] = Field(..., description="9개 밴드 데이터")
+    current_band: Optional[str] = Field(None, description="현재 가격이 속한 밴드 키")
+
+class RainbowChartResponse(BaseModel):
+    """레인보우 차트 전체 데이터 응답"""
+    data: List[RainbowChartDataPoint]
+    metadata: Dict[str, Any] = Field(..., description="메타데이터 (버전, 계산 일시 등)")

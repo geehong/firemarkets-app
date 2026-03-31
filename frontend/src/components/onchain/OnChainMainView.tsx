@@ -19,6 +19,7 @@ const OnChainMainView: React.FC<OnChainMainViewProps> = ({ className, initialMet
     const [isHalvingMode, setIsHalvingMode] = useState(false)
     const [isCycleComparisonMode, setIsCycleComparisonMode] = useState(false)
     const [isQuantMode, setIsQuantMode] = useState(false)
+    const [isRainbowMode, setIsRainbowMode] = useState(false)
     const [isDashboardView, setIsDashboardView] = useState(false)
     const [fullPath, setFullPath] = useState<string>('')
 
@@ -37,8 +38,9 @@ const OnChainMainView: React.FC<OnChainMainViewProps> = ({ className, initialMet
         const _isHalving = pathname.includes('/onchain/halving/halving-bull-chart') || lastPart === 'halving-bull-chart' || (searchParams?.get('halving') === 'true');
         const _isCycle = pathname.includes('/onchain/halving/cycle-comparison') || lastPart === 'cycle-comparison';
         const _isQuant = pathname.includes('/onchain/halving/quant-analysis') || lastPart === 'quant-analysis';
+        const _isRainbow = pathname.includes('/onchain/halving/rainbow-chart') || lastPart === 'rainbow-chart';
 
-        if (_isHalving || _isCycle || _isQuant) {
+        if (_isHalving || _isCycle || _isQuant || _isRainbow) {
             calculatedMetricId = lastPart;
         } else if (lastPart === 'onchain' || lastPart === 'halving' || !lastPart) {
             calculatedMetricId = searchMetric || null;
@@ -64,12 +66,20 @@ const OnChainMainView: React.FC<OnChainMainViewProps> = ({ className, initialMet
         setIsHalvingMode(_isHalving);
         setIsCycleComparisonMode(_isCycle);
         setIsQuantMode(_isQuant);
+        setIsRainbowMode(_isRainbow);
         setIsDashboardView(_isDashboard);
 
     }, [pathname, searchParams]);
 
     // Route to appropriate sub-view
-    if (isHalvingMode || isCycleComparisonMode || isQuantMode) {
+    if (isHalvingMode || isCycleComparisonMode || isQuantMode || isRainbowMode) {
+        // dynamic import for views would be better but let's follow current pattern
+        const BitcoinRainbowView = require('@/components/template/onchain/BitcoinRainbowView').default;
+        
+        if (isRainbowMode) {
+            return <BitcoinRainbowView locale={locale} />
+        }
+
         return (
             <OnChainHalvingView
                 locale={locale}

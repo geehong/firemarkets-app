@@ -115,6 +115,7 @@ const AppSidebar: React.FC = () => {
             { name: t('monthlyReturns'), path: "/onchain/price/MonthlyReturns", icon: dotIcon },
             // { name: t('capitalization'), path: "/onchain/price/capitalization", icon: dotIcon },
             { name: t('piCycle'), path: "/onchain/price/pi-cycle", icon: dotIcon },
+            { name: t('rainbowChart'), path: "/onchain/halving/rainbow-chart", icon: dotIcon },
             { name: t('outlook2026'), path: "/onchain/price/outlook-2026", icon: dotIcon },
           ],
         },

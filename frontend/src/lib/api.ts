@@ -443,6 +443,11 @@ export class ApiClient {
     return this.request('/crypto/bitcoin/next-halving');
   }
 
+  // Bitcoin Rainbow Chart
+  getRainbowChartData() {
+    return this.request('/crypto/bitcoin/rainbow-chart');
+  }
+
   // Crypto Data by Asset
   getCryptoDataByAsset(assetIdentifier: string) {
     return this.request(`/crypto/data/asset/${assetIdentifier}`);

@@ -16,6 +16,8 @@ from ....schemas.asset import (
     # CryptoMetricsResponse,  # Commented out - duplicate API
 )
 from ....schemas.common import ReloadResponse
+from ....schemas.asset import RainbowChartResponse, RainbowChartDataPoint, RainbowChartBand
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -805,3 +807,158 @@ async def get_bitcoin_quant_timeseries(
         logger.error(f"Quant Engine Error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Quant analysis failed: {str(e)}")
 
+
+# ============================================================================
+# Bitcoin Rainbow Chart Implementation
+# ============================================================================
+
+RAINBOW_OFFSETS = [
+    {"key": "bitcoin_is_dead", "offset": -0.70, "label": "Bitcoin is dead", "color": "#9C27B0"},    # Purple
+    {"key": "fire_sale", "offset": -0.56, "label": "Basically a Fire Sale", "color": "#2962FF"},      # Blue
+    {"key": "buy", "offset": -0.42, "label": "BUY!", "color": "#00BFA5"},                         # Teal
+    {"key": "accumulate", "offset": -0.28, "label": "Accumulate", "color": "#00C853"},             # Green
+    {"key": "still_cheap", "offset": -0.14, "label": "Still cheap", "color": "#AEEA00"},          # Lime
+    {"key": "hodl", "offset": 0.0, "label": "HODL!", "color": "#FFFF00"},                         # Yellow
+    {"key": "is_bubble", "offset": 0.14, "label": "Is this a bubble?", "color": "#FFAB00"},       # Amber
+    {"key": "fomo", "offset": 0.28, "label": "FOMO intensifies", "color": "#FF6D00"},             # Orange
+    {"key": "sell", "offset": 0.42, "label": "Sell. Seriously, SELL!", "color": "#FF1744"},       # Red-Pink
+    {"key": "max_bubble", "offset": 0.56, "label": "Maximum Bubble Territory", "color": "#D50000"} # Dark Red
+]
+
+# Bitbo/BlockchainCenter Style Parameters (Higher slope to match industry charts)
+# Price_base = 10^(A * log10(days) + B)
+RAINBOW_A = 6.25
+RAINBOW_B = -18.24
+GENESIS_DATE = date(2009, 1, 3)
+
+def calculate_rainbow_price(days: int, offset: float) -> float:
+    """로그 회귀 공식을 사용하여 특정 시점의 밴드 가격 계산 (V2 기준)"""
+    if days <= 0: return 0.01  # 최소값 방어
+    # Price = 10^(A * log10(days) + B + offset)
+    # Standard V2 coefficients for log10
+    log_days = math.log10(days)
+    exponent = RAINBOW_A * log_days + RAINBOW_B + offset
+    return math.pow(10, exponent)
+
+@router.get("/bitcoin/rainbow-chart", response_model=RainbowChartResponse)
+async def get_bitcoin_rainbow_chart(db: Session = Depends(get_postgres_db)):
+    """비트코인 레인보우 차트 데이터를 조회합니다. (주간 다운샘플링 적용)"""
+    try:
+        # 비트코인 자산(BTCUSDT) 조회
+        btc_asset = db.query(Asset).filter(Asset.ticker == "BTCUSDT").first()
+        if not btc_asset:
+            btc_asset = db.query(Asset).filter(Asset.ticker == "BTC").first()
+        
+        if not btc_asset:
+            raise HTTPException(status_code=404, detail="Bitcoin asset (BTCUSDT/BTC) not found.")
+
+        # 모든 일별 데이터 조회
+        ohlcv_records = db.query(OHLCVData).filter(
+            OHLCVData.asset_id == btc_asset.asset_id
+        ).order_by(OHLCVData.timestamp_utc).all()
+
+        if not ohlcv_records:
+            raise HTTPException(status_code=404, detail="No price data available for Bitcoin.")
+
+        # 데이터 프로세싱
+        processed_data = []
+        today = date.today()
+        recent_cutoff = today - timedelta(days=30)
+        
+        # 1. 역사적 데이터 처리 (주간 상세 샘플링)
+        last_week_id = None
+        for record in ohlcv_records:
+            record_date = record.timestamp_utc.date()
+            days_since_genesis = (record_date - GENESIS_DATE).days
+            
+            bands = {}
+            current_price = float(record.close_price)
+            current_band_key = None
+            
+            for i, band_cfg in enumerate(RAINBOW_OFFSETS):
+                offset_val = band_cfg["offset"]
+                high_val = calculate_rainbow_price(days_since_genesis, offset_val)
+                prev_offset = RAINBOW_OFFSETS[i-1]["offset"] if i > 0 else offset_val - 0.2
+                low_val = calculate_rainbow_price(days_since_genesis, prev_offset)
+                
+                bands[band_cfg["key"]] = {
+                    "low": low_val,
+                    "high": high_val,
+                    "label": band_cfg["label"],
+                    "color": band_cfg["color"]
+                }
+                
+                if low_val <= current_price <= high_val:
+                    current_band_key = band_cfg["key"]
+            
+            # Extreme cases
+            if current_band_key is None:
+                if current_price > calculate_rainbow_price(days_since_genesis, RAINBOW_OFFSETS[-1]["offset"]):
+                    current_band_key = RAINBOW_OFFSETS[-1]["key"]
+                elif current_price < calculate_rainbow_price(days_since_genesis, RAINBOW_OFFSETS[0]["offset"]):
+                    current_band_key = RAINBOW_OFFSETS[0]["key"]
+
+            data_point = {
+                "date": record_date.isoformat(),
+                "price": current_price,
+                "bands": bands,
+                "current_band": current_band_key
+            }
+
+            # 다운샘플링 로직
+            if record_date > recent_cutoff:
+                processed_data.append(data_point)
+            else:
+                year, week, weekday = record_date.isocalendar()
+                week_id = f"{year}-{week}"
+                if week_id != last_week_id:
+                    processed_data.append(data_point)
+                    last_week_id = week_id
+
+        # 2. 미래 데이터 처리 (2030년까지)
+        last_date = ohlcv_records[-1].timestamp_utc.date()
+        target_end_date = date(2030, 1, 1)
+        
+        current_future_date = last_date + timedelta(days=1)
+        while current_future_date <= target_end_date:
+            # 미래 날짜는 주간(일요일) 데이터만 생성
+            if current_future_date.weekday() == 6:  # Sunday
+                days_since_genesis = (current_future_date - GENESIS_DATE).days
+                bands = {}
+                for i, band_cfg in enumerate(RAINBOW_OFFSETS):
+                    offset_val = band_cfg["offset"]
+                    high_val = calculate_rainbow_price(days_since_genesis, offset_val)
+                    prev_offset = RAINBOW_OFFSETS[i-1]["offset"] if i > 0 else offset_val - 0.2
+                    low_val = calculate_rainbow_price(days_since_genesis, prev_offset)
+                    
+                    bands[band_cfg["key"]] = {
+                        "low": low_val,
+                        "high": high_val,
+                        "label": band_cfg["label"],
+                        "color": band_cfg["color"]
+                    }
+                
+                processed_data.append({
+                    "date": current_future_date.isoformat(),
+                    "price": None,
+                    "bands": bands,
+                    "current_band": None
+                })
+            
+            current_future_date += timedelta(days=1)
+
+        return {
+            "data": processed_data,
+            "metadata": {
+                "version": "v2",
+                "formula": "10^(6.25 * log10(days) - 18.24 + offset)",
+                "genesis_date": GENESIS_DATE.isoformat(),
+                "last_calculated": datetime.now().isoformat(),
+                "target_end_date": target_end_date.isoformat(),
+                "total_data_points": len(processed_data)
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Error generating rainbow chart data: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to generate rainbow chart data: {str(e)}")

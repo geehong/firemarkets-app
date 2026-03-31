@@ -142,6 +142,9 @@ const OnChainHalvingView: React.FC<OnChainHalvingViewProps> = ({
             <option value="quant-analysis">
                 {locale === 'ko' ? '비트코인 퀀트 분석 엔진' : 'Bitcoin Quant Analysis Engine'}
             </option>
+            <option value="rainbow-chart">
+                {locale === 'ko' ? '비트코인 레인보우 차트' : 'Bitcoin Rainbow Chart'}
+            </option>
         </select>
     );
 
