@@ -64,10 +64,11 @@ const OnChainHalvingView: React.FC<OnChainHalvingViewProps> = ({
     const [quantTimeRange, setQuantTimeRange] = useState<{ min: number; max: number } | null>(null)
 
     // Post slug determination (isQuantMode does not have a post yet, prevent 404)
-    const postSlug = isQuantMode ? undefined : (isCycleComparisonMode ? 'cycle-comparison' : 'halving-bull-chart')
+    const postSlug = isQuantMode ? 'quant-analysis' : (isCycleComparisonMode ? 'cycle-comparison' : 'halving-bull-chart')
 
     // Data Fetching
     const { data: postData, isLoading: postLoading, error: postError } = usePostBySlug(postSlug)
+    const hasPostContent = !!(postData && ((postData as any).content || (postData as any).content_ko));
 
     // Metric Name for Display
     const cleanMetricNameValue = isQuantMode
@@ -188,31 +189,63 @@ const OnChainHalvingView: React.FC<OnChainHalvingViewProps> = ({
                         )}
                     </ComponentCard>
 
+                    {hasPostContent && (
+                        <ComponentCard title={parseLocalized((postData as any).title, locale) || cleanMetricNameValue}>
+                            <div
+                                className="prose prose-sm dark:prose-invert max-w-none"
+                                dangerouslySetInnerHTML={{
+                                    __html: locale === 'ko'
+                                        ? ((postData as any).content_ko || (postData as any).content)
+                                        : ((postData as any).content || (postData as any).content_ko)
+                                }}
+                            />
+                        </ComponentCard>
+                    )}
+
                     {/* ANALYSIS INFO SECTION */}
                     <ComponentCard title={locale === 'ko' ? `${cleanMetricNameValue} 분석 정보` : `${cleanMetricNameValue} Analysis Information`}>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className={`grid grid-cols-1 ${!hasPostContent ? 'md:grid-cols-2' : ''} gap-6`}>
                             {/* Left Column: Description */}
-                            <div>
-                                <h4 className="font-medium mb-3 text-gray-900 dark:text-gray-100">
-                                    {locale === 'ko' ? `${cleanMetricNameValue}란?` : `What is ${cleanMetricNameValue}?`}
-                                </h4>
-                                <p className="text-sm text-gray-500 leading-relaxed dark:text-gray-400">
-                                    {descriptionText || (locale === 'ko'
-                                        ? '비트코인의 반감기와 가격 사이클을 분석하여 시장의 장기적인 추세를 파악할 수 있습니다.'
-                                        : 'analyze Bitcoin halving and price cycles to understand long-term market trends.')
-                                    }
-                                </p>
-                            </div>
+                            {!hasPostContent && (
+                                <div>
+                                    <h4 className="font-medium mb-3 text-gray-900 dark:text-gray-100">
+                                        {locale === 'ko' ? `${cleanMetricNameValue}란?` : `What is ${cleanMetricNameValue}?`}
+                                    </h4>
+                                    <p className="text-sm text-gray-500 leading-relaxed dark:text-gray-400">
+                                        {descriptionText || (locale === 'ko'
+                                            ? '비트코인의 반감기와 가격 사이클을 분석하여 시장의 장기적인 추세를 파악할 수 있습니다.'
+                                            : 'analyze Bitcoin halving and price cycles to understand long-term market trends.')
+                                        }
+                                    </p>
+                                </div>
+                            )}
 
                             {/* Right Column: Interpretation */}
                             <div>
                                 <h4 className="font-medium mb-3 text-gray-900 dark:text-gray-100">
-                                    {isCycleComparisonMode
-                                        ? (locale === 'ko' ? '사이클 기간 정보' : 'Cycle Duration Information')
-                                        : (locale === 'ko' ? '반감기 정보' : 'Halving Information')}
+                                    {isQuantMode 
+                                        ? (locale === 'ko' ? '스코어링 기준 안내' : 'Scoring Legend')
+                                        : (isCycleComparisonMode
+                                            ? (locale === 'ko' ? '사이클 기간 정보' : 'Cycle Duration Information')
+                                            : (locale === 'ko' ? '반감기 정보' : 'Halving Information'))}
                                 </h4>
 
-                                {isCycleComparisonMode ? (
+                                {isQuantMode ? (
+                                    <div className="space-y-2">
+                                        {[
+                                            { color: 'bg-red-500', label: locale === 'ko' ? '80-100: 과매수 (위험)' : '80-100: Overbought' },
+                                            { color: 'bg-orange-400', label: locale === 'ko' ? '60-80: 분산 (주의)' : '60-80: Distribution' },
+                                            { color: 'bg-gray-400', label: locale === 'ko' ? '40-60: 중립' : '40-60: Neutral' },
+                                            { color: 'bg-blue-400', label: locale === 'ko' ? '20-40: 축적 (매수)' : '20-40: Accumulation' },
+                                            { color: 'bg-green-500', label: locale === 'ko' ? '0-20: 과매도 (기회)' : '0-20: Oversold' },
+                                        ].map((item, idx) => (
+                                            <div key={idx} className="flex items-center gap-2 text-xs">
+                                                <div className={`w-3 h-3 rounded-full ${item.color}`} />
+                                                <span className="text-gray-600 dark:text-gray-400 font-medium">{item.label}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : isCycleComparisonMode ? (
                                     <div className="grid grid-cols-2 gap-4">
                                         {[
                                             { era: 'Era 1', date: 'Nov 28, 2011' },
@@ -255,20 +288,6 @@ const OnChainHalvingView: React.FC<OnChainHalvingViewProps> = ({
                             height={400}
                         />
                     </ComponentCard>
-
-                    {/* About Section (Post Content) */}
-                    {postData && ((postData as any).content || (postData as any).content_ko) && (
-                        <ComponentCard title={parseLocalized((postData as any).title, locale) || cleanMetricNameValue}>
-                            <div
-                                className="prose prose-sm dark:prose-invert max-w-none"
-                                dangerouslySetInnerHTML={{
-                                    __html: locale === 'ko'
-                                        ? ((postData as any).content_ko || (postData as any).content)
-                                        : ((postData as any).content || (postData as any).content_ko)
-                                }}
-                            />
-                        </ComponentCard>
-                    )}
                 </div>
             )
         },

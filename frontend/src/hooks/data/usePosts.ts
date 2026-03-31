@@ -132,23 +132,20 @@ export const usePosts = (params?: {
   ticker?: string
   sort_by?: string
   order?: 'asc' | 'desc'
+  _t?: number  // Cache buster
 }, options?: any) => {
   return useQuery({
     queryKey: ['posts', params],
     queryFn: async (): Promise<PostListResponse> => {
       const searchParams = new URLSearchParams()
 
-      if (params?.page) searchParams.append('page', params.page.toString())
-      if (params?.page_size) searchParams.append('page_size', params.page_size.toString())
-      if (params?.post_type) searchParams.append('post_type', params.post_type)
-      if (params?.status) searchParams.append('status', params.status)
-      if (params?.search) searchParams.append('search', params.search)
-      if (params?.category) searchParams.append('category', params.category)
-      if (params?.tag) searchParams.append('tag', params.tag)
-      if (params?.author_id) searchParams.append('author_id', params.author_id.toString())
-      if (params?.ticker) searchParams.append('ticker', params.ticker)
-      if (params?.sort_by) searchParams.append('sort_by', params.sort_by)
-      if (params?.order) searchParams.append('order', params.order)
+      if (params) {
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            searchParams.append(key, String(value))
+          }
+        })
+      }
 
       const url = `${getApiBase()}/posts/?${searchParams.toString()}`
       console.log('🔍 [usePosts] Fetching posts:', url)

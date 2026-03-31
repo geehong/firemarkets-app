@@ -694,6 +694,30 @@ class SchedulerService:
                 )
                 self.logger.info(f"✅ Scheduled job: 'daily_raw_news_cleanup' (Daily at 00:30 {self.scheduler.timezone})")
 
+                # --- View Refresh Job (Treemap) ---
+                # Refresh every 15 minutes to keep it relatively fresh
+                self.scheduler.add_job(
+                    self._create_view_refresh_function(),
+                    'interval',
+                    minutes=15,
+                    id='treemap_view_refresh',
+                    replace_existing=True
+                )
+                self.logger.info("✅ Scheduled job: 'treemap_view_refresh' (15m)")
+
+                # --- Daily US Stock Backfill Job ---
+                # Run at 06:00 KST / 21:00 UTC
+                if self.config_manager.is_ohlcv_collection_enabled():
+                    self.scheduler.add_job(
+                        self._create_collection_function(USBackfillCollector),
+                        'cron',
+                        hour=21,
+                        minute=0,
+                        id='daily_us_backfill_collection_job',
+                        replace_existing=True
+                    )
+                    self.logger.info(f"✅ Scheduled job: 'daily_us_backfill_collection_job' (Daily at 06:00 KST / 21:00 UTC)")
+
                 return
 
         # --- Legacy interval-based path ---
@@ -924,6 +948,17 @@ class SchedulerService:
                     timezone=timezone
                 )
                 self.logger.info(f"✅ Scheduled job: 'daily_us_backfill_collection_job' (Daily at 06:00 KST / 21:00 UTC)")
+
+            # --- View Refresh Job (Treemap) ---
+            # Always add view refresh job to ensure data consistency
+            self.scheduler.add_job(
+                self._create_view_refresh_function(),
+                'interval',
+                minutes=15,
+                id='treemap_view_refresh',
+                replace_existing=True
+            )
+            self.logger.info("✅ Scheduled job: 'treemap_view_refresh' (15m)")
             
             self.logger.info(f"✅ Scheduled {len(self.scheduler.get_jobs())} jobs from temp.json config")
             

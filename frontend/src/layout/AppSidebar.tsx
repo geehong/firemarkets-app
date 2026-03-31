@@ -134,7 +134,7 @@ const AppSidebar: React.FC = () => {
           subItems: [
             { name: t('cycleComparison'), path: "/onchain/halving/cycle-comparison", icon: dotIcon },
             { name: t('halvingBull'), path: "/onchain/halving/halving-bull-chart", icon: dotIcon },
-            { name: "퀀트 분석 엔진 (Quant)", path: "/onchain/halving/quant-analysis", icon: dotIcon },
+            { name: "비트코인 분석", path: "/onchain/halving/quant-analysis", icon: dotIcon },
           ],
         },
         {

@@ -118,13 +118,13 @@ export const AssetHeaderIndicators: React.FC<{
     items: { label: string, val: string, diff?: string | null }[]
 }> = ({ items }) => {
     return (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 w-full max-w-[500px]">
+        <div className="flex flex-wrap gap-2 w-full">
             {items.map((item, i) => (
-                <div key={i} className="flex flex-col bg-white/5 p-2 rounded-lg border border-white/10 backdrop-blur-sm">
+                <div key={i} className="flex-1 min-w-[110px] max-w-[160px] flex flex-col bg-white/5 p-2 rounded-lg border border-white/10 backdrop-blur-sm shrink-0">
                     <span className="text-[9px] font-bold text-white/40 uppercase tracking-tighter mb-0.5">{item.label}</span>
-                    <span className="text-xs font-bold text-white leading-none whitespace-nowrap">{item.val}</span>
+                    <span className="text-xs font-bold text-white leading-none mb-1">{item.val}</span>
                     {item.diff && (
-                        <span className={`text-[10px] font-medium mt-0.5 ${Number(item.diff) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        <span className={`text-[10px] font-medium ${Number(item.diff) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                             {Number(item.diff) > 0 ? '+' : ''}{item.diff}%
                         </span>
                     )}

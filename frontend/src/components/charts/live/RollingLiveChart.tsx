@@ -11,6 +11,7 @@ interface RollingLiveChartProps {
   chartType?: "candle" | "line"
   height?: number | string
   href?: string
+  rightPaddingHours?: number
 }
 
 /**

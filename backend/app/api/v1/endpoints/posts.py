@@ -74,7 +74,7 @@ async def test_posts():
 
 
 @router.get("/")
-@cache(expire=300)
+@cache(expire=60)
 def get_posts(
     page: int = Query(1, ge=1, description="페이지 번호"),
     page_size: int = Query(20, ge=1, le=1000, description="페이지당 항목 수"),

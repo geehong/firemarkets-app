@@ -8,6 +8,7 @@ import { nanoid } from 'nanoid';
 import { parseLocalized } from '@/utils/parseLocalized';
 import { useLocale } from 'next-intl';
 import { usePosts, useDeletePost, useUpdatePost, useMergePosts, useCleanupPosts, Post } from '@/hooks/data/usePosts';
+import { useQueryClient } from '@tanstack/react-query';
 
 const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatus?: string }> = ({
   postType = 'post',
@@ -21,6 +22,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
   const { user, isAuthenticated, isAdmin, loading: authLoading } = useAuth();
 
   const typeList = postType.split(',').map(t => t.trim());
+  const queryClient = useQueryClient();
 
   // Initialize state from URL params or defaults
   const [currentPostType, setCurrentPostType] = useState(searchParams.get('post_type') || (typeList.includes('all') ? 'all' : typeList[0]));
@@ -31,6 +33,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
   const [localSearchInput, setLocalSearchInput] = useState(searchTerm);
   const [sortBy, setSortBy] = useState(searchParams.get('sort_by') || 'created_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>((searchParams.get('order') as 'asc' | 'desc') || 'desc');
+  const [refreshKey, setRefreshKey] = useState<number>(0);
 
   const [selectedPosts, setSelectedPosts] = useState<number[]>([]);
   const [bulkAction, setBulkAction] = useState('delete');
@@ -112,6 +115,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
     author_id: (!isAdmin && user?.id) ? user.id : undefined,
     sort_by: sortBy,
     order: sortOrder,
+    _t: refreshKey > 0 ? refreshKey : undefined,
   });
 
   const deletePostMutation = useDeletePost();
@@ -199,11 +203,17 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
       setTimeout(() => setCleanupResult(null), 5000);
     } finally {
       setIsCleaning(false);
+      // Forcefully invalidate queries and bypass server-side caching with a new timestamp
+      setRefreshKey(Date.now());
+      await queryClient.invalidateQueries({ queryKey: ['posts'] });
+      // Invalidate specific params if possible or just rely on refreshKey changing queryKey
     }
   }, [cleanupPostsMutation, refetch]);
 
-  const handleRefresh = () => {
-    refetch();
+  const handleRefresh = async () => {
+    console.log('[BlogManage] Manually triggering refresh');
+    setRefreshKey(Date.now());
+    await queryClient.invalidateQueries({ queryKey: ['posts'] });
   };
 
   const handleBulkAction = async () => {
@@ -220,12 +230,16 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
       if (bulkAction === 'delete') {
         await Promise.all(selectedPosts.map(id => deletePostMutation.mutateAsync(id)));
         setSelectedPosts([]);
+        setRefreshKey(Date.now());
+        await queryClient.invalidateQueries({ queryKey: ['posts'] });
       } else if (bulkAction === 'publish') {
         // @ts-ignore
         await Promise.all(selectedPosts.map(id =>
           updatePostMutation.mutateAsync({ postId: id, postData: { status: 'published' } })
         ));
         setSelectedPosts([]);
+        setRefreshKey(Date.now());
+        await queryClient.invalidateQueries({ queryKey: ['posts'] });
       } else if (bulkAction === 'ai_merge') {
         if (selectedPosts.length < 2) {
           alert('병합하려면 최소 2개의 포스트를 선택해야 합니다.');
@@ -239,23 +253,14 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
           const newPost = await mergePostsMutation.mutateAsync(selectedPosts);
 
           if (newPost && newPost.id) {
-            // 1. Delete source posts (as requested)
-            // We do this in parallel. If one fails, we still proceed with the new post but alert?
-            // User said "merged 2+ posts are immediately deleted".
+            // 1. Delete source posts
             try {
               await Promise.all(selectedPosts.map(id => deletePostMutation.mutateAsync(id)));
-              console.log('[BlogManage] Source posts deleted after merge:', selectedPosts);
             } catch (delErr) {
               console.error('[BlogManage] Failed to delete source posts:', delErr);
-              alert('병합은 완료되었으나 원본 포스트 삭제 중 오류가 발생했습니다.');
             }
 
             // 2. Prepare updates for the New Post
-            // - Slug: English title (auto-generated)
-            // - Status: 'archived'
-            // - Post Type: 'ai_draft_news'
-            
-            // Generate slug
             let slugTitle = '';
             // @ts-ignore
             if (typeof newPost.title === 'string') {
@@ -275,16 +280,12 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
             
             const finalSlug = cleanSlug || `merge-${nanoid(10)}`;
 
-            // Call Update
             await updatePostMutation.mutateAsync({
               postId: newPost.id,
               postData: {
                 slug: finalSlug,
                 status: 'archived',
                 post_type: 'ai_draft_news'
-                // Tickers, keywords, tags are hopefully handled by the backend merge or 
-                // extracted by the 'ai_draft_news' editor logic later. 
-                // If backend merge puts them in post_info, they will be saved.
               }
             });
 
@@ -292,12 +293,11 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
             const routePrefix = (typeList.includes('page') || currentPostType === 'page') ? 'page' : 'post';
             window.open(`/admin/${routePrefix}/edit/${newPost.id}`, '_blank');
             
-            // Refresh current list to remove deleted posts
             setSelectedPosts([]);
-            refetch();
-
+            setRefreshKey(Date.now());
+            await queryClient.invalidateQueries({ queryKey: ['posts'] });
           } else {
-              alert('병합에 실패했습니다 (결과 없음).');
+            alert('병합에 실패했습니다.');
           }
         } catch (err) {
           console.error('[BlogManage] Merge error:', err);
@@ -306,23 +306,19 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
           setIsMerging(false);
         }
       } else if (bulkAction === 'publish_brief') {
-        setIsMerging(true); // Reuse merging loading state for UI feedback
+        setIsMerging(true);
         try {
           await Promise.all(selectedPosts.map(id => {
             const post = blogs.find((b: any) => b.id === id);
             if (!post) return;
-            // Default extract from post_info or existing fields
-            // Assuming post_info is available in the list data (it should be if included in API)
-            // If post_info is a string, parse it.
+            
             let imageUrl: string | null = null;
             if (post) {
               // @ts-ignore
               const info = typeof post.post_info === 'string' ? JSON.parse(post.post_info) : post.post_info;
-              // User request: explicit use of image_url. If null, set cover_image to null.
               imageUrl = info?.image_url || null;
             }
 
-            // Generate English slug from title
             let slugTitle = '';
             // @ts-ignore
             if (typeof post.title === 'string') {
@@ -335,15 +331,14 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
 
             let newSlug = slugTitle
               .toLowerCase()
-              .replace(/[^a-z0-9\s-]/g, '') // Remove invalid chars
+              .replace(/[^a-z0-9\s-]/g, '')
               .trim()
-              .replace(/\s+/g, '-') // Replace spaces with -
-              .replace(/-+/g, '-'); // Merge multiple -
+              .replace(/\s+/g, '-')
+              .replace(/-+/g, '-');
 
             if (!newSlug || newSlug.length < 5) {
               newSlug = `brief-${nanoid(10)}`;
             } else {
-              // 슬러그 중복을 방지하기 위해 짧은 고유 ID 추가
               newSlug = `${newSlug.substring(0, 80)}-${nanoid(6)}`;
             }
 
@@ -352,9 +347,9 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
               postData: {
                 status: 'published',
                 post_type: 'brief_news',
-                category_id: 2, // 투자 가이드 ID
+                category_id: 2,
                 slug: newSlug,
-                cover_image: imageUrl // Explicitly set cover_image (can be null)
+                cover_image: imageUrl
               }
             });
           }));
@@ -362,7 +357,8 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
           alert('선택된 뉴스들이 단신으로 발행되었습니다.');
         } finally {
           setIsMerging(false);
-          refetch(); // Refresh list to show updates
+          setRefreshKey(Date.now());
+          await queryClient.invalidateQueries({ queryKey: ['posts'] });
         }
       }
     } catch (err) {

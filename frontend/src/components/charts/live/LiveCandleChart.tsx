@@ -152,6 +152,7 @@ interface LiveCandleChartProps {
   chartType?: "candle" | "line"
   height?: number | string
   href?: string
+  rightPaddingHours?: number
 }
 
 const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
@@ -163,7 +164,8 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
   dataInterval = DEFAULT_CANDLE_INTERVAL,
   chartType = "candle",
   height = 400,
-  href
+  href,
+  rightPaddingHours = 0
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const chartRef = useRef<any | null>(null)
@@ -246,7 +248,7 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
         secondsVisible: dataInterval === "1m" || dataInterval === "1s",
         fixLeftEdge: mode === "session",
         fixRightEdge: false,
-        rightOffset: mode === "session" ? 12 : 5,
+        rightOffset: mode === "session" ? 12 : (rightPaddingHours > 0 ? 5 : 5), // Will be updated later
       },
       rightPriceScale: {
         borderVisible: false,
@@ -452,10 +454,25 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
                 fixLeftEdge: true,
             });
         }
+      } else {
+        // [수정] Rolling 모드에서도 우측 패딩(시간 단위) 적용
+        if (rightPaddingHours > 0) {
+          let candleDurationMinutes = 15;
+          if (currentInterval === "1m") candleDurationMinutes = 1;
+          else if (currentInterval === "5m") candleDurationMinutes = 5;
+          else if (currentInterval === "15m") candleDurationMinutes = 15;
+          else if (currentInterval === "30m") candleDurationMinutes = 30;
+          else if (currentInterval === "1h") candleDurationMinutes = 60;
+
+          const offsetCandles = Math.ceil((rightPaddingHours * 60) / candleDurationMinutes);
+          chartRef.current.timeScale().applyOptions({
+            rightOffset: offsetCandles,
+          });
+        }
       }
       chartRef.current.timeScale().fitContent();
     }
-  }, [historyData, mode, sessionStartTime, lookbackHours, assetDetail])
+  }, [historyData, mode, sessionStartTime, lookbackHours, assetDetail, rightPaddingHours])
 
   useEffect(() => {
     if (!latestPrice || isNaN(Number(latestPrice.price))) return;

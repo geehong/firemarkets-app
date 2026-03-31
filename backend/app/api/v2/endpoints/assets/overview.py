@@ -7,7 +7,7 @@ Overview Module - View 기반 통합 조회
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from decimal import Decimal
 import logging
@@ -50,17 +50,18 @@ def get_localized_jsonb(jsonb_field, lang: str) -> Optional[str]:
 
 
 def calculate_asset_info(db: Session, asset_id: int) -> Dict[str, Any]:
-    """OHLCV 데이터 기반 자산 정보 계산"""
-    # 최신 2개의 OHLCV 데이터 조회
-    ohlcv_latest_two = db.query(OHLCVData).filter(
+    """OHLCV 데이터 기반 자산 정보 계산 (50D/200D MA, 52W High/Low 포함)"""
+    # 52주 데이터를 위해 최대 365개 조회
+    ohlcv_rows = db.query(OHLCVData).filter(
         OHLCVData.asset_id == asset_id,
         OHLCVData.data_interval.in_(['1d', '1day', None])
-    ).order_by(OHLCVData.timestamp_utc.desc()).limit(2).all()
+    ).order_by(OHLCVData.timestamp_utc.desc()).limit(365).all()
     
-    if not ohlcv_latest_two:
+    if not ohlcv_rows:
         return {}
     
-    latest = ohlcv_latest_two[0]
+    # 최신 데이터
+    latest = ohlcv_rows[0]
     current_price = safe_float(latest.close_price)
     volume = int(latest.volume) if latest.volume else None
     
@@ -68,25 +69,35 @@ def calculate_asset_info(db: Session, asset_id: int) -> Dict[str, Any]:
     price_change = None
     price_change_percent = None
     
-    if len(ohlcv_latest_two) > 1:
-        prev = ohlcv_latest_two[1]
+    if len(ohlcv_rows) > 1:
+        prev = ohlcv_rows[1]
         prev_close = safe_float(prev.close_price)
         
         if current_price and prev_close and prev_close != 0:
             price_change = current_price - prev_close
             price_change_percent = (price_change / prev_close) * 100
     
-    # 52주 범위 & 이동평균 계산 중단 (DB 부하 최적화)
+    # 기술 지표 계산
+    closes = [safe_float(r.close_price) for r in ohlcv_rows if r.close_price is not None]
+    highs = [safe_float(r.high_price) for r in ohlcv_rows if r.high_price is not None]
+    lows = [safe_float(r.low_price) for r in ohlcv_rows if r.low_price is not None]
+    
+    def get_sma(data: List[float], period: int) -> Optional[float]:
+        if len(data) < period:
+            return None
+        return round(sum(data[:period]) / period, 2)
+    
+    # 결과 반환
     return {
         "current_price": current_price,
         "prev_close": prev_close,
         "price_change": price_change,
         "price_change_percent": price_change_percent,
-        "week_52_high": None,
-        "week_52_low": None,
+        "week_52_high": max(highs) if highs else None,
+        "week_52_low": min(lows) if lows else None,
         "volume": volume,
-        "day_50_moving_avg": None,
-        "day_200_moving_avg": None,
+        "day_50_moving_avg": get_sma(closes, 50),
+        "day_200_moving_avg": get_sma(closes, 200),
         "last_updated": latest.timestamp_utc,
     }
 

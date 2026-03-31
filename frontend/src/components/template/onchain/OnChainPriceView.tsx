@@ -35,6 +35,7 @@ const MovingAverageChart = dynamic(() => import('@/components/charts/onchainchar
 const ClosePriceChart = dynamic(() => import('@/components/charts/ohlcvcharts/ClosePriceChart'), { ssr: false })
 const OHLCVCustomGUIChart = dynamic(() => import('@/components/charts/ohlcvcharts/OHLCVCustomGUIChart'), { ssr: false })
 const LiveChart = dynamic(() => import('@/components/charts/live/LiveChart'), { ssr: false })
+const RollingLiveChart = dynamic(() => import('@/components/charts/live/RollingLiveChart'), { ssr: false })
 const BitcoinMonthlyReturns = dynamic(() => import('@/components/widgets/BitcoinMonthlyReturns').then(mod => mod.BitcoinMonthlyReturns), { ssr: false })
 const BitcoinPredictionChart = dynamic(() => import('@/components/charts/BitcoinPredictionChart'), { ssr: false })
 const HODLWavesChart = dynamic(() => import('@/components/charts/onchaincharts/HODLWavesChart'), { ssr: false })
@@ -477,7 +478,13 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
                                                     )}
 
                                                     {fullPath.includes('/onchain/price/live') ? (
-                                                        <LiveChart assetIdentifier="BTCUSDT" height={600} />
+                                                        <RollingLiveChart
+                                                            assetIdentifier="BTCUSDT"
+                                                            height={600}
+                                                            lookbackHours={24}
+                                                            rightPaddingHours={4}
+                                                            dataInterval="5m"
+                                                        />
                                                     ) : fullPath.includes('/onchain/price/close/daily') ? (
                                                         <ClosePriceChart
                                                             assetId="BTCUSDT"
@@ -534,21 +541,39 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
                                                     )}
                                                 </div>
                                             </ComponentCard>
-        
-                                            {/* ANALYSIS INFO SECTION - Render ONLY if post has no content */}
-                                            {!hasPostContent && (
+
+                                            {/* About Section (Post Content) - Render if content exists */}
+                                            {hasPostContent && (
+                                                <>
+                                                    <ComponentCard title={parseLocalized((postData as any).title, locale) || cleanMetricNameValue}>
+                                                        <div
+                                                            className="prose prose-sm dark:prose-invert max-w-none"
+                                                            dangerouslySetInnerHTML={{
+                                                                __html: locale === 'ko'
+                                                                    ? ((postData as any).content_ko || (postData as any).content)
+                                                                    : ((postData as any).content || (postData as any).content_ko)
+                                                            }}
+                                                        />
+                                                    </ComponentCard>
+                                                </>
+                                            )}
+
+                                            {/* ANALYSIS INFO SECTION */}
+                                            {(!hasPostContent || !isPriceMetric) && (
                                                 <ComponentCard title={locale === 'ko' ? `${cleanMetricNameValue} 분석 정보` : `${cleanMetricNameValue} Analysis Information`}>
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                        {/* Description */}
-                                                        <div>
-                                                            <h4 className="font-medium mb-3 text-gray-900 dark:text-gray-100">
-                                                                {locale === 'ko' ? `${cleanMetricNameValue}란?` : `What is ${cleanMetricNameValue}?`}
-                                                            </h4>
-                                                            <p className="text-sm text-gray-500 leading-relaxed dark:text-gray-400">
-                                                                {descriptionText}
-                                                            </p>
-                                                        </div>
-        
+                                                    <div className={`grid grid-cols-1 ${!hasPostContent ? 'md:grid-cols-2' : ''} gap-6`}>
+                                                        {/* Description - Only if no post content */}
+                                                        {!hasPostContent && (
+                                                            <div>
+                                                                <h4 className="font-medium mb-3 text-gray-900 dark:text-gray-100">
+                                                                    {locale === 'ko' ? `${cleanMetricNameValue}란?` : `What is ${cleanMetricNameValue}?`}
+                                                                </h4>
+                                                                <p className="text-sm text-gray-500 leading-relaxed dark:text-gray-400">
+                                                                    {descriptionText}
+                                                                </p>
+                                                            </div>
+                                                        )}
+
                                                         {/* Interpretation */}
                                                         <div>
                                                             {!isPriceMetric && (
@@ -590,23 +615,8 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
                                                 </ComponentCard>
                                             )}
         
-                                            {/* About Section (Post Content) - Render if content exists */}
-                                            {hasPostContent && (
-                                                <>
-                                                    <ComponentCard title={parseLocalized((postData as any).title, locale) || cleanMetricNameValue}>
-                                                        <div
-                                                            className="prose prose-sm dark:prose-invert max-w-none"
-                                                            dangerouslySetInnerHTML={{
-                                                                __html: locale === 'ko'
-                                                                    ? ((postData as any).content_ko || (postData as any).content)
-                                                                    : ((postData as any).content || (postData as any).content_ko)
-                                                            }}
-                                                        />
-                                                    </ComponentCard>
-                                                    {(postData as any).post_type === 'onchain' && (
-                                                        <OnChainGuide locale={locale} />
-                                                    )}
-                                                </>
+                                            {hasPostContent && (postData as any).post_type === 'onchain' && (
+                                                <OnChainGuide locale={locale} />
                                             )}
                                         </>
                                     )}
