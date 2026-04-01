@@ -124,7 +124,9 @@ const AppSidebar: React.FC = () => {
           icon: <GridIcon />,
           subItems: [
             { name: t('movingAverages'), path: "/onchain/analysis/moving-averages", icon: dotIcon },
+            { name: t('macroSeasonality'), path: "/onchain/analysis/macro-seasonality", icon: dotIcon },
             { name: "Quantitative", path: "/onchain/analysis/quantitative", icon: dotIcon },
+            { name: t('onchainQuant'), path: "/onchain/analysis/quant-analysis", icon: dotIcon },
             { name: "Fundamental", path: "/onchain/analysis/fundamental", icon: dotIcon },
             { name: "Speculative", path: "/onchain/analysis/speculative", icon: dotIcon },
           ],
@@ -135,7 +137,6 @@ const AppSidebar: React.FC = () => {
           subItems: [
             { name: t('cycleComparison'), path: "/onchain/halving/cycle-comparison", icon: dotIcon },
             { name: t('halvingBull'), path: "/onchain/halving/halving-bull-chart", icon: dotIcon },
-            { name: "비트코인 분석", path: "/onchain/halving/quant-analysis", icon: dotIcon },
           ],
         },
         {

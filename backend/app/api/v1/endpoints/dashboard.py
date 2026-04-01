@@ -148,18 +148,42 @@ class KeywordCount(BaseModel):
 class DraftKeywordsResponse(BaseModel):
     keywords: List[KeywordCount]
 
+# --------------------------------------------------------------------------
+# Hot Draft Keywords Logic Enhancements (Domain Context Pipeline)
+# --------------------------------------------------------------------------
+
+# 1. 금융 도메인 화이트리스트 (가중치 대폭 부여)
+FINANCE_WHITELIST = {
+    "BTC", "ETH", "SOL", "NVDA", "AAPL", "TSLA", "FOMC", "CPI", "ETF", "SEC",
+    "금리", "인상", "동결", "인하", "반도체", "비트코인", "이더리움", "나스닥", "엔비디아", "부채", "한도",
+    "리플", "알트코인", "현물", "선물", "숏", "롱", "청산"
+}
+
+# 2. 개체 가중치 계산 함수
+def get_entity_weight(word: str) -> float:
+    # 대문자 약어 (BTC, FED, AI, SEC 등) - 정보 밀도 매우 높음
+    if word.isupper() and len(word) >= 2: return 2.8
+    # 금융 도메인 핵심 키워드
+    if word in FINANCE_WHITELIST: return 3.5
+    # 영문 고유명사 (Apple, Nvidia 등)
+    if len(word) >= 2 and word[0].isupper(): return 2.0
+    # 긴 단어일수록 구체적일 확률이 높음
+    if len(word) >= 5: return 1.3
+    return 1.0
+
 @router.get("/draft-keywords", response_model=DraftKeywordsResponse)
 def get_draft_keywords(
     limit: int = Query(20, ge=1, description="Number of keywords to return"),
     db: Session = Depends(get_postgres_db)
 ):
     """
-    Analyzes titles of draft news (ai_draft_news, raw_news) 
-    and returns frequently occurring keywords.
+    Analyzes titles of draft news using a specialized Finance Domain Pipeline.
+    Prioritizes entities (tickers, events) over generic news filler.
     """
     from ....models.blog import Post
     from sqlalchemy import or_
     import re
+    import math
     from collections import Counter
 
     # Fetch draft posts
@@ -171,46 +195,78 @@ def get_draft_keywords(
         )
     ).all()
 
-    # Tokenizer logic
-    words = []
+    if not posts:
+        return DraftKeywordsResponse(keywords=[])
+
+    # 3. 강화된 불용어 리스트 (JSON 파일에서 동적 로드)
+    import json
+    import os
     
-    # Common stop words (Korean & English) to exclude
-    stop_words = {
-        'the', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'but', 'is', 'are', 'was', 'were',
-        '이', '가', '은', '는', '을', '를', '의', '에', '와', '과', '도', '만', '로', '으로', '하다', '있다', '없다'
-    }
+    stop_words = set()
+    # Path relative to the app root or absolute path
+    # In docker, it's usually /app/app/utils/stop_words.json
+    # Or we can use __file__ to find it
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # Walk up to 'app' then down to 'utils'
+    # dashboard.py is in app/api/v1/endpoints/
+    json_path = os.path.join(current_dir, "..", "..", "..", "utils", "stop_words.json")
+    
+    try:
+        if os.path.exists(json_path):
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                stop_words = set(data.get("stop_words", []))
+    except Exception as e:
+        print(f"Error loading stop_words.json: {e}")
+        # Fallback to a bare minimum if file is broken
+        stop_words = {'the', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or'}
+
+    word_total_counts = Counter()
+    word_document_counts = Counter()
+    doc_count = len(posts)
 
     for p in posts:
-        # p.title is JSONB: {'ko': '...', 'en': '...'}
-        # We prioritize Korean title, fallback to English
         title_ko = p.title.get('ko', '')
         title_en = p.title.get('en', '')
         
-        # Combine both for analysis or just use one? 
-        # User example was Korean: "알파톤 캐피탈"
-        # Let's analyze both to be safe, or just Korean if available.
+        # 정교한 토큰화: 영문은 대문자 보존, 한글은 명사 위주 추출(2자 이상)
+        tokens_en = re.findall(r'\b[A-Z][a-zA-Z0-9]{1,}\b|\b[a-z]{3,}\b', title_en)
+        tokens_ko = re.findall(r'[가-힣]{2,}', title_ko)
         
-        text_to_analyze = title_ko + " " + title_en
+        combined_tokens = tokens_en + tokens_ko
         
-        # Simple regex to split by whitespace and punctuation
-        # Keep alphanumeric and Korean chars
-        tokens = re.findall(r'[a-zA-Z0-9가-힣]+', text_to_analyze)
+        # 기본 필터링 (불용어 및 숫자 제외)
+        filtered = [t for t in combined_tokens if t.lower() not in stop_words and not t.isdigit()]
         
-        for token in tokens:
-            if len(token) < 2: # Skip single chars
-                continue
-            if token.lower() in stop_words:
-                continue
-            words.append(token)
+        word_total_counts.update(filtered)
+        word_document_counts.update(set(filtered))
 
-    # Count frequencies
-    counter = Counter(words)
-    
-    # Get top N
-    top_keywords = counter.most_common(limit)
+    scored_keywords = []
+    for word, tf in word_total_counts.items():
+        df = word_document_counts[word]
+        
+        # 1. TF-IDF 계산 (IDF 보정)
+        # Smoothing 추가 (+1)
+        idf = math.log(doc_count / (df + 1)) + 1
+        
+        # 2. 가중치 결합: TF * IDF * EntityWeight * LengthWeight
+        # 단어 길이에 따른 보정 (길수록 구체적)
+        length_weight = math.log(len(word)) + 1
+        ent_weight = get_entity_weight(word)
+        
+        final_score = tf * idf * ent_weight * length_weight
+        
+        # 3. 도메인 페널티: 지나치게 흔한 단어(20% 이상 등장)는 정보 가치 급락
+        if df / doc_count > 0.20 and doc_count > 5:
+            final_score *= 0.1
+
+        scored_keywords.append((word, tf, final_score))
+
+    # 점수(Score) 기준 정렬, 동점일 경우 빈도(TF) 기준
+    top_keywords = sorted(scored_keywords, key=lambda x: (x[2], x[1]), reverse=True)[:limit]
     
     return DraftKeywordsResponse(
-        keywords=[KeywordCount(keyword=k, count=c) for k, c in top_keywords]
+        keywords=[KeywordCount(keyword=item[0], count=item[1]) for item in top_keywords]
     )
 
 # Helper functions

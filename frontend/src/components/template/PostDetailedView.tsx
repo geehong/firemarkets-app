@@ -11,7 +11,7 @@ import { parseLocalized } from '@/utils/parseLocalized'
 import BaseTemplateView from './BaseTemplateView'
 import PostComments from '@/components/post/PostComments'
 import PostSidebar from '@/components/post/PostSidebar'
-import OnChainGuide from '@/components/post/OnChainGuide'
+import OnChainGuide from '@/components/onchain/OnChainGuide'
 
 import FireMarketsAnalysis from '../post/FireMarketsAnalysis'
 import Disclaimer from '@/components/common/Disclaimer'

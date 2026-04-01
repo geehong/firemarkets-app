@@ -14,7 +14,7 @@ import { TimeIcon } from '@/icons'
 import { parseLocalized } from '@/utils/parseLocalized'
 import { formatLargeNumber } from '@/utils/formatters'
 import OnChainTemplateView from '@/components/template/onchain/OnChainTemplateView'
-import OnChainGuide from '@/components/post/OnChainGuide'
+import OnChainGuide from '@/components/onchain/OnChainGuide'
 
 // Prop interfaces for dynamic components
 interface OnChainChartProps {

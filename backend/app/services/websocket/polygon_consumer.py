@@ -225,10 +225,18 @@ class PolygonWSConsumer(BaseWSConsumer):
         try:
             if self.is_connected and self.subscribed_tickers:
                 self.is_running = True
-                await self._polling_loop()
+                
+                # 폴링 태스크가 이미 실행 중이면 해당 태스크를 await
+                if not self._polling_task or self._polling_task.done():
+                    self._polling_task = asyncio.create_task(self._polling_loop())
+                
+                # 태스크가 완료될 때까지 대기
+                await self._polling_task
             else:
                 logger.error(f"❌ {self.client_name} not connected or no subscriptions")
                 raise Exception(f"{self.client_name} not connected")
+        except asyncio.CancelledError:
+            logger.info(f"🛑 {self.client_name} run cancelled")
         except Exception as e:
             logger.error(f"❌ {self.client_name} run error: {e}")
             raise e
@@ -272,7 +280,7 @@ class PolygonWSConsumer(BaseWSConsumer):
         if len(self._request_times) >= max_requests:
             wait_time = 60 - (now - self._request_times[0]) + 10  # 10초 여유 추가
             if wait_time > 0:
-                logger.info(f"⏳ {self.client_name} rate limit reached, waiting {wait_time:.1f}s")
+                logger.debug(f"⏳ {self.client_name} rate limit reached, waiting {wait_time:.1f}s")
                 await asyncio.sleep(wait_time)
                 # 대기 후 다시 정리
                 now = time.time()

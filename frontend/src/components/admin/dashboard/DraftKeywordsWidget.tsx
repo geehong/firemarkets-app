@@ -9,7 +9,7 @@ import { Flame, ArrowRight } from 'lucide-react';
 
 export default function DraftKeywordsWidget() {
     const locale = useLocale();
-    const { data, isLoading } = useDraftKeywords(10); // Top 10
+    const { data, isLoading } = useDraftKeywords(20); // Top 20
 
     if (isLoading) {
         return (

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { useSearchParams, usePathname } from 'next/navigation'
 import OnChainPriceView from '@/components/template/onchain/OnChainPriceView'
 import OnChainHalvingView from '@/components/template/onchain/OnChainHalvingView'
+import QuantSeasonalityDashboard from '@/components/analysis/macro-seasonality/QuantSeasonalityDashboard'
 
 interface OnChainMainViewProps {
     className?: string
@@ -20,6 +21,7 @@ const OnChainMainView: React.FC<OnChainMainViewProps> = ({ className, initialMet
     const [isCycleComparisonMode, setIsCycleComparisonMode] = useState(false)
     const [isQuantMode, setIsQuantMode] = useState(false)
     const [isRainbowMode, setIsRainbowMode] = useState(false)
+    const [isMacroSeasonalityMode, setIsMacroSeasonalityMode] = useState(false)
     const [isDashboardView, setIsDashboardView] = useState(false)
     const [fullPath, setFullPath] = useState<string>('')
 
@@ -37,10 +39,11 @@ const OnChainMainView: React.FC<OnChainMainViewProps> = ({ className, initialMet
         // Check modes first
         const _isHalving = pathname.includes('/onchain/halving/halving-bull-chart') || lastPart === 'halving-bull-chart' || (searchParams?.get('halving') === 'true');
         const _isCycle = pathname.includes('/onchain/halving/cycle-comparison') || lastPart === 'cycle-comparison';
-        const _isQuant = pathname.includes('/onchain/halving/quant-analysis') || lastPart === 'quant-analysis';
+        const _isQuant = pathname.includes('/onchain/analysis/quant-analysis') || lastPart === 'quant-analysis';
         const _isRainbow = pathname.includes('/onchain/halving/rainbow-chart') || lastPart === 'rainbow-chart';
+        const _isMacroSeasonality = pathname.includes('/onchain/analysis/macro-seasonality') || lastPart === 'macro-seasonality';
 
-        if (_isHalving || _isCycle || _isQuant || _isRainbow) {
+        if (_isHalving || _isCycle || _isQuant || _isRainbow || _isMacroSeasonality) {
             calculatedMetricId = lastPart;
         } else if (lastPart === 'onchain' || lastPart === 'halving' || !lastPart) {
             calculatedMetricId = searchMetric || null;
@@ -67,6 +70,7 @@ const OnChainMainView: React.FC<OnChainMainViewProps> = ({ className, initialMet
         setIsCycleComparisonMode(_isCycle);
         setIsQuantMode(_isQuant);
         setIsRainbowMode(_isRainbow);
+        setIsMacroSeasonalityMode(_isMacroSeasonality);
         setIsDashboardView(_isDashboard);
 
     }, [pathname, searchParams]);
@@ -88,6 +92,10 @@ const OnChainMainView: React.FC<OnChainMainViewProps> = ({ className, initialMet
                 isQuantMode={isQuantMode}
             />
         )
+    }
+
+    if (isMacroSeasonalityMode) {
+        return <QuantSeasonalityDashboard locale={locale} />
     }
 
     return (

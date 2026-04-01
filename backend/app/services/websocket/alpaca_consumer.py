@@ -419,8 +419,8 @@ class AlpacaWSConsumer(BaseWSConsumer):
         if isinstance(msg, list) and msg and msg[0].get('T') == 'subscription':
              logger.info(f"📨 {self.client_name} subscription confirmation received: {msg[0]}")
         else:
-             # 임시 디버깅: 수신된 모든 메시지를 INFO로 출력
-             logger.info(f"📨 {self.client_name} RAW received: {msg}")
+             # 임시 디버깅: 수신된 모든 메시지를 DEBUG로 변경 (CPU 절약)
+             logger.debug(f"📨 {self.client_name} RAW received: {msg}")
         
         # 메시지는 리스트 형태로 배달되는 경우가 많음
         if isinstance(msg, list):
@@ -502,7 +502,7 @@ class AlpacaWSConsumer(BaseWSConsumer):
                     'timestamp': ts_ms,
                     'provider': self.client_name,
                 })
-                logger.info(f"💾 {self.client_name} stored: {symbol} = ${price}")
+                logger.debug(f"💾 {self.client_name} stored: {symbol} = ${price}")
             else:
                 logger.debug(f"⚠️ {self.client_name} invalid data: symbol={symbol}, price={price}")
                 

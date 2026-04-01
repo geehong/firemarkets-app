@@ -12,7 +12,7 @@ Assets API v2 - 모듈화된 자산 API
 """
 
 from fastapi import APIRouter
-from . import core, market, detail, analysis, overview, widgets, identity
+from . import core, market, detail, analysis, overview, widgets, identity, quant_seasonality
 
 router = APIRouter()
 
@@ -24,5 +24,6 @@ router.include_router(analysis.router, prefix="/analysis", tags=["assets-analysi
 router.include_router(overview.router, prefix="/overview", tags=["assets-overview"])
 router.include_router(widgets.router, prefix="/widgets", tags=["assets-widgets"])
 router.include_router(identity.router, tags=["assets-identity"])
+router.include_router(quant_seasonality.router, tags=["assets-analysis"])
 
 __all__ = ["router"]

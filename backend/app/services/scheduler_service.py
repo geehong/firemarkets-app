@@ -467,6 +467,56 @@ class SchedulerService:
         
         return run_refresh_sync
 
+    def _create_quant_seasonality_function(self):
+        """
+        Creates a sync wrapper for the daily quant seasonality calculation.
+        """
+        def run_quant_seasonality_sync():
+            from app.services.quant_seasonality_engine import QuantSeasonalityEngine
+            from app.models.asset import Asset
+            import json
+
+            db: Session = SessionLocal()
+            try:
+                self.logger.info("[QuantSeasonalityJob] Starting daily calculation...")
+                engine = QuantSeasonalityEngine(db)
+                
+                # Resolve BTC asset (same as API)
+                btc_asset = db.query(Asset).filter(Asset.ticker == 'BTCUSDT').first()
+                if not btc_asset:
+                    btc_asset = db.query(Asset).filter(Asset.ticker == 'BTC').first()
+                
+                if not btc_asset:
+                    self.logger.error("[QuantSeasonalityJob] BTC asset not found")
+                    return
+
+                # Compare assets (SPY, QQQ, GLD)
+                compare_tickers = ["SPY", "QQQ", "GLD"]
+                compare_assets = {}
+                for ticker in compare_tickers:
+                    asset = db.query(Asset).filter(Asset.ticker == ticker).first()
+                    if asset:
+                        compare_assets[ticker] = asset.asset_id
+                
+                # Run full analysis
+                result = engine.run_full_analysis(btc_asset.asset_id, compare_assets)
+                
+                # Save to Redis for high-speed API access
+                async def save_to_redis(res):
+                    client = await self.redis_queue_manager._ensure_client()
+                    await client.set("quant:seasonality:btc", json.dumps(res), ex=86400)
+
+                loop.run_until_complete(save_to_redis(result))
+                self.logger.info("[QuantSeasonalityJob] Successfully saved result to Redis.")
+                
+                self.logger.info("[QuantSeasonalityJob] Completed successfully.")
+            except Exception as e:
+                self.logger.error(f"[QuantSeasonalityJob] Failed: {e}", exc_info=True)
+            finally:
+                db.close()
+
+        return run_quant_seasonality_sync
+
     def setup_jobs(self, test_mode: bool = False):
         """
         Sets up all data collection jobs based on DB configuration.
@@ -705,8 +755,6 @@ class SchedulerService:
                 )
                 self.logger.info("✅ Scheduled job: 'treemap_view_refresh' (15m)")
 
-                # --- Daily US Stock Backfill Job ---
-                # Run at 06:00 KST / 21:00 UTC
                 if self.config_manager.is_ohlcv_collection_enabled():
                     self.scheduler.add_job(
                         self._create_collection_function(USBackfillCollector),
@@ -717,6 +765,18 @@ class SchedulerService:
                         replace_existing=True
                     )
                     self.logger.info(f"✅ Scheduled job: 'daily_us_backfill_collection_job' (Daily at 06:00 KST / 21:00 UTC)")
+
+                # --- Daily Quant Seasonality Job ---
+                # Run at 01:00 UTC (10:00 KST) after US market close
+                self.scheduler.add_job(
+                    self._create_quant_seasonality_function(),
+                    'cron',
+                    hour=1,
+                    minute=0,
+                    id='daily_quant_seasonality_job',
+                    replace_existing=True
+                )
+                self.logger.info(f"✅ Scheduled job: 'daily_quant_seasonality_job' (Daily at 01:00 UTC)")
 
                 return
 
