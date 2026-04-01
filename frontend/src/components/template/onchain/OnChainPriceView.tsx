@@ -16,6 +16,10 @@ import { formatLargeNumber } from '@/utils/formatters'
 import OnChainTemplateView from '@/components/template/onchain/OnChainTemplateView'
 import OnChainGuide from '@/components/onchain/OnChainGuide'
 
+// Dynamic imports for charting components
+const OnChainGaugeView = dynamic(() => import('@/components/onchain/OnChainGaugeView'), { ssr: false });
+const OnChainDashboardSummary = dynamic(() => import('@/components/onchain/OnChainDashboardSummary'), { ssr: false });
+
 // Prop interfaces for dynamic components
 interface OnChainChartProps {
     assetId?: string;
@@ -353,87 +357,27 @@ const OnChainPriceView: React.FC<OnChainPriceViewProps> = ({
                     {/* DASHBOARD VIEW - unchanged */}
                     {isDashboardView ? (
                         <div className="space-y-6">
-                            {/* Summary Cards */}
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium uppercase tracking-wider">{locale === 'ko' ? '전체 메트릭' : 'Total Metrics'}</div>
-                                    <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">{dashboardData?.total_metrics || metrics.length}</div>
-                                </div>
-                                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium uppercase tracking-wider">{locale === 'ko' ? '활성 메트릭' : 'Active Metrics'}</div>
-                                    <div className="text-2xl font-bold text-emerald-500">{dashboardData?.active_metrics || metrics.filter((m: any) => m.is_enabled).length}</div>
-                                </div>
-                                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium uppercase tracking-wider">{locale === 'ko' ? '기록 데이터' : 'Record Points'}</div>
-                                    <div className="text-2xl font-bold text-blue-500">
-                                        {metricConfig.data_count?.toLocaleString() || '...'}
-                                    </div>
-                                </div>
-                                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium uppercase tracking-wider">{locale === 'ko' ? '기준 티커' : 'Base Ticker'}</div>
-                                    <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">BTC/USDT</div>
-                                </div>
-                            </div>
+                            {/* Summary Cards with Real-time Analysis Metrics */}
+                            <OnChainDashboardSummary locale={locale} />
 
-                            {/* Metric Cards Grid */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                {dashboardData?.latest_updates?.map((item: any) => (
-                                    <div
-                                        key={item.metric_id}
-                                        onClick={() => {
-                                            const parts = pathname.split('/');
-                                            const lPart = parts[parts.length - 1];
-                                            if (lPart === 'onchain') {
-                                                router.push(`${pathname}/${item.metric_id}`);
-                                            } else {
-                                                parts[parts.length - 1] = item.metric_id;
-                                                router.push(parts.join('/'));
-                                            }
-                                        }}
-                                        className={`cursor-pointer p-5 rounded-2xl border-2 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg group ${metricId === item.metric_id
-                                            ? 'bg-blue-50 border-blue-400 dark:bg-blue-900/30 dark:border-blue-500 shadow-md ring-4 ring-blue-500/10'
-                                            : 'bg-white border-gray-100 dark:bg-gray-800 dark:border-gray-700 hover:border-blue-200 dark:hover:border-blue-800'}`}
-                                    >
-                                        <div className="flex justify-between items-start mb-4">
-                                            <h4 className={`font-bold transition-colors duration-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 ${metricId === item.metric_id ? 'text-blue-700 dark:text-blue-400' : 'text-gray-900 dark:text-gray-100'} line-clamp-1`}>
-                                                {item.metric_name}
-                                            </h4>
-                                            <span className={`text-[10px] px-2 py-1 rounded-full uppercase font-bold tracking-tighter ${metricId === item.metric_id ? 'bg-blue-600 text-white' : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'}`}>
-                                                Active
-                                            </span>
-                                        </div>
+                            {/* On-Chain Gauge Dashboard (Bitbo Style) */}
+                            <React.Suspense fallback={<div className="h-64 flex items-center justify-center text-gray-500">Loading Dashboard...</div>}>
+                                <OnChainGaugeView 
+                                    locale={locale} 
+                                    ticker="BTCUSDT" 
+                                    onSelect={(metricId) => {
+                                        const parts = pathname.split('/');
+                                        const lPart = parts[parts.length - 1];
+                                        if (lPart === 'onchain') {
+                                            router.push(`${pathname}/${metricId}`);
+                                        } else {
+                                            parts[parts.length - 1] = metricId;
+                                            router.push(parts.join('/'));
+                                        }
+                                    }} 
+                                />
+                            </React.Suspense>
 
-                                        <div className="grid grid-cols-2 gap-4 mb-4">
-                                            <div className="space-y-1">
-                                                <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{locale === 'ko' ? '데이터' : 'Points'}</div>
-                                                <div className={`text-xl font-black ${metricId === item.metric_id ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-gray-200'}`}>
-                                                    {item.data_count?.toLocaleString()}
-                                                </div>
-                                            </div>
-                                            <div className="text-right space-y-1">
-                                                <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{locale === 'ko' ? '최근 값' : 'Last Value'}</div>
-                                                <div className={`text-xl font-black ${metricId === item.metric_id ? 'text-blue-700 dark:text-blue-300' : 'text-gray-900 dark:text-gray-100'}`}>
-                                                    {item.latest_value !== null ? (
-                                                        item.latest_value >= 1000000 
-                                                            ? formatLargeNumber(item.latest_value) 
-                                                            : item.latest_value.toLocaleString(undefined, { maximumFractionDigits: 4 })
-                                                    ) : 'N/A'}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="pt-3 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center text-[10px] font-medium text-gray-400">
-                                            <div className="flex items-center gap-1.5">
-                                                <TimeIcon className="w-3.5 h-3.5" />
-                                                <span className="font-mono">{item.latest_date}</span>
-                                            </div>
-                                            <div className="flex items-center hover:text-blue-500 transition-colors">
-                                                {locale === 'ko' ? '자세히 보기' : 'View Details'} →
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
                         </div>
                     ) : (
                         /* DETAIL VIEW */

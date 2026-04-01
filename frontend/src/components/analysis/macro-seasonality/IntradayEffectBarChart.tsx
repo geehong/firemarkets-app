@@ -27,23 +27,25 @@ const IntradayEffectBarChart: React.FC<IntradayEffectBarChartProps> = ({ data, l
         ]);
 
         const HighchartsReactComponent = HighchartsReactComponentModule.default || HighchartsReactComponentModule;
-        const HighchartsCore = HighchartsCoreModule.default || HighchartsCoreModule;
+        const HC = HighchartsCoreModule.default || HighchartsCoreModule;
 
-        const moduleImports = await Promise.all([
-          import('highcharts/modules/exporting'),
-          import('highcharts/modules/accessibility')
-        ]);
+        if (!HC) {
+          console.error('Highcharts load failed: invalid core', HC);
+          return;
+        }
 
-        moduleImports.forEach((mod) => {
-          const init = mod.default || mod;
-          if (typeof init === 'function') (init as any)(HighchartsCore);
-        });
+        // Load modules individually
+        const ExportingMod = (await import('highcharts/modules/exporting')).default;
+        const AccessibilityMod = (await import('highcharts/modules/accessibility')).default;
+
+        if (typeof ExportingMod === 'function') (ExportingMod as any)(HC);
+        if (typeof AccessibilityMod === 'function') (AccessibilityMod as any)(HC);
 
         setHighchartsReact(() => HighchartsReactComponent);
-        setHighcharts(HighchartsCore);
+        setHighcharts(HC);
         setIsClient(true);
       } catch (err) {
-        console.error('Failed to load Highcharts:', err);
+        console.error('Failed to load Highcharts in IntradayChart:', err);
       }
     };
     loadHighcharts();

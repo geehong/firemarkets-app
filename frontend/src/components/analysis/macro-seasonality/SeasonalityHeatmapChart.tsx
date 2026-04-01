@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { MonthlySeasonality, QuarterlySeasonality } from '@/api/quantSeasonality';
 
 interface SeasonalityHeatmapChartProps {
@@ -32,108 +32,119 @@ const SeasonalityHeatmapChart: React.FC<SeasonalityHeatmapChartProps> = ({
         ]);
 
         const HighchartsReactComponent = HighchartsReactComponentModule.default || HighchartsReactComponentModule;
-        const HighchartsCore = HighchartsCoreModule.default || HighchartsCoreModule;
+        
+        // Highcharts 11+ ESM handling
+        let HC = HighchartsCoreModule.default || HighchartsCoreModule;
+        if (!HC) {
+          console.error('Highcharts load failed: invalid core', HC);
+          return;
+        }
 
-        const moduleImports = await Promise.all([
-          import('highcharts/modules/heatmap'),
-          import('highcharts/modules/exporting'),
-          import('highcharts/modules/accessibility')
-        ]);
+        // Load modules individually to ensure proper default export handling
+        const HeatmapModule = (await import('highcharts/modules/heatmap')).default;
+        const ExportingModule = (await import('highcharts/modules/exporting')).default;
+        const AccessibilityModule = (await import('highcharts/modules/accessibility')).default;
 
-        moduleImports.forEach((mod) => {
-          const init = mod.default || mod;
-          if (typeof init === 'function') (init as any)(HighchartsCore);
-        });
+        // Initialize modules on the core instance (if not already auto-initialized)
+        if (typeof HeatmapModule === 'function') (HeatmapModule as any)(HC);
+        if (typeof ExportingModule === 'function') (ExportingModule as any)(HC);
+        if (typeof AccessibilityModule === 'function') (AccessibilityModule as any)(HC);
+
+        // Debug check to confirm registration
+        if (!(HC as any).seriesTypes?.heatmap) {
+          console.error('CRITICAL: Highcharts heatmap module FAILED to register on core');
+        }
 
         setHighchartsReact(() => HighchartsReactComponent);
-        setHighcharts(HighchartsCore);
+        setHighcharts(HC);
         setIsClient(true);
       } catch (err) {
-        console.error('Failed to load Highcharts:', err);
+        console.error('Failed to load Highcharts in SeasonalityChart:', err);
       }
     };
     loadHighcharts();
   }, []);
 
-  if (!isClient || !Highcharts || !HighchartsReact) {
-    return <div className="h-[400px] bg-gray-50 animate-pulse rounded-2xl border border-gray-100" />;
-  }
+  // Memoize Chart Options
+  const chartOptions = useMemo(() => {
+    if (!Highcharts) return {};
 
-  // Transform Data
-  const years = Object.keys(monthlyData).sort();
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
-
-  let chartOptions: any = {};
-
-  if (viewType === 'monthly') {
-    const heatmapData: any[] = [];
-    years.forEach((year, yIdx) => {
-      months.forEach((month, mIdx) => {
-        const value = monthlyData[year]?.[month];
-        if (value !== undefined) {
-          heatmapData.push([mIdx, yIdx, parseFloat(value.toFixed(2))]);
-        }
-      });
-    });
-
-    chartOptions = {
-      chart: { type: 'heatmap', marginTop: 40, marginBottom: 80, plotBorderWidth: 1, backgroundColor: 'transparent' },
-      title: { text: '' },
-      xAxis: { categories: months, title: null, opposite: true, labels: { style: { fontWeight: 'bold' } } },
-      yAxis: { categories: years, title: null, reversed: true },
-      colorAxis: {
-        stops: [
-          [0, '#f87171'], // Rose 400 (Bearish)
-          [0.45, '#fee2e2'], // Rose 100
-          [0.5, '#ffffff'], // White (Neutral)
-          [0.55, '#d1fae5'], // Emerald 100
-          [1, '#10b981']  // Emerald 500 (Bullish)
-        ],
-        min: -30,
-        max: 30
-      },
-      legend: { align: 'right', layout: 'vertical', margin: 0, verticalAlign: 'top', y: 25, symbolHeight: 280 },
-      tooltip: {
-        formatter: function (this: any) {
-          return `<b>${this.series.yAxis.categories[this.point.y]} ${this.series.xAxis.categories[this.point.x]}</b><br/>Return: <b>${this.point.value}%</b>`;
-        }
-      },
-      series: [{
-        name: 'Bitcoin Monthly Returns',
-        borderWidth: 1,
-        borderColor: '#f9fafb',
-        data: heatmapData,
-        dataLabels: {
-          enabled: true,
-          color: '#000000',
-          style: { textOutline: 'none', fontWeight: 'bold', fontSize: '11px' },
-          formatter: function (this: any) {
-            return this.point.value !== undefined ? this.point.value + '%' : '';
+    if (viewType === 'monthly') {
+      const years = Object.keys(monthlyData).sort();
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const heatmapData: any[] = [];
+      
+      years.forEach((year, yIdx) => {
+        months.forEach((month, mIdx) => {
+          const value = monthlyData[year]?.[month];
+          if (value !== undefined) {
+            heatmapData.push([mIdx, yIdx, parseFloat(value.toFixed(2))]);
           }
-        }
-      }]
-    };
-  } else {
-    // Quarterly Column Chart
-    chartOptions = {
-        chart: { type: 'column', backgroundColor: 'transparent' },
+        });
+      });
+
+      return {
+        chart: { type: 'heatmap', marginTop: 40, marginBottom: 80, plotBorderWidth: 1, backgroundColor: 'transparent' },
         title: { text: '' },
-        xAxis: { categories: quarters, labels: { style: { fontWeight: 'bold' } } },
-        yAxis: { title: { text: 'Average Return (%)' }, labels: { format: '{value}%' } },
-        plotOptions: {
-            column: {
-                borderRadius: 5,
-                dataLabels: { enabled: true, format: '{point.y:.2f}%' },
-                colorByPoint: true,
-                colors: quarters.map(q => quarterlyData[q] >= 0 ? '#10b981' : '#f87171')
-            }
+        xAxis: { categories: months, title: null, opposite: true, labels: { style: { fontWeight: 'bold' } } },
+        yAxis: { categories: years, title: null, reversed: true },
+        colorAxis: {
+          stops: [
+            [0, '#f87171'], // Rose 400 (Bearish)
+            [0.45, '#fee2e2'], // Rose 100
+            [0.5, '#ffffff'], // White (Neutral)
+            [0.55, '#d1fae5'], // Emerald 100
+            [1, '#10b981']  // Emerald 500 (Bullish)
+          ],
+          min: -30,
+          max: 30
+        },
+        legend: { align: 'right', layout: 'vertical', margin: 0, verticalAlign: 'top', y: 25, symbolHeight: 280 },
+        tooltip: {
+          formatter: function (this: any) {
+            return `<b>${this.series.yAxis.categories[this.point.y]} ${this.series.xAxis.categories[this.point.x]}</b><br/>Return: <b>${this.point.value}%</b>`;
+          }
         },
         series: [{
-            name: 'Avg Quarterly Return',
-            data: quarters.map(q => parseFloat(quarterlyData[q]?.toFixed(2) || '0'))
+          name: locale === 'ko' ? '비트코인 월간 수익률' : 'Bitcoin Monthly Returns',
+          borderWidth: 1,
+          borderColor: '#f9fafb',
+          data: heatmapData,
+          dataLabels: {
+            enabled: true,
+            color: '#000000',
+            style: { textOutline: 'none', fontWeight: 'bold', fontSize: '11px' },
+            formatter: function (this: any) {
+              return this.point.value !== undefined ? this.point.value + '%' : '';
+            }
+          }
         }]
-    };
+      };
+    } else {
+      const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+      return {
+          chart: { type: 'column', backgroundColor: 'transparent' },
+          title: { text: '' },
+          xAxis: { categories: quarters, labels: { style: { fontWeight: 'bold' } } },
+          yAxis: { title: { text: locale === 'ko' ? '평균 수익률 (%)' : 'Average Return (%)' }, labels: { format: '{value}%' } },
+          plotOptions: {
+              column: {
+                  borderRadius: 5,
+                  dataLabels: { enabled: true, format: '{point.y:.2f}%' },
+                  colorByPoint: true,
+                  colors: quarters.map(q => quarterlyData[q] >= 0 ? '#10b981' : '#f87171')
+              }
+          },
+          series: [{
+              name: locale === 'ko' ? '평균 분기 수익률' : 'Avg Quarterly Return',
+              data: quarters.map(q => parseFloat(quarterlyData[q]?.toFixed(2) || '0'))
+          }]
+      };
+    }
+  }, [viewType, monthlyData, quarterlyData, locale, Highcharts]);
+
+  if (!isClient || !Highcharts || !HighchartsReact) {
+    return <div className="h-[400px] bg-gray-50 animate-pulse rounded-2xl border border-gray-100" />;
   }
 
   return (

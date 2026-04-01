@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { RollingCorrelationPoint } from '@/api/quantSeasonality';
 
 interface CrossAssetCorrelationChartProps {
@@ -26,101 +26,109 @@ const CrossAssetCorrelationChart: React.FC<CrossAssetCorrelationChartProps> = ({
           HighchartsCoreModule
         ] = await Promise.all([
           import('highcharts-react-official'),
-          import('highcharts/highstock')
+          import('highcharts')
         ]);
 
         const HighchartsReactComponent = HighchartsReactComponentModule.default || HighchartsReactComponentModule;
-        const HighchartsCore = HighchartsCoreModule.default || HighchartsCoreModule;
+        
+        // Highcharts 11+ ESM handling
+        let HC = HighchartsCoreModule.default || HighchartsCoreModule;
+        if (!HC) {
+          console.error('Highcharts load failed: invalid core', HC);
+          return;
+        }
 
-        const moduleImports = await Promise.all([
-          import('highcharts/modules/stock'),
-          import('highcharts/modules/exporting'),
-          import('highcharts/modules/accessibility')
-        ]);
+        // Load modules individually to ensure proper registration on the core instance
+        const StockModule = (await import('highcharts/modules/stock')).default;
+        const ExportingModule = (await import('highcharts/modules/exporting')).default;
+        const AccessibilityModule = (await import('highcharts/modules/accessibility')).default;
 
-        moduleImports.forEach((mod) => {
-          const init = mod.default || mod;
-          if (typeof init === 'function') (init as any)(HighchartsCore);
-        });
+        if (typeof StockModule === 'function') (StockModule as any)(HC);
+        if (typeof ExportingModule === 'function') (ExportingModule as any)(HC);
+        if (typeof AccessibilityModule === 'function') (AccessibilityModule as any)(HC);
 
         setHighchartsReact(() => HighchartsReactComponent);
-        setHighcharts(HighchartsCore);
+        setHighcharts(HC);
         setIsClient(true);
       } catch (err) {
-        console.error('Failed to load Highcharts:', err);
+        console.error('Failed to load Highcharts in CorrelationChart:', err);
       }
     };
     loadHighcharts();
   }, []);
 
+  const chartOptions = useMemo(() => {
+    if (!Highcharts) return {};
+
+    const tickers = Object.keys(correlationData);
+    const series: any[] = [];
+    
+    const colors = {
+      'SPY': '#3b82f6', // Blue
+      'QQQ': '#ef4444', // Red
+      'GLD': '#f59e0b'  // Amber/Gold
+    };
+
+    tickers.forEach(ticker => {
+      const data = correlationData[ticker] || [];
+      series.push({
+        name: ticker,
+        data: data.map(p => [new Date(p.date).getTime(), p[windowSize]]),
+        color: (colors as any)[ticker] || Highcharts.getOptions().colors[series.length % 10],
+        lineWidth: 2,
+        marker: { enabled: false },
+        tooltip: { valueDecimals: 3 }
+      });
+    });
+
+    return {
+      chart: { height: 500, backgroundColor: 'transparent' },
+      title: { text: '' },
+      xAxis: { type: 'datetime' },
+      yAxis: {
+        title: { text: 'Correlation Coefficient (r)' },
+        min: -1,
+        max: 1,
+        plotLines: [{
+          value: 0,
+          color: '#e5e7eb',
+          width: 1,
+          dashStyle: 'dash'
+        }, {
+            value: 0.5,
+            color: '#10b981',
+            width: 0.5,
+            dashStyle: 'dot',
+            label: { text: 'High Coupling', align: 'right', style: { color: '#10b981', fontSize: '9px' } }
+        }, {
+            value: -0.5,
+            color: '#f87171',
+            width: 0.5,
+            dashStyle: 'dot',
+            label: { text: 'Decoupling', align: 'right', style: { color: '#f87171', fontSize: '9px' } }
+        }]
+      },
+      tooltip: { shared: true, split: false },
+      legend: { enabled: true, align: 'center', verticalAlign: 'bottom' },
+      series: series,
+      rangeSelector: {
+        enabled: true,
+        selected: 1,
+        buttons: [
+            { type: 'month', count: 1, text: '1m' },
+            { type: 'month', count: 3, text: '3m' },
+            { type: 'month', count: 6, text: '6m' },
+            { type: 'year', count: 1, text: '1y' },
+            { type: 'all', text: 'All' }
+        ]
+      },
+      navigator: { enabled: true }
+    };
+  }, [correlationData, windowSize, Highcharts]);
+
   if (!isClient || !Highcharts || !HighchartsReact) {
     return <div className="h-[500px] bg-gray-50 animate-pulse rounded-2xl border border-gray-100" />;
   }
-
-  const tickers = Object.keys(correlationData);
-  const series: any[] = [];
-  
-  const colors = {
-    'SPY': '#3b82f6', // Blue
-    'QQQ': '#ef4444', // Red
-    'GLD': '#f59e0b'  // Amber/Gold
-  };
-
-  tickers.forEach(ticker => {
-    const data = correlationData[ticker] || [];
-    series.push({
-      name: ticker,
-      data: data.map(p => [new Date(p.date).getTime(), p[windowSize]]),
-      color: (colors as any)[ticker] || Highcharts.getOptions().colors[series.length % 10],
-      lineWidth: 2,
-      marker: { enabled: false },
-      tooltip: { valueDecimals: 3 }
-    });
-  });
-
-  const chartOptions: any = {
-    chart: { height: 500, backgroundColor: 'transparent' },
-    title: { text: '' },
-    xAxis: { type: 'datetime' },
-    yAxis: {
-      title: { text: 'Correlation Coefficient (r)' },
-      min: -1,
-      max: 1,
-      plotLines: [{
-        value: 0,
-        color: '#e5e7eb',
-        width: 1,
-        dashStyle: 'dash'
-      }, {
-          value: 0.5,
-          color: '#10b981',
-          width: 0.5,
-          dashStyle: 'dot',
-          label: { text: 'High Coupling', align: 'right', style: { color: '#10b981', fontSize: '9px' } }
-      }, {
-          value: -0.5,
-          color: '#f87171',
-          width: 0.5,
-          dashStyle: 'dot',
-          label: { text: 'Decoupling', align: 'right', style: { color: '#f87171', fontSize: '9px' } }
-      }]
-    },
-    tooltip: { shared: true, split: false },
-    legend: { enabled: true, align: 'center', verticalAlign: 'bottom' },
-    series: series,
-    rangeSelector: {
-      enabled: true,
-      selected: 1,
-      buttons: [
-          { type: 'month', count: 1, text: '1m' },
-          { type: 'month', count: 3, text: '3m' },
-          { type: 'month', count: 6, text: '6m' },
-          { type: 'year', count: 1, text: '1y' },
-          { type: 'all', text: 'All' }
-      ]
-    },
-    navigator: { enabled: true }
-  };
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">

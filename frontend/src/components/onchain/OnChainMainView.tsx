@@ -2,9 +2,13 @@
 
 import React, { useState, useEffect } from 'react'
 import { useSearchParams, usePathname } from 'next/navigation'
-import OnChainPriceView from '@/components/template/onchain/OnChainPriceView'
-import OnChainHalvingView from '@/components/template/onchain/OnChainHalvingView'
-import QuantSeasonalityDashboard from '@/components/analysis/macro-seasonality/QuantSeasonalityDashboard'
+import dynamic from 'next/dynamic'
+
+// Dynamic imports for sub-views to prevent SSR issues (React Error #130)
+const OnChainPriceView = dynamic(() => import('@/components/template/onchain/OnChainPriceView'), { ssr: false });
+const OnChainHalvingView = dynamic(() => import('@/components/template/onchain/OnChainHalvingView'), { ssr: false });
+const QuantSeasonalityDashboard = dynamic(() => import('@/components/analysis/macro-seasonality/QuantSeasonalityDashboard'), { ssr: false });
+const BitcoinRainbowView = dynamic(() => import('@/components/template/onchain/BitcoinRainbowView'), { ssr: false });
 
 interface OnChainMainViewProps {
     className?: string
@@ -77,36 +81,45 @@ const OnChainMainView: React.FC<OnChainMainViewProps> = ({ className, initialMet
 
     // Route to appropriate sub-view
     if (isHalvingMode || isCycleComparisonMode || isQuantMode || isRainbowMode) {
-        // dynamic import for views would be better but let's follow current pattern
-        const BitcoinRainbowView = require('@/components/template/onchain/BitcoinRainbowView').default;
-        
         if (isRainbowMode) {
-            return <BitcoinRainbowView locale={locale} />
+            return (
+                <React.Suspense fallback={<div className="h-64 flex items-center justify-center">Loading Rainbow Chart...</div>}>
+                    <BitcoinRainbowView locale={locale} />
+                </React.Suspense>
+            )
         }
 
         return (
-            <OnChainHalvingView
-                locale={locale}
-                isCycleComparisonMode={isCycleComparisonMode}
-                isHalvingMode={isHalvingMode}
-                isQuantMode={isQuantMode}
-            />
+            <React.Suspense fallback={<div className="h-64 flex items-center justify-center">Loading Halving View...</div>}>
+                <OnChainHalvingView
+                    locale={locale}
+                    isCycleComparisonMode={isCycleComparisonMode}
+                    isHalvingMode={isHalvingMode}
+                    isQuantMode={isQuantMode}
+                />
+            </React.Suspense>
         )
     }
 
     if (isMacroSeasonalityMode) {
-        return <QuantSeasonalityDashboard locale={locale} />
+        return (
+            <React.Suspense fallback={<div className="h-64 flex items-center justify-center">Loading Quant Analysis...</div>}>
+                <QuantSeasonalityDashboard locale={locale} />
+            </React.Suspense>
+        )
     }
 
     return (
-        <OnChainPriceView
-            locale={locale}
-            metricId={metricId}
-            fullPath={fullPath}
-            isDashboardView={isDashboardView}
-            initialMetrics={initialMetrics}
-            pathname={pathname || ''}
-        />
+        <React.Suspense fallback={<div className="h-64 flex items-center justify-center">Loading Price View...</div>}>
+            <OnChainPriceView
+                locale={locale}
+                metricId={metricId}
+                fullPath={fullPath}
+                isDashboardView={isDashboardView}
+                initialMetrics={initialMetrics}
+                pathname={pathname || ''}
+            />
+        </React.Suspense>
     )
 }
 
