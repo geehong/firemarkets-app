@@ -3,7 +3,7 @@ Coinbase API client for cryptocurrency data.
 """
 import logging
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -148,25 +148,65 @@ class CoinbaseClient(CryptoAPIClient):
             
             async with httpx.AsyncClient() as client:
                 # Coinbase는 granularity를 초 단위로 받음 (86400 = 1일)
-                granularity = "86400"  # 1일
-                if interval == "1h":
-                    granularity = "3600"
+                granularity_val = int(86400)
+                if interval == "1m":
+                    granularity_val = 60
+                elif interval == "5m":
+                    granularity_val = 300
+                elif interval == "1h":
+                    granularity_val = 3600
                 elif interval == "4h":
-                    granularity = "14400"
+                    granularity_val = 14400
                 
-                base = f"{self.base_url}/products/{coinbase_symbol}/candles?granularity={granularity}"
-                if start_date and end_date:
-                    url = f"{base}&start={start_date}&end={end_date}"
+                granularity = str(granularity_val)
+                result = []
+                target_limit = limit or 300
+                
+                # Parse dates to datetime objects for easy calculation
+                # end_date가 없으면 현재 시간 사용
+                if end_date:
+                    current_end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                    if current_end_dt.tzinfo is None:
+                        current_end_dt = current_end_dt.replace(tzinfo=timezone.utc)
                 else:
-                    url = base
+                    current_end_dt = datetime.now(timezone.utc)
+
+                # start_dt 도달 시 종료
+                if start_date:
+                    start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                    if start_dt.tzinfo is None:
+                        start_dt = start_dt.replace(tzinfo=timezone.utc)
+                else:
+                    start_dt = current_end_dt - timedelta(days=3650)
                 
-                data = await self._fetch_async(client, url, "Coinbase", symbol)
+                logger.info(f"[{symbol}] Paging loop range: {start_dt.isoformat()} to {current_end_dt.isoformat()} (limit: {target_limit})")
                 
-                if isinstance(data, list):
-                    result = []
+                # Paging loop
+                while len(result) < target_limit:
+                    # Coinbase는 최대 300개까지만 리턴함. 
+                    # 한 번의 호출에서 윈도우가 너무 크면 에러(400)가 발생하므로, current_end 기준 최신 300개 윈도우 계산
+                    page_start_dt = current_end_dt - timedelta(seconds=granularity_val * 299)
+                    
+                    # 요청할 윈도우의 시작점 (start_dt 보다는 커야 함)
+                    actual_start_dt = max(page_start_dt, start_dt)
+                    actual_start = actual_start_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+                    actual_end = current_end_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+                    
+                    base = f"{self.base_url}/products/{coinbase_symbol}/candles?granularity={granularity}"
+                    url = f"{base}&start={actual_start}&end={actual_end}"
+                    
+                    logger.info(f"[{symbol}] Coinbase API 호출 시도: {url}")
+                    
+                    data = await self._fetch_async(client, url, "Coinbase", symbol)
+                    
+                    if not isinstance(data, list) or not data:
+                        # 더 이상 데이터가 없거나 윈도우 상 데이터가 없는 경우
+                        break
+                    
+                    page_result = []
                     for candle in data:
                         point = OhlcvDataPoint(
-                            timestamp_utc=datetime.fromtimestamp(candle[0]),
+                            timestamp_utc=datetime.fromtimestamp(candle[0], tz=timezone.utc),
                             low_price=safe_float(candle[1]),
                             high_price=safe_float(candle[2]),
                             open_price=safe_float(candle[3]),
@@ -177,13 +217,26 @@ class CoinbaseClient(CryptoAPIClient):
                                 safe_float(candle[3])
                             )
                         )
-                        result.append(point)
-                        
-                        # Limit 적용
-                        if limit and len(result) >= limit:
-                            break
+                        page_result.append(point)
                     
-                    return result
+                    # Coinbase는 최신 데이터부터 [0]에 줌 (역순)
+                    result.extend(page_result)
+                    
+                    # Limit 도달 시 종료
+                    if len(result) >= target_limit:
+                        result = result[:target_limit]
+                        break
+                    
+                    # 다음 페이지를 위해 current_end_dt 업데이트
+                    # 가장 오래된 데이터의 시간보다 1 granularity 이전으로 설정
+                    last_ts = data[-1][0]
+                    current_end_dt = datetime.fromtimestamp(last_ts - granularity_val, tz=timezone.utc)
+                    
+                    # start_dt 도달 시 종료
+                    if current_end_dt < start_dt:
+                        break
+                        
+                return result
         except Exception as e:
             logger.error(f"Coinbase OHLCV fetch failed for {symbol}: {e}")
         

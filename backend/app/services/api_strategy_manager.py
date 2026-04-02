@@ -2,6 +2,7 @@
 API 전략 관리자: 여러 외부 API를 순서대로 호출하고 실패 시 자동 전환하는 Failover 메커니즘
 """
 
+from __future__ import annotations
 import asyncio
 import pandas as pd
 import time
@@ -441,6 +442,8 @@ class ApiStrategyManager:
         rate_limit = self.api_rate_limits[api_name]
         current_time = time.time()
         
+        
+        
         # 1분 이전의 호출 기록 제거
         rate_limit['last_calls'] = [
             call_time for call_time in rate_limit['last_calls'] 
@@ -473,12 +476,9 @@ class ApiStrategyManager:
             if wait_time > 0:
                 self.logger.info(f"Waiting {wait_time:.1f}s for {api_name} rate limit reset")
                 await asyncio.sleep(wait_time)
-    
-    async def get_ohlcv_data(self, asset_id: int, interval: str = "1d") -> Optional[List]:
-        """
-        OHLCV 데이터를 가져오는 메서드 (수집기용)
-        """
-        # asset_id로 ticker 조회
+
+    async def _get_asset_info(self, asset_id: int) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        """자산 ID로 티커, 타입, 공급처 조회"""
         from app.models.asset import Asset
         from app.core.database import SessionLocal
         
@@ -486,24 +486,68 @@ class ApiStrategyManager:
         try:
             asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
             if not asset:
-                return None
+                return None, None, None
             ticker = asset.ticker
             asset_type = asset.asset_type.type_name if asset.asset_type else None
-            # data_source 확인 (우선순위: asset.data_source > collection_settings.data_source)
-            # asset.data_source는 자산의 기본 데이터 소스 (DB 컬럼, 영구 설정)
-            # collection_settings.data_source는 수집 설정에서 오버라이드 (임시 설정)
-            preferred_data_source = None
+            
+            db_data_source = None
             if asset.data_source:
-                preferred_data_source = asset.data_source
+                db_data_source = asset.data_source
             elif asset.collection_settings and isinstance(asset.collection_settings, dict):
-                preferred_data_source = asset.collection_settings.get('data_source')
+                db_data_source = asset.collection_settings.get('data_source')
+                
+            return ticker, asset_type, db_data_source
         finally:
             db.close()
+    
+    async def get_ohlcv_data(
+        self, 
+        asset_id: int, 
+        interval: str = "1d", 
+        preferred_data_source: Optional[str] = None,
+        limit: Optional[int] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+    ) -> List[OhlcvDataPoint]:
+        """
+        특정 자산의 지정된 간격 OHLCV 데이터를 최신 위주로 가져와 검증 후 데이터프레임으로 반환
+        성공 시 반환되는 데이터는 PostgreSQL DB에 자동으로 배치를 통해 비동기 저장이 예약됩니다.
+        """
+        # 자산 정보 조회
+        ticker, asset_type, db_data_source = await self._get_asset_info(asset_id)
+        if not ticker:
+            self.logger.error(f"Asset ID {asset_id}에 해당하는 자산을 찾을 수 없습니다.")
+            return []
+        
+        self.logger.info(f"get_ohlcv_data called for {ticker} (asset_id: {asset_id}, interval: {interval}, preferred: {preferred_data_source})")
+        
+        # 외부에서 전달된 preferred_data_source가 있으면 그것을 사용, 없으면 DB 설정을 사용
+        source_to_use = preferred_data_source or db_data_source
+        
+        # 수집 매개변수 계산 (오버라이드가 없는 경우에만 실행)
+        if start_date or end_date or limit:
+            params = {
+                "start_date": start_date,
+                "end_date": end_date,
+                "limit": limit
+            }
+        else:
+            params = await self._get_fetch_parameters(asset_id, interval, ticker, asset_type)
         
         # 기존 get_ohlcv 메서드 호출
-        df = await self.get_ohlcv(ticker, interval, 100, asset_type, asset_id, preferred_data_source=preferred_data_source)
+        df = await self.get_ohlcv(
+            ticker, 
+            interval, 
+            params.get("limit", 100), 
+            asset_type, 
+            asset_id, 
+            preferred_data_source=source_to_use, 
+            start_date=params.get("start_date"), 
+            end_date=params.get("end_date")
+        )
+
         if df is None or df.empty:
-            return None
+            return []
         
         # DataFrame을 Pydantic 모델 리스트로 변환
         from app.external_apis.base.schemas import OhlcvDataPoint
@@ -529,7 +573,7 @@ class ApiStrategyManager:
                     close_price=float(get_val(row, ['close_price', 'close'])),
                     volume=float(get_val(row, ['volume'])),
                     change_percent=float(get_val(row, ['change_percent', 'change'])) if get_val(row, ['change_percent', 'change']) is not None else None,
-                    data_interval=interval  # interval 설정
+                    data_interval=interval
                 )
                 result.append(data_point)
             except Exception as e:
@@ -538,7 +582,17 @@ class ApiStrategyManager:
         
         return result
 
-    async def get_ohlcv(self, ticker: str, interval: str = "1d", limit: int = 100, asset_type: Optional[str] = None, asset_id: Optional[int] = None, preferred_data_source: Optional[str] = None) -> Optional[pd.DataFrame]:
+    async def get_ohlcv(
+        self, 
+        ticker: str, 
+        interval: str = "1d", 
+        limit: int = 100, 
+        asset_type: Optional[str] = None, 
+        asset_id: Optional[int] = None, 
+        preferred_data_source: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+    ) -> Optional[pd.DataFrame]:
         """
         [IMPROVED] OHLCV 데이터를 여러 API에서 순서대로 시도하여 가져옵니다.
         이제 DB 상태를 확인하여 최적의 파라미터를 자동으로 결정합니다.
@@ -566,10 +620,17 @@ class ApiStrategyManager:
         finally:
             db.close()
         
-        # asset_id가 있으면 DB 상태를 확인하여 최적 파라미터 결정
+        # 파라미터 결정 (매개변수로 전달된 것이 있으면 우선적으로 사용)
         is_backfill = False
-        if asset_id:
-            params = self._get_fetch_parameters(asset_id, interval)
+        
+        # 외부 전달 파라미터가 모두 있는 경우 그것을 사용
+        if start_date or end_date or limit > 100: # 100은 기본값이므로 100보다 크면 사용자로 간주하거나 그냥 인자 우선
+             adjusted_limit = limit
+             # start_date, end_date는 이미 인자로 받음
+             is_backfill = True # 수동 호출은 보통 백필로 간주
+             self.logger.info(f"Using manual parameters for {ticker}: {start_date} to {end_date}, limit={adjusted_limit}")
+        elif asset_id:
+            params = await self._get_fetch_parameters(asset_id, interval, ticker, asset_type)
             # If no action is needed, params will be None
             if not params:
                 self.logger.info(f"No data fetching needed for asset {asset_id} ({ticker}) at this time.")
@@ -584,24 +645,9 @@ class ApiStrategyManager:
             self.logger.info(f"Using optimized parameters for asset {asset_id}: {start_date} to {end_date}, limit={adjusted_limit}, backfill={is_backfill}")
         else:
             # 기존 로직 유지 (하위 호환성)
-            # 간격별 limit 조정 (TwelveData 5000개 제한 고려)
-            if interval == '1m':
-                # 1분: 3일치 = 3 * 24 * 60 = 4320
-                adjusted_limit = 4320
-            elif interval == '5m':
-                # 5분: 30일치 = 30 * 24 * 12 = 8640
-                adjusted_limit = 8640
-            elif interval == '1h':
-                # 1h: 24배 (24시간 * historical_days)
-                adjusted_limit = historical_days * 24
-            elif interval == '4h':
-                # 4h: 6배 (6개 * historical_days)
-                adjusted_limit = historical_days * 6
-            else:
-                adjusted_limit = limit
-            
-            # 날짜 범위 계산 (지원하는 API용)
-            start_date, end_date = self._calculate_date_range(adjusted_limit)
+            adjusted_limit = limit
+            if not start_date or not end_date:
+                start_date, end_date = self._calculate_date_range(adjusted_limit)
         
         # 인트라데이 인터벌의 경우 특별 처리
         if interval in ["4h", "1h", "5m", "1m"]:
@@ -709,12 +755,12 @@ class ApiStrategyManager:
         clients_to_use = active_clients
         
         # 간격별 클라이언트 우선순위 적용
-        # 1m/5m 간격은 특정 클라이언트만 사용해야 하므로 preferred_data_source보다 우선
+        # 단, preferred_data_source가 명시적으로 제공된 경우 이를 최우선으로 함
         is_crypto = asset_type and 'crypto' in asset_type.lower()
         is_commodity = asset_type and 'commodit' in asset_type.lower()
         
-        # 코인인 경우 코인용 우선순위 적용
-        if is_crypto and interval in self.crypto_interval_client_priority:
+        # 코인인 경우 코인용 우선순위 적용 (단, preferred_data_source가 없는 경우)
+        if not preferred_data_source and is_crypto and interval in self.crypto_interval_client_priority:
             priority_clients = self.crypto_interval_client_priority[interval]
             filtered_clients = []
             for priority_name in priority_clients:
@@ -728,8 +774,8 @@ class ApiStrategyManager:
                 self.logger.info(f"Applied crypto interval-specific client priority for {interval}: {[c.__class__.__name__ for c in clients_to_use]}")
             else:
                 self.logger.warning(f"Crypto interval priority for {interval} specified but no matching clients found. Using default clients.")
-        # TradFi (주식/ETF/지수)인 경우 TradFi용 우선순위 적용
-        elif not is_crypto and not is_commodity and interval in self.interval_client_priority:
+        # TradFi (주식/ETF/지수)인 경우 TradFi용 우선순위 적용 (단, preferred_data_source가 없는 경우)
+        elif not preferred_data_source and not is_crypto and not is_commodity and interval in self.interval_client_priority:
             priority_clients = self.interval_client_priority[interval]
             filtered_clients = []
             for priority_name in priority_clients:
@@ -1587,10 +1633,10 @@ class ApiStrategyManager:
             historical_days = int(historical_days_conf.config_value) if historical_days_conf else 165
             max_historical_days = int(max_days_conf.config_value) if max_days_conf else 10950 # Default to ~30 years
             
-            # 1m, 5m 간격은 최대 백필 기간을 2년(730일)로 제한
+            # 1m, 5m 간격은 최대 백필 기간을 10년(3650일)로 변경
             if interval in ['1m', '5m']:
-                max_historical_days = min(max_historical_days, 730)  # 최대 2년
-                self.logger.debug(f"Interval {interval}: Limiting max historical days to 730 (2 years) for backfill")
+                max_historical_days = min(max_historical_days, 3650)  # 최대 10년
+                self.logger.debug(f"Interval {interval}: Limiting max historical days to 3650 (10 years) for backfill")
 
             # Get both the newest and oldest timestamps
             # interval에 따라 올바른 테이블에서 데이터 조회
@@ -1700,7 +1746,7 @@ class ApiStrategyManager:
                 return {"start_date": start_date.strftime('%Y-%m-%d'), "end_date": today.strftime('%Y-%m-%d'), "limit": limit, "is_backfill": days_diff > 1}
 
             # Subcase 2.2: Data is up-to-date (days_diff == 0). Still collect latest data to ensure freshness.
-            if days_diff == 0:
+            if days_diff == 0 and not enable_backfill:
                 # 오늘 데이터가 이미 있어도 최신 데이터를 계속 수집 (실시간 업데이트)
                 self.logger.info(f"Asset {asset_id}: Data is up-to-date. Collecting latest data to ensure freshness.")
                 # 최근 1일치 데이터 수집 (최신 데이터 확보)
@@ -1776,10 +1822,10 @@ class ApiStrategyManager:
                     # 암호화폐는 2010년부터 데이터가 있으므로 2010-01-01을 최소 히스토리 날짜로 설정
                     min_required_date = datetime(2010, 1, 1).date()
                     
-                    # 1m, 5m 간격은 최대 백필 기간을 2년(730일)로 제한
+                    # 1m, 5m 간격은 최대 백필 기간을 10년(3650일)로 변경
                     if interval in ['1m', '5m']:
-                        min_required_date = max(min_required_date, today - timedelta(days=730))
-                        self.logger.debug(f"Interval {interval} (crypto): Limiting min_required_date to 2 years ago ({min_required_date})")
+                        min_required_date = max(min_required_date, today - timedelta(days=3650))
+                        self.logger.debug(f"Interval {interval} (crypto): Limiting min_required_date to 10 years ago ({min_required_date})")
                     
                     max_required_date = today - timedelta(days=historical_days)
                     

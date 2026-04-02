@@ -188,7 +188,7 @@ const DashBoardLiveMarketView = () => {
     }
 
     return (
-        <div className="space-y-6 bg-slate-50 dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden transition-colors duration-300">
+        <div className="space-y-6 bg-slate-50 dark:bg-slate-950 p-4 md:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden transition-colors duration-300">
             {/* Header info */}
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
@@ -202,11 +202,11 @@ const DashBoardLiveMarketView = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 {currentRows.map((row, rowIndex) => (
                     <React.Fragment key={rowIndex}>
                         {row.items.map((item: any, colIndex) => (
-                            <div key={`${rowIndex}-${colIndex}`} className={`${(item.symbol === 'CombinedIndicators' || item.symbol === 'OnChain') ? 'lg:col-span-2' : ''} relative group`}>
+                            <div key={`${rowIndex}-${colIndex}`} className={`${(item.symbol === 'CombinedIndicators' || item.symbol === 'OnChain') ? 'xl:col-span-2' : ''} relative group`}>
                                 {item.symbol === 'CombinedIndicators' ? (
                                     <CombinedCryptoIndicatorChart height={320} />
                                 ) : item.symbol === 'OnChain' ? (
@@ -323,16 +323,14 @@ const DashBoardLiveMarketView = () => {
                                     />
                                 </div>
                                 ) : (
-                                    <div className="bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-slate-800/50 rounded-xl p-4 h-fit shadow-lg transition-all overflow-hidden hover:shadow-xl">
                                         <RollingLiveChart
                                             assetIdentifier={item.symbol}
                                             title={item.title}
-                                            height={300}
+                                            height={360}
                                             dataInterval="15m"
                                             lookbackHours={72}
                                             href={`/assets/${item.symbol}`}
                                         />
-                                    </div>
                                 )}
                             </div>
                         ))}

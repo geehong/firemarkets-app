@@ -353,6 +353,13 @@ class DataProcessor:
             
             if not task_type or not payload:
                 return False
+            
+            items = payload.get("items") if isinstance(payload, dict) else None
+            if items is None:
+                items = payload if isinstance(payload, list) else [payload]
+            items_count = len(items) if isinstance(items, list) else 0
+            
+            logger.info(f"🔄 Processing batch task: {task_type} ({items_count} items)")
                 
             items = payload.get("items") if isinstance(payload, dict) else None
             if items is None:
