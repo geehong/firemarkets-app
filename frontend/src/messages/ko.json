@@ -15,7 +15,7 @@
     "Sidebar": {
         "dashboard": "대시보드",
         "onChain": "온체인",
-        "virtualTrading": "가상거래",
+        "virtualTrading": "모의 투자",
         "calendar": "캘린더",
         "profile": "사용자 프로필",
         "forms": "양식",
@@ -97,6 +97,9 @@
         "analysis": "분석",
         "macroSeasonality": "매크로 & 퀀트",
         "onchainQuant": "온체인 점수",
+        "backtestDashboard": "대쉬보드",
+        "backtest": "백테스트",
+        "futuresTrading": "선물 모의 투자",
         "about": "회사 소개",
         "contact": "문의하기",
         "disclaimer": "본 사이트의 정보는 투자 권유가 아니며, 투자 손실에 대한 책임을 지지 않습니다."

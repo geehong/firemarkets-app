@@ -207,12 +207,16 @@ class QuantSeasonalityEngine:
 
         return results
 
-    def calculate_intraday_effect(self, hourly_df: pd.DataFrame) -> Dict[str, Any]:
-        """Calculate avg returns by hour of day and day of week."""
+    def calculate_intraday_effect(self, hourly_df: pd.DataFrame, tz_offset: int = 0) -> Dict[str, Any]:
+        """Calculate avg returns by hour of day and day of week, with timezone shift."""
         if hourly_df.empty:
             return {"by_hour": [], "by_weekday": []}
 
         df = hourly_df.copy()
+        # Shift timezone
+        if tz_offset != 0:
+            df.index = df.index + pd.Timedelta(hours=tz_offset)
+            
         df['returns'] = df['close_price'].pct_change()
         df['hour'] = df.index.hour
         df['weekday'] = df.index.strftime('%a')
@@ -230,21 +234,107 @@ class QuantSeasonalityEngine:
             "by_weekday": res_weekday
         }
 
-    def run_full_analysis(self, btc_asset_id: int, compare_asset_ids: Dict[str, int]) -> Dict[str, Any]:
+    def calculate_rsi(self, series: pd.Series, window: int = 14) -> pd.Series:
+        """Calculate Relative Strength Index."""
+        delta = series.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+        rs = gain / loss
+        return 100 - (100 / (1 + rs))
+
+    def calculate_rsi_strategy_backtest(self, df: pd.DataFrame, rsi_buy: float = 30, rsi_sell: float = 70) -> Dict[str, Any]:
+        """Simulate RSI strategy: Buy < rsi_buy, Sell > rsi_sell across timeframes."""
+        if df.empty:
+            return {}
+
+        results = {}
+        # Define timeframes and their resampling rules
+        tf_configs = {
+            '1h': None,
+            '1d': 'D',
+            '1w': 'W',
+            '1m': 'M'
+        }
+
+        for label, rule in tf_configs.items():
+            if rule:
+                tf_df = df['close_price'].resample(rule).last().dropna()
+            else:
+                tf_df = df['close_price']
+
+            if len(tf_df) < 30: # Need enough data for RSI and trades
+                continue
+
+            rsi = self.calculate_rsi(tf_df)
+            
+            trades = []
+            holding = False
+            entry_price = 0
+            
+            for i in range(len(tf_df)):
+                current_rsi = rsi.iloc[i]
+                current_price = tf_df.iloc[i]
+                
+                if pd.isna(current_rsi):
+                    continue
+                
+                if not holding and current_rsi < rsi_buy:
+                    holding = True
+                    entry_price = current_price
+                elif holding and current_rsi > rsi_sell:
+                    holding = False
+                    profit = (current_price / entry_price) - 1
+                    trades.append(profit)
+            
+            if trades:
+                profits = np.array(trades)
+                win_rate = (profits > 0).mean()
+                avg_win = profits[profits > 0].mean() if any(profits > 0) else 0
+                avg_loss = profits[profits < 0].mean() if any(profits < 0) else 0
+                
+                results[label] = {
+                    "win_rate": float(win_rate * 100),
+                    "avg_win": float(avg_win * 100),
+                    "avg_loss": float(avg_loss * 100),
+                    "total_trades": len(trades)
+                }
+            else:
+                results[label] = {
+                    "win_rate": 0,
+                    "avg_win": 0,
+                    "avg_loss": 0,
+                    "total_trades": 0
+                }
+
+        return results
+
+    def run_full_analysis(self, btc_asset_id: int, compare_asset_ids: Dict[str, int], 
+                          days: Optional[int] = None, tz_offset: int = 0,
+                          rsi_buy: float = 30, rsi_sell: float = 70) -> Dict[str, Any]:
         """Run all analyses and return a consolidated dict."""
         btc_hourly = self.get_btc_hourly_df(btc_asset_id)
         btc_daily = self.get_daily_price_df(btc_asset_id)
         
+        # Apply date filters if 'days' is provided
+        if days is not None:
+            cutoff = datetime.utcnow() - timedelta(days=days)
+            btc_hourly = btc_hourly[btc_hourly.index >= cutoff]
+            btc_daily = btc_daily[btc_daily.index >= cutoff]
+            
         other_daily = {}
         for ticker, aid in compare_asset_ids.items():
-            other_daily[ticker] = self.get_daily_price_df(aid)
+            df = self.get_daily_price_df(aid)
+            if days is not None:
+                df = df[df.index >= cutoff]
+            other_daily[ticker] = df
             
         rate_regime = self.get_rate_regime_series()
         
         winrate = self.calculate_timeframe_winrate(btc_hourly)
         seasonality = self.calculate_monthly_seasonality(btc_daily, rate_regime)
         correlation = self.calculate_rolling_correlation(btc_daily, other_daily)
-        intraday = self.calculate_intraday_effect(btc_hourly)
+        intraday = self.calculate_intraday_effect(btc_hourly, tz_offset=tz_offset)
+        rsi_backtest = self.calculate_rsi_strategy_backtest(btc_hourly, rsi_buy=rsi_buy, rsi_sell=rsi_sell)
         
         return {
             "generated_at": datetime.utcnow().isoformat() + "Z",
@@ -252,5 +342,6 @@ class QuantSeasonalityEngine:
             "monthly_seasonality": {k: v['monthly'] for k, v in seasonality.items()},
             "quarterly_seasonality": {k: v['quarterly'] for k, v in seasonality.items()},
             "rolling_correlation": correlation,
-            "intraday_effect": intraday
+            "intraday_effect": intraday,
+            "rsi_backtest": rsi_backtest
         }

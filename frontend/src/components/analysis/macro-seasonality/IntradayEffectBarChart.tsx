@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { IntradayEffect } from '@/api/quantSeasonality';
+import { getHighcharts } from '@/lib/highcharts-init';
 
 interface IntradayEffectBarChartProps {
   data: IntradayEffect;
@@ -16,39 +17,18 @@ const IntradayEffectBarChart: React.FC<IntradayEffectBarChartProps> = ({ data, l
   const chartRef = useRef<any>(null);
 
   useEffect(() => {
-    const loadHighcharts = async () => {
+    const loadSharedHighcharts = async () => {
       try {
-        const [
-          HighchartsReactComponentModule,
-          HighchartsCoreModule
-        ] = await Promise.all([
-          import('highcharts-react-official'),
-          import('highcharts')
-        ]);
-
-        const HighchartsReactComponent = HighchartsReactComponentModule.default || HighchartsReactComponentModule;
-        const HC = HighchartsCoreModule.default || HighchartsCoreModule;
-
-        if (!HC) {
-          console.error('Highcharts load failed: invalid core', HC);
-          return;
-        }
-
-        // Load modules individually
-        const ExportingMod = (await import('highcharts/modules/exporting')).default;
-        const AccessibilityMod = (await import('highcharts/modules/accessibility')).default;
-
-        if (typeof ExportingMod === 'function') (ExportingMod as any)(HC);
-        if (typeof AccessibilityMod === 'function') (AccessibilityMod as any)(HC);
-
-        setHighchartsReact(() => HighchartsReactComponent);
+        const { Highcharts: HC, HighchartsReact: HC_React } = await getHighcharts();
+        
+        setHighchartsReact(() => HC_React);
         setHighcharts(HC);
         setIsClient(true);
       } catch (err) {
         console.error('Failed to load Highcharts in IntradayChart:', err);
       }
     };
-    loadHighcharts();
+    loadSharedHighcharts();
   }, []);
 
   if (!isClient || !Highcharts || !HighchartsReact) {
@@ -87,27 +67,29 @@ const IntradayEffectBarChart: React.FC<IntradayEffectBarChartProps> = ({ data, l
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-full">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-start mb-6">
         <div>
-          <h3 className="text-lg font-bold text-gray-800 tracking-tight">
-            {locale === 'ko' ? '장중 효과 리서치' : 'Intraday Effect Research'}
+          <h3 className="text-lg font-black text-gray-800 dark:text-gray-100 tracking-tight">
+            {locale === 'ko' ? '장중 변동성 편향 (Intraday Bias)' : 'Intraday Variance Bias'}
           </h3>
-          <p className="text-[10px] text-gray-400 mt-1 uppercase font-bold tracking-widest">
-            {tab === 'hour' ? 'Hour of Day (UTC)' : 'Day of Week'}
+          <p className="max-w-md text-xs text-gray-400 mt-1 leading-relaxed font-medium">
+            {locale === 'ko' 
+               ? '2015년 이후 수천 개의 캔들을 분석하여 특정 시간대나 요일에 통계적으로 유의미한 수익률 편향이 있는지 분석합니다.' 
+               : 'Analyzes thousands of candles since 2015 to identify statistically significant return biases for specific hours or week days.'}
           </p>
         </div>
-        <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-1 border border-gray-200">
+        <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900 rounded-lg p-1 border border-gray-200 dark:border-gray-700">
           <button 
             onClick={() => setTab('hour')}
-            className={`px-3 py-1 text-[10px] font-black uppercase rounded ${tab === 'hour' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400 font-bold'}`}
+            className={`px-3 py-1 text-[10px] font-black uppercase rounded ${tab === 'hour' ? 'bg-white dark:bg-gray-800 text-blue-600 shadow-sm' : 'text-gray-400 font-bold'}`}
           >
-            {locale === 'ko' ? '시간별' : 'Hour'}
+            {locale === 'ko' ? '시간별 (UTC)' : 'By Hour'}
           </button>
           <button 
             onClick={() => setTab('weekday')}
-            className={`px-3 py-1 text-[10px] font-black uppercase rounded ${tab === 'weekday' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400 font-bold'}`}
+            className={`px-3 py-1 text-[10px] font-black uppercase rounded ${tab === 'weekday' ? 'bg-white dark:bg-gray-800 text-blue-600 shadow-sm' : 'text-gray-400 font-bold'}`}
           >
-            {locale === 'ko' ? '요일별' : 'Day'}
+            {locale === 'ko' ? '요일별' : 'By Day'}
           </button>
         </div>
       </div>

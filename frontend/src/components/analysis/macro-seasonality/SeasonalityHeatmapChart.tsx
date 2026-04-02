@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { MonthlySeasonality, QuarterlySeasonality } from '@/api/quantSeasonality';
+import { getHighcharts } from '@/lib/highcharts-init';
 
 interface SeasonalityHeatmapChartProps {
   monthlyData: MonthlySeasonality;
@@ -21,48 +22,23 @@ const SeasonalityHeatmapChart: React.FC<SeasonalityHeatmapChartProps> = ({
   const chartRef = useRef<any>(null);
 
   useEffect(() => {
-    const loadHighcharts = async () => {
+    const loadSharedHighcharts = async () => {
       try {
-        const [
-          HighchartsReactComponentModule,
-          HighchartsCoreModule
-        ] = await Promise.all([
-          import('highcharts-react-official'),
-          import('highcharts')
-        ]);
-
-        const HighchartsReactComponent = HighchartsReactComponentModule.default || HighchartsReactComponentModule;
+        const { Highcharts: HC, HighchartsReact: HC_React } = await getHighcharts();
         
-        // Highcharts 11+ ESM handling
-        let HC = HighchartsCoreModule.default || HighchartsCoreModule;
-        if (!HC) {
-          console.error('Highcharts load failed: invalid core', HC);
-          return;
-        }
-
-        // Load modules individually to ensure proper default export handling
-        const HeatmapModule = (await import('highcharts/modules/heatmap')).default;
-        const ExportingModule = (await import('highcharts/modules/exporting')).default;
-        const AccessibilityModule = (await import('highcharts/modules/accessibility')).default;
-
-        // Initialize modules on the core instance (if not already auto-initialized)
-        if (typeof HeatmapModule === 'function') (HeatmapModule as any)(HC);
-        if (typeof ExportingModule === 'function') (ExportingModule as any)(HC);
-        if (typeof AccessibilityModule === 'function') (AccessibilityModule as any)(HC);
-
-        // Debug check to confirm registration
+        // Final debug check to confirm registration on this render cycle
         if (!(HC as any).seriesTypes?.heatmap) {
           console.error('CRITICAL: Highcharts heatmap module FAILED to register on core');
         }
 
-        setHighchartsReact(() => HighchartsReactComponent);
+        setHighchartsReact(() => HC_React);
         setHighcharts(HC);
         setIsClient(true);
       } catch (err) {
         console.error('Failed to load Highcharts in SeasonalityChart:', err);
       }
     };
-    loadHighcharts();
+    loadSharedHighcharts();
   }, []);
 
   // Memoize Chart Options
@@ -125,8 +101,15 @@ const SeasonalityHeatmapChart: React.FC<SeasonalityHeatmapChartProps> = ({
       return {
           chart: { type: 'column', backgroundColor: 'transparent' },
           title: { text: '' },
-          xAxis: { categories: quarters, labels: { style: { fontWeight: 'bold' } } },
-          yAxis: { title: { text: locale === 'ko' ? '평균 수익률 (%)' : 'Average Return (%)' }, labels: { format: '{value}%' } },
+          xAxis: { categories: quarters, title: null, labels: { style: { fontWeight: 'bold' } } },
+          yAxis: { title: { text: locale === 'ko' ? '평균 수익률 (%)' : 'Average Return (%)' }, labels: { format: '{value}%' }, categories: null },
+          colorAxis: { visible: false }, // Explicitly disable to avoid inheriting from heatmap
+          legend: { enabled: false }, // No legend for colorAxis
+          tooltip: {
+              formatter: function (this: any) {
+                  return `<b>${this.point.category}</b><br/>${locale === 'ko' ? '평기 수익률' : 'Avg Return'}: <b>${this.point.y}%</b>`;
+              }
+          },
           plotOptions: {
               column: {
                   borderRadius: 5,

@@ -87,8 +87,10 @@ export default function ServiceLayout({
   const isAdminPage = pathWithoutLocale.startsWith('/admin');
   const isMapPage = pathWithoutLocale.startsWith('/map');
   const isOnchainPage = pathWithoutLocale.startsWith('/onchain');
+  const isBacktestPage = pathWithoutLocale.startsWith('/backtest');
+  const isVirtualTradingPage = pathWithoutLocale.startsWith('/virtual-trading');
 
-  const showGlobalSidebar = !isDetailPage && !isAdminPage && !isMapPage;
+  const showGlobalSidebar = !isDetailPage && !isAdminPage && !isMapPage && !isBacktestPage && !isVirtualTradingPage && !isOnchainPage;
 
   return (
     <div className="min-h-screen xl:flex">

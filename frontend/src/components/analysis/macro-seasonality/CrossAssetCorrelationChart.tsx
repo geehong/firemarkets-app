@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { RollingCorrelationPoint } from '@/api/quantSeasonality';
+import { getHighcharts } from '@/lib/highcharts-init';
 
 interface CrossAssetCorrelationChartProps {
   correlationData: { [ticker: string]: RollingCorrelationPoint[] };
@@ -19,42 +20,18 @@ const CrossAssetCorrelationChart: React.FC<CrossAssetCorrelationChartProps> = ({
   const chartRef = useRef<any>(null);
 
   useEffect(() => {
-    const loadHighcharts = async () => {
+    const loadSharedHighcharts = async () => {
       try {
-        const [
-          HighchartsReactComponentModule,
-          HighchartsCoreModule
-        ] = await Promise.all([
-          import('highcharts-react-official'),
-          import('highcharts')
-        ]);
-
-        const HighchartsReactComponent = HighchartsReactComponentModule.default || HighchartsReactComponentModule;
+        const { Highcharts: HC, HighchartsReact: HC_React } = await getHighcharts();
         
-        // Highcharts 11+ ESM handling
-        let HC = HighchartsCoreModule.default || HighchartsCoreModule;
-        if (!HC) {
-          console.error('Highcharts load failed: invalid core', HC);
-          return;
-        }
-
-        // Load modules individually to ensure proper registration on the core instance
-        const StockModule = (await import('highcharts/modules/stock')).default;
-        const ExportingModule = (await import('highcharts/modules/exporting')).default;
-        const AccessibilityModule = (await import('highcharts/modules/accessibility')).default;
-
-        if (typeof StockModule === 'function') (StockModule as any)(HC);
-        if (typeof ExportingModule === 'function') (ExportingModule as any)(HC);
-        if (typeof AccessibilityModule === 'function') (AccessibilityModule as any)(HC);
-
-        setHighchartsReact(() => HighchartsReactComponent);
+        setHighchartsReact(() => HC_React);
         setHighcharts(HC);
         setIsClient(true);
       } catch (err) {
         console.error('Failed to load Highcharts in CorrelationChart:', err);
       }
     };
-    loadHighcharts();
+    loadSharedHighcharts();
   }, []);
 
   const chartOptions = useMemo(() => {

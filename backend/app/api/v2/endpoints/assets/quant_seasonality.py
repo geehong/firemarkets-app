@@ -19,6 +19,10 @@ router = APIRouter()
 async def get_quant_seasonality(
     rate_regime: Optional[str] = Query("all", enum=["all", "hiking", "cutting"]),
     compare: Optional[str] = Query("SPY,QQQ,GLD", description="Comma separated tickers to compare"),
+    days: Optional[int] = Query(None, description="Number of days to look back for analysis"),
+    tz_offset: Optional[int] = Query(0, description="Timezone offset in hours (e.g. 9 for KST)"),
+    rsi_buy: Optional[float] = Query(30.0, description="RSI level to trigger buy"),
+    rsi_sell: Optional[float] = Query(70.0, description="RSI level to trigger sell"),
     db: Session = Depends(get_postgres_db)
 ):
     """
@@ -27,18 +31,19 @@ async def get_quant_seasonality(
     """
     try:
         # 1. Check custom Redis key from scheduler
-        # We can use the FastAPICache backend or a direct client.
-        try:
-            from fastapi_cache import FastAPICache
-            backend = FastAPICache.get_backend()
-            # FastAPICache.get_backend() returns a RedisBackend in this app
-            # RedisBackend.get(key) is async
-            cached_data = await backend.get("quant:seasonality:btc")
-            if cached_data:
-                logger.info("Serving quant seasonality from custom Redis key")
-                return json.loads(cached_data)
-        except Exception as cache_err:
-            logger.warning(f"Failed to check custom Redis cache: {cache_err}")
+        # We only return pre-cached for default params
+        if rate_regime == "all" and compare == "SPY,QQQ,GLD" and days is None and tz_offset == 0 and rsi_buy == 30.0 and rsi_sell == 70.0:
+            try:
+                from fastapi_cache import FastAPICache
+                backend = FastAPICache.get_backend()
+                # FastAPICache.get_backend() returns a RedisBackend in this app
+                # RedisBackend.get(key) is async
+                cached_data = await backend.get("quant:seasonality:btc")
+                if cached_data:
+                    logger.info("Serving quant seasonality from custom Redis key")
+                    return json.loads(cached_data)
+            except Exception as cache_err:
+                logger.warning(f"Failed to check custom Redis cache: {cache_err}")
 
         # 2. Cache miss or error - calculate real-time
         engine = QuantSeasonalityEngine(db)
@@ -60,7 +65,14 @@ async def get_quant_seasonality(
                 compare_assets[ticker] = asset.asset_id
         
         # Run analysis
-        full_analysis = engine.run_full_analysis(btc_asset.asset_id, compare_assets)
+        full_analysis = engine.run_full_analysis(
+            btc_asset.asset_id, 
+            compare_assets, 
+            days=days, 
+            tz_offset=tz_offset,
+            rsi_buy=rsi_buy,
+            rsi_sell=rsi_sell
+        )
         return full_analysis
         
     except Exception as e:

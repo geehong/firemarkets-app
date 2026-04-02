@@ -124,7 +124,6 @@ const AppSidebar: React.FC = () => {
           icon: <GridIcon />,
           subItems: [
             { name: t('movingAverages'), path: "/onchain/analysis/moving-averages", icon: dotIcon },
-            { name: t('macroSeasonality'), path: "/onchain/analysis/macro-seasonality", icon: dotIcon },
             { name: "Quantitative", path: "/onchain/analysis/quantitative", icon: dotIcon },
             { name: t('onchainQuant'), path: "/onchain/analysis/quant-analysis", icon: dotIcon },
             { name: "Fundamental", path: "/onchain/analysis/fundamental", icon: dotIcon },
@@ -208,7 +207,11 @@ const AppSidebar: React.FC = () => {
     {
       icon: <BoltIcon />,
       name: t('virtualTrading'),
-      path: "/virtual-trading",
+      subItems: [
+        { name: t('backtestDashboard'), path: "/onchain/analysis/macro-seasonality", icon: dotIcon },
+        { name: t('backtest'), path: "/backtest", icon: dotIcon },
+        { name: t('futuresTrading'), path: "/virtual-trading", icon: dotIcon },
+      ]
     },
     // 6. Assets
     {

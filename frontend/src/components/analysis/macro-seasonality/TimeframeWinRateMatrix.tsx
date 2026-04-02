@@ -11,14 +11,14 @@ const TimeframeWinRateMatrix: React.FC<TimeframeWinRateMatrixProps> = ({ data, l
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-full">
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-lg font-bold text-gray-800 tracking-tight">
-          {locale === 'ko' ? '타임프레임별 승률' : 'Win Rate by Timeframe'}
-        </h3>
-        <span className="text-[10px] uppercase font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded tracking-widest">
-          {locale === 'ko' ? '최근 데이터 기반' : 'Based on Recent Data'}
-        </span>
-      </div>
+        <div className="flex-1">
+          <h3 className="text-lg font-black text-gray-800 dark:text-gray-100 tracking-tight">
+            {locale === 'ko' ? '타임프레임별 승률 매트릭스' : 'Win Rate Matrix by Timeframe'}
+          </h3>
+          <p className="text-[10px] text-gray-400 mt-1 font-bold uppercase tracking-widest">
+            {locale === 'ko' ? '다양한 보유 기간에 따른 비트코인 수익 확률 통계' : 'Statistical profit probability for various Bitcoin holding periods.'}
+          </p>
+        </div>
 
       <div className="grid grid-cols-2 gap-4">
         {timeframeOrder.map((tf) => {

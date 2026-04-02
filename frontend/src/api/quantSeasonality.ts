@@ -43,13 +43,33 @@ export interface QuantSeasonalityResponse {
     [ticker: string]: RollingCorrelationPoint[];
   };
   intraday_effect: IntradayEffect;
+  rsi_backtest: {
+    [timeframe: string]: {
+      win_rate: number;
+      avg_win: number;
+      avg_loss: number;
+      total_trades: number;
+    }
+  };
 }
 
 export const fetchQuantSeasonality = async (params: {
   rateRegime?: 'all' | 'hiking' | 'cutting';
   compare?: string;
+  days?: number;
+  tz_offset?: number;
+  rsi_buy?: number;
+  rsi_sell?: number;
 }): Promise<QuantSeasonalityResponse> => {
-  const query = new URLSearchParams(params as any).toString();
+  // Only include defined parameters
+  const cleanParams: any = {};
+  Object.entries(params).forEach(([key, val]) => {
+      if (val !== undefined && val !== null) {
+          cleanParams[key] = val;
+      }
+  });
+
+  const query = new URLSearchParams(cleanParams).toString();
   const res = await fetch(`/api/v2/assets/quant-seasonality?${query}`);
   if (!res.ok) throw new Error('Failed to fetch quant seasonality');
   return res.json();
