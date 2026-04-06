@@ -23,8 +23,9 @@ function Calendar({
       classNames={{
         months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
         month: "space-y-4",
-        caption: "flex justify-center pt-1 relative items-center",
-        caption_label: "text-sm font-medium",
+        caption: "flex justify-center pt-1 relative items-center gap-1",
+        caption_label: cn("text-sm font-medium", props.captionLayout?.includes("dropdown") && "hidden"),
+        caption_dropdowns: "flex justify-center gap-1 items-center",
         nav: "space-x-1 flex items-center",
         nav_button: cn(
           "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground",
@@ -52,75 +53,17 @@ function Calendar({
         day_range_middle:
           "aria-selected:bg-accent aria-selected:text-accent-foreground",
         day_hidden: "invisible",
+        vhidden: "hidden",
+        dropdown: "rdp-dropdown bg-background border border-input rounded-md px-1 py-0.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        dropdown_month: "rdp-dropdown_month",
+        dropdown_year: "rdp-dropdown_year",
+        dropdown_icon: "ml-1 h-3 w-3 opacity-50",
         ...classNames,
       }}
       components={{
         IconLeft: ({ ...props }) => <ChevronLeft className="h-4 w-4" />,
         IconRight: ({ ...props }) => <ChevronRight className="h-4 w-4" />,
-        Nav: ({ onPreviousClick, onNextClick }: { onPreviousClick?: React.MouseEventHandler<HTMLButtonElement>, onNextClick?: React.MouseEventHandler<HTMLButtonElement> }) => {
-            const { goToMonth, currentMonth } = useNavigation()
-            
-            const handlePreviousYear = (e: React.MouseEvent) => {
-                e.preventDefault()
-                // If onPreviousClick is provided, we can assume navigation is enabled
-                if (currentMonth) {
-                    goToMonth(addYears(currentMonth, -1))
-                }
-            }
-
-            const handleNextYear = (e: React.MouseEvent) => {
-                e.preventDefault()
-                if (currentMonth) {
-                    goToMonth(addYears(currentMonth, 1))
-                }
-            }
-
-            return (
-                <div className="flex items-center justify-between absolute w-full px-1 top-3 pointer-events-none">
-                    <div className="flex items-center gap-1 pointer-events-auto">
-                        <button 
-                            onClick={handlePreviousYear}
-                            className={cn(
-                                "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100"
-                            )}
-                            type="button"
-                        >
-                            <ChevronsLeft className="h-4 w-4" />
-                        </button>
-                        <button 
-                            onClick={onPreviousClick}
-                            className={cn(
-                                "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100"
-                            )}
-                            type="button"
-                        >
-                            <ChevronLeft className="h-4 w-4" />
-                        </button>
-                    </div>
-                    <div className="flex items-center gap-1 pointer-events-auto">
-                        <button 
-                            onClick={onNextClick}
-                            className={cn(
-                                "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100"
-                            )}
-                            type="button"
-                        >
-                            <ChevronRight className="h-4 w-4" />
-                        </button>
-                        <button 
-                            onClick={handleNextYear}
-                            className={cn(
-                                "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100"
-                            )}
-                            type="button"
-                        >
-                            <ChevronsRight className="h-4 w-4" />
-                        </button>
-                    </div>
-                </div>
-            )
-        }
-      } as any}
+      }}
       {...props}
     />
   )

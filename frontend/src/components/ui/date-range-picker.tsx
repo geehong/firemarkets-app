@@ -77,6 +77,9 @@ export function DateRangePicker({
             selected={tempRange}
             onSelect={setTempRange}
             numberOfMonths={2}
+            captionLayout="dropdown-buttons"
+            fromYear={1980}
+            toYear={2040}
           />
           <div className="border-t border-gray-200 p-3 flex justify-between items-center bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
              <div className="text-xs text-gray-500">

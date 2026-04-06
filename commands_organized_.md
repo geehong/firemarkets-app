@@ -71,6 +71,7 @@ docker-compose restart nginx-proxy-manager
 firemarkets.net
 docker-compose ps
 
+sudo apt update && sudo apt upgrade -y
 
 NAME                                  IMAGE                                                                     COMMAND                   SERVICE                  CREATED          STATUS                  PORTS
 fire_markets_adminer                  adminer:latest                                                            "entrypoint.sh docke…"   adminer                  47 hours ago     Up 47 hours             0.0.0.0:5054->8080/tcp, [::]:5054->8080/tcp

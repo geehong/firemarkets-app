@@ -3,6 +3,7 @@ import flatpickr from 'flatpickr';
 import 'flatpickr/dist/flatpickr.css';
 import Label from './Label';
 import { CalenderIcon } from '../../icons';
+import { cn } from '@/lib/utils';
 import Hook = flatpickr.Options.Hook;
 import DateOption = flatpickr.Options.DateOption;
 
@@ -10,10 +11,13 @@ type PropsType = {
   id: string;
   mode?: "single" | "multiple" | "range" | "time";
   onChange?: Hook | Hook[];
-  defaultDate?: DateOption;
+  defaultDate?: DateOption | DateOption[];
+  value?: DateOption | DateOption[];
   label?: string;
   placeholder?: string;
   className?: string;
+  containerClassName?: string;
+  hideIcon?: boolean;
 };
 
 export default function DatePicker({
@@ -22,8 +26,11 @@ export default function DatePicker({
   onChange,
   label,
   defaultDate,
+  value,
   placeholder,
   className,
+  containerClassName,
+  hideIcon = false,
 }: PropsType) {
   useEffect(() => {
     const flatPickr = flatpickr(`#${id}`, {
@@ -31,7 +38,7 @@ export default function DatePicker({
       static: true,
       monthSelectorType: "static",
       dateFormat: "Y-m-d",
-      defaultDate,
+      defaultDate: value || defaultDate,
       onChange,
     });
 
@@ -40,22 +47,27 @@ export default function DatePicker({
         flatPickr.destroy();
       }
     };
-  }, [mode, onChange, id, defaultDate]);
+  }, [mode, onChange, id, defaultDate, value]);
 
   return (
-    <div>
+    <div className={cn(containerClassName)}>
       {label && <Label htmlFor={id}>{label}</Label>}
 
       <div className="relative group flex items-center justify-center">
         <input
           id={id}
           placeholder={placeholder}
-          className={`h-11 w-full rounded-lg border appearance-none px-0 py-0 text-sm shadow-theme-xs placeholder:text-gray-400 focus:outline-hidden focus:ring-3  dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30  bg-transparent text-gray-800 border-gray-300 focus:border-brand-300 focus:ring-brand-500/20 dark:border-gray-700  dark:focus:border-brand-800 cursor-pointer ${className || ''}`}
+          className={cn(
+            "h-11 w-full rounded-lg border appearance-none px-4 py-0 text-sm shadow-theme-xs placeholder:text-gray-400 focus:outline-hidden focus:ring-3  dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30  bg-transparent text-gray-800 border-gray-300 focus:border-brand-300 focus:ring-brand-500/20 dark:border-gray-700  dark:focus:border-brand-800 cursor-pointer",
+            className
+          )}
         />
 
-        <span className="absolute text-gray-500 pointer-events-none left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 dark:text-gray-400 group-focus-within:text-brand-500 flex items-center justify-center">
-          <CalenderIcon className="size-5" />
-        </span>
+        {!hideIcon && (
+          <span className="absolute text-gray-500 pointer-events-none right-3 top-1/2 -translate-y-1/2 dark:text-gray-400 group-focus-within:text-brand-500 flex items-center justify-center">
+            <CalenderIcon className="size-5" />
+          </span>
+        )}
       </div>
     </div>
   );
