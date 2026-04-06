@@ -3,6 +3,7 @@ WebSocket 오케스트레이터 - 모든 WebSocket 연결을 중앙에서 관리
 """
 import asyncio
 import logging
+import sys
 from typing import List, Dict, Optional, Set, Tuple
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -27,25 +28,43 @@ from app.core.config import GLOBAL_APP_CONFIGS
 logger = logging.getLogger(__name__)
 
 def log_to_websocket_orchestrator_logs(log_level: str, message: str, details: str = None):
-    """WebSocket 오케스트레이터 로그를 websocket_orchestrator_logs 테이블에 저장"""
+    """
+    WebSocket 오케스트레이터 로그를 DB에 저장
+    성능 최적화를 위해 중요한 로그(WARNING, ERROR, 접속 정보)만 DB에 기록함
+    """
+    # 1. 파일/콘솔 로그는 항상 수행
+    log_msg = f"{message} | Details: {details}" if details else message
+    if log_level == "ERROR":
+        logger.error(log_msg)
+    elif log_level == "WARNING":
+        logger.warning(log_msg)
+    else:
+        logger.info(log_msg)
+
+    # 2. DB 저장은 등급에 따라 제한
+    # 중요 로그 레벨: ERROR, WARNING, 그리고 접속 관련 INFO
+    important_info_keywords = ["starting", "connected", "stopped", "rebalance", "failure", "reallocation"]
+    is_important_info = (log_level == "INFO" and any(kw in message.lower() for kw in important_info_keywords))
+    
+    if log_level not in ["ERROR", "WARNING"] and not is_important_info:
+        # 일반 INFO 로그는 DB에 기록하지 않음
+        return
+
     db = SessionLocal()
     try:
-        # 상세 정보가 있으면 메시지에 포함
-        full_message = message
-        if details:
-            full_message = f"{message} | Details: {details}"
-            
+        # SQLAlchemy 구문 오류 방지를 위해 message와 details 분리 저장 고려 가능하나, 
+        # 기존 테이블 구조(message 컬럼 하나)를 따라감
         db.execute(text("""
             INSERT INTO websocket_orchestrator_logs (log_level, message, created_at)
             VALUES (:log_level, :message, NOW())
         """), {
             'log_level': log_level,
-            'message': full_message
+            'message': log_msg[:4000] # 필드 길이 제한 안전장치
         })
         db.commit()
-        logger.debug(f"WebSocket orchestrator log saved: {log_level} - {full_message}")
     except Exception as e:
-        logger.error(f"Failed to save WebSocket orchestrator log: {e}")
+        # DB 에러 시 다시 로그 함수를 호출하지 않도록 주의 (표준 에러 출력만 함)
+        sys.stderr.write(f"CRITICAL SQL ERROR in log_to_websocket_orchestrator_logs: {str(e)}\n")
         db.rollback()
     finally:
         db.close()

@@ -35,7 +35,15 @@ interface BacktestSetupViewProps {
 }
 
 // 고성능 백테스트 차트 (Highcharts 활용)
-const BacktestResultChart = ({ ticker }: { ticker: string }) => {
+const BacktestResultChart = ({ 
+  ticker, 
+  data, 
+  stats 
+}: { 
+  ticker: string, 
+  data: { strategy: any[], benchmark: any[] },
+  stats: any
+}) => {
   const chartOptions: Highcharts.Options = {
     chart: {
       backgroundColor: 'transparent',
@@ -62,7 +70,7 @@ const BacktestResultChart = ({ ticker }: { ticker: string }) => {
       gridLineColor: 'rgba(156, 163, 175, 0.1)',
       labels: { 
          style: { color: '#9ca3af', fontSize: '10px' },
-         formatter: function() { return '$' + this.value; }
+         formatter: function() { return '$' + (this.value as number).toLocaleString(); }
       }
     },
     tooltip: {
@@ -82,7 +90,7 @@ const BacktestResultChart = ({ ticker }: { ticker: string }) => {
     series: [
       {
         type: 'area',
-        name: 'Portfolio Equity (STRATEGY)',
+        name: `Strategy (${ticker})`,
         color: '#2563eb',
         fillColor: {
           linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
@@ -91,20 +99,14 @@ const BacktestResultChart = ({ ticker }: { ticker: string }) => {
             [1, 'rgba(37, 99, 235, 0)']
           ]
         },
-        data: Array.from({ length: 120 }, (_, i) => [
-          Date.now() - (120 - i) * 24 * 3600 * 1000,
-          1000 + (Math.sin(i / 10) * 200) + (i * 15) + (Math.random() * 50)
-        ])
+        data: data.strategy
       },
       {
         type: 'line',
-        name: 'Buy & Hold (BTC)',
+        name: `Buy & Hold (${ticker})`,
         color: '#94a3b8',
         dashStyle: 'Dash',
-        data: Array.from({ length: 120 }, (_, i) => [
-          Date.now() - (120 - i) * 24 * 3600 * 1000,
-          1000 + (i * 8) + (Math.random() * 100)
-        ])
+        data: data.benchmark
       }
     ],
     credits: { enabled: false }
@@ -115,7 +117,7 @@ const BacktestResultChart = ({ ticker }: { ticker: string }) => {
         <div className="flex items-center justify-between mb-2">
             <div>
                <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight">Performance Curve</h3>
-               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Starting with $1,000 Initial Capital</p>
+               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Starting with ${stats.initial_capital.toLocaleString()} Initial Capital</p>
             </div>
             <div className="flex gap-2">
                 <button className="p-2 bg-gray-50 dark:bg-gray-800 rounded-lg text-gray-400 hover:text-blue-500 transition-colors"><RefreshCw size={14} /></button>
@@ -127,19 +129,21 @@ const BacktestResultChart = ({ ticker }: { ticker: string }) => {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-gray-50 dark:border-gray-800 mt-4">
              <div className="space-y-1">
                 <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Final Value</p>
-                <p className="text-xl font-black text-gray-900 dark:text-white">$2,482.12</p>
+                <p className="text-xl font-black text-gray-900 dark:text-white">${stats.final_value.toLocaleString()}</p>
              </div>
              <div className="space-y-1">
                 <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">ROI (Total)</p>
-                <p className="text-xl font-black text-emerald-500">+148.21%</p>
+                <p className={`text-xl font-black ${stats.total_roi >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                  {stats.total_roi >= 0 ? '+' : ''}{stats.total_roi}%
+                </p>
              </div>
              <div className="space-y-1">
                 <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">MDD (Max)</p>
-                <p className="text-xl font-black text-red-500">-12.4%</p>
+                <p className="text-xl font-black text-red-500">{stats.max_drawdown}%</p>
              </div>
              <div className="space-y-1">
                 <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Win Rate</p>
-                <p className="text-xl font-black text-blue-600">62.8%</p>
+                <p className="text-xl font-black text-blue-600">{stats.win_rate}%</p>
              </div>
         </div>
     </div>
@@ -245,17 +249,37 @@ const BacktestSetupView: React.FC<BacktestSetupViewProps> = ({ ticker }) => {
   const [showResult, setShowResult] = useState(false);
   const [entryType, setEntryType] = useState<'lump' | 'dca'>('lump');
 
+  const [startDate, setStartDate] = useState('2023-01-01');
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [initialCapital, setInitialCapital] = useState('1,000');
+  const [leverage, setLeverage] = useState(1);
+  const [backtestData, setBacktestData] = useState<any>(null);
+
   const [frequency, setFrequency] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
   const [weekOfMonth, setWeekOfMonth] = useState<string>('2nd');
   const [dayOfWeek, setDayOfWeek] = useState<string>('Wed');
 
-  const handleRun = () => {
+  const handleRun = async () => {
     setIsRunning(true);
     setShowResult(false);
-    setTimeout(() => {
-      setIsRunning(false);
+    
+    try {
+      const capital = parseFloat(initialCapital.replace(/,/g, ''));
+      const response = await fetch(`/api/v2/backtest/${ticker}?start_date=${startDate}&end_date=${endDate}&initial_capital=${capital}&leverage=${leverage}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to run backtest');
+      }
+      
+      const data = await response.json();
+      setBacktestData(data);
       setShowResult(true);
-    }, 2000);
+    } catch (error) {
+      console.error('Backtest error:', error);
+      alert('백테스트 중 오류가 발생했습니다. 데이터를 확인해주세요.');
+    } finally {
+      setIsRunning(false);
+    }
   };
 
   return (
@@ -306,7 +330,8 @@ const BacktestSetupView: React.FC<BacktestSetupViewProps> = ({ ticker }) => {
                      >
                         <input 
                           type="date" 
-                          defaultValue="2023-01-01" 
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
                           className="bg-transparent font-black text-xl text-gray-900 dark:text-white outline-none w-full cursor-pointer [color-scheme:light] dark:[color-scheme:dark]" 
                         />
                      </div>
@@ -320,7 +345,8 @@ const BacktestSetupView: React.FC<BacktestSetupViewProps> = ({ ticker }) => {
                      >
                         <input 
                           type="date" 
-                          defaultValue="2025-04-01" 
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
                           className="bg-transparent font-black text-xl text-gray-900 dark:text-white outline-none w-full cursor-pointer [color-scheme:light] dark:[color-scheme:dark]" 
                         />
                      </div>
@@ -359,7 +385,12 @@ const BacktestSetupView: React.FC<BacktestSetupViewProps> = ({ ticker }) => {
                      <div className="space-y-3">
                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none">Initial Investment Basis</label>
                         <div className="bg-gray-50 dark:bg-gray-800/50 p-6 rounded-3xl border border-gray-100 dark:border-gray-700 flex items-center gap-2 group focus-within:border-blue-500 transition-all">
-                           <input type="text" defaultValue="1,000" className="bg-transparent w-full font-black text-3xl text-gray-900 dark:text-white outline-none" />
+                           <input 
+                              type="text" 
+                              value={initialCapital} 
+                              onChange={(e) => setInitialCapital(e.target.value)}
+                              className="bg-transparent w-full font-black text-3xl text-gray-900 dark:text-white outline-none" 
+                           />
                            <span className="font-bold text-gray-400 text-xl">USDT</span>
                         </div>
                      </div>
@@ -367,8 +398,15 @@ const BacktestSetupView: React.FC<BacktestSetupViewProps> = ({ ticker }) => {
                      <div className="space-y-3">
                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none">Simulation Leverage</label>
                         <div className="bg-gray-50 dark:bg-gray-800/50 p-6 rounded-3xl border border-gray-100 dark:border-gray-700 flex items-center gap-6">
-                           <input type="range" min="1" max="100" defaultValue="1" className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600" />
-                           <span className="font-black text-2xl text-blue-600 w-12 text-right">1x</span>
+                           <input 
+                              type="range" 
+                              min="1" 
+                              max="100" 
+                              value={leverage} 
+                              onChange={(e) => setLeverage(parseInt(e.target.value))}
+                              className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600" 
+                           />
+                           <span className="font-black text-2xl text-blue-600 w-12 text-right">{leverage}x</span>
                         </div>
                      </div>
                   </div>
@@ -493,9 +531,13 @@ const BacktestSetupView: React.FC<BacktestSetupViewProps> = ({ ticker }) => {
             </div>
 
             {/* Simulation Chart View (Shown after Run) */}
-            {showResult && (
+            {showResult && backtestData && (
               <div className="animate-in slide-in-from-bottom-8 duration-700">
-                <BacktestResultChart ticker={ticker} />
+                <BacktestResultChart 
+                  ticker={ticker} 
+                  data={backtestData.graph} 
+                  stats={backtestData.stats} 
+                />
               </div>
             )}
           </div>

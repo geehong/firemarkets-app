@@ -82,12 +82,12 @@ async def backfill():
         for interval in intervals:
             print(f"\n=== Smart Backfill for {interval} starting from existing gap (Target: 2015) ===")
             
-            # 현재 DB의 가장 오래된 날짜 확인 (이 시점부터 더 과거로 수집 시작)
+            # DB에 있는 가장 오래된 데이터의 시점부터 과거로 수집 시작 (Target 시점까지)
             current_end_dt = await get_earliest_date(asset_id, interval)
             if current_end_dt.tzinfo is None:
                 current_end_dt = current_end_dt.replace(tzinfo=timezone.utc)
                 
-            print(f"Beginning backfill for {interval} starting from {current_end_dt.strftime('%Y-%m-%d %H:%M:%S')} backwards...")
+            print(f"Beginning backfill for {interval} starting from {current_end_dt.strftime('%Y-%m-%d %H:%M:%S')} backwards to {target_start_date}...")
             
             while current_end_dt > target_start_dt:
                 if interval == "1m":
