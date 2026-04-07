@@ -62,7 +62,7 @@ let globalSocket: Socket | null = null
 let connectionCount = 0
 let globalSubscriptions: Set<string> | null = null
 
-console.log('[useSocket] Module-level code loaded'); // 🔍 모듈 로드 확인용 로그
+// console.log('[useSocket] Module-level code loaded'); // 🔍 모듈 로드 확인용 로그
 
 export const useSocket = () => {
   const [isConnected, setIsConnected] = useState<boolean>(false)
@@ -91,7 +91,7 @@ export const useSocket = () => {
 
   useEffect(() => {
     // 🔍 훅 마운트 로그
-    console.log(`[useSocket] Effect running. isConnected=${isConnected}, URL=${socketURL}`);
+    // console.log(`[useSocket] Effect running. isConnected=${isConnected}, URL=${socketURL}`);
 
     // 클라이언트 사이드에서만 실행
     if (typeof window === 'undefined') {
@@ -100,7 +100,7 @@ export const useSocket = () => {
 
     // 전역 Socket 인스턴스 사용
     if (!globalSocket) {
-      console.log(`🔌 Initializing NEW WebSocket connection to: ${socketURL}`)
+      // console.log(`🔌 Initializing NEW WebSocket connection to: ${socketURL}`)
       
       globalSocket = io(socketURL, {
         // WebSocket 우선, 실패시 Polling fallback
@@ -122,22 +122,22 @@ export const useSocket = () => {
       const initialSocket = globalSocket
 
       initialSocket.on('connect', () => {
-        console.log('✅ WebSocket [NEW] Connected Successfully!')
+        // console.log('✅ WebSocket [NEW] Connected Successfully!')
         setIsConnected(true)
       })
 
       initialSocket.on('disconnect', (reason) => {
-        console.warn(`[Socket.io] 🔌 [NEW] Disconnected: ${reason}`)
+        // console.warn(`[Socket.io] 🔌 [NEW] Disconnected: ${reason}`)
         setIsConnected(false)
       })
 
       initialSocket.on('connect_error', (error) => {
-          console.error('[Socket.io] 🛑 [NEW] Connection error:', error.message);
+          // console.error('[Socket.io] 🛑 [NEW] Connection error:', error.message);
           setConnectionError(error.message)
           setIsConnected(false)
       });
     } else {
-        console.log(`[useSocket] Using existing globalSocket. Status: ${globalSocket.connected ? 'Connected' : 'Disconnected'}`);
+        // console.log(`[useSocket] Using existing globalSocket. Status: ${globalSocket.connected ? 'Connected' : 'Disconnected'}`);
     }
 
     connectionCount++
@@ -146,7 +146,7 @@ export const useSocket = () => {
     // 🔥 중요: 초기 상태 동기화 (이미 연결되어 있다면 즉시 true 설정)
     if (socket && socket.connected) {
         if (!isConnected) {
-            console.log('[useSocket] Syncing isConnected to true');
+            // console.log('[useSocket] Syncing isConnected to true');
             setIsConnected(true);
         }
         if (socket.io && socket.io.engine) {
@@ -177,7 +177,7 @@ export const useSocket = () => {
     socket.on('connect_error', (error) => {
       // WebSocket 연결 실패시 polling으로 자동 전환은 socket.io가 알아서 처리함 (transports 배열에 따라)
       // 하지만 명시적으로 닫고 재시도하는 로직은 때로는 도움됨
-      console.warn('[useSocket] Connection error:', error.message)
+      // console.warn('[useSocket] Connection error:', error.message)
       setConnectionError(error.message)
       setIsConnected(false)
     })
@@ -241,7 +241,7 @@ export const useSocket = () => {
           // React Strict Mode에서 발생할 수 있는 정상적인 상황
           // 개발 모드에서만 디버그 로그 출력 (프로덕션에서는 무시)
           if (process.env.NODE_ENV === 'development') {
-            console.debug('[useSocket] Cleanup: Socket already closed or not fully connected')
+            // console.debug('[useSocket] Cleanup: Socket already closed or not fully connected')
           }
         } finally {
           globalSocket = null
@@ -468,7 +468,7 @@ export const useRealtimePrices = (assetIdentifier: string, options: { enabled?: 
     // 디버깅을 위한 로그 (사용자 요청 시 활성화 가능)
     if (process.env.NODE_ENV === 'development' || window.location.search.includes('debug=true')) {
         if (isMatch || receivedTicker.includes(targetTicker) || targetTicker.includes(receivedTicker)) {
-            console.log(`[Socket Match] ${isMatch ? '✅' : '❌'} Received: ${receivedTicker} (ID: ${receivedAssetId}), Target: ${targetTicker}`);
+            // console.log(`[Socket Match] ${isMatch ? '✅' : '❌'} Received: ${receivedTicker} (ID: ${receivedAssetId}), Target: ${targetTicker}`);
         }
     }
 
@@ -567,7 +567,7 @@ export const useRealtimePrices = (assetIdentifier: string, options: { enabled?: 
           }
         }
       }).catch(error => {
-        console.warn(`[useSocket] Failed to fetch previous close in background:`, error)
+        // console.warn(`[useSocket] Failed to fetch previous close in background:`, error)
       }).finally(() => {
         loadingRef.current.delete(targetAsset)
       })

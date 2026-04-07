@@ -148,7 +148,7 @@ export const usePosts = (params?: {
       }
 
       const url = `${getApiBase()}/posts/?${searchParams.toString()}`
-      console.log('🔍 [usePosts] Fetching posts:', url)
+       //  // console.log('🔍 [usePosts] Fetching posts:', url)
 
       const response = await fetch(url, {
         headers: getAuthHeaders(),
@@ -158,7 +158,7 @@ export const usePosts = (params?: {
       }
 
       const data = await response.json()
-      console.log('✅ [usePosts] Posts fetched successfully:', data)
+       //  // console.log('✅ [usePosts] Posts fetched successfully:', data)
       return data
     },
     staleTime: 5 * 60 * 1000, // 5분 캐싱
@@ -175,11 +175,11 @@ export const usePost = (postId: number | undefined) => {
       if (!postId) throw new Error('Post ID is required')
 
       const url = `${getApiBase()}/posts/${postId}`
-      console.log('🔍 [usePost] Fetching post:', url)
+       //  // console.log('🔍 [usePost] Fetching post:', url)
 
       const response = await fetch(url)
       if (response.status === 404) {
-        console.warn(`ℹ️ [usePost] Post not found (404) for ID: ${postId}. Returning null.`)
+         //  // console.warn(`ℹ️ [usePost] Post not found (404) for ID: ${postId}. Returning null.`)
         return null
       }
       if (!response.ok) {
@@ -187,7 +187,7 @@ export const usePost = (postId: number | undefined) => {
       }
 
       const data = await response.json()
-      console.log('✅ [usePost] Post fetched successfully:', data)
+       //  // console.log('✅ [usePost] Post fetched successfully:', data)
       return data
     },
     enabled: !!postId,
@@ -204,11 +204,11 @@ export const usePostBySlug = (slug: string | undefined) => {
       if (!slug) throw new Error('Slug is required')
 
       const url = `${getApiBase()}/posts/slug/${slug}`
-      console.log('🔍 [usePostBySlug] Fetching post by slug:', url)
+       //  // console.log('🔍 [usePostBySlug] Fetching post by slug:', url)
 
       const response = await fetch(url)
       if (response.status === 404) {
-        console.warn(`ℹ️ [usePostBySlug] Post not found (404) for slug: ${slug}. Returning null.`)
+         //  // console.warn(`ℹ️ [usePostBySlug] Post not found (404) for slug: ${slug}. Returning null.`)
         return null
       }
       if (!response.ok) {
@@ -216,7 +216,7 @@ export const usePostBySlug = (slug: string | undefined) => {
       }
 
       const data = await response.json()
-      console.log('✅ [usePostBySlug] Post fetched successfully:', data)
+       //  // console.log('✅ [usePostBySlug] Post fetched successfully:', data)
       return data
     },
     enabled: !!slug,
@@ -233,7 +233,7 @@ export const usePostsByAsset = (assetId: number | undefined) => {
       if (!assetId) throw new Error('Asset ID is required')
 
       const url = `${getApiBase()}/posts/asset/${assetId}`
-      console.log('🔍 [usePostsByAsset] Fetching posts by asset:', url)
+       //  // console.log('🔍 [usePostsByAsset] Fetching posts by asset:', url)
 
       const response = await fetch(url)
       if (!response.ok) {
@@ -241,7 +241,7 @@ export const usePostsByAsset = (assetId: number | undefined) => {
       }
 
       const data = await response.json()
-      console.log('✅ [usePostsByAsset] Posts fetched successfully:', data)
+       //  // console.log('✅ [usePostsByAsset] Posts fetched successfully:', data)
       return data
     },
     enabled: !!assetId,
@@ -256,7 +256,7 @@ export const usePopularPosts = (limit: number = 10) => {
     queryKey: ['posts', 'popular', limit],
     queryFn: async (): Promise<Post[]> => {
       const url = `${getApiBase()}/posts/popular/?limit=${limit}`
-      console.log('🔍 [usePopularPosts] Fetching popular posts:', url)
+       //  // console.log('🔍 [usePopularPosts] Fetching popular posts:', url)
 
       const response = await fetch(url)
       if (!response.ok) {
@@ -264,7 +264,7 @@ export const usePopularPosts = (limit: number = 10) => {
       }
 
       const data = await response.json()
-      console.log('✅ [usePopularPosts] Popular posts fetched successfully:', data)
+       //  // console.log('✅ [usePopularPosts] Popular posts fetched successfully:', data)
       return data
     },
     staleTime: 10 * 60 * 1000, // 10분 캐싱
@@ -278,7 +278,7 @@ export const useRecentPosts = (limit: number = 10) => {
     queryKey: ['posts', 'recent', limit],
     queryFn: async (): Promise<Post[]> => {
       const url = `${getApiBase()}/posts/recent/?limit=${limit}`
-      console.log('🔍 [useRecentPosts] Fetching recent posts:', url)
+       //  // console.log('🔍 [useRecentPosts] Fetching recent posts:', url)
 
       const response = await fetch(url)
       if (!response.ok) {
@@ -286,7 +286,7 @@ export const useRecentPosts = (limit: number = 10) => {
       }
 
       const data = await response.json()
-      console.log('✅ [useRecentPosts] Recent posts fetched successfully:', data)
+       //  // console.log('✅ [useRecentPosts] Recent posts fetched successfully:', data)
       return data
     },
     staleTime: 5 * 60 * 1000,
@@ -301,7 +301,7 @@ export const useCreatePost = () => {
   return useMutation({
     mutationFn: async (postData: PostCreateData): Promise<Post> => {
       const url = `${getApiBase()}/posts/`
-      console.log('🔍 [useCreatePost] Creating post:', url, postData)
+       //  // console.log('🔍 [useCreatePost] Creating post:', url, postData)
 
       const response = await fetch(url, {
         method: 'POST',
@@ -315,7 +315,7 @@ export const useCreatePost = () => {
       }
 
       const data = await response.json()
-      console.log('✅ [useCreatePost] Post created successfully:', data)
+       //  // console.log('✅ [useCreatePost] Post created successfully:', data)
       return data
     },
     onSuccess: () => {
@@ -332,7 +332,7 @@ export const useUpdatePost = () => {
   return useMutation({
     mutationFn: async ({ postId, postData }: { postId: number; postData: PostUpdateData }): Promise<Post> => {
       const url = `${getApiBase()}/posts/${postId}`
-      console.log('🔍 [useUpdatePost] Updating post:', url, postData)
+       //  // console.log('🔍 [useUpdatePost] Updating post:', url, postData)
 
       const response = await fetch(url, {
         method: 'PUT',
@@ -346,7 +346,7 @@ export const useUpdatePost = () => {
       }
 
       const data = await response.json()
-      console.log('✅ [useUpdatePost] Post updated successfully:', data)
+       //  // console.log('✅ [useUpdatePost] Post updated successfully:', data)
       return data
     },
     onSuccess: (data) => {
@@ -364,7 +364,7 @@ export const useDeletePost = () => {
   return useMutation({
     mutationFn: async (postId: number): Promise<{ message: string }> => {
       const url = `${getApiBase()}/posts/${postId}`
-      console.log('🔍 [useDeletePost] Deleting post:', url)
+       //  // console.log('🔍 [useDeletePost] Deleting post:', url)
 
       const response = await fetch(url, {
         method: 'DELETE',
@@ -377,7 +377,7 @@ export const useDeletePost = () => {
       }
 
       const data = await response.json()
-      console.log('✅ [useDeletePost] Post deleted successfully:', data)
+       //  // console.log('✅ [useDeletePost] Post deleted successfully:', data)
       return data
     },
     onSuccess: () => {
@@ -394,7 +394,7 @@ export const useSyncPost = () => {
   return useMutation({
     mutationFn: async ({ postId, syncDirection }: { postId: number; syncDirection: 'to_asset' | 'from_asset' }): Promise<{ success: boolean; message: string; sync_status: string; last_sync_at: string | null }> => {
       const url = `${getApiBase()}/posts/sync`
-      console.log('🔍 [useSyncPost] Syncing post:', url, { postId, syncDirection })
+       //  // console.log('🔍 [useSyncPost] Syncing post:', url, { postId, syncDirection })
 
       const response = await fetch(url, {
         method: 'POST',
@@ -411,7 +411,7 @@ export const useSyncPost = () => {
       }
 
       const data = await response.json()
-      console.log('✅ [useSyncPost] Post synced successfully:', data)
+       //  // console.log('✅ [useSyncPost] Post synced successfully:', data)
       return data
     },
     onSuccess: (data, variables) => {
@@ -428,7 +428,7 @@ export const usePostStats = () => {
     queryKey: ['posts', 'stats'],
     queryFn: async () => {
       const url = `${getApiBase()}/posts/stats/overview`
-      console.log('🔍 [usePostStats] Fetching post stats:', url)
+       //  // console.log('🔍 [usePostStats] Fetching post stats:', url)
 
       const response = await fetch(url)
       if (!response.ok) {
@@ -436,7 +436,7 @@ export const usePostStats = () => {
       }
 
       const data = await response.json()
-      console.log('✅ [usePostStats] Post stats fetched successfully:', data)
+       //  // console.log('✅ [usePostStats] Post stats fetched successfully:', data)
       return data
     },
     staleTime: 15 * 60 * 1000, // 15분 캐싱
@@ -450,7 +450,7 @@ export const useCategories = () => {
     queryKey: ['categories'],
     queryFn: async () => {
       const url = `${getApiBase()}/posts/categories/`
-      console.log('🔍 [useCategories] Fetching categories:', url)
+       //  // console.log('🔍 [useCategories] Fetching categories:', url)
 
       const response = await fetch(url)
       if (!response.ok) {
@@ -458,7 +458,7 @@ export const useCategories = () => {
       }
 
       const data = await response.json()
-      console.log('✅ [useCategories] Categories fetched successfully:', data)
+       //  // console.log('✅ [useCategories] Categories fetched successfully:', data)
       return data
     },
     staleTime: 30 * 60 * 1000, // 30분 캐싱
@@ -472,7 +472,7 @@ export const useTags = (limit: number = 20) => {
     queryKey: ['tags', limit],
     queryFn: async () => {
       const url = `${getApiBase()}/posts/tags/?limit=${limit}`
-      console.log('🔍 [useTags] Fetching tags:', url)
+       //  // console.log('🔍 [useTags] Fetching tags:', url)
 
       const response = await fetch(url)
       if (!response.ok) {
@@ -480,7 +480,7 @@ export const useTags = (limit: number = 20) => {
       }
 
       const data = await response.json()
-      console.log('✅ [useTags] Tags fetched successfully:', data)
+       //  // console.log('✅ [useTags] Tags fetched successfully:', data)
       return data
     },
     staleTime: 30 * 60 * 1000, // 30분 캐싱
@@ -496,7 +496,7 @@ export const useSearchTags = (query: string, limit: number = 10) => {
       if (!query.trim()) return []
 
       const url = `${getApiBase()}/posts/tags/search?q=${encodeURIComponent(query)}&limit=${limit}`
-      console.log('🔍 [useSearchTags] Searching tags:', url)
+       //  // console.log('🔍 [useSearchTags] Searching tags:', url)
 
       const response = await fetch(url)
       if (!response.ok) {
@@ -504,7 +504,7 @@ export const useSearchTags = (query: string, limit: number = 10) => {
       }
 
       const data = await response.json()
-      console.log('✅ [useSearchTags] Tags search completed:', data)
+       //  // console.log('✅ [useSearchTags] Tags search completed:', data)
       return data
     },
     enabled: !!query.trim(),
@@ -521,7 +521,7 @@ export const usePostComments = (postId: number | undefined) => {
       if (!postId) throw new Error('Post ID is required')
 
       const url = `${getApiBase()}/posts/${postId}/comments`
-      console.log('🔍 [usePostComments] Fetching post comments:', url)
+       //  // console.log('🔍 [usePostComments] Fetching post comments:', url)
 
       const response = await fetch(url)
       if (!response.ok) {
@@ -529,7 +529,7 @@ export const usePostComments = (postId: number | undefined) => {
       }
 
       const data = await response.json()
-      console.log('✅ [usePostComments] Post comments fetched successfully:', data)
+       //  // console.log('✅ [usePostComments] Post comments fetched successfully:', data)
       return data
     },
     enabled: !!postId,
@@ -545,7 +545,7 @@ export const useCreateComment = () => {
   return useMutation({
     mutationFn: async ({ postId, commentData }: { postId: number; commentData: any }): Promise<any> => {
       const url = `${getApiBase()}/posts/${postId}/comments`
-      console.log('🔍 [useCreateComment] Creating comment:', url, commentData)
+       //  // console.log('🔍 [useCreateComment] Creating comment:', url, commentData)
 
       const response = await fetch(url, {
         method: 'POST',
@@ -559,7 +559,7 @@ export const useCreateComment = () => {
       }
 
       const data = await response.json()
-      console.log('✅ [useCreateComment] Comment created successfully:', data)
+       //  // console.log('✅ [useCreateComment] Comment created successfully:', data)
       return data
     },
     onSuccess: (data, variables) => {
@@ -576,7 +576,7 @@ export const useMergePosts = () => {
   return useMutation({
     mutationFn: async (postIds: number[]): Promise<Post> => {
       const url = `${getApiBase()}/posts/merge`
-      console.log('🔍 [useMergePosts] Merging posts:', url, postIds)
+       //  // console.log('🔍 [useMergePosts] Merging posts:', url, postIds)
 
       const response = await fetch(url, {
         method: 'POST',
@@ -590,7 +590,7 @@ export const useMergePosts = () => {
       }
 
       const data = await response.json()
-      console.log('✅ [useMergePosts] Posts merged successfully:', data)
+       //  // console.log('✅ [useMergePosts] Posts merged successfully:', data)
       return data
     },
     onSuccess: () => {
@@ -607,7 +607,7 @@ export const useRegeneratePost = () => {
   return useMutation({
     mutationFn: async (postId: number): Promise<Post> => {
       const url = `${getApiBase()}/posts/${postId}/ai-regenerate`
-      console.log('🔍 [useRegeneratePost] Regenerating post:', url)
+       //  // console.log('🔍 [useRegeneratePost] Regenerating post:', url)
 
       const response = await fetch(url, {
         method: 'POST',
@@ -620,7 +620,7 @@ export const useRegeneratePost = () => {
       }
 
       const data = await response.json()
-      console.log('✅ [useRegeneratePost] Post regenerated successfully:', data)
+       //  // console.log('✅ [useRegeneratePost] Post regenerated successfully:', data)
       return data
     },
     onSuccess: (data) => {
@@ -638,7 +638,7 @@ export const useCleanupPosts = () => {
   return useMutation({
     mutationFn: async (): Promise<{ message: string; count: number }> => {
       const url = `${getApiBase()}/posts/cleanup`
-      console.log('🔍 [useCleanupPosts] Cleaning up posts:', url)
+       //  // console.log('🔍 [useCleanupPosts] Cleaning up posts:', url)
 
       const response = await fetch(url, {
         method: 'POST',
@@ -651,7 +651,7 @@ export const useCleanupPosts = () => {
       }
 
       const data = await response.json()
-      console.log('✅ [useCleanupPosts] Cleanup completed:', data)
+       //  // console.log('✅ [useCleanupPosts] Cleanup completed:', data)
       return data
     },
     onSuccess: () => {
@@ -667,7 +667,7 @@ export const useDraftKeywords = (limit: number = 20) => {
     queryKey: ['draft-keywords', limit],
     queryFn: async (): Promise<{ keywords: { keyword: string; count: number }[] }> => {
       const url = `${getApiBase()}/dashboard/draft-keywords?limit=${limit}`
-      console.log('🔍 [useDraftKeywords] Fetching draft keywords:', url)
+       //  // console.log('🔍 [useDraftKeywords] Fetching draft keywords:', url)
 
       const response = await fetch(url, {
         headers: getAuthHeaders(),
@@ -678,7 +678,7 @@ export const useDraftKeywords = (limit: number = 20) => {
       }
 
       const data = await response.json()
-      console.log('✅ [useDraftKeywords] Draft keywords fetched successfully:', data)
+       //  // console.log('✅ [useDraftKeywords] Draft keywords fetched successfully:', data)
       return data
     },
     staleTime: 5 * 60 * 1000,
