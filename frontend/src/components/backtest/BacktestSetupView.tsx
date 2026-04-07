@@ -30,6 +30,7 @@ import {
 import { useRealtimePrices } from "@/hooks/data/useSocket";
 import { useTranslations } from "next-intl";
 import { DateRangePicker, DateRange } from "@/components/ui/date-range-picker";
+import { useAuth } from "@/hooks/auth/useAuthNew";
 
 
 interface BacktestSetupViewProps {
@@ -391,6 +392,7 @@ const ConditionSettingBox = ({
 };
 
 const BacktestSetupView: React.FC<BacktestSetupViewProps> = ({ ticker }) => {
+  const { isAuthenticated, user } = useAuth();
   const { latestPrice } = useRealtimePrices(ticker);
   const [isRunning, setIsRunning] = useState(false);
   const [showResult, setShowResult] = useState(false);
@@ -569,13 +571,33 @@ const BacktestSetupView: React.FC<BacktestSetupViewProps> = ({ ticker }) => {
           </div>
 
           <div className="hidden lg:flex items-center gap-4 bg-white dark:bg-gray-800 px-6 py-2 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
-             <span className="text-xs font-black text-gray-400 uppercase tracking-widest leading-none">AI Precision</span>
+             <span className="text-xs font-black text-gray-400 uppercase tracking-widest leading-none">{isAuthenticated ? 'User Account' : 'Guest Account'}</span>
              <span className="w-px h-3 bg-gray-200 dark:bg-gray-800" />
-             <span className="flex items-center gap-1.5 text-xs font-black text-blue-500 leading-none">
-                VER 2.5 ENABLED
+             <span className="flex items-center gap-1.5 text-xs font-black text-blue-500 leading-none uppercase">
+                {isAuthenticated ? (user?.role || 'PREMIUM') : 'DEMO MODE'}
              </span>
           </div>
       </div>
+
+      {!isAuthenticated && (
+        <div className="bg-brand-500 rounded-[32px] p-6 text-white shadow-xl shadow-brand-500/20 flex flex-col md:flex-row items-center justify-between gap-6 animate-in slide-in-from-top duration-500">
+          <div className="flex items-center gap-4 text-center md:text-left">
+            <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-md">
+              <ShieldCheck size={24} />
+            </div>
+            <div>
+              <p className="font-black text-lg leading-tight uppercase italic tracking-tighter">계정 보호 및 전략 저장 <span className="text-blue-200">FireMarkets Auth</span></p>
+              <p className="text-sm opacity-80 font-medium tracking-tight mt-1">지금 로그인하시면 현재의 정밀한 전략 설정을 저장하고 나중에 다시 불러올 수 있습니다.</p>
+            </div>
+          </div>
+          <Link 
+            href="/login" 
+            className="whitespace-nowrap bg-white text-brand-600 font-black px-8 py-3 rounded-2xl hover:scale-105 active:scale-95 transition-all text-xs uppercase"
+          >
+            로그인 및 전체 기능 잠금해제
+          </Link>
+        </div>
+      )}
 
       {activeTab === 'guide' ? (
         <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-12 max-w-4xl">
