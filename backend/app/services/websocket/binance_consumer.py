@@ -25,6 +25,8 @@ class BinanceWSConsumer(BaseWSConsumer):
         self.subscribed_tickers = []
         self._is_subscribed = False
         self._asset_id_map = {}
+        self._last_save_times = {}
+        self._save_interval = 0.5
 
     @property
     def client_name(self) -> str: return "binance"
@@ -169,6 +171,13 @@ class BinanceWSConsumer(BaseWSConsumer):
 
             dt = datetime.fromtimestamp(data.get('E', 0)/1000.0, tz=timezone.utc)
             
+            # Throttling: 티커별 저장 주기 제한
+            current_time = time.time()
+            last_save = self._last_save_times.get(symbol, 0)
+            if current_time - last_save < self._save_interval:
+                return
+            self._last_save_times[symbol] = current_time
+
             # 웹소켓 브로드캐스트용 Redis Stream 저장
             await self._store_to_redis_stream(data, p, q, "trade")
             

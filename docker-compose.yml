@@ -342,7 +342,7 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       PYTHONPATH: /app
       TZ: Asia/Seoul
-      BROADCASTER_VERBOSE: "true"
+      BROADCASTER_VERBOSE: "false"
       DISABLE_FILE_LOGS: "true"
       PYTHONUNBUFFERED: "1"
     depends_on:

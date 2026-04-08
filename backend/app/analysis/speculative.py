@@ -7,12 +7,11 @@ logger = logging.getLogger(__name__)
 
 class SentimentAnalyzer:
     _instance = None
-    _pipeline = None
 
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(SentimentAnalyzer, cls).__new__(cls)
-            cls._instance._initialize_pipeline()
+            cls._instance._pipeline = None
         return cls._instance
 
     def _initialize_pipeline(self):
@@ -33,6 +32,10 @@ class SentimentAnalyzer:
             self._pipeline = None
 
     def analyze(self, text: str):
+        # Lazy initialization
+        if self._pipeline is None:
+            self._initialize_pipeline()
+
         if not self._pipeline:
             logger.warning("Sentiment pipeline not initialized. Returning neutral.")
             return {"label": "neutral", "score": 0.5}

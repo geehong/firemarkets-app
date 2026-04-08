@@ -38,6 +38,8 @@ class CoinbaseWSConsumer(BaseWSConsumer):
         self._run_lock = asyncio.Lock()
         self._recv_lock = asyncio.Lock()
         self._is_running_task = False
+        self._last_save_times = {}
+        self._save_interval = 0.5
     
     @property
     def client_name(self) -> str:
@@ -397,6 +399,13 @@ class CoinbaseWSConsumer(BaseWSConsumer):
             
             if product_id and price:
                 # Redis에 데이터 저장
+                # Throttling: 티커별 저장 주기 제한
+                current_time = time.time()
+                last_save = self._last_save_times.get(product_id, 0)
+                if current_time - last_save < self._save_interval:
+                    return
+                self._last_save_times[product_id] = current_time
+
                 await self._store_to_redis({
                     'symbol': product_id,
                     'price': price,
@@ -424,6 +433,13 @@ class CoinbaseWSConsumer(BaseWSConsumer):
                         time_str = trade.get("time")
                         
                         if product_id and price:
+                            # Throttling: 티커별 저장 주기 제한
+                            current_time = time.time()
+                            last_save = self._last_save_times.get(product_id, 0)
+                            if current_time - last_save < self._save_interval:
+                                continue
+                            self._last_save_times[product_id] = current_time
+
                             # Redis에 데이터 저장
                             await self._store_to_redis({
                                 'symbol': product_id,
@@ -493,7 +509,7 @@ class CoinbaseWSConsumer(BaseWSConsumer):
                 'provider': 'coinbase',
                 'type': str(data.get('type', 'trade'))
             }
-            await r.xadd(stream_key, entry)
+            await r.xadd(stream_key, entry, maxlen=100000, approximate=True)
         except redis.exceptions.BusyLoadingError:
             logger.warning(f"⚠️ [{self.client_name.upper()}] Redis loading, skipping storage for {entry.get('symbol')}")
         except Exception as e:

@@ -9,6 +9,7 @@ from typing import List, Optional
 import os
 import websockets
 import redis.asyncio as redis
+from datetime import datetime
 from app.services.websocket.base_consumer import BaseWSConsumer, ConsumerConfig
 from app.core.config import GLOBAL_APP_CONFIGS
 from app.core.websocket_logging import WebSocketLogger
@@ -32,11 +33,9 @@ class AlpacaWSConsumer(BaseWSConsumer):
         # Redis
         self._redis = None
         self._redis_url = self._build_redis_url()
-        # 새로운 로깅 시스템
-        self.ws_logger = WebSocketLogger("alpaca")
-        # 재연결을 위한 원래 티커 목록 저장
-        self.original_tickers = set()
         self.subscribed_tickers = []  # 구독 순서 보장을 위해 List 사용
+        self._last_save_times = {}
+        self._save_interval = 0.5
         # 동시성 제어를 위한 락
         self._run_lock = asyncio.Lock()
         self._recv_lock = asyncio.Lock()
@@ -415,12 +414,8 @@ class AlpacaWSConsumer(BaseWSConsumer):
             logger.debug(f"{self.client_name} non-json message: {raw}")
             return
         
-        # 폐장 시간 디버깅을 위한 로깅 추가
-        if isinstance(msg, list) and msg and msg[0].get('T') == 'subscription':
-             logger.info(f"📨 {self.client_name} subscription confirmation received: {msg[0]}")
-        else:
-             # 임시 디버깅: 수신된 모든 메시지를 DEBUG로 변경 (CPU 절약)
-             logger.debug(f"📨 {self.client_name} RAW received: {msg}")
+        # 임시 디버깅: 수신된 모든 메시지를 DEBUG로 변경 (CPU 절약)
+        logger.debug(f"📨 {self.client_name} RAW received: {msg}")
         
         # 메시지는 리스트 형태로 배달되는 경우가 많음
         if isinstance(msg, list):
@@ -486,13 +481,19 @@ class AlpacaWSConsumer(BaseWSConsumer):
                             fractional = suffix[:6]
                             ts_fixed = f"{prefix}.{fractional}"
                     
-                    from datetime import datetime
                     dt = datetime.fromisoformat(ts_fixed.replace('Z', '+00:00'))
                     ts_ms = int(dt.timestamp() * 1000)
             except Exception as e:
                 logger.debug(f"⏰ {self.client_name} timestamp parse error: {e} (Original: {ts})")
                 ts_ms = None
             
+            # Throttling: 티커별 저장 주기 제한
+            current_time = time.time()
+            last_save = self._last_save_times.get(symbol, 0)
+            if current_time - last_save < self._save_interval:
+                return
+            self._last_save_times[symbol] = current_time
+
             # 유효한 가격 데이터가 있을 때만 저장
             if symbol and price is not None:
                 await self._store_to_redis({
@@ -536,7 +537,7 @@ class AlpacaWSConsumer(BaseWSConsumer):
                 'raw_timestamp': str(data.get('timestamp', '')),
                 'provider': 'alpaca',
             }
-            await r.xadd(stream_key, entry)
+            await r.xadd(stream_key, entry, maxlen=100000, approximate=True)
         except Exception as e:
             logger.error(f"❌ {self.client_name} redis store error: {e}")
 
