@@ -100,44 +100,52 @@ export const useSocket = () => {
 
     // 전역 Socket 인스턴스 사용
     if (!globalSocket) {
-      // console.log(`🔌 Initializing NEW WebSocket connection to: ${socketURL}`)
+      console.log(`🔌 [useSocket] Creating NEW WebSocket instance. URL=${socketURL || 'Current Origin'}, Path=${'/socket.io'}`)
       
       globalSocket = io(socketURL, {
         // WebSocket 우선, 실패시 Polling fallback
         transports: ['websocket', 'polling'],
         timeout: 20000,
-        forceNew: true,
+        forceNew: false, // 전역 인스턴스이므로 false가 나음
         autoConnect: true,
         reconnection: true,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
-        reconnectionAttempts: 10,
+        reconnectionAttempts: 20, // 시도 횟수 증가
         withCredentials: false,
-        path: '/socket.io', // Next.js 308 리다이렉션을 피하기 위해 슬래시 제거
-        query: {
-          EIO: "4"
+        path: '/socket.io',
+        query: { EIO: "4" }
+      })
+
+      const s = globalSocket
+
+      s.on('connect', () => {
+        const transportName = s.io?.engine?.transport?.name || 'unknown'
+        console.log(`✅ [useSocket] WebSocket Connected! ID=${s.id}, Transport=${transportName}`)
+        
+        // 연결 시 기존의 모든 전역 구독 복원 (배치 전송)
+        if (globalSubscriptions && globalSubscriptions.size > 0) {
+            const symbols = Array.from(globalSubscriptions)
+            console.log(`📡 [useSocket] Restoring ${symbols.length} global subscriptions...`)
+            s.emit('subscribe_prices', { symbols })
         }
       })
 
-      const initialSocket = globalSocket
-
-      initialSocket.on('connect', () => {
-        // console.log('✅ WebSocket [NEW] Connected Successfully!')
-        setIsConnected(true)
+      s.on('disconnect', (reason) => {
+        console.warn(`[useSocket] 🔌 Disconnected: ${reason}`)
       })
 
-      initialSocket.on('disconnect', (reason) => {
-        // console.warn(`[Socket.io] 🔌 [NEW] Disconnected: ${reason}`)
-        setIsConnected(false)
-      })
-
-      initialSocket.on('connect_error', (error) => {
-          // console.error('[Socket.io] 🛑 [NEW] Connection error:', error.message);
-          setConnectionError(error.message)
-          setIsConnected(false)
+      s.on('connect_error', (error) => {
+        console.error('[useSocket] 🛑 Connection error:', error.message);
       });
+      
+      // 전역 리얼타임 데이터 수신 리스너 (불필요하면 비활성화)
+      s.on('realtime_quote', (data) => {
+          // if (Math.random() < 0.01) console.log('[useSocket] Received quote via global socket');
+      });
+
     } else {
-        // console.log(`[useSocket] Using existing globalSocket. Status: ${globalSocket.connected ? 'Connected' : 'Disconnected'}`);
+        // console.log(`[useSocket] Using existing globalSocket. Connected: ${globalSocket.connected}`);
     }
 
     connectionCount++
@@ -154,100 +162,54 @@ export const useSocket = () => {
         }
     }
 
-    // 연결 성공
-    socket.on('connect', () => {
+    // 현재 소켓 상태로 초기화
+    setIsConnected(socket.connected)
+    if (socket.io && socket.io.engine) {
+        setTransport(socket.io.engine.transport.name)
+    }
+
+    // 개별 컴포넌트용 리스너 등록
+    const onConnect = () => {
       setIsConnected(true)
       setConnectionError(null)
-      // socket.io.engine might be undefined during initial connection in some versions, check existence
       if (socket.io && socket.io.engine) {
         setTransport(socket.io.engine.transport.name)
       }
-      // 연결(재연결) 시 기존 구독 복원
-      if (globalSubscriptions && globalSubscriptions.size > 0) {
-        try {
-          const symbols = Array.from(globalSubscriptions)
-          socket.emit('subscribe_prices', { symbols })
-        } catch (e) {
-          // 재구독 중 예외 발생 시 무시
-        }
-      }
-    })
+      // Note: 전역 구독 복원은 globalSocket의 메인 커넥트 리스너에서 통합 처리함
+    }
 
-    // 연결 실패
-    socket.on('connect_error', (error) => {
-      // WebSocket 연결 실패시 polling으로 자동 전환은 socket.io가 알아서 처리함 (transports 배열에 따라)
-      // 하지만 명시적으로 닫고 재시도하는 로직은 때로는 도움됨
-      // console.warn('[useSocket] Connection error:', error.message)
+    const onDisconnect = (reason: string) => {
+      setIsConnected(false)
+      // console.warn(`[useSocket Instance] Disconnected: ${reason}`);
+    }
+
+    const onConnectError = (error: any) => {
       setConnectionError(error.message)
       setIsConnected(false)
-    })
+    }
 
-    // 연결 해제
-    socket.on('disconnect', (reason) => {
-      setIsConnected(false)
-    })
+    socket.on('connect', onConnect)
+    socket.on('disconnect', onDisconnect)
+    socket.on('connect_error', onConnectError)
 
-    // 재연결 시도
-    socket.on('reconnect_attempt', (attemptNumber) => {
-      // 재연결 시도 중
-    })
-
-    // 재연결 성공
-    socket.on('reconnect', (attemptNumber) => {
-      setIsConnected(true)
-      setConnectionError(null)
-      // 재연결 시 기존 구독 복원
-      if (globalSubscriptions && globalSubscriptions.size > 0) {
-        try {
-          const symbols = Array.from(globalSubscriptions)
-          socket.emit('subscribe_prices', { symbols })
-        } catch (e) {
-          // 재구독 중 예외 발생 시 무시
-        }
-      }
-    })
-
-    // 재연결 실패
-    socket.on('reconnect_failed', () => {
-      setConnectionError('연결 실패 - 페이지를 새로고침해주세요')
-      setIsConnected(false)
-    })
-
-    // Transport 변경 감지
+    // WebSocket Upgrade 감지
     if (socket.io && socket.io.engine) {
       socket.io.engine.on('upgrade', () => {
         setTransport(socket.io.engine.transport.name)
-      })
-
-      socket.io.engine.on('upgradeError', (error) => {
-        // upgrade 실패 시 polling 유지
       })
     }
 
     // 정리 함수
     return () => {
       connectionCount--
-      // 마지막 연결이 해제될 때만 Socket 연결 종료
-      if (connectionCount <= 0 && globalSocket) {
-        try {
-          // 연결이 실제로 활성화되어 있는지 확인
-          // socket.active는 연결이 활성화되어 있거나 연결 중인 상태를 의미
-          // socket.connected는 연결이 완료된 상태를 의미
-          if (globalSocket.connected || (globalSocket as any).active) {
-            globalSocket.disconnect()
-          }
-        } catch (error) {
-          // 연결이 완전히 설정되지 않았거나 이미 닫힌 경우 에러 무시
-          // React Strict Mode에서 발생할 수 있는 정상적인 상황
-          // 개발 모드에서만 디버그 로그 출력 (프로덕션에서는 무시)
-          if (process.env.NODE_ENV === 'development') {
-            // console.debug('[useSocket] Cleanup: Socket already closed or not fully connected')
-          }
-        } finally {
-          globalSocket = null
-          connectionCount = 0
-        }
-      }
+      
+      // 리스너 제거 (메모리 누수 및 중복 실행 방지)
+      socket.off('connect', onConnect)
+      socket.off('disconnect', onDisconnect)
+      socket.off('connect_error', onConnectError)
+
+      // Note: 전역 소켓은 싱글톤으로 유지하며 페이지 이환 시에도 연결을 유지하도록 함.
+      // 필요 시에만 소동으로 해제하도록 변경 (반복적 해제/연결 방지)
     }
   }, [socketURL]) // socketURL 의존성 추가
 
@@ -352,16 +314,12 @@ export const useRealtimePrices = (assetIdentifier: string, options: { enabled?: 
   const lastUpdateTimeRef = useRef<number>(0)
   const UPDATE_THROTTLE = 500 // 500ms마다 한 번만 업데이트 (초당 2회)
 
-  // 업데이트 플래그 (동시 업데이트 방지)
-  const isUpdatingRef = useRef<boolean>(false)
-
   useEffect(() => {
     assetIdentifierRef.current = assetIdentifier
     // assetIdentifier가 변경되면 모든 ref 초기화
     previousPriceDataRef.current = null
     latestPriceRef.current = null
     lastUpdateTimeRef.current = 0
-    isUpdatingRef.current = false
   }, [assetIdentifier])
 
   // Use ref to store the latest handler to avoid dependency issues
@@ -370,14 +328,8 @@ export const useRealtimePrices = (assetIdentifier: string, options: { enabled?: 
   // React 상태와 동기화된 ref
   const latestPriceRef = useRef<RealtimePrice | null>(null)
 
-  // 공통 처리 함수: priceData를 받아서 setLatestPrice 호출 (useCallback으로 안정화)
   const processPriceUpdate = useCallback((priceData: RealtimePrice): boolean => {
     const now = Date.now()
-
-    // 이미 업데이트 중이면 스킵 (동시 업데이트 방지)
-    if (isUpdatingRef.current) {
-      return false
-    }
 
     // 스로틀링: 마지막 업데이트로부터 UPDATE_THROTTLE 이내면 스킵
     if (now - lastUpdateTimeRef.current < UPDATE_THROTTLE) {
@@ -400,8 +352,6 @@ export const useRealtimePrices = (assetIdentifier: string, options: { enabled?: 
       return false
     }
 
-    // 업데이트 플래그 설정
-    isUpdatingRef.current = true
     lastUpdateTimeRef.current = now
 
     // setLatestPrice 호출 (함수형 업데이트로 이전 상태와 비교)
@@ -412,16 +362,12 @@ export const useRealtimePrices = (assetIdentifier: string, options: { enabled?: 
         prev.price === priceData.price &&
         prev.timestamp === priceData.timestamp
       ) {
-        isUpdatingRef.current = false
         return prev // 동일한 참조 반환 -> React가 리렌더 건너뜀
       }
 
       // ref 업데이트 (실제 업데이트될 때만)
       previousPriceDataRef.current = priceData
       latestPriceRef.current = priceData
-
-      // 플래그 리셋
-      isUpdatingRef.current = false
 
       return priceData
     })
@@ -465,24 +411,12 @@ export const useRealtimePrices = (assetIdentifier: string, options: { enabled?: 
       isMatch = rBase === tBase && rBase.length > 0;
     }
 
-    // 디버깅을 위한 로그 (사용자 요청 시 활성화 가능)
-    if (process.env.NODE_ENV === 'development' || window.location.search.includes('debug=true')) {
-        if (isMatch || receivedTicker.includes(targetTicker) || targetTicker.includes(receivedTicker)) {
-            // console.log(`[Socket Match] ${isMatch ? '✅' : '❌'} Received: ${receivedTicker} (ID: ${receivedAssetId}), Target: ${targetTicker}`);
-        }
-    }
-
+    const currentPrice = data.price || data.current_price
 
     // 티커가 일치하지 않으면 즉시 리턴 (다른 컴포넌트용 메시지)
     if (!isMatch) {
       return
     }
-
-
-
-    const currentPrice = data.price
-
-
     const cacheKey = `${targetAsset}_previous_close`
     const cached = changePercentCacheRef.current.get(cacheKey)
     const now = Date.now()
@@ -530,39 +464,30 @@ export const useRealtimePrices = (assetIdentifier: string, options: { enabled?: 
           const currentData = latestPriceRef.current
 
           if (currentData && currentData.price === currentPrice && currentData.changePercent !== rounded) {
-            // 이미 업데이트 중이면 스킵
-            if (isUpdatingRef.current) {
-              return
-            }
-
             const priceData = {
-              ticker: receivedTicker,
-              price: Number(data.price || 0),
-              changePercent: Number(data.change_percent || data.changePercent || 0),
+              ticker: receivedTicker, // Corrected variable name
+              price: Number(data.price || data.current_price || 0),
+              changePercent: Number(data.change_percent_24h || data.change_percent || data.changePercent || 0),
               volume: Number(data.volume_24h || data.volume || 0),
               timestamp: data.timestamp_utc || data.last_updated || new Date().toISOString()
             };
             
             processPriceUpdate(priceData as any);
 
-            isUpdatingRef.current = true
-
             // processPriceUpdate 대신 직접 업데이트 (changePercent만 업데이트)
             setLatestPrice((prev: RealtimePrice | null) => {
               if (!prev || prev.price !== currentPrice) {
-                isUpdatingRef.current = false
                 return prev
               }
               if (prev.changePercent === rounded) {
-                isUpdatingRef.current = false
                 return prev
               }
 
-              previousPriceDataRef.current = priceData as any
-              latestPriceRef.current = priceData as any
-              isUpdatingRef.current = false
+              const updatedPriceData = { ...prev, changePercent: rounded };
+              previousPriceDataRef.current = updatedPriceData
+              latestPriceRef.current = updatedPriceData
 
-              return priceData as any
+              return updatedPriceData
             })
           }
         }
@@ -616,13 +541,20 @@ export const useRealtimePrices = (assetIdentifier: string, options: { enabled?: 
     socket.on('subscription_confirmed', handleSubscriptionConfirmed)
     socket.on('realtime_quote', handleRealtimeQuote)
 
-    // 연결된 경우에만 구독 요청
-    if (isConnected && socket && socket.connected) {
+    // 실시간 구독 관리
+    // 💡 연결된 경우에만 구독 요청을 보내되, 
+    // 중복 전송을 줄이기 위해 전역 구독 세트를 활용합니다.
+    const socketActuallyConnected = socket && socket.connected
+    
+    // 💡 연결된 상태라면 즉시 구독 요청을 보냅니다.
+    // React 상태인 isConnected가 아직 false일 수 있으므로 socket.connected를 우선적으로 신뢰합니다.
+    if (socketActuallyConnected) {
       socket.emit('subscribe_prices', { symbols: [assetIdentifier] })
+      
       globalSubscriptions.add(assetIdentifier)
       subscriptionsRef.current.add(assetIdentifier)
     } else {
-      // 연결이 안 되어 있으면 전역 구독에만 추가 (연결되면 자동으로 구독됨)
+      // 아직 연결 전이라면 전역 세트에 보관하여 connect 이벤트 발생 시 자동 구독되도록 함
       globalSubscriptions.add(assetIdentifier)
       subscriptionsRef.current.add(assetIdentifier)
     }
@@ -635,17 +567,43 @@ export const useRealtimePrices = (assetIdentifier: string, options: { enabled?: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, assetIdentifier, isConnected])
 
-  // 초기 로드 시 전일 종가 미리 가져오기 (별도 useEffect)
+  // 초기 로드 시 최신 가격 및 전일 종가 미리 가져오기
   useEffect(() => {
     if (!assetIdentifier || typeof window === 'undefined' || !enabled) {
       return
     }
 
-    const loadPreviousClose = async () => {
+    const loadInitialData = async () => {
+      // 1. 최신 가격 정보 가져오기 (웹소켓 업데이트 전 공백 방어)
+      if (!latestPriceRef.current) {
+        try {
+          const priceResult: any = await apiClient.v2GetPrice(assetIdentifier)
+          
+          // API V2는 데이터를 직접 반환하거나 {data: ...}로 감싸서 반환할 수 있음
+          const data = priceResult?.data || priceResult
+          
+          if (data && (data.price !== undefined || data.current_price !== undefined)) {
+            const initialPrice: RealtimePrice = {
+              price: data.price || data.current_price,
+              volume: data.volume_24h || data.volume,
+              timestamp: data.last_updated || new Date().toISOString(),
+              dataSource: 'api_initial',
+              changePercent: data.change_percent_24h || data.change_percent || data.changePercent
+            }
+            // 이미 웹소켓에서 더 최신 데이터를 받았다면 무시
+            if (!latestPriceRef.current) {
+               processPriceUpdate(initialPrice)
+            }
+          }
+        } catch (error) {
+           // console.warn(`[useSocket] Failed to fetch initial price for ${assetIdentifier}`);
+        }
+      }
+
+      // 2. 전일 종가 가져오기 (변동률 계산용)
       const cacheKey = `${assetIdentifier}_previous_close`
       const cached = changePercentCacheRef.current.get(cacheKey)
       const now = Date.now()
-
 
       // 캐시가 없거나 만료된 경우에만 API 호출
       if (!cached || (now - cached.timestamp) >= CACHE_DURATION) {
@@ -666,32 +624,17 @@ export const useRealtimePrices = (assetIdentifier: string, options: { enabled?: 
           const rounded = Math.round(changePercent * 100) / 100
 
           if (currentData.changePercent !== rounded) {
-            // 이미 업데이트 중이면 스킵
-            if (isUpdatingRef.current) {
-              return
-            }
-
             const updatedData = {
               ...currentData,
               changePercent: rounded,
             }
 
-            isUpdatingRef.current = true
-
             setLatestPrice((prev: RealtimePrice | null) => {
               if (!prev || prev.price !== currentData.price) {
-                isUpdatingRef.current = false
                 return prev
               }
-              if (prev.changePercent === rounded) {
-                isUpdatingRef.current = false
-                return prev
-              }
-
               previousPriceDataRef.current = updatedData
               latestPriceRef.current = updatedData
-              isUpdatingRef.current = false
-
               return updatedData
             })
           }
@@ -699,8 +642,8 @@ export const useRealtimePrices = (assetIdentifier: string, options: { enabled?: 
       }
     }
 
-    loadPreviousClose()
-  }, [assetIdentifier])
+    loadInitialData()
+  }, [assetIdentifier, enabled, processPriceUpdate])
 
   return {
     latestPrice,

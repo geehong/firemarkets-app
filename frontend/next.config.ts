@@ -60,7 +60,7 @@ const nextConfig: NextConfig = {
       },
       {
         source: '/socket.io',
-        destination: 'http://backend:8000/socket.io/',
+        destination: 'http://backend:8000/socket.io',
       },
       {
         source: '/socket.io/:path*',

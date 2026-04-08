@@ -11,16 +11,30 @@ class SecurityManager:
         self.ALGORITHM = "HS256"
         self.ACCESS_TOKEN_EXPIRE_MINUTES = 120
         self.REFRESH_TOKEN_EXPIRE_DAYS = 7
+        self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
     
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """비밀번호 검증"""
-        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-        return pwd_context.verify(plain_password, hashed_password)
+        if not plain_password:
+            return False
+            
+        # bcrypt 72바이트 제한 체크
+        try:
+            password_bytes = plain_password.encode('utf-8')
+            if len(password_bytes) > 72:
+                return False
+        except Exception:
+            return False
+            
+        try:
+            return self.pwd_context.verify(plain_password, hashed_password)
+        except Exception:
+            # 해시 형식이 잘못되었거나 bcrypt 내부 오류 발생 시 안전하게 False 반환
+            return False
     
     def get_password_hash(self, password: str) -> str:
         """비밀번호 해싱"""
-        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-        return pwd_context.hash(password)
+        return self.pwd_context.hash(password)
     
     def create_access_token(self, data: dict) -> str:
         """Access Token 생성"""

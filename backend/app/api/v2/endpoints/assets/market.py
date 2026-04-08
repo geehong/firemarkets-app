@@ -105,7 +105,8 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
                 volume,
                 change_percent,
                 timestamp_utc,
-                'intraday' as source_table
+                'intraday' as source_table,
+                NULL as data_source
             FROM ohlcv_intraday_data
             WHERE asset_id = :asset_id
               AND timestamp_utc > (now() AT TIME ZONE 'UTC' - INTERVAL '7 days')
@@ -122,7 +123,8 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
                 volume,
                 change_percent,
                 timestamp_utc,
-                'daily' as source_table
+                'daily' as source_table,
+                NULL as data_source
             FROM ohlcv_day_data
             WHERE asset_id = :asset_id
             AND (data_interval = '1d' OR data_interval = '1day' OR data_interval IS NULL)
@@ -139,7 +141,8 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
                 0 as volume,
                 daily_change_percent as change_percent,
                 CAST(ranking_date AS TIMESTAMP) as timestamp_utc,
-                'ranking' as source_table
+                'ranking' as source_table,
+                NULL as data_source
             FROM world_assets_ranking
             WHERE asset_id = :asset_id
         )
