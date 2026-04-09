@@ -29,33 +29,11 @@ interface BroadcastData {
 const getSocketURL = () => {
   // 브라우저 환경이 아닌 경우 (SSR 등)
   if (typeof window === 'undefined') {
-    return 'http://localhost:8001'
+    return 'http://backend:8000'
   }
 
-  const hostname = window.location.hostname
-  const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:'
-  const port = window.location.port
-
-  // 1. 로컬 개발 환경 또는 루프백
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return 'http://localhost:8001'
-  }
-
-  // 2. 프로덕션 환경 (firemarkets.net)
-  if (hostname.includes('firemarkets.net')) {
-    // 🔔 중요: 메인 도메인을 거쳐서 Next.js Rewrite를 통해 백엔드(http://backend:8000)로 우회 접속
-    // 이렇게 하면 CORS나 SSL 인증서 문제를 피할 수 있고, 
-    // 브라우저의 'Mixed Content' 경고(HTTPS에서 HTTP 요청 시 차단)를 원천 차단 가능함.
-    return window.location.origin
-  }
-
-  // 3. 커스텀 개발 포트 (3006) 사용 시 백엔드 포트(8001)로 자동 전환
-  if (port === '3006') {
-    return `${protocol}//${hostname}:8001`
-  }
-
-  // 4. 그 외 환경 (자동 감지 시도) 캐시된 origin 사용
-  return window.location.origin;
+  // 항상 현재 웹페이지의 origin을 사용하여 Next.js proxy(/socket.io)를 타도록 설정
+  return ''; // 빈 문자열은 현재 origin을 의미함
 }
 
 // 전역 Socket 인스턴스 관리 (클라이언트 측에서만)
@@ -104,7 +82,7 @@ export const useSocket = () => {
       console.log(`🔌 [useSocket] Creating NEW WebSocket instance. URL=${socketURL || 'Current Origin'}, Path=${'/socket.io'}`)
       
       globalSocket = io(socketURL, {
-        // WebSocket 우선, 실패시 Polling fallback
+        // 멀티 워커가 아니므로(1 워커) polling fallback 허용
         transports: ['websocket', 'polling'],
         timeout: 20000,
         forceNew: false, // 전역 인스턴스이므로 false가 나음

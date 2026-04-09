@@ -37,4 +37,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -fsS http://localhost:8000/health || exit 1
 
 # Run the FastAPI application with multiple workers for better concurrency
-CMD ["uvicorn", "app.admin_main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "3"]
+CMD ["uvicorn", "app.admin_main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

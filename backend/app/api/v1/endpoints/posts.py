@@ -73,6 +73,7 @@ async def test_posts():
     return {"message": "Post API is working", "status": "success"}
 
 
+@router.get("")
 @router.get("/")
 @cache(expire=60)
 def get_posts(
@@ -961,6 +962,7 @@ async def sync_post_with_asset(
 
 
 # 카테고리 관련 엔드포인트
+@router.get("/categories", response_model=List[PostCategoryResponse])
 @router.get("/categories/", response_model=List[PostCategoryResponse])
 async def get_categories(
     db: Session = Depends(get_postgres_db)
@@ -993,6 +995,7 @@ async def create_category(
 
 
 # 태그 관련 엔드포인트
+@router.get("/tags", response_model=List[PostTagResponse])
 @router.get("/tags/", response_model=List[PostTagResponse])
 async def get_tags(
     limit: int = Query(20, ge=1, le=100, description="조회할 태그 수"),
@@ -1055,6 +1058,7 @@ async def get_admin_tags(
     }
 
 
+@router.post("/tags", response_model=PostTagResponse)
 @router.post("/tags/", response_model=PostTagResponse)
 async def create_tag(
     tag_data: PostTagCreate,

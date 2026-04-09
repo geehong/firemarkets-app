@@ -530,7 +530,7 @@ export class ApiClient {
     const qs = search.toString();
 
     // trailing slash로 리다이렉트 방지
-    return this.request(`/posts/${qs ? `?${qs}` : ''}`);
+    return this.request(`/posts${qs ? `?${qs}` : ''}`);
   }
 
   getPost(slug: string) {
@@ -544,12 +544,12 @@ export class ApiClient {
 
   getBlogCategories() {
     // backend route: /api/v1/posts/categories/
-    return this.request('/posts/categories/');
+    return this.request('/posts/categories');
   }
 
   getBlogTags() {
     // backend route: /api/v1/posts/tags/
-    return this.request('/posts/tags/');
+    return this.request('/posts/tags');
   }
 
 
@@ -678,7 +678,7 @@ export class ApiClient {
   }
 
   createTag(data: { name: string; slug: string }) {
-    return this.request(`/posts/tags/`, {
+    return this.request(`/posts/tags`, {
       method: 'POST',
       body: JSON.stringify(data)
     })

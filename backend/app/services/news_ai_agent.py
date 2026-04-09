@@ -11,15 +11,21 @@ import logging
 import json
 import asyncio
 import markdown
-
-import logging
-import json
-import asyncio
 import re
+import random
 from app.utils.promo_template_loader import get_promo_candidates
 from app.services.asset_identity_service import asset_identity_service
 
 logger = logging.getLogger(__name__)
+
+# Task type 별 Temperature 설정
+TEMPERATURE_MAP = {
+    "collection": 0.3,
+    "analysis":   0.3,
+    "merge":      0.5,
+    "rewrite":    0.7,
+    "general":    0.7,
+}
 
 class NewsAIEditorAgent:
     """Gemini 및 Groq를 이용한 뉴스 분석 및 리포트 생성 에이전트 with Multi-Provider Support"""
@@ -27,23 +33,20 @@ class NewsAIEditorAgent:
     def __init__(self):
         # Initialize Gemini
         self.gemini_available = False
-        # Gemini models for high-quality tasks (rewrite/merge)
-        # Using models confirmed from user's quota dashboard
-        self.gemini_model_list = [
-            'gemini-3-flash-preview',  # Newest & available
-            'gemini-2.5-flash',
-            'gemini-2.0-flash',        # Very fast
-            'gemini-2.5-flash-lite',
-            'gemini-flash-latest',     # General alias
+        # Heavy Duty Pool: 클러스터 분석, 병합, 리라이팅 (긴 컨텍스트, 고품질)
+        self.heavy_duty_pool = [
+            "gemini-2.5-flash-preview-04-17",  # 최신 Gemini
+            "gemini-2.0-flash",                # 안정적 대용량
+            "gemini-2.5-flash",                # 보조 Fallback
         ]
         self.current_model_index = 0
         
-        # Gemma models for news collection
-        self.gemma_collection_models = [
-            'gemma-3-27b-it',
-            'gemma-3-12b-it',
-            'gemma-3-4b-it',
-            'gemma-3-1b-it',
+        # Collection Pool: 뉴스 수집, 번역, 단순 요약 (병렬, 고 TPM)
+        self.collection_pool = [
+            "gemma-4-31b-it",    # Gemma 4 메인 (TPM 무제한)
+            "gemma-4-26b-it",    # Gemma 4 보조 (TPM 무제한)
+            "gemma-3-27b-it",    # Gemma 3 Fallback
+            "gemma-3-12b-it",    # Gemma 3 보조 Fallback
         ]
         self.gemma_collection_index = 0
         
@@ -51,9 +54,17 @@ class NewsAIEditorAgent:
             try:
                 genai.configure(api_key=GOOGLE_API_KEY)
                 # Init with the first model
-                self.gemini_model = genai.GenerativeModel(self.gemini_model_list[0])
+                self.gemini_model = genai.GenerativeModel(self.heavy_duty_pool[0])
                 self.gemini_available = True
-                logger.info(f"Gemini init with primary model: {self.gemini_model_list[0]}")
+                logger.info(f"Gemini init with primary model: {self.heavy_duty_pool[0]}")
+                
+                # 비동기 웜업 실행 (가용성 검증)
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        loop.create_task(self._warmup_validate_pool())
+                except Exception as ex:
+                    logger.debug(f"Could not schedule warmup: {ex}")
             except Exception as e:
                 logger.error(f"Failed to init Gemini: {e}")
 
@@ -62,7 +73,6 @@ class NewsAIEditorAgent:
         if GROQ_API_KEY:
             try:
                 self.groq_client = AsyncGroq(api_key=GROQ_API_KEY)
-                # Updated to latest supported model
                 self.groq_model = "llama-3.3-70b-versatile" 
                 self.groq_available = True
             except Exception as e:
@@ -154,65 +164,68 @@ class NewsAIEditorAgent:
     def _get_provider(self, task_type: str = "general") -> str:
         """
         Get provider based on task type.
-        'collection' -> Gemma (parallel processing with 4 models)
-        'merge' -> Groq (fast)
-        'general' / 'rewrite' -> Gemini (high quality)
+        'collection' -> Gemma Pool 우선 (TPM 무제한)
+        'merge', 'analysis', 'rewrite', 'general' -> Groq 우선 (빠른 속도, 넉넉한 쿼터)
         """
         if task_type == "collection":
             return "gemma" if self.gemini_available else "groq"
-        elif task_type == "merge":
+        elif task_type in ("merge", "analysis", "general", "rewrite"):
             return "groq" if self.groq_available else "gemini"
-        else:  # general, rewrite
+        else:
             return "gemini" if self.gemini_available else "groq"
 
-    async def _call_gemini(self, prompt: str, **kwargs) -> str:
-        """Call Gemini API with Model Rotation on Quota Errors"""
+    async def _call_gemini(self, prompt: str, task_type: str = "general", **kwargs) -> str:
+        """Call Gemini API with Model Rotation on Quota Errors and Exp Backoff"""
         if not self.gemini_available:
             raise Exception("Gemini not available")
 
-        # Strip args that are meant for the wrapper but not for the Google API
+        # Strip args for non-Google API
         kwargs.pop('max_retries', None)
         kwargs.pop('base_delay', None)
-        kwargs.pop('utils', None) # Safety
+        kwargs.pop('utils', None)
 
         last_error = None
-        
-        # rotation retry loop
-        # We try until we run out of models in the list
-        start_index = self.current_model_index
         attempts = 0
-        total_models = len(self.gemini_model_list)
+        total_models = len(self.heavy_duty_pool)
+        
+        # Determine temperature
+        temp = TEMPERATURE_MAP.get(task_type, 0.7)
+        generation_config = genai.types.GenerationConfig(temperature=temp)
         
         while attempts < total_models:
-            current_model_name = self.gemini_model_list[self.current_model_index]
+            current_model_name = self.heavy_duty_pool[self.current_model_index]
             
             try:
-                # Update model instance if needed (though we just hold the object, it's lightweight)
-                # Re-instantiating ensures we use the correct model string
-                self.gemini_model = genai.GenerativeModel(current_model_name)
+                # Lazy-init model to ensure it uses current event loop
+                model = genai.GenerativeModel(current_model_name)
+                logger.info(f"Calling Gemini Model: {current_model_name} (Task: {task_type}, Temp: {temp})")
                 
-                logger.info(f"Calling Gemini Model: {current_model_name}")
-                
-                response = await self.gemini_model.generate_content_async(prompt, **kwargs)
+                response = await model.generate_content_async(
+                    prompt, generation_config=generation_config, **kwargs
+                )
                 return response.text
                 
             except Exception as e:
                 err_str = str(e).lower()
-                is_quota_error = "429" in err_str or "quota" in err_str or "resource" in err_str or "exhausted" in err_str
+                is_quota = "429" in err_str or "quota" in err_str or "exhausted" in err_str
                 is_not_found = "404" in err_str or "not found" in err_str or "not supported" in err_str
                 
-                if is_quota_error or is_not_found:
-                    logger.warning(f"Gemini Error ({'Quota' if is_quota_error else 'Not Found'}) for {current_model_name}. Switching model...")
+                if is_quota or is_not_found:
+                    # Exponential Backoff + Jitter
+                    wait_sec = (2 ** attempts) + random.uniform(0, 2)
+                    logger.warning(
+                        f"Gemini error ({'Quota' if is_quota else 'Not Found'}) "
+                        f"on {model_name if 'model_name' in locals() else current_model_name}. Waiting {wait_sec:.1f}s..."
+                    )
+                    await asyncio.sleep(wait_sec)
                     self.current_model_index = (self.current_model_index + 1) % total_models
                     attempts += 1
                     last_error = e
                     continue
                 else:
-                    # Non-quota error, re-raise immediately (e.g. content policy)
                     raise e
         
-        # If we exited loop, we tried all models and failed
-        logger.error("All Gemini models exhausted/failed.")
+        logger.error("All Gemini heavy duty models exhausted/failed.")
         raise last_error if last_error else Exception("All Gemini models failed")
 
     async def _call_groq(self, prompt: str, **kwargs) -> str:
@@ -240,47 +253,56 @@ class NewsAIEditorAgent:
 
         return await self._retry_request(_groq_req, **kwargs)
 
-    async def _call_gemma(self, prompt: str, **kwargs) -> str:
-        """Call Gemma API with round-robin model selection for parallel processing"""
+    async def _call_gemma(self, prompt: str, task_type: str = "collection", **kwargs) -> str:
+        """Call Gemma API with loop, exponential backoff, and jitter for parallel processing"""
         if not self.gemini_available:
             raise Exception("Gemma not available (requires Gemini API)")
 
-        # Strip args that are meant for the wrapper
+        # Strip wrapper args
         kwargs.pop('max_retries', None)
         kwargs.pop('base_delay', None)
         kwargs.pop('utils', None)
 
-        # Round-robin model selection
-        model_name = self.gemma_collection_models[self.gemma_collection_index]
-        self.gemma_collection_index = (self.gemma_collection_index + 1) % len(self.gemma_collection_models)
+        last_error = None
+        attempts = 0
+        total_models = len(self.collection_pool)
         
-        logger.info(f"Calling Gemma Model: {model_name} (index: {self.gemma_collection_index})")
-        
-        try:
-            gemma_model = genai.GenerativeModel(model_name)
-            response = await gemma_model.generate_content_async(prompt, **kwargs)
-            return response.text
-        except Exception as e:
-            err_str = str(e).lower()
-            is_quota_error = "429" in err_str or "quota" in err_str
-            is_not_found = "404" in err_str or "not found" in err_str
+        temp = TEMPERATURE_MAP.get(task_type, 0.3)
+        generation_config = genai.types.GenerationConfig(temperature=temp)
+
+        while attempts < total_models:
+            model_name = self.collection_pool[self.gemma_collection_index]
+            self.gemma_collection_index = (self.gemma_collection_index + 1) % total_models
             
-            if is_quota_error or is_not_found:
-                # Try next model
-                logger.warning(f"Gemma Error for {model_name}: {e}. Trying next model...")
-                next_model = self.gemma_collection_models[self.gemma_collection_index]
-                self.gemma_collection_index = (self.gemma_collection_index + 1) % len(self.gemma_collection_models)
+            try:
+                # Lazy-init to ensure correct event loop
+                gemma_model = genai.GenerativeModel(model_name)
+                logger.info(f"Calling Gemma Model: {model_name} (Task: {task_type}, Temp: {temp})")
                 
-                try:
-                    gemma_model = genai.GenerativeModel(next_model)
-                    logger.info(f"Retrying with Gemma Model: {next_model}")
-                    response = await gemma_model.generate_content_async(prompt, **kwargs)
-                    return response.text
-                except Exception as e2:
-                    logger.error(f"Gemma fallback also failed: {e2}")
-                    raise e2
-            else:
+                response = await gemma_model.generate_content_async(
+                    prompt, generation_config=generation_config, **kwargs
+                )
+                return response.text
+
+            except Exception as e:
+                err_str = str(e).lower()
+                is_quota = "429" in err_str or "quota" in err_str or "exhausted" in err_str
+                is_not_found = "404" in err_str or "not found" in err_str or "not supported" in err_str
+
+                if is_quota or is_not_found:
+                    wait_sec = (2 ** attempts) + random.uniform(0, 2)
+                    logger.warning(
+                        f"Gemma error ({'Quota' if is_quota else 'Not Found'}) "
+                        f"on {model_name}. Waiting {wait_sec:.1f}s..."
+                    )
+                    await asyncio.sleep(wait_sec)
+                    attempts += 1
+                    last_error = e
+                    continue
                 raise e
+
+        logger.error("All Gemma models in collection pool exhausted/failed.")
+        raise last_error if last_error else Exception("All Gemma models failed")
 
     async def _generate_content(self, prompt: str, task_type: str = "general", **kwargs) -> str:
         """Unified generation interface routing to configured provider with fallback"""
@@ -300,15 +322,14 @@ class NewsAIEditorAgent:
             if provider == 'groq':
                 return await asyncio.wait_for(self._call_groq(prompt, **kwargs), timeout=60)
             elif provider == 'gemma':
-                return await asyncio.wait_for(self._call_gemma(prompt, **kwargs), timeout=60)
+                return await asyncio.wait_for(self._call_gemma(prompt, task_type=task_type, **kwargs), timeout=60)
             else:
-                return await asyncio.wait_for(self._call_gemini(prompt, **kwargs), timeout=60)
-        except asyncio.TimeoutError:
-            logger.error(f"Provider {provider} timed out after 60s")
-            # If timeout, try fallback or re-raise
-            raise Exception(f"AI Provider {provider} timeout")
-        except Exception as e:
-            logger.error(f"Primary provider {provider} failed: {e}")
+                return await asyncio.wait_for(self._call_gemini(prompt, task_type=task_type, **kwargs), timeout=60)
+        except (asyncio.TimeoutError, Exception) as e:
+            if isinstance(e, asyncio.TimeoutError):
+                logger.error(f"Provider {provider} timed out after 60s")
+            else:
+                logger.error(f"Primary provider {provider} failed: {e}")
             
             # Simple Fallback Logic
             if provider in ['gemini', 'gemma'] and self.groq_available:
@@ -316,7 +337,7 @@ class NewsAIEditorAgent:
                 return await self._call_groq(prompt, **kwargs)
             elif provider == 'groq' and self.gemini_available:
                 logger.info("Falling back to GEMINI...")
-                return await self._call_gemini(prompt, **kwargs)
+                return await self._call_gemini(prompt, task_type=task_type, **kwargs)
             else:
                 raise e
 
@@ -377,11 +398,10 @@ class NewsAIEditorAgent:
                      logger.error("Gemini Free Tier Quota Exceeded (Daily). Stopping retries.")
                      raise e
 
-                if "429" in str(e) or "quota" in str(e).lower():
+                if ("429" in str(e) or "quota" in str(e).lower()) and "tpd" not in str(e).lower():
                     if attempt < max_retries:
-                        delay = base_delay * (2 ** attempt)
-                        logger.warning(f"Rate Limit hit. Retrying in {delay}s...")
-                        import asyncio
+                        delay = base_delay * (2 ** attempt) + random.uniform(0, 2)
+                        logger.warning(f"Rate Limit hit. Retrying in {delay:.1f}s...")
                         await asyncio.sleep(delay)
                         continue
                 raise e
@@ -464,7 +484,7 @@ Return ONLY a valid JSON object with the following structure:
             promo_section = self._get_promo_instructions(tickers)
             prompt = prompt.replace("{firemarkets_promo_section}", promo_section)
             
-            text_response = await self._generate_content(prompt, task_type="collection")
+            text_response = await self._generate_content(prompt, task_type="analysis")
             
             # Use robust JSON parsing
             result = self._parse_json_response(text_response)
@@ -648,13 +668,19 @@ RETURN ONLY JSON. NO MARKDOWN WRAPPERS."""
                 if match:
                     text = match.group(1).strip()
             
-            # Find JSON object boundaries (simple heuristic)
-            start = text.find('{')
-            end = text.rfind('}')
+            # Find JSON boundaries
+            stripped = text.strip()
+            if stripped.startswith('['):
+                start = text.find('[')
+                end = text.rfind(']')
+            else:
+                start = text.find('{')
+                end = text.rfind('}')
+                
             if start != -1 and end != -1:
                 text = text[start:end+1]
             else:
-                logger.error(f"Could not find JSON object boundaries in response: {text[:200]}...")
+                logger.error(f"JSON boundary not found: {text[:200]}")
                 return None
                 
             return json.loads(text, strict=False)
@@ -673,6 +699,26 @@ RETURN ONLY JSON. NO MARKDOWN WRAPPERS."""
             logger.error(f"JSON Parse Error: {e}")
             logger.debug(f"Failed Text: {text}")
             return None
+
+    async def _warmup_validate_pool(self):
+        """초기화 시 모델 가용성 검증 후 불가 모델 제거"""
+        validated = []
+        test_prompt = "Hello"  # 최소 토큰 소모
+        for model_name in self.collection_pool:
+            try:
+                m = genai.GenerativeModel(model_name)
+                # Use generating content with timeout for warmup
+                await asyncio.wait_for(m.generate_content_async(test_prompt), timeout=5.0)
+                validated.append(model_name)
+                logger.info(f"[Warm-up] {model_name}: OK")
+            except Exception as e:
+                logger.warning(f"[Warm-up] {model_name}: Unavailable ({e}). Removing from pool.")
+        
+        if validated:
+            self.collection_pool = validated
+        else:
+            logger.error("All Gemma pool models failed warmup validation. Using hardcoded fallback.")
+            self.collection_pool = ["gemma-3-27b-it", "gemma-3-12b-it"]
 
     async def merge_posts(self, posts: List[Post]) -> Dict:
         """

@@ -19,8 +19,21 @@ except ImportError:
 
 # Socket.IO 설정 - 모든 도메인 허용
 
+# Redis Pub/Sub Manager 설정 (멀티 워커 지원)
+import os
+redis_host = os.getenv("REDIS_HOST", "redis")
+redis_port = os.getenv("REDIS_PORT", "6379")
+redis_password = os.getenv("REDIS_PASSWORD", "")
+redis_url = f"redis://{redis_host}:{redis_port}/1"
+if redis_password:
+    redis_url = f"redis://:{redis_password}@{redis_host}:{redis_port}/1"
+
+# socketio.AsyncRedisManager 추가
+mgr = socketio.AsyncRedisManager(redis_url)
+
 sio = socketio.AsyncServer(
     async_mode='asgi',
+    client_manager=mgr,
     cors_allowed_origins="*",  # 모든 도메인 허용
     logger=False,
     engineio_logger=False,
