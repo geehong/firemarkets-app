@@ -563,27 +563,26 @@ const LiveCandleChart: React.FC<LiveCandleChartProps> = ({
   let computedChangePercent = 0;
   let computedChangeAmount = 0;
 
-  if (typeof latestPrice?.changePercent === 'number') {
+  // [수정] 사용자는 차트 가시 범위(72h 등)와 관계없이 '일일 변동률(24h)'을 헤더에서 보기를 원합니다 (첫 번째 이미지 방식).
+  // 웹소켓/상태에서 제공하는 24h 기준가(referencePrice)를 최우선으로 사용하고, 없으면 백업 기준가를 사용합니다.
+  const headerReferencePrice = latestPrice?.referencePrice || prevClosePrice || chartStats.prevClose || (historyData.length > 0 ? Number(historyData[0].open_price || historyData[0].open || historyData[0].close) : 0);
+
+  if (headerReferencePrice > 0 && currentPrice > 0) {
+      computedChangeAmount = currentPrice - headerReferencePrice;
+      computedChangePercent = (computedChangeAmount / headerReferencePrice) * 100;
+  } else if (typeof latestPrice?.changePercent === 'number') {
+      // 히스토리 데이터가 아직 없는 경우 등 백업으로 웹소켓 제공 변동률 사용
       computedChangePercent = latestPrice.changePercent;
-      if (prevClosePrice && prevClosePrice > 0) {
-          computedChangeAmount = currentPrice - prevClosePrice;
-      } else {
-          computedChangeAmount = currentPrice * (computedChangePercent / 100);
-      }
+      computedChangeAmount = currentPrice * (computedChangePercent / 100);
   } else if (lastQuoteResponse?.quote) {
       const qp = Number(lastQuoteResponse.quote.change_percent);
       const qa = Number(lastQuoteResponse.quote.change_amount);
       if (isFinite(qp)) computedChangePercent = qp;
       if (isFinite(qa)) computedChangeAmount = qa;
-      else if (prevClosePrice && prevClosePrice > 0) computedChangeAmount = currentPrice - prevClosePrice;
+      else if (headerReferencePrice > 0) computedChangeAmount = currentPrice - headerReferencePrice;
       else computedChangeAmount = currentPrice * (computedChangePercent / 100);
-  } else if (prevClosePrice && prevClosePrice > 0 && currentPrice > 0) {
-      computedChangeAmount = currentPrice - prevClosePrice;
-      computedChangePercent = (computedChangeAmount / prevClosePrice) * 100;
-  } else if (chartStats.prevClose > 0) {
-      computedChangeAmount = currentPrice - chartStats.prevClose;
-      computedChangePercent = (computedChangeAmount / chartStats.prevClose) * 100;
-  }
+  } 
+
 
   const isPositive = computedChangePercent >= 0;
   const changeSign = computedChangePercent > 0 ? '+' : (computedChangePercent < 0 ? '-' : '');

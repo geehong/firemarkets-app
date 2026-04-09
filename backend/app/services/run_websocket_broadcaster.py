@@ -82,6 +82,7 @@ sio_client = socketio.AsyncClient(
 # --- Broadcaster 전용 상태 및 캐시 관리 ---
 
 ticker_to_asset_id_cache: Dict[str, int] = {}
+asset_id_to_ticker_cache: Dict[int, str] = {}
 ticker_to_asset_type_cache: Dict[str, str] = {}
 last_asset_cache_refresh: Optional[datetime] = None
 last_broadcast_prices = {}  # { (asset_id, ticker): last_price }
@@ -108,7 +109,7 @@ async def disconnect():
 
 async def _refresh_asset_cache():
     """DB에서 실제 자산 목록을 가져와 캐시를 갱신합니다."""
-    global ticker_to_asset_id_cache, last_asset_cache_refresh, ticker_to_asset_type_cache
+    global ticker_to_asset_id_cache, last_asset_cache_refresh, ticker_to_asset_type_cache, asset_id_to_ticker_cache
     
     try:
         # 동기 세션 사용
@@ -310,7 +311,10 @@ async def listen_to_redis_and_broadcast():
                                     if asset_id: s = s_clean
 
                                 if asset_id:
-                                    ticker_for_broadcast = s
+                                    # [개선] 항상 캐시된 원본(Canonical) 티커를 방송용으로 사용
+                                    # 이렇게 해야 프론트엔드에서 구독한 티커와 일치하게 됨
+                                    ticker_for_broadcast = asset_id_to_ticker_cache.get(asset_id, s)
+                                    
                                     # [MAPPING TRACE] - Stocks/ETFs도 추적 대상에 추가
                                     if symbol in ['SOL', 'ETHUSDT', 'BTCUSDT', 'QQQ', 'SPY', 'NVDA', 'TSLA']:
                                         logger.info(f"🔍 [MAPPING-TRACE] {provider} | {symbol} -> Internal: {ticker_for_broadcast} (ID: {asset_id})")

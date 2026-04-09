@@ -11,6 +11,7 @@ export interface RealtimePrice {
   timestamp: string
   dataSource: string
   changePercent?: number // 일일 증감율 (%)
+  referencePrice?: number | null // 🔥 추가: 변동률 계산 기준가 (24h 전 종가 등)
   asset_id?: number | string // 🚨 추가: 데이터의 자산 ID 유지
   ticker?: string            // 🚨 추가: 데이터의 티커 이름 유지
 }
@@ -440,6 +441,7 @@ export const useRealtimePrices = (assetIdentifier: string, options: { enabled?: 
       timestamp: ts,
       dataSource: data.data_source,
       changePercent: changePercent ?? undefined,
+      referencePrice: cached?.previousClose || undefined, // 🚨 추가: 기준가 전달
       asset_id: data.asset_id, // 🚨 추가: 차트로 이름표 전달
       ticker: data.ticker,     // 🚨 추가: 차트로 이름표 전달
     }
@@ -483,7 +485,7 @@ export const useRealtimePrices = (assetIdentifier: string, options: { enabled?: 
                 return prev
               }
 
-              const updatedPriceData = { ...prev, changePercent: rounded };
+              const updatedPriceData = { ...prev, changePercent: rounded, referencePrice: result.previousClose };
               previousPriceDataRef.current = updatedPriceData
               latestPriceRef.current = updatedPriceData
 

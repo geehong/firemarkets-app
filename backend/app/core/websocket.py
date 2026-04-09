@@ -88,8 +88,33 @@ async def subscribe_prices(sid, data):
     
     # 각 심볼에 대해 룸에 추가
     for symbol in symbols:
+        # 1. 기본 티커명/ID명 룸 입장
         await sio.enter_room(sid, f"prices_{symbol}")
         print(f"🏠 Added client {sid} to room: prices_{symbol}")
+        
+        # 2. [추가] 심볼을 asset_id로 해석하여 ID 기반 룸에도 자동 입장
+        # 이렇게 하면 티커명 불일치(BTC vs BTCUSDT) 문제를 원천 차단 가능함
+        if symbol and not str(symbol).isdigit():
+            try:
+                from app.core.database import SessionLocal
+                from app.api.v2.endpoints.assets.shared.resolvers import resolve_asset_identifier
+                
+                db = SessionLocal()
+                try:
+                    asset_id = resolve_asset_identifier(db, str(symbol))
+                    if asset_id:
+                        await sio.enter_room(sid, f"prices_{asset_id}")
+                        print(f"🏠 [Smart-Route] Also added client {sid} to room: prices_{asset_id}")
+                except Exception:
+                    # 해석 실패 시 시도 중단 (로그는 생략하여 노이즈 방지)
+                    pass
+                finally:
+                    db.close()
+            except ImportError:
+                # 초기화 중이거나 모듈 로드 실패 시 무시
+                pass
+            except Exception as e:
+                print(f"⚠️ Smart-Route resolution failed: {e}")
     
     await sio.emit('subscription_confirmed', {
         'message': f'Subscribed to {len(symbols)} symbols',

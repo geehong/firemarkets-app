@@ -228,15 +228,19 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
 
     try {
       if (bulkAction === 'delete') {
-        await Promise.all(selectedPosts.map(id => deletePostMutation.mutateAsync(id)));
+        // Process sequentially to avoid overwhelming the server
+        for (const id of selectedPosts) {
+          await deletePostMutation.mutateAsync(id);
+        }
         setSelectedPosts([]);
         setRefreshKey(Date.now());
         await queryClient.invalidateQueries({ queryKey: ['posts'] });
       } else if (bulkAction === 'publish') {
-        // @ts-ignore
-        await Promise.all(selectedPosts.map(id =>
-          updatePostMutation.mutateAsync({ postId: id, postData: { status: 'published' } })
-        ));
+        // Process sequentially to avoid overwhelming the server (especially sentiment analysis)
+        for (const id of selectedPosts) {
+          // @ts-ignore
+          await updatePostMutation.mutateAsync({ postId: id, postData: { status: 'published' } });
+        }
         setSelectedPosts([]);
         setRefreshKey(Date.now());
         await queryClient.invalidateQueries({ queryKey: ['posts'] });
@@ -253,9 +257,11 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
           const newPost = await mergePostsMutation.mutateAsync(selectedPosts);
 
           if (newPost && newPost.id) {
-            // 1. Delete source posts
+            // 1. Delete source posts (Sequential)
             try {
-              await Promise.all(selectedPosts.map(id => deletePostMutation.mutateAsync(id)));
+              for (const id of selectedPosts) {
+                await deletePostMutation.mutateAsync(id);
+              }
             } catch (delErr) {
               console.error('[BlogManage] Failed to delete source posts:', delErr);
             }
@@ -264,11 +270,11 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
             let slugTitle = '';
             // @ts-ignore
             if (typeof newPost.title === 'string') {
-               // @ts-ignore
-               slugTitle = newPost.title;
+              // @ts-ignore
+              slugTitle = newPost.title;
             } else if (newPost.title && typeof newPost.title === 'object') {
-               // @ts-ignore
-               slugTitle = newPost.title.en || newPost.title.ko || '';
+              // @ts-ignore
+              slugTitle = newPost.title.en || newPost.title.ko || '';
             }
 
             const cleanSlug = slugTitle
@@ -277,7 +283,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
               .trim()
               .replace(/\s+/g, '-')
               .replace(/-+/g, '-');
-            
+
             const finalSlug = cleanSlug || `merge-${nanoid(10)}`;
 
             await updatePostMutation.mutateAsync({
@@ -292,7 +298,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
             // 3. Open in New Window
             const routePrefix = (typeList.includes('page') || currentPostType === 'page') ? 'page' : 'post';
             window.open(`/admin/${routePrefix}/edit/${newPost.id}`, '_blank');
-            
+
             setSelectedPosts([]);
             setRefreshKey(Date.now());
             await queryClient.invalidateQueries({ queryKey: ['posts'] });
@@ -308,10 +314,11 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
       } else if (bulkAction === 'publish_brief') {
         setIsMerging(true);
         try {
-          await Promise.all(selectedPosts.map(id => {
+          // Process sequentially
+          for (const id of selectedPosts) {
             const post = blogs.find((b: any) => b.id === id);
-            if (!post) return;
-            
+            if (!post) continue;
+
             let imageUrl: string | null = null;
             if (post) {
               // @ts-ignore
@@ -342,7 +349,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
               newSlug = `${newSlug.substring(0, 80)}-${nanoid(6)}`;
             }
 
-            return updatePostMutation.mutateAsync({
+            await updatePostMutation.mutateAsync({
               postId: id,
               postData: {
                 status: 'published',
@@ -352,7 +359,7 @@ const BlogManage: React.FC<{ postType?: string, pageTitle?: string, defaultStatu
                 cover_image: imageUrl
               }
             });
-          }));
+          }
           setSelectedPosts([]);
           alert('선택된 뉴스들이 단신으로 발행되었습니다.');
         } finally {

@@ -32,8 +32,12 @@ class SentimentAnalyzer:
             self._pipeline = None
 
     def analyze(self, text: str):
+        if not text or len(text.strip()) < 5:
+            return {"label": "neutral", "score": 0.5}
+
         # Lazy initialization
         if self._pipeline is None:
+            logger.info("Initializing SentimentAnalyzer on first use...")
             self._initialize_pipeline()
 
         if not self._pipeline:
@@ -42,8 +46,19 @@ class SentimentAnalyzer:
 
         try:
             # Truncate text to max length of model (512 tokens usually)
-            result = self._pipeline(text[:512])[0]
-            # FinBERT returns: positive, negative, neutral
+            # FinBERT uses 512 tokens. 512 characters is a safe lower bound.
+            clean_text = text[:512]
+            logger.debug(f"Analyzing sentiment for text (len={len(clean_text)})")
+            
+            # Record start time for performance tracking
+            import time
+            start_time = time.time()
+            
+            result = self._pipeline(clean_text)[0]
+            
+            duration = time.time() - start_time
+            logger.info(f"Sentiment analysis completed in {duration:.3f}s: {result}")
+            
             return result
         except Exception as e:
             logger.error(f"Error during sentiment analysis: {e}")
