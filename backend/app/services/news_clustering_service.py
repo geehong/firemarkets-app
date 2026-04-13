@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class NewsClusteringService:
     """뉴스 클러스터링 엔진 (TF-IDF + Cosine Similarity)"""
     
-    def __init__(self, similarity_threshold: float = 0.5):
+    def __init__(self, similarity_threshold: float = 0.4):
         self.vectorizer = TfidfVectorizer(stop_words='english')
         self.threshold = similarity_threshold
 

@@ -35,18 +35,18 @@ class NewsAIEditorAgent:
         self.gemini_available = False
         # Heavy Duty Pool: 클러스터 분석, 병합, 리라이팅 (긴 컨텍스트, 고품질)
         self.heavy_duty_pool = [
-            "gemini-2.5-flash-preview-04-17",  # 최신 Gemini
+            "gemini-2.5-flash",                # 안정적 최신
+            "gemini-2.5-pro",                 # 고성능
             "gemini-2.0-flash",                # 안정적 대용량
-            "gemini-2.5-flash",                # 보조 Fallback
         ]
         self.current_model_index = 0
         
         # Collection Pool: 뉴스 수집, 번역, 단순 요약 (병렬, 고 TPM)
         self.collection_pool = [
-            "gemma-4-31b-it",    # Gemma 4 메인 (TPM 무제한)
-            "gemma-4-26b-it",    # Gemma 4 보조 (TPM 무제한)
-            "gemma-3-27b-it",    # Gemma 3 Fallback
-            "gemma-3-12b-it",    # Gemma 3 보조 Fallback
+            "gemma-4-31b-it",       # Gemma 4 메인 (TPM 무제한)
+            "gemma-4-26b-a4b-it",   # Gemma 4 보조 (TPM 무제한) - 정정된 모델명
+            "gemma-3-27b-it",       # Gemma 3 Fallback
+            "gemma-3-12b-it",       # Gemma 3 보조 Fallback
         ]
         self.gemma_collection_index = 0
         
@@ -841,8 +841,14 @@ Return ONLY a valid JSON object:
         config = GLOBAL_APP_CONFIGS.get("ai_agent_prompts", {})
         
         # Extract tickers for promo section
-        all_text_for_tickers = f"{title} {content}"
-        extracted_tickers = self._extract_tickers(all_text_for_tickers)
+        # We need to extract possible tickers from titles/content if not provided
+        extracted_tickers = []
+        if not post_data.get('tickers'):
+             # Simple heuristic or use a service. For now, we use existing list if possible.
+             pass
+        else:
+             extracted_tickers = post_data.get('tickers', [])
+        
         promo_section = self._get_promo_instructions(extracted_tickers)
 
         if not content:

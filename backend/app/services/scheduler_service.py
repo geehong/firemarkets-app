@@ -333,15 +333,14 @@ class SchedulerService:
                         if not cluster:
                             continue
                             
-                        # Mark raw posts as processed
-                        for p in cluster:
-                            p.status = 'archived'
-                        
                         # 3. Analyze
-                        if ai_agent and len(cluster) >= 1: # Analyze even single items if significant, or stick to >=2
+                        if ai_agent and len(cluster) >= 1: 
                             try:
                                 analysis = await ai_agent.analyze_cluster(cluster)
                                 if analysis:
+                                    # Mark raw posts as processed only if analysis succeeded
+                                    for p in cluster:
+                                        p.status = 'archived'
                                     # 4. Save Insight (HTML Format)
                                     # Ensure analysis dict has keys, handle potential missing keys safely
                                     title_ko = analysis.get('title_ko', 'No Title')

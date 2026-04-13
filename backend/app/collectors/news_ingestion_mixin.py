@@ -244,9 +244,9 @@ class NewsIngestionMixin:
                         stocks.append(ticker)
                         
             return {
-                "all": all_tickers,
-                "crypto": cryptos,
-                "stock": stocks
+                "all": list(dict.fromkeys(all_tickers)),
+                "crypto": list(dict.fromkeys(cryptos)),
+                "stock": list(dict.fromkeys(stocks))
             }
         except Exception as e:
             logger.error(f"Failed to get top tickers: {e}")

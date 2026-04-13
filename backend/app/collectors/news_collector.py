@@ -64,14 +64,14 @@ class NewsCollector(BaseCollector, NewsIngestionMixin):
             if not target_currencies:
                 currencies_str = "BTC,ETH"
             else:
-                currencies_str = ",".join(target_currencies[:10]) # URL length limit precaution, take top 10 crypto
+                currencies_str = ",".join(target_currencies[:30]) # Increased from 10 for better coverage
             
             logger.info(f"Collecting CryptoPanic news for: {currencies_str}")
             
             # 3. Fetch
             raw_posts = await self.cryptopanic.get_posts(
                 currencies=currencies_str, 
-                filter="hot"
+                filter="all" # Changed from 'hot' to 'all' for more volume
             )
             normalized_posts = []
             for p in raw_posts:
@@ -97,13 +97,13 @@ class NewsCollector(BaseCollector, NewsIngestionMixin):
             if not target_tickers:
                 tickers_str = None # Default to general
             else:
-                # Tiingo can handle many, but let's stick to top 20 to be safe/relevant
-                tickers_str = ",".join(target_tickers[:20])
+                # Tiingo can handle many, increased from 20 to 50
+                tickers_str = ",".join(target_tickers[:50])
                 
             logger.info(f"Collecting Tiingo news for: {tickers_str if tickers_str else 'General'}")
             
             # 3. Fetch
-            raw = await self.tiingo.get_news(limit=20, tickers=tickers_str)
+            raw = await self.tiingo.get_news(limit=50, tickers=tickers_str) # Increased limit from 20 to 50
             normalized = []
             for item in raw:
                 pub_date = item.get("publishedDate")
