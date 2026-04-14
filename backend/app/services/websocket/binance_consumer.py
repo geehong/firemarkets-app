@@ -145,6 +145,11 @@ class BinanceWSConsumer(BaseWSConsumer):
                     
                     elif "id" in data:
                         logger.info(f"✅ [BINANCE] Response: {data}")
+                
+                # WebSocket 루프가 정상 종료되면 연결 상태 해제 (중요: tight loop 방지)
+                self.is_connected = False
+                logger.warning("⚠️ [BINANCE] WebSocket loop finished normally, marking as disconnected")
+
             except Exception as e:
                 logger.error(f"❌ [BINANCE] Run Error: {e}")
                 self.is_connected = False

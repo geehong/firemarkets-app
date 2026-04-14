@@ -144,6 +144,7 @@ class WebSocketOrchestrator:
         self.is_running = False
         self.last_rebalance = None
         self.rebalance_interval = WebSocketConfig.ORCHESTRATOR['rebalance_interval']
+        self.consumer_tasks: Dict[str, asyncio.Task] = {}
         logger.info(f"Orchestrator state initialized. Rebalance interval: {self.rebalance_interval}")
         
         # Consumer 클래스 등록
@@ -786,24 +787,22 @@ class WebSocketOrchestrator:
             logger.debug(f"Assignment details: {assignment}")
             
             if assignment.assigned_tickers:
-                # Consumer 상태 확인 및 조율
                 consumer = assignment.consumer
+                # Task registry를 통해 더 정확하게 상태 확인
+                existing_task = self.consumer_tasks.get(provider_name)
+                is_task_running = existing_task is not None and not existing_task.done()
                 is_running = getattr(consumer, 'is_running', False)
-                is_running_task = getattr(consumer, '_is_running_task', False)
                 is_connected = getattr(consumer, 'is_connected', False)
                 
                 # 이미 실행 중이면 중복 시작 방지
-                if is_running or is_running_task:
+                if is_task_running or is_running:
                     # 연결 상태에 상관없이 이미 태스크가 떠 있으면 중복 실행하지 않음
-                    # (Consumer 내부에서 재연결 로직이 돌아가고 있기 때문)
                     if not is_connected:
-                        logger.warning(f"⚠️ {provider_name} is running but not connected, allowing internal reconnection")
-                        # 내부 재연결 로직에 맡김
+                        logger.warning(f"⚠️ {provider_name} is already active but not connected (Task: {is_task_running}, Flag: {is_running})")
                     else:
                         logger.info(f"⏭️ Skipping start for {provider_name}: already running and connected")
                     
                     skipped_consumers.append(provider_name)
-                    log_consumer_status_change(provider_name, "stopped", "running", f"Already running (task active), skipping restart (connected: {is_connected})")
                     continue
                     
                 logger.info(f"🔧 Creating task for {provider_name} with {len(assignment.assigned_tickers)} tickers")
@@ -812,11 +811,12 @@ class WebSocketOrchestrator:
                 try:
                     logger.debug(f"Creating asyncio task for {provider_name}")
                     task = asyncio.create_task(
-                        self._run_consumer(assignment)
+                        self._run_consumer(assignment),
+                        name=f"task_{provider_name}"
                     )
                     tasks.append(task)
+                    self.consumer_tasks[provider_name] = task
                     logger.info(f"🚀 Starting {provider_name} with {len(assignment.assigned_tickers)} tickers")
-                    logger.debug(f"Task created successfully for {provider_name}")
                     
                     # Consumer 시작 로그
                     log_to_websocket_orchestrator_logs(
@@ -846,69 +846,20 @@ class WebSocketOrchestrator:
                 )
         
         if tasks:
-            logger.info(f"🔧 Starting {len(tasks)} consumer tasks")
-            logger.debug(f"Task list: {[task.get_name() for task in tasks]}")
+            logger.info(f"🚀 Started {len(tasks)} new consumer tasks")
             
             # Consumer 시작 통계 로그
             log_to_websocket_orchestrator_logs(
                 "INFO",
-                f"Consumer tasks execution started",
-                f"Starting: {len(tasks)} | Skipped: {len(skipped_consumers)} | Failed: {len(failed_consumers)}"
+                f"Consumer tasks startup completed",
+                f"Newly started: {len(tasks)} | Skipped: {len(skipped_consumers)} | Failed/Error: {len(failed_consumers)}"
             )
             
-            try:
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                logger.info(f"All {len(tasks)} consumer tasks completed")
-                
-                # 결과 분석
-                successful_tasks = 0
-                failed_tasks = []
-                
-                for i, result in enumerate(results):
-                    if isinstance(result, Exception):
-                        failed_tasks.append((i, result))
-                        logger.error(f"❌ Task {i} failed with exception: {result}")
-                        logger.error(f"Exception type: {type(result).__name__}")
-                        import traceback
-                        logger.error(f"Traceback: {traceback.format_exc()}")
-                        
-                        # 개별 태스크 실패 로그
-                        log_error_with_traceback(f"Task_{i}", result, f"Consumer task {i} execution failed")
-                    else:
-                        successful_tasks += 1
-                        logger.debug(f"Task {i} completed successfully")
-                
-                # Consumer 실행 완료 통계 로그
-                log_to_websocket_orchestrator_logs(
-                    "INFO",
-                    f"Consumer tasks execution completed",
-                    f"Successful: {successful_tasks} | Failed: {len(failed_tasks)} | Skipped: {len(skipped_consumers)}"
-                )
-                
-                # 완료된 Task들 정리
-                for task in tasks:
-                    if not task.done():
-                        task.cancel()
-                        try:
-                            await task
-                        except asyncio.CancelledError:
-                            pass
-                
-            except Exception as e:
-                logger.error(f"❌ Error in asyncio.gather: {e}")
-                logger.error(f"Exception type: {type(e).__name__}")
-                import traceback
-                logger.error(f"Traceback: {traceback.format_exc()}")
-                
-                # asyncio.gather 실패 로그
-                log_error_with_traceback("asyncio.gather", e, "Error in consumer tasks execution")
+            # 각 Task가 시작되었음을 알리고 모니터링 루프로 복귀 (gather로 대기하지 않음)
+            # 단, 처음에 바로 죽는 경우를 대비해 아주 잠깐만 대기해볼 수 있으나 
+            # 여기서는 즉시 반환하여 Monitoring Loop가 돌 수 있게 함
         else:
-            logger.warning("No consumer tasks to start")
-            log_to_websocket_orchestrator_logs(
-                "WARNING",
-                f"No consumer tasks to start",
-                f"Skipped: {skipped_consumers} | Failed: {failed_consumers}"
-            )
+            logger.debug("No new consumer tasks to start")
     
     async def _run_consumer(self, assignment: ConsumerAssignment):
         """Consumer 실행"""
@@ -988,35 +939,27 @@ class WebSocketOrchestrator:
             logger.info(f"✅ {consumer.client_name} run() method completed")
             log_consumer_status_change(consumer.client_name, "running", "completed", "Consumer run completed successfully")
             
+        except asyncio.CancelledError:
+            logger.info(f"⏹️ Consumer {consumer.client_name} task cancelled")
         except Exception as e:
             logger.error(f"❌ Error running {consumer.client_name}: {e}")
-            logger.error(f"Exception type: {type(e).__name__}")
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            
-            # Consumer 실행 중 에러 로그
             log_error_with_traceback(consumer.client_name, e, f"Consumer {consumer.client_name} execution failed")
             log_consumer_status_change(consumer.client_name, "running", "failed", f"Execution failed: {str(e)}")
-            
             await self._handle_consumer_failure(consumer.client_name, tickers)
         finally:
-            # Consumer가 정상적으로 실행 중이면 disconnect하지 않음 (재연결 허용)
-            if not getattr(consumer, 'is_running', False):
-                try:
-                    logger.debug(f"Disconnecting {consumer.client_name} (not running)")
-                    await consumer.disconnect()
-                    logger.debug(f"Successfully disconnected {consumer.client_name}")
-                    log_consumer_status_change(consumer.client_name, "running", "disconnected", "Consumer disconnected")
-                except Exception as e:
-                    logger.error(f"❌ Error disconnecting {consumer.client_name}: {e}")
-                    logger.error(f"Exception type: {type(e).__name__}")
-                    import traceback
-                    logger.error(f"Traceback: {traceback.format_exc()}")
-                    
-                    # Consumer 연결 해제 에러 로그
-                    log_error_with_traceback(consumer.client_name, e, f"Consumer {consumer.client_name} disconnect failed")
-            else:
-                logger.info(f"⏭️ Skipping disconnect for {consumer.client_name} (still running, allowing reconnection)")
+            # Task registry에서 제거
+            if consumer.client_name in self.consumer_tasks:
+                if self.consumer_tasks[consumer.client_name] == asyncio.current_task():
+                    del self.consumer_tasks[consumer.client_name]
+            
+            # Consumer 상태 정리
+            consumer.is_running = False
+            try:
+                logger.debug(f"Disconnecting {consumer.client_name}")
+                await consumer.disconnect()
+                log_consumer_status_change(consumer.client_name, "running", "disconnected", "Consumer task finished")
+            except Exception as e:
+                logger.error(f"❌ Error during final disconnect for {consumer.client_name}: {e}")
     
     async def _cleanup_failed_consumer(self, consumer_name: str, consumer):
         """실패한 Consumer 정리"""
