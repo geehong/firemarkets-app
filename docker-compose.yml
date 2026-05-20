@@ -12,6 +12,13 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD_PG}
       TZ: Asia/Seoul
     # 외부 포트 매핑 제거로 외부 접속 차단 (내부 네트워크에서만 접근)
+    command: >
+      postgres
+      -c max_connections=50
+      -c idle_in_transaction_session_timeout=30000
+      -c idle_session_timeout=300000
+      -c shared_buffers=256MB
+      -c effective_cache_size=768MB
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./docker/init_postgres.sql:/docker-entrypoint-initdb.d/init.sql
@@ -131,8 +138,8 @@ services:
     tmpfs:
       - /app/logs
     # 개발 모드에서 자동 리로드 활성화
-    mem_limit: 4g
-    memswap_limit: 4g
+    mem_limit: 2g
+    memswap_limit: 2g
     networks:
       - app_network
       - shared-network
@@ -395,8 +402,8 @@ services:
       - ./.env:/app/.env:ro
       - ./frontend/public/images:/app/public/images # Persistent Image Storage
     # No command override to use Dockerfile CMD [node server.js]
-    mem_limit: 3g
-    memswap_limit: 3g
+    mem_limit: 1.5g
+    memswap_limit: 1.5g
 
     depends_on:
       - backend
