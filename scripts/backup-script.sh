@@ -88,6 +88,11 @@ fi
 BACKUP_ROOT="${MOUNT_POINT}/backup/firemarkets"
 BACKUP_DIR="${BACKUP_ROOT}/${BACKUP_DATE}"
 
+# 오래된 백업 먼저 정리하여 디스크 공간 확보 (5일 이상 된 백업 삭제)
+echo "오래된 백업 정리 중 (디스크 공간 확보)..."
+find "$BACKUP_ROOT" -name "20*_*" -type d -mtime +5 -exec rm -rf {} \;
+echo "✓ 오래된 백업 정리 완료"
+
 # 백업 디렉토리 생성 및 확인
 echo "백업 디렉토리 생성 중: $BACKUP_DIR"
 mkdir -p "$BACKUP_DIR"
@@ -114,6 +119,23 @@ if [ $? -eq 0 ]; then
     echo "✓ PostgreSQL 데이터베이스 백업 완료: markets_postgres_backup_${BACKUP_TIME}.sql.gz"
 else
     echo "✗ PostgreSQL 데이터베이스 백업 실패"
+fi
+
+echo "1.2. 워드프레스 MariaDB 데이터베이스 백업 중..."
+if [ -f /home/geehong/unageing.net/.env ]; then
+    WP_DB_USER=$(grep DB_USER /home/geehong/unageing.net/.env | cut -d '=' -f2)
+    WP_DB_PASS=$(grep DB_PASSWORD /home/geehong/unageing.net/.env | cut -d '=' -f2)
+    WP_DB_NAME=$(grep DB_NAME /home/geehong/unageing.net/.env | cut -d '=' -f2)
+else
+    WP_DB_USER="geehong"
+    WP_DB_PASS="Power@6100"
+    WP_DB_NAME="wordpress"
+fi
+docker exec unageing_wp_db mariadb-dump -u "$WP_DB_USER" -p"$WP_DB_PASS" "$WP_DB_NAME" | gzip > "unageing_wordpress_backup_${BACKUP_TIME}.sql.gz"
+if [ $? -eq 0 ]; then
+    echo "✓ 워드프레스 데이터베이스 백업 완료: unageing_wordpress_backup_${BACKUP_TIME}.sql.gz"
+else
+    echo "✗ 워드프레스 데이터베이스 백업 실패"
 fi
 
 # 2. Docker 볼륨 백업
@@ -143,6 +165,14 @@ else
     echo "✗ Portainer 데이터 백업 실패"
 fi
 
+echo "2.2. 워드프레스 볼륨 백업 중..."
+docker run --rm -v unageingnet_wordpress_data:/data -v "$(pwd)":/backup alpine tar czf "/backup/unageing_wordpress_volume_${BACKUP_TIME}.tar.gz" -C /data .
+if [ $? -eq 0 ]; then
+    echo "✓ 워드프레스 볼륨 백업 완료: unageing_wordpress_volume_${BACKUP_TIME}.tar.gz"
+else
+    echo "✗ 워드프레스 볼륨 백업 실패"
+fi
+
 # 3. 프로젝트 파일 백업
 echo "3. 프로젝트 파일 백업 중..."
 cd /home/geehong/firemarkets-app
@@ -151,6 +181,14 @@ if [ $? -eq 0 ]; then
     echo "✓ 프로젝트 파일 백업 완료: firemarkets_app_backup_${BACKUP_TIME}.tar.gz"
 else
     echo "✗ 프로젝트 파일 백업 실패"
+fi
+
+echo "3.2. 워드프레스 프로젝트 파일 백업 중..."
+tar --exclude='*.wpress' -czf "${BACKUP_DIR}/unageing_project_backup_${BACKUP_TIME}.tar.gz" -C /home/geehong/unageing.net .
+if [ $? -eq 0 ]; then
+    echo "✓ 워드프레스 프로젝트 파일 백업 완료: unageing_project_backup_${BACKUP_TIME}.tar.gz"
+else
+    echo "✗ 워드프레스 프로젝트 파일 백업 실패"
 fi
 
 # 4. 백업 완료 정보
@@ -165,10 +203,5 @@ if [ -d "$BACKUP_DIR" ]; then
 else
     echo "✗ 백업 디렉토리가 존재하지 않습니다: $BACKUP_DIR"
 fi
-
-# 5. 오래된 백업 정리 (30일 이상 된 백업 삭제)
-echo "5. 오래된 백업 정리 중..."
-find "$BACKUP_ROOT" -name "20*_*" -type d -mtime +30 -exec rm -rf {} \;
-echo "✓ 30일 이상 된 백업 정리 완료"
 
 echo "=== 백업 스크립트 종료 ===" 
