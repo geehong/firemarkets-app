@@ -9,7 +9,7 @@ from typing import Dict, Any, Type
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import text
 
 from app.core.database import SessionLocal
@@ -301,7 +301,6 @@ class SchedulerService:
         def run_pipeline_sync():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            db: Session = SessionLocal()
             job_name = "NewsAIPipeline"
             
             try:
@@ -316,20 +315,37 @@ class SchedulerService:
                     self.logger.warning(f"[{job_name}] AI Agent init failed: {e}. Skipping AI analysis.")
 
                 async def _pipeline_logic():
-                    # 1. Fetch pending raw_news
-                    raw_posts = db.query(Post).filter(Post.post_type == 'raw_news', Post.status == 'draft').all()
-                    
-                    if not raw_posts:
-                        self.logger.info(f"[{job_name}] No pending news to process.")
-                        return 0
-
-                    self.logger.info(f"[{job_name}] Processing {len(raw_posts)} raw articles.")
+                    # 1. Fetch pending raw_news (limit to 150 most recent to prevent backlog bloat)
+                    db = SessionLocal(expire_on_commit=False)
+                    try:
+                        raw_posts = db.query(Post).options(joinedload(Post.asset)).filter(
+                            Post.post_type == 'raw_news', 
+                            Post.status == 'draft'
+                        ).order_by(Post.created_at.desc()).limit(150).all()
+                        
+                        if not raw_posts:
+                            self.logger.info(f"[{job_name}] No pending news to process.")
+                            return 0
+                            
+                        # Mark all fetched posts as archived so they don't get re-evaluated in the next run
+                        for p in raw_posts:
+                            p.status = 'archived'
+                        db.commit()  # Commit immediately to free the database connection / transaction locks
+                        db.expunge_all()
+                    finally:
+                        db.close()
 
                     # 2. Cluster
                     clusters = clustering_service.cluster_posts(raw_posts)
+                    
+                    # Sort clusters by size descending to prioritize trending news
+                    clusters = sorted(clusters, key=len, reverse=True)
+                    
+                    # Process top 5 clusters to prevent API quota exhaustion and keep content high-quality
+                    target_clusters = clusters[:5]
                     processed_count = 0
                     
-                    for cluster in clusters:
+                    for cluster in target_clusters:
                         if not cluster:
                             continue
                             
@@ -338,11 +354,7 @@ class SchedulerService:
                             try:
                                 analysis = await ai_agent.analyze_cluster(cluster)
                                 if analysis:
-                                    # Mark raw posts as processed only if analysis succeeded
-                                    for p in cluster:
-                                        p.status = 'archived'
                                     # 4. Save Insight (HTML Format)
-                                    # Ensure analysis dict has keys, handle potential missing keys safely
                                     title_ko = analysis.get('title_ko', 'No Title')
                                     title_en = analysis.get('title_en', 'No Title')
                                     
@@ -352,10 +364,6 @@ class SchedulerService:
                                     summary_text_en = analysis.get('summary_en', '')
                                     analysis_text_en = analysis.get('analysis_en', '').replace('\n', '<br>')
                                     
-                                    # HTML Content Construction: 서술형(Narrative) 스타일로 구성
-                                    # 요약문은 문단 처음에 굵게 강조하여 서론 느낌을 주고, 이어서 상세 분석이 나오도록 함
-                                    # content_html_ko = f"<h2>{title_ko}</h2><p><strong>{summary_text_ko}</strong></p><p>{analysis_text_ko}</p>"
-                                    # content_html_en = f"<h2>{title_en}</h2><p><strong>{summary_text_en}</strong></p><p>{analysis_text_en}</p>"
                                     content_html_ko = f"<p><strong>{summary_text_ko}</strong></p><p>{analysis_text_ko}</p>"
                                     content_html_en = f"<p><strong>{summary_text_en}</strong></p><p>{analysis_text_en}</p>"
                                     
@@ -372,7 +380,7 @@ class SchedulerService:
                                                     all_tickers.update(tickers)
                                                 else:
                                                     all_tickers.add(str(tickers))
-
+ 
                                     ai_tickers = analysis.get('tickers', [])
                                     ai_keywords = analysis.get('keywords', [])
                                     ai_tags = analysis.get('tags', [])
@@ -380,12 +388,12 @@ class SchedulerService:
                                     # Merge AI tickers with source tickers
                                     if ai_tickers:
                                         all_tickers.update(ai_tickers)
-
+ 
                                     slug = f"ai-insight-{int(datetime.utcnow().timestamp())}-{processed_count}"
                                     insight_post = Post(
                                         title={"en": title_en, "ko": title_ko},
                                         slug=slug,
-                                        description={"ko": summary_text_ko, "en": summary_text_en}, # Description keeps text summary
+                                        description={"ko": summary_text_ko, "en": summary_text_en}, 
                                         content=content_html_en, 
                                         content_ko=content_html_ko,
                                         post_type="ai_draft_news", 
@@ -403,12 +411,20 @@ class SchedulerService:
                                         },
                                         published_at=datetime.utcnow()
                                     )
-                                    db.add(insight_post)
-                                    processed_count += 1
+                                    
+                                    # Open short-lived write session
+                                    write_db = SessionLocal()
+                                    try:
+                                        write_db.add(insight_post)
+                                        write_db.commit()
+                                        processed_count += 1
+                                    except Exception as write_err:
+                                        write_db.rollback()
+                                        self.logger.error(f"[{job_name}] Failed to save insight to DB: {write_err}")
+                                    finally:
+                                        write_db.close()
                             except Exception as e:
                                 self.logger.error(f"[{job_name}] AI analysis failed for cluster: {e}")
-                    
-                    db.commit()
                     return processed_count
 
                 processed = loop.run_until_complete(_pipeline_logic())
@@ -416,9 +432,7 @@ class SchedulerService:
                 
             except Exception as e:
                 self.logger.error(f"[{job_name}] Failed: {e}", exc_info=True)
-                db.rollback()
             finally:
-                db.close()
                 loop.close()
         
         return run_pipeline_sync
@@ -446,6 +460,124 @@ class SchedulerService:
                 db.close()
         
         return run_cleanup_sync
+
+    def _create_daily_merge_function(self):
+        """
+        Creates a sync wrapper for the daily auto-merge job.
+        ai_draft_news 중 유사한 기사를 클러스터링하여 Groq로 병합 → 새 ai_draft_news 저장.
+        매일 00:00 UTC (09:00 KST) 실행.
+        """
+        def run_daily_merge_sync():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            db: Session = SessionLocal()
+            job_name = "DailyAutoMerge"
+
+            try:
+                self.logger.info(f"[{job_name}] Started")
+
+                clustering_service = NewsClusteringService()
+                try:
+                    ai_agent = NewsAIEditorAgent()
+                except Exception as e:
+                    self.logger.warning(f"[{job_name}] AI Agent init failed: {e}. Aborting.")
+                    return
+
+                async def _merge_logic():
+                    from datetime import timedelta
+
+                    # 지난 24시간 ai_draft_news 수집
+                    since = datetime.now() - timedelta(hours=24)
+                    candidates = db.query(Post).filter(
+                        Post.post_type == 'ai_draft_news',
+                        Post.status == 'draft',
+                        Post.created_at >= since
+                    ).all()
+
+                    if not candidates:
+                        self.logger.info(f"[{job_name}] No ai_draft_news to merge.")
+                        return 0
+
+                    self.logger.info(f"[{job_name}] Found {len(candidates)} ai_draft_news for merging.")
+
+                    # 유사 기사 클러스터링
+                    clusters = clustering_service.cluster_posts(candidates)
+                    merged_count = 0
+
+                    for cluster in clusters:
+                        # 2개 이상이어야 병합 의미 있음
+                        if len(cluster) < 2:
+                            continue
+
+                        try:
+                            merged_data = await ai_agent.merge_posts(cluster)
+                            if not merged_data:
+                                self.logger.warning(f"[{job_name}] merge_posts returned None for cluster of {len(cluster)}")
+                                continue
+
+                            # 메타데이터 집계
+                            all_tickers = set()
+                            primary_info = cluster[0].post_info or {}
+
+                            for p in cluster:
+                                if p.post_info and isinstance(p.post_info, dict):
+                                    tickers = p.post_info.get('tickers', [])
+                                    if isinstance(tickers, list):
+                                        all_tickers.update(tickers)
+
+                            slug = f"auto-merged-{int(datetime.utcnow().timestamp())}-{merged_count}"
+
+                            merged_post = Post(
+                                title={
+                                    "en": merged_data.get("title_en", "Daily Merged News"),
+                                    "ko": merged_data.get("title_ko", "일일 병합 뉴스")
+                                },
+                                slug=slug,
+                                description={
+                                    "en": merged_data.get("description_en", ""),
+                                    "ko": merged_data.get("description_ko", "")
+                                },
+                                content=merged_data.get("content_en", ""),
+                                content_ko=merged_data.get("content_ko", ""),
+                                post_type="ai_draft_news",
+                                status="draft",
+                                post_info={
+                                    "tickers": list(all_tickers),
+                                    "source": "auto_daily_merge",
+                                    "source_post_ids": [p.id for p in cluster],
+                                    "merged_at": str(datetime.utcnow()),
+                                    "merge_type": "ai_auto_daily",
+                                    "image_url": primary_info.get('image_url'),
+                                },
+                                published_at=datetime.utcnow()
+                            )
+                            db.add(merged_post)
+                            merged_count += 1
+                            self.logger.info(f"[{job_name}] Merged cluster of {len(cluster)} → '{merged_data.get('title_en', '')[:50]}'")
+
+                        except Exception as e:
+                            self.logger.error(f"[{job_name}] Merge failed for cluster of {len(cluster)}: {e}")
+
+                    if merged_count > 0:
+                        db.commit()
+                        self.logger.info(f"[{job_name}] Committed {merged_count} merged posts to DB.")
+
+                    return merged_count
+
+                count = loop.run_until_complete(_merge_logic())
+                self.logger.info(f"[{job_name}] Completed. Created {count} merged posts.")
+
+            except Exception as e:
+                self.logger.error(f"[{job_name}] Failed: {e}", exc_info=True)
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+            finally:
+                db.close()
+                loop.close()
+
+        return run_daily_merge_sync
 
     def _create_view_refresh_function(self):
         """
@@ -742,6 +874,19 @@ class SchedulerService:
                     replace_existing=True
                 )
                 self.logger.info(f"✅ Scheduled job: 'daily_raw_news_cleanup' (Daily at 00:30 {self.scheduler.timezone})")
+
+                # --- Daily Auto Merge Job ---
+                # ai_draft_news를 클러스터링 후 Groq로 병합 → 매일 00:00 UTC (09:00 KST)
+                if self.config_manager.is_news_collection_enabled():
+                    self.scheduler.add_job(
+                        self._create_daily_merge_function(),
+                        'cron',
+                        hour=0,
+                        minute=0,
+                        id='daily_auto_merge',
+                        replace_existing=True
+                    )
+                    self.logger.info(f"✅ Scheduled job: 'daily_auto_merge' (Daily at 00:00 UTC / 09:00 KST)")
 
                 # --- View Refresh Job (Treemap) ---
                 # Refresh every 15 minutes to keep it relatively fresh

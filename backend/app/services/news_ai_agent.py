@@ -36,6 +36,8 @@ class NewsAIEditorAgent:
         # Heavy Duty Pool: 클러스터 분석, 병합, 리라이팅 (긴 컨텍스트, 고품질)
         self.heavy_duty_pool = [
             "gemini-2.5-flash",                # 안정적 최신
+            "gemini-3.5-flash",                # 3.5 신형 (별도 쿼타)
+            "gemini-flash-latest",             # 1.5 Flash (별도 쿼타)
             "gemini-2.5-pro",                 # 고성능
             "gemini-2.0-flash",                # 안정적 대용량
         ]
@@ -43,8 +45,10 @@ class NewsAIEditorAgent:
         
         # Collection Pool: 뉴스 수집, 번역, 단순 요약 (병렬, 고 TPM)
         self.collection_pool = [
-            "gemma-4-31b-it",       # Gemma 4 메인 (TPM 무제한)
-            "gemma-4-26b-a4b-it",   # Gemma 4 보조 (TPM 무제한) - 정정된 모델명
+            "gemma-4-31b-it",       # Gemma 4 메인
+            "gemma-4-26b-a4b-it",   # Gemma 4 보조
+            "gemini-3.5-flash",     # 3.5 Flash Fallback (안정적, 새 쿼타)
+            "gemini-flash-latest",  # 1.5 Flash Fallback (별도 쿼타)
             "gemma-3-27b-it",       # Gemma 3 Fallback
             "gemma-3-12b-it",       # Gemma 3 보조 Fallback
         ]
@@ -164,14 +168,15 @@ class NewsAIEditorAgent:
     def _get_provider(self, task_type: str = "general") -> str:
         """
         Get provider based on task type.
-        'collection' -> Gemma Pool 우선 (TPM 무제한)
-        'merge', 'analysis', 'rewrite', 'general' -> Groq 우선 (빠른 속도, 넉넉한 쿼터)
+        'merge'                  -> Groq 전담 (병합 뉴스, 빠른 속도)
+        'collection', 'analysis' -> Gemini Pool 우선 (원시뉴스, 안정적 응답)
+        'rewrite', 'general'     -> Gemini Heavy Duty 우선 (고품질 리라이팅)
         """
-        if task_type == "collection":
-            return "gemma" if self.gemini_available else "groq"
-        elif task_type in ("merge", "analysis", "general", "rewrite"):
+        if task_type == "merge":
             return "groq" if self.groq_available else "gemini"
-        else:
+        elif task_type in ("collection", "analysis"):
+            return "gemini" if self.gemini_available else "groq"
+        else:  # rewrite, general
             return "gemini" if self.gemini_available else "groq"
 
     async def _call_gemini(self, prompt: str, task_type: str = "general", **kwargs) -> str:
@@ -331,15 +336,42 @@ class NewsAIEditorAgent:
             else:
                 logger.error(f"Primary provider {provider} failed: {e}")
             
-            # Simple Fallback Logic
-            if provider in ['gemini', 'gemma'] and self.groq_available:
-                logger.info("Falling back to GROQ...")
-                return await self._call_groq(prompt, **kwargs)
-            elif provider == 'groq' and self.gemini_available:
-                logger.info("Falling back to GEMINI...")
-                return await self._call_gemini(prompt, task_type=task_type, **kwargs)
-            else:
-                raise e
+            # Robust Multi-level Fallback Chain
+            if provider == 'gemma':
+                # Gemma -> Gemini -> Groq
+                if self.gemini_available:
+                    try:
+                        logger.info("Gemma failed. Falling back to GEMINI...")
+                        return await asyncio.wait_for(self._call_gemini(prompt, task_type=task_type, **kwargs), timeout=60)
+                    except Exception as gemini_err:
+                        logger.error(f"Fallback to GEMINI failed: {gemini_err}")
+                if self.groq_available:
+                    try:
+                        logger.info("Gemma/Gemini failed. Falling back to GROQ...")
+                        return await asyncio.wait_for(self._call_groq(prompt, **kwargs), timeout=60)
+                    except Exception as groq_err:
+                        logger.error(f"Fallback to GROQ failed: {groq_err}")
+            
+            elif provider == 'gemini':
+                # Gemini -> Groq
+                if self.groq_available:
+                    try:
+                        logger.info("Gemini failed. Falling back to GROQ...")
+                        return await asyncio.wait_for(self._call_groq(prompt, **kwargs), timeout=60)
+                    except Exception as groq_err:
+                        logger.error(f"Fallback to GROQ failed: {groq_err}")
+                # If Groq fallback fails or is unavailable, we raise or try Gemma if it's a lightweight task
+            
+            elif provider == 'groq':
+                # Groq -> Gemini
+                if self.gemini_available:
+                    try:
+                        logger.info("Groq failed. Falling back to GEMINI...")
+                        return await asyncio.wait_for(self._call_gemini(prompt, task_type=task_type, **kwargs), timeout=60)
+                    except Exception as gemini_err:
+                        logger.error(f"Fallback to GEMINI failed: {gemini_err}")
+            
+            raise e
 
     def _ensure_html_content(self, result: Dict) -> Dict:
         """
