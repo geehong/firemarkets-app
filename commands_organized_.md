@@ -71,7 +71,6 @@ docker-compose restart nginx-proxy-manager
 firemarkets.net
 docker-compose ps
 
-sudo apt update && sudo apt upgrade -y
 
 NAME                                  IMAGE                                                                     COMMAND                   SERVICE                  CREATED          STATUS                  PORTS
 fire_markets_adminer                  adminer:latest                                                            "entrypoint.sh docke…"   adminer                  47 hours ago     Up 47 hours             0.0.0.0:5054->8080/tcp, [::]:5054->8080/tcp
@@ -112,14 +111,17 @@ docker-compose restart nginx-proxy-manager
 docker-compose restart data_processor
 docker-compose restart websocket_orchestrator
 docker-compose restart websocket_broadcaster
-docker-compose restart adminer
-docker-compose restart db_postgres
+docker-compose up -d --build websocket_broadcaster backend && docker-compose restart websocket_broadcaster
+docker-compose up -d --build websocket_orchestrator && docker-compose restart websocket_orchestrator
 
-docker-compose build backend scheduler data_processor websocket_orchestrator websocket_broadcaster && docker-compose up -d backend scheduler data_processor websocket_orchestrator websocket_broadcaster
+
+docker-compose restart adminer
+
 
 docker-compose logs data_processor --tail 50 -f
 docker-compose logs websocket_orchestrator --tail 50 -f
 docker-compose logs websocket_broadcaster --tail 50 -f
+docker logs fire_markets_websocket_broadcaster | grep "📌 \[Cache-Check\]" | head -n 20
 docker-compose logs scheduler --tail 50 -f
 docker-compose logs backend --tail 50 -f
 docker-compose logs db_postgres --tail 50 -f
@@ -255,10 +257,6 @@ docker-compose exec db mysql -u geehong -pPower6100 markets -e "SHOW INDEX FROM 
 docker-compose exec db mysql -u geehong -pPower6100 markets -e "SELECT asset_id, timestamp_utc, COUNT(*) as count FROM ohlcv_day_data GROUP BY asset_id, timestamp_utc HAVING COUNT(*) > 1 LIMIT 10;"
 # 컬럼 정보만 SQL로 확인
 docker-compose exec db_postgres psql -U geehong -d markets -c "\d app_configurations"
-
-# 트리맵 머티리얼라이즈드 뷰(mv_treemap_performance) 생성 (장애 복구용)
-# backend/sql/treemap_live_view.sql 기반
-docker-compose exec db_postgres psql -U geehong -d markets -c "CREATE MATERIALIZED VIEW mv_treemap_performance AS SELECT * FROM treemap_live_view; CREATE UNIQUE INDEX idx_mv_treemap_asset_id ON mv_treemap_performance(asset_id);"
 ```
 ## 📊 로그 모니터링
 
