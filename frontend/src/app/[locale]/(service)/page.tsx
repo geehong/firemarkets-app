@@ -62,14 +62,8 @@ export default async function HomePage({ params }: PageProps) {
         post = await apiClient.getHomePost()
         // console.log('[DEBUG] HomePage post content:', JSON.stringify(post, null, 2))
     } catch (error) {
-        console.error('Failed to fetch home page:', error)
-        // If getting home post fails, we might check if 'main-page' exists fallback logic, but backend handles fallback to 'home' slug.
-        // If still fails, it means no home page configured.
-        notFound()
-    }
-
-    if (!post) {
-        notFound()
+        console.error('Failed to fetch home page post, falling back to default:', error)
+        post = null
     }
 
     const resolvedParams = await params;
@@ -107,13 +101,13 @@ export default async function HomePage({ params }: PageProps) {
         ]
     }
 
-    let content = post.content
-    if (locale === 'ko' && post.content_ko) {
+    let content = post?.content || ''
+    if (locale === 'ko' && post?.content_ko) {
         content = post.content_ko
     }
 
     // @ts-ignore
-    const title = typeof post.title === 'string' ? post.title : (post.title?.[locale] || post.title?.en || '')
+    const title = post ? (typeof post.title === 'string' ? post.title : (post.title?.[locale] || post.title?.en || '')) : ''
 
     return (
         <div className=" w-full">
