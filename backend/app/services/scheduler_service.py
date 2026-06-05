@@ -579,6 +579,82 @@ class SchedulerService:
 
         return run_daily_merge_sync
 
+    def _create_auto_publish_brief_function(self):
+        """
+        미발행 ai_draft_news(draft) 전체를 brief_news(published)로 자동 발행.
+        6시간마다 실행. slug는 영문 제목 기반으로 생성.
+        """
+        def run_auto_publish_brief_sync():
+            import re
+            import secrets
+            from app.models.blog import Post
+
+            db: Session = SessionLocal()
+            job_name = "AutoPublishBrief"
+            try:
+                self.logger.info(f"[{job_name}] Started")
+
+                # 미발행 ai_draft_news 전체 조회 (수량 제한 없음)
+                candidates = db.query(Post).filter(
+                    Post.post_type == 'ai_draft_news',
+                    Post.status == 'draft',
+                ).order_by(Post.published_at.desc()).all()
+
+                if not candidates:
+                    self.logger.info(f"[{job_name}] No ai_draft_news candidates.")
+                    return
+
+                published_count = 0
+                for post in candidates:
+                    # 영문 제목으로 slug 생성
+                    title_raw = ''
+                    if isinstance(post.title, dict):
+                        title_raw = post.title.get('en') or post.title.get('ko') or ''
+                    else:
+                        title_raw = str(post.title or '')
+
+                    slug_base = re.sub(r'[^a-z0-9\s-]', '', title_raw.lower()).strip()
+                    slug_base = re.sub(r'\s+', '-', slug_base).strip('-')
+                    slug_base = re.sub(r'-+', '-', slug_base)
+                    suffix = secrets.token_hex(3)  # 6자 hex
+                    if slug_base and len(slug_base) >= 5:
+                        new_slug = f"{slug_base[:80]}-{suffix}"
+                    else:
+                        new_slug = f"brief-{suffix}"
+
+                    # 중복 slug 방지
+                    if db.query(Post).filter(Post.slug == new_slug).first():
+                        new_slug = f"brief-{secrets.token_hex(6)}"
+
+                    image_url = None
+                    if post.post_info and isinstance(post.post_info, dict):
+                        image_url = post.post_info.get('image_url')
+
+                    post.status = 'published'
+                    post.post_type = 'brief_news'
+                    post.category_id = 2
+                    post.slug = new_slug
+                    if image_url:
+                        post.cover_image = image_url
+                    post.published_at = datetime.utcnow()
+
+                    published_count += 1
+                    self.logger.info(f"[{job_name}] Published '{title_raw[:50]}' → slug={new_slug}")
+
+                db.commit()
+                self.logger.info(f"[{job_name}] Completed. Published {published_count} brief news.")
+
+            except Exception as e:
+                self.logger.error(f"[{job_name}] Failed: {e}", exc_info=True)
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+            finally:
+                db.close()
+
+        return run_auto_publish_brief_sync
+
     def _create_view_refresh_function(self):
         """
         Creates a sync wrapper to refresh materialized views in the background.
@@ -888,6 +964,17 @@ class SchedulerService:
                     )
                     self.logger.info(f"✅ Scheduled job: 'daily_auto_merge' (Daily at 00:00 UTC / 09:00 KST)")
 
+                # --- Auto Publish Brief News (6시간마다, 최대 3개) ---
+                if self.config_manager.is_news_collection_enabled():
+                    self.scheduler.add_job(
+                        self._create_auto_publish_brief_function(),
+                        'interval',
+                        hours=6,
+                        id='auto_publish_brief',
+                        replace_existing=True
+                    )
+                    self.logger.info("✅ Scheduled job: 'auto_publish_brief' (every 6h, all pending)")
+
                 # --- View Refresh Job (Treemap) ---
                 # Refresh every 15 minutes to keep it relatively fresh
                 self.scheduler.add_job(
@@ -1153,6 +1240,17 @@ class SchedulerService:
                 )
                 self.logger.info(f"✅ Scheduled job: 'daily_us_backfill_collection_job' (Daily at 06:00 KST / 21:00 UTC)")
 
+            # --- Auto Publish Brief News (6시간마다, 최대 3개) ---
+            if self.config_manager.is_news_collection_enabled():
+                self.scheduler.add_job(
+                    self._create_auto_publish_brief_function(),
+                    'interval',
+                    hours=6,
+                    id='auto_publish_brief',
+                    replace_existing=True
+                )
+                self.logger.info("✅ Scheduled job: 'auto_publish_brief' (every 6h, all pending)")
+
             # --- View Refresh Job (Treemap) ---
             # Always add view refresh job to ensure data consistency
             self.scheduler.add_job(
@@ -1163,7 +1261,7 @@ class SchedulerService:
                 replace_existing=True
             )
             self.logger.info("✅ Scheduled job: 'treemap_view_refresh' (15m)")
-            
+
             self.logger.info(f"✅ Scheduled {len(self.scheduler.get_jobs())} jobs from temp.json config")
             
         except Exception as e:
