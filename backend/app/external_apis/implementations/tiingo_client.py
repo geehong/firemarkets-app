@@ -37,10 +37,10 @@ class TiingoClient(TradFiAPIClient):
         self.current_key_index = 0
         self.api_key = self.api_keys[0] if self.api_keys else ""
         
-        # Rate limiting: 시간당 50개 제한
-        # 1시간 = 3600초, 50개 요청 = 72초마다 1개 요청
-        self.rate_limit_per_hour = 50
-        self.min_interval_seconds = 3600 / self.rate_limit_per_hour  # 72초
+        # Rate limiting: 시간당 1000개 제한
+        # 1시간 = 3600초, 1000개 요청 = 3.6초마다 1개 요청
+        self.rate_limit_per_hour = 1000
+        self.min_interval_seconds = 3600 / self.rate_limit_per_hour  # 3.6초
         self.last_request_time = {}  # API 키별 마지막 요청 시간 추적
         self._rate_limit_lock = None  # 첫 사용 시 생성
         
@@ -50,7 +50,7 @@ class TiingoClient(TradFiAPIClient):
             logger.info(f"Tiingo client initialized with {len(self.api_keys)} API keys, rate limit: {self.rate_limit_per_hour}/hour")
 
     async def _wait_for_rate_limit(self, api_key: str):
-        """Rate limiting: 시간당 50개 제한을 위해 최소 간격 대기"""
+        """Rate limiting: 시간당 500개 제한을 위해 최소 간격 대기"""
         # 첫 사용 시 lock 생성
         if self._rate_limit_lock is None:
             try:
@@ -179,49 +179,27 @@ class TiingoClient(TradFiAPIClient):
             if end_date:
                 params["endDate"] = end_date
             
-            # Rate limiting 적용
-            await self._wait_for_rate_limit(self.api_key)
-            
             # FX/Crypto/Stock 엔드포인트 구분
             # XAUUSD, XAGUSD, XPTUSD, XPDUSD 등은 FX 엔드포인트 사용
             fx_symbols = {"XAUUSD", "XAGUSD", "XPTUSD", "XPDUSD", "XAU", "XAG", "XPT", "XPD"}
             is_fx = tiingo_symbol.upper() in fx_symbols or (len(tiingo_symbol) == 6 and not tiingo_symbol.isdigit())
             
-            async with httpx.AsyncClient() as client:
-                if is_fx:
-                    # FX/Spot Commodity
-                    url = f"{self.base_url}/tiingo/fx/{tiingo_symbol.lower()}/prices"
+            if is_fx:
+                path = f"/tiingo/fx/{tiingo_symbol.lower()}/prices"
+                params["resampleFreq"] = "1day"
+                json_data = await self._request(path, params)
+            else:
+                path = f"/tiingo/daily/{tiingo_symbol.lower()}/prices"
+                json_data = await self._request(path, params)
+                if json_data is None:
+                    # 주식 에러/404 시 FX로 한번 더 시도 (fallback)
+                    path = f"/tiingo/fx/{tiingo_symbol.lower()}/prices"
                     params["resampleFreq"] = "1day"
-                else:
-                    # Stock / ETF
-                    url = f"{self.base_url}/tiingo/daily/{tiingo_symbol.lower()}/prices"
-                
-                params["token"] = self.api_key
-                logger.info(f"Tiingo requesting: {url} with params: {params}")
-                resp = await client.get(url, params=params, timeout=self.api_timeout)
-                
-                # 404 에러 처리: 지원하지 않는 심볼
-                if resp.status_code == 404:
-                    if not is_fx:
-                        # 주식 에러 시 FX로 한번 더 시도 (fallback)
-                        url = f"{self.base_url}/tiingo/fx/{tiingo_symbol.lower()}/prices"
-                        params["resampleFreq"] = "1day"
-                        resp = await client.get(url, params=params, timeout=self.api_timeout)
-                        if resp.status_code == 200:
-                            is_fx = True
+                    json_data = await self._request(path, params)
                     
-                    if resp.status_code == 404:
-                        logger.info(f"Tiingo: Symbol not supported (미지원 티커): {symbol} -> {tiingo_symbol}")
-                        return None
-                
-                resp.raise_for_status()
-                
-                # JSON 응답을 파싱
-                json_data = resp.json()
-                
-                if not json_data or not isinstance(json_data, list):
-                    logger.warning(f"Tiingo returned empty or invalid data for {symbol}")
-                    return None
+            if not json_data or not isinstance(json_data, list):
+                logger.warning(f"Tiingo returned empty or invalid data for {symbol}")
+                return None
             
             result = []
             for item in json_data:

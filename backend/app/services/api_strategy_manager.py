@@ -58,6 +58,7 @@ class ApiStrategyManager:
         self.crypto_ohlcv_clients = [
             BinanceClient(),       # 1순위
             CoinbaseClient(),      # 2순위
+            CoinGeckoClient(),     # 3순위 (fallback)
         ]
         
         # 4. 주식 프로필용 클라이언트 (기업 프로필 데이터)
@@ -717,9 +718,9 @@ class ApiStrategyManager:
         if not preferred_data_source or 'clients_to_use' not in locals():
             # 자산 타입과 인터벌에 따라 적절한 클라이언트 선택
             if asset_type and 'crypto' in asset_type.lower():
-                # 코인 일봉은 Binance, Coinbase만 사용 (요청사항 반영)
-                clients_to_use = [c for c in self.crypto_ohlcv_clients if self._get_api_name(c) in ('binance','coinbase')]
-                self.logger.info(f"Using crypto OHLCV clients for {ticker} (asset_type: {asset_type}) -> {len(clients_to_use)} providers (binance/coinbase only)")
+                # 코인 일봉은 Binance, Coinbase, CoinGecko 사용
+                clients_to_use = [c for c in self.crypto_ohlcv_clients if self._get_api_name(c) in ('binance','coinbase','coingecko')]
+                self.logger.info(f"Using crypto OHLCV clients for {ticker} (asset_type: {asset_type}) -> {len(clients_to_use)} providers (binance/coinbase/coingecko)")
             elif asset_type and 'commodit' in asset_type.lower():
                 # 커머디티는 전용 클라이언트 사용 (FMPClient 포함)
                 # 'commodit'로 체크하여 'Commodities'와 'Commodity' 모두 매칭
@@ -1575,7 +1576,7 @@ class ApiStrategyManager:
         return None
 
     
-    def _get_fetch_parameters(self, asset_id: int, interval: str) -> Optional[Dict[str, Any]]:
+    async def _get_fetch_parameters(self, asset_id: int, interval: str, ticker: Optional[str] = None, asset_type: Optional[str] = None) -> Optional[Dict[str, Any]]:
         from app.core.database import get_postgres_db
         db_gen = get_postgres_db()
         db = next(db_gen)

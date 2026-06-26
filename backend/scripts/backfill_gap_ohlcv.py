@@ -27,7 +27,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 import httpx
 
 from app.external_apis.implementations import (
-    TwelveDataClient, PolygonClient, BinanceClient, FMPClient
+    TwelveDataClient, PolygonClient, BinanceClient, FMPClient, TiingoClient,
+    CoinbaseClient, CoinGeckoClient
 )
 from app.models.asset import OHLCVData
 from app.core.database import PostgreSQLSessionLocal
@@ -36,10 +37,10 @@ from app.utils.logging_helper import ApiLoggingHelper as LoggingHelper
 
 # 데이터소스 → 클라이언트 우선순위 목록 (첫 번째 실패 시 다음으로 fallback)
 DATA_SOURCE_CLIENTS = {
-    'twelvedata': ['TwelveDataClient', 'PolygonClient'],
-    'tiingo':     ['TwelveDataClient', 'PolygonClient'],
-    'binance':    ['BinanceClient'],
-    'fmp':        ['FMPClient'],
+    'twelvedata': ['TiingoClient', 'TwelveDataClient', 'PolygonClient'],
+    'tiingo':     ['TiingoClient', 'TwelveDataClient', 'PolygonClient'],
+    'binance':    ['BinanceClient', 'CoinbaseClient', 'CoinGeckoClient'],
+    'fmp':        ['FMPClient', 'TiingoClient', 'TwelveDataClient', 'PolygonClient'],
 }
 
 RATE_LIMITS = {
@@ -47,6 +48,9 @@ RATE_LIMITS = {
     'PolygonClient':     2.0,
     'BinanceClient':    0.3,
     'FMPClient':        1.0,
+    'TiingoClient':      1.5,
+    'CoinbaseClient':   0.5,
+    'CoinGeckoClient':   5.0,  # CoinGecko rate limiting delay
 }
 
 
@@ -63,6 +67,9 @@ class GapBackfiller:
         'PolygonClient':    PolygonClient,
         'BinanceClient':    BinanceClient,
         'FMPClient':        FMPClient,
+        'TiingoClient':      TiingoClient,
+        'CoinbaseClient':   CoinbaseClient,
+        'CoinGeckoClient':   CoinGeckoClient,
     }
 
     def _get_client(self, client_name: str):
@@ -240,7 +247,7 @@ class GapBackfiller:
                 ohlcv_data = await asyncio.wait_for(
                     client.get_ohlcv_data(fetch_ticker, limit=200,
                                           start_date=start_date, end_date=end_date),
-                    timeout=30
+                    timeout=120
                 )
             except asyncio.TimeoutError:
                 print(f"  ⏰ {ticker} ({client_name}): API 타임아웃")

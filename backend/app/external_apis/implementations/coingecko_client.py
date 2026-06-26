@@ -101,31 +101,69 @@ class CoinGeckoClient(CryptoAPIClient):
                 coin_id = self._normalize_symbol_for_coingecko(symbol)
                 
                 # 날짜 범위 설정
-                days = 30  # 기본값
+                days_param = "30"  # 기본값
                 if start_date and end_date:
                     start_dt = datetime.strptime(start_date, '%Y-%m-%d')
                     end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-                    days = (end_dt - start_dt).days
+                    days_diff = (end_dt - start_dt).days
+                    if days_diff <= 1:
+                        days_param = "1"
+                    elif days_diff <= 7:
+                        days_param = "7"
+                    elif days_diff <= 14:
+                        days_param = "14"
+                    elif days_diff <= 30:
+                        days_param = "30"
+                    elif days_diff <= 90:
+                        days_param = "90"
+                    elif days_diff <= 180:
+                        days_param = "180"
+                    elif days_diff <= 365:
+                        days_param = "365"
+                    else:
+                        days_param = "max"
+                else:
+                    days_param = "30"
                 
-                url = f"{self.base_url}/coins/{coin_id}/ohlc?vs_currency=usd&days={days}"
+                url = f"{self.base_url}/coins/{coin_id}/ohlc?vs_currency=usd&days={days_param}"
                 data = await self._fetch_async(client, url, "CoinGecko", symbol)
                 
                 if isinstance(data, list):
-                    result = []
+                    daily_candles = {}
                     for candle in data:
-                        # CoinGecko OHLCV 데이터: [timestamp, open, high, low, close]
                         timestamp = datetime.fromtimestamp(candle[0] / 1000)
+                        date_key = timestamp.date()
                         
+                        open_val = safe_float(candle[1])
+                        high_val = safe_float(candle[2])
+                        low_val = safe_float(candle[3])
+                        close_val = safe_float(candle[4])
+                        
+                        if date_key not in daily_candles:
+                            daily_candles[date_key] = {
+                                'timestamp': datetime(date_key.year, date_key.month, date_key.day),
+                                'open': open_val,
+                                'high': high_val,
+                                'low': low_val,
+                                'close': close_val
+                            }
+                        else:
+                            daily_candles[date_key]['high'] = max(daily_candles[date_key]['high'], high_val)
+                            daily_candles[date_key]['low'] = min(daily_candles[date_key]['low'], low_val)
+                            daily_candles[date_key]['close'] = close_val
+                            
+                    result = []
+                    for key, val in sorted(daily_candles.items()):
                         point = OhlcvDataPoint(
-                            timestamp_utc=timestamp,
-                            open_price=safe_float(candle[1]),
-                            high_price=safe_float(candle[2]),
-                            low_price=safe_float(candle[3]),
-                            close_price=safe_float(candle[4]),
-                            volume=None,  # CoinGecko OHLCV에는 volume이 없음
+                            timestamp_utc=val['timestamp'],
+                            open_price=val['open'],
+                            high_price=val['high'],
+                            low_price=val['low'],
+                            close_price=val['close'],
+                            volume=None,
                             change_percent=self._calculate_change_percent(
-                                safe_float(candle[4]),
-                                safe_float(candle[1])
+                                val['close'],
+                                val['open']
                             )
                         )
                         result.append(point)

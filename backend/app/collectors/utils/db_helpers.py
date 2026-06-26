@@ -41,4 +41,8 @@ def get_latest_metric_date(db: Session, asset_id: int, metric_name: str) -> date
         return None
     except Exception as e:
         logger.error(f"Error fetching latest date for {metric_name}: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
         return None
