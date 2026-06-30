@@ -56,7 +56,7 @@ const predictions: PredictionData[] = rawPredictions.map(p => {
         low: low || 0,
         high: high || 0
     };
-}).filter(p => p.target > 0 && p.target < 20000)
+}).filter(p => p.target > 0)
 .sort((a, b) => b.target - a.target); // Sort High to Low for diagonal distribution
 
 // Color Helper: Magnitude based saturation

@@ -56,6 +56,10 @@ const CycleComparisonChart: React.FC<CycleComparisonChartProps> = ({
     const [colorMode, setColorMode] = useState<'dark' | 'vivid' | 'high-contrast' | 'simple'>('vivid');
     const [showSettings, setShowSettings] = useState(false);
     const [isClient, setIsClient] = useState(false);
+    const [cycleOffset, setCycleOffset] = useState(0);
+    const [stretchFactor, setStretchFactor] = useState(1.0);
+    const [correlations, setCorrelations] = useState<Record<number, number | null>>({});
+    const [recommendations, setRecommendations] = useState<Record<string, number | null>>({});
     const [HighchartsReact, setHighchartsReact] = useState<any>(null);
     const [Highcharts, setHighcharts] = useState<any>(null);
     const chartRef = useRef<any>(null);
@@ -236,6 +240,133 @@ const CycleComparisonChart: React.FC<CycleComparisonChartProps> = ({
         return result;
     };
 
+    const calculatePearsonCorrelation = React.useCallback((x: number[], y: number[]) => {
+        if (x.length < 5) return null;
+        const n = x.length;
+        let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
+        for (let i = 0; i < n; i++) {
+            sumX += x[i];
+            sumY += y[i];
+            sumXY += x[i] * y[i];
+            sumX2 += x[i] * x[i];
+            sumY2 += y[i] * y[i];
+        }
+        const numerator = n * sumXY - sumX * sumY;
+        const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
+        if (denominator === 0) return 0;
+        return numerator / denominator;
+    }, []);
+
+    const processedChartData = React.useMemo(() => {
+        if (!eraData || Object.keys(eraData).length < 2) return null;
+
+        const results: {
+            hMaps: Record<number, Record<number, number>>,
+            priceData4: { days: number, close: number }[]
+        } = { hMaps: {}, priceData4: [] };
+
+        [1, 2, 3].forEach(era => {
+            const eraInfo = eraData[era];
+            if (!eraInfo || !eraInfo.assets) return;
+            const btcAsset = eraInfo.assets.find((a: any) => a.ticker === 'BTCUSDT' || a.ticker === 'BTC');
+            if (!btcAsset || !btcAsset.data) return;
+
+            const hMap: Record<number, number> = {};
+            btcAsset.data.forEach((p: any) => {
+                hMap[p.days] = p.normalized_price;
+            });
+            results.hMaps[era] = hMap;
+        });
+
+        const q4Info = eraData[4];
+        if (q4Info && q4Info.assets) {
+            const btcAsset = q4Info.assets.find((a: any) => a.ticker === 'BTCUSDT' || a.ticker === 'BTC');
+            if (btcAsset && btcAsset.data) {
+                results.priceData4 = btcAsset.data.map((p: any) => ({
+                    days: p.days,
+                    close: p.normalized_price
+                }));
+            }
+        }
+
+        return results;
+    }, [eraData]);
+
+    const getCorrelationsAt = React.useCallback((sFactor: number, cOffset: number) => {
+        if (!processedChartData) return {};
+        
+        const results: Record<number, number | null> = {};
+        const { hMaps, priceData4 } = processedChartData;
+
+        [1, 2, 3].forEach(era => {
+            const hMap = hMaps[era];
+            if (!hMap || priceData4.length === 0) {
+                results[era] = null;
+                return;
+            }
+
+            const x4: number[] = [];
+            const yH: number[] = [];
+
+            priceData4.forEach(p4 => {
+                const finalDays = Math.round((p4.days + cOffset) * sFactor);
+                if (hMap[finalDays] !== undefined) {
+                    x4.push(p4.close);
+                    yH.push(hMap[finalDays]);
+                }
+            });
+
+            const corr = calculatePearsonCorrelation(x4, yH);
+            results[era] = corr;
+        });
+
+        return results;
+    }, [processedChartData, calculatePearsonCorrelation]);
+
+    const handleAutoStretch = React.useCallback((targetPeriod?: number) => {
+        if (!processedChartData) return;
+        
+        const bestFactors: Record<number, { factor: number, score: number }> = {};
+        let globalBest = { factor: 1.0, score: -1 };
+        const testOffset = cycleOffset;
+
+        [1, 2, 3].forEach(era => {
+            let maxScore = -1;
+            let bestFactor = 1.0;
+            for (let f = 0.5; f <= 2.5; f += 0.01) {
+                const corrs = getCorrelationsAt(f, testOffset);
+                const score = corrs[era];
+                if (score !== null && score !== undefined && score > maxScore) {
+                    maxScore = score;
+                    bestFactor = f;
+                }
+            }
+            if (maxScore > -1) {
+                bestFactors[era] = { factor: bestFactor, score: maxScore };
+                if (maxScore > globalBest.score) {
+                    globalBest = { factor: bestFactor, score: maxScore };
+                }
+            }
+        });
+
+        const newRecommendations: Record<string, number | null> = {};
+        [1, 2, 3].forEach(era => {
+            newRecommendations[era] = bestFactors[era] ? parseFloat(bestFactors[era].factor.toFixed(2)) : null;
+        });
+
+        if (globalBest.score > -1) {
+            newRecommendations['all'] = parseFloat(globalBest.factor.toFixed(2));
+            const selectedFactor = targetPeriod && bestFactors[targetPeriod] ? bestFactors[targetPeriod].factor : globalBest.factor;
+            setStretchFactor(parseFloat(selectedFactor.toFixed(2)));
+            setRecommendations(newRecommendations);
+        }
+    }, [processedChartData, cycleOffset, getCorrelationsAt]);
+
+    useEffect(() => {
+        const corrs = getCorrelationsAt(stretchFactor, cycleOffset);
+        setCorrelations(corrs);
+    }, [stretchFactor, cycleOffset, getCorrelationsAt]);
+
     const getEraColors = () => {
         const currentColors = getColorMode(colorMode);
         return {
@@ -272,7 +403,10 @@ const CycleComparisonChart: React.FC<CycleComparisonChartProps> = ({
                 }
 
                 if (asset.data && asset.data.length > 0) {
-                    const chartData = asset.data.map((point: any) => [point.days, point.normalized_price]);
+                    const chartData = asset.data.map((point: any) => {
+                        const finalDays = (era === 4) ? (point.days + cycleOffset) * stretchFactor : point.days;
+                        return [finalDays, point.normalized_price];
+                    });
                     const seriesName = `${era}st ${asset.ticker}`;
 
                     series.push({
@@ -393,7 +527,8 @@ const CycleComparisonChart: React.FC<CycleComparisonChartProps> = ({
                     const points = this.points;
                     const days = this.x;
                     const era4StartDate = new Date('2022-11-21T00:00:00.000Z');
-                    const currentDate = new Date(era4StartDate.getTime() + days * 24 * 60 * 60 * 1000);
+                    const actualDays = (days / stretchFactor) - cycleOffset;
+                    const currentDate = new Date(era4StartDate.getTime() + actualDays * 24 * 60 * 60 * 1000);
                     const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
 
                     let tooltip = [`Day ${days} <span style="font-weight: bold; color: blue;">[${dateStr}]</span>`];
@@ -413,12 +548,12 @@ const CycleComparisonChart: React.FC<CycleComparisonChartProps> = ({
             navigator: {
                 enabled: !isMobile,
                 xAxis: {
+                    tickInterval: 60,
                     labels: {
                         formatter: function (this: any): string {
                             const era4StartDate = new Date('2022-11-21T00:00:00.000Z');
                             const currentDate = new Date(era4StartDate.getTime() + this.value * 24 * 60 * 60 * 1000);
-                            const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
-                            return dateStr;
+                            return `${currentDate.getFullYear().toString().slice(-2)}.${('0' + (currentDate.getMonth() + 1)).slice(-2)}`;
                         }
                     }
                 }
@@ -432,12 +567,12 @@ const CycleComparisonChart: React.FC<CycleComparisonChartProps> = ({
                         navigator: {
                             enabled: true,
                             xAxis: {
+                                tickInterval: 60,
                                 labels: {
                                     formatter: function (this: any): string {
                                         const era4StartDate = new Date('2022-11-21T00:00:00.000Z');
                                         const currentDate = new Date(era4StartDate.getTime() + this.value * 24 * 60 * 60 * 1000);
-                                        const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
-                                        return dateStr;
+                                        return `${currentDate.getFullYear().toString().slice(-2)}.${('0' + (currentDate.getMonth() + 1)).slice(-2)}`;
                                     }
                                 }
                             }
@@ -524,7 +659,120 @@ const CycleComparisonChart: React.FC<CycleComparisonChartProps> = ({
                 />
             </div>
 
-            {/* Option toggle could go here, simplified for now */}
+            {/* Settings Toggle Button */}
+            <div className="row mt-4">
+                <div className="col-12">
+                    <button
+                        type="button"
+                        className="btn btn-outline-secondary btn-sm"
+                        onClick={() => setShowSettings(!showSettings)}
+                        style={{ width: '100%' }}
+                    >
+                        {showSettings ? '▼ Option' : '▶ Option'}
+                    </button>
+                </div>
+            </div>
+
+            {/* Option and Controls */}
+            {showSettings && (
+                <div className="mt-4 bg-gray-50/50 dark:bg-gray-800/20 p-4 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
+                    <div className="grid grid-cols-1 md:grid-cols-12">
+                        {/* Left Section: Sliders & Reset */}
+                        <div className="md:col-span-7 p-6 border-r border-gray-50 dark:border-gray-800">
+                            <div className="space-y-6">
+                                <div>
+                                    <div className="flex justify-between items-center mb-3">
+                                        <label className="text-sm font-bold text-gray-700 dark:text-gray-300">
+                                            4차 사이클 확장: {stretchFactor.toFixed(2)}배
+                                        </label>
+                                        <span className="text-sm font-black text-blue-600">{stretchFactor.toFixed(2)}x</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        className="w-full h-2 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                        min="0.5"
+                                        max="2.5"
+                                        step="0.01"
+                                        value={stretchFactor}
+                                        onChange={(e) => setStretchFactor(Number(e.target.value))}
+                                    />
+                                </div>
+                                <div>
+                                    <div className="flex justify-between items-center mb-3">
+                                        <label className="text-sm font-bold text-gray-700 dark:text-gray-300">
+                                            4차 사이클 오프셋: {cycleOffset}일
+                                        </label>
+                                        <span className="text-sm font-black text-blue-600">{cycleOffset < 0 ? cycleOffset : `+${cycleOffset}`}d</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        className="w-full h-2 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                        min="-365"
+                                        max="365"
+                                        step="1"
+                                        value={cycleOffset}
+                                        onChange={(e) => setCycleOffset(Number(e.target.value))}
+                                    />
+                                </div>
+                                <div className="pt-2 text-center">
+                                    <button
+                                        className="text-xs font-bold text-red-500 hover:text-red-700 transition-colors"
+                                        onClick={() => { setCycleOffset(0); setStretchFactor(1.0); }}
+                                    >
+                                        설정 초기화 (Reset Settings)
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Right Section: Correlation Analysis */}
+                        <div className="md:col-span-5 p-6 bg-gray-50/50 dark:bg-gray-800/10">
+                            <div className="flex items-center justify-between mb-6">
+                                <h6 className="text-[11px] font-black text-gray-400 uppercase tracking-widest">상관관계 분석 (Correlation Analysis)</h6>
+                                <button 
+                                    onClick={() => handleAutoStretch()}
+                                    className="bg-blue-50 dark:bg-blue-500/10 text-blue-600 px-3 py-1 rounded-full text-[10px] font-black hover:bg-blue-100 transition-colors"
+                                >
+                                    AUTO {recommendations['all'] ? `(${recommendations['all']}x)` : ''}
+                                </button>
+                            </div>
+                            <div className="space-y-3">
+                                {[1, 2, 3].map(period => {
+                                    const score = correlations[period];
+                                    const rec = recommendations[period];
+                                    const currentColors = getColorMode(colorMode);
+                                    const periodColor = currentColors[`halving_${period}` as keyof typeof currentColors];
+
+                                    return (
+                                        <div key={period} className="bg-white dark:bg-gray-900 flex items-center justify-between p-3 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm group">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-2 h-2 rounded-full ring-2 ring-white/50 flex-shrink-0" style={{ backgroundColor: periodColor }}></div>
+                                                <div>
+                                                    <div className="text-[10px] font-black uppercase" style={{ color: periodColor }}>{period}st Cycle</div>
+                                                    {rec && (
+                                                        <button 
+                                                            onClick={() => handleAutoStretch(period)}
+                                                            className="text-[9px] font-bold text-blue-500/60 hover:text-blue-500 mt-0.5"
+                                                        >
+                                                            Best: {rec}x <span className="underline">[Apply]</span>
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className={`text-sm font-black ${score && score > 0.8 ? 'text-green-500' : score && score > 0.5 ? 'text-orange-500' : 'text-red-500'}`}>
+                                                {score !== null && score !== undefined ? score.toFixed(4) : '-'}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <p className="mt-4 text-[9px] text-gray-400 italic leading-snug">
+                                * Pearson Correlation based pattern matching score
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

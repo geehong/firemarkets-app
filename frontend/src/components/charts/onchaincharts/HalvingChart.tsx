@@ -843,10 +843,11 @@ const HalvingChart: React.FC<HalvingChartProps> = ({
 
                     // @ts-ignore
                     const days = this.x;
+                    const actualDays = (days / stretchFactor) - cycleOffset;
 
                     // Format the date based on the fourth halving (2024-04-20 UTC) - 공통 기준
                     const fourthHalvingDate = new Date('2024-04-20T00:00:00.000Z');
-                    const currentDate = new Date(fourthHalvingDate.getTime() + days * 24 * 60 * 60 * 1000);
+                    const currentDate = new Date(fourthHalvingDate.getTime() + actualDays * 24 * 60 * 60 * 1000);
                     const dateStr = `${currentDate.getFullYear().toString().slice(-2)}/${('0' + (currentDate.getMonth() + 1)).slice(-2)}/${('0' + currentDate.getDate()).slice(-2)}`;
 
                     let tooltip = [`Day ${days} <span style="font-weight: bold; color: blue;">[${dateStr}]</span>`];
