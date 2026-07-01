@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { useTreemapLive } from '@/hooks/assets/useAssets'
+import { useRealtimeTable } from '@/hooks/data/useRealtime'
 import { useRealtimePrices } from '@/hooks/data/useSocket'
 import ComponentCard from '@/components/common/ComponentCard'
 import Badge from '@/components/ui/badge/Badge'
@@ -34,34 +34,20 @@ const AssetsList: React.FC<AssetsListProps> = ({ className, showHeader = true })
         }
     }, [typeNameFromQuery])
 
-    // Fetch All Data (sort by market cap by default)
-    // We fetch EVERYTHING if selectedType is 'all', otherwise we could filter by API
-    // But since RealtimePriceTable logic (and previous logic) suggests fetching broad data then filtering in UI is acceptable for this scale, or using the API to filter.
-    // However, to support Client-side filtering efficiently (like search), we might want to fetch all or fetch by type.
-    // Let's stick to previous pattern: Fetch based on initial type, but to support dynamic switching without re-fetching everything constantly,
-    // actually useTreemapLive handles fetching. If we change params, it re-fetches.
-    // If we want "Search" across ALL assets, we need to fetch ALL assets.
-    // If selectedType is specific, we only fetch that type?
-    // Let's mirror the behavior of RealtimePriceTable -> it fetches somewhat broadly.
-    // But here, let's use the selectedType to drive the API query if possible, OR just fetch all if 'all'.
-
     // API param construction
     const apiParams = useMemo(() => {
         if (selectedType === 'all') {
-            return { sort_by: 'market_cap', sort_order: 'desc' }
+            return { sortBy: 'market_cap', sortOrder: 'desc', limit: 5000 } as any
         }
         return {
             type_name: selectedType, // Use selectedType directly
-            sort_by: 'market_cap',
-            sort_order: 'desc'
-        }
+            sortBy: 'market_cap',
+            sortOrder: 'desc',
+            limit: 5000
+        } as any
     }, [selectedType])
 
-    // Wait, if I use the API filter, I can't search across other types without changing the dropdown. That's expected.
-    // But note: 'selectedType' state is UI state. 
-    // If I select 'Crypto', I want to see Crypto. Search should only search within Crypto. Correct.
-
-    const { data: treemapData, isLoading: liveLoading, error: liveError } = useTreemapLive(apiParams as any)
+    const { data: tableData, isLoading: liveLoading, error: liveError } = useRealtimeTable(apiParams)
 
     // Helper options
     const assetTypeOptions = [
@@ -75,8 +61,8 @@ const AssetsList: React.FC<AssetsListProps> = ({ className, showHeader = true })
 
     // Filtering Logic
     const filteredAssets = useMemo(() => {
-        if (!treemapData) return []
-        const anyData: any = treemapData as any
+        if (!tableData) return []
+        const anyData: any = tableData as any
         let arr = Array.isArray(anyData?.data) ? (anyData.data as any[]) : []
 
         // 1. Exclude
@@ -113,8 +99,8 @@ const AssetsList: React.FC<AssetsListProps> = ({ className, showHeader = true })
             ticker: it.ticker,
             name: it.name,
             type_name: it.type_name || it.asset_type,
-            market_cap: it.market_cap ?? null,
-            current_price: it.current_price ?? null,
+            market_cap: it.market_cap ?? it.market_cap_usd ?? null,
+            current_price: it.current_price ?? it.price ?? null,
             daily_change_percent: it.price_change_percentage_24h ?? it.daily_change_percent ?? null,
             logo_url: it.logo_url ?? null,
             category: it.category,
@@ -124,7 +110,7 @@ const AssetsList: React.FC<AssetsListProps> = ({ className, showHeader = true })
             return marketCapB - marketCapA
         })
 
-    }, [treemapData, selectedType, searchQuery])
+    }, [tableData, selectedType, searchQuery])
 
 
     const err = liveError ? String((liveError as any).message || liveError) : null

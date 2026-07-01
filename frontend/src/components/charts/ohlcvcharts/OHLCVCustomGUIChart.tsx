@@ -137,10 +137,10 @@ const OHLCVCustomGUIChart: React.FC<OHLCVCustomGUIChartProps> = ({
 
     const getDailyLimit = (interval: string): number => {
         switch (interval) {
-            case '1d': return 2000
+            case '1d': return 10000
             case '1w': return 52 * 30
             case '1M': return 12 * 40
-            default: return 2000
+            default: return 10000
         }
     }
 

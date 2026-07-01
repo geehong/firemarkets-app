@@ -23,7 +23,8 @@ export interface IntradayOhlcv {
 // Realtime Table Hook
 export const useRealtimeTable = (
   options?: {
-    assetTypeId?: number
+    asset_type_id?: number
+    type_name?: string
     limit?: number
     sortBy?: string
     sortOrder?: 'asc' | 'desc'

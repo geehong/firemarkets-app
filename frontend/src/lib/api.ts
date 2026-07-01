@@ -251,10 +251,11 @@ export class ApiClient {
 
 
   // Realtime
-  getRealtimeTable(params?: { assetTypeId?: number; limit?: number; sortBy?: string; sortOrder?: 'asc' | 'desc' }) {
+  getRealtimeTable(params?: { assetTypeId?: number; type_name?: string; limit?: number; sortBy?: string; sortOrder?: 'asc' | 'desc' }) {
     const search = new URLSearchParams()
     if (params?.assetTypeId) search.append('asset_type_id', String(params.assetTypeId))
-    if (params?.limit) search.append('limit', String(params.limit))
+    if (params?.type_name) search.append('type_name', params.type_name)
+    if (params?.limit) search.append('page_size', String(params.limit))
     if (params?.sortBy) search.append('sort_by', params.sortBy)
     if (params?.sortOrder) search.append('sort_order', params.sortOrder)
     const qs = search.toString()

@@ -110,7 +110,7 @@ def calculate_asset_info(db: Session, asset_id: int) -> Dict[str, Any]:
 async def get_assets_table_v2(
     type_name: Optional[str] = Query(None, description="자산 유형 필터 (Stocks, Crypto, ETFs, Funds)"),
     page: int = Query(1, ge=1, description="페이지 번호"),
-    page_size: int = Query(50, ge=1, le=200, description="페이지당 항목 수"),
+    page_size: int = Query(50, ge=1, le=5000, description="페이지당 항목 수"),
     sort_by: Optional[str] = Query("market_cap", description="정렬 필드 (market_cap, price, change_percent_today, volume_today)"),
     order: Optional[str] = Query("desc", description="정렬 순서 (asc/desc)"),
     search: Optional[str] = Query(None, description="검색어 (티커 또는 이름)"),
@@ -209,9 +209,9 @@ async def get_assets_table_v2(
             price_rows = db.execute(price_stmt, {"asset_ids": user_asset_ids}).fetchall()
             price_map = {row._mapping['asset_id']: row._mapping for row in price_rows}
 
-        # 5b. Fetch Sparklines (Last 30 days) efficiently
+        # 5b. Fetch Sparklines (Last 30 days) efficiently - SKIP for large requests to avoid event loop blocking
         sparkline_map = {}
-        if user_asset_ids:
+        if user_asset_ids and page_size <= 200:
             thirty_days_ago = datetime.now() - timedelta(days=30)
             
             # This query gets OHLCV data for all target assets in one go
