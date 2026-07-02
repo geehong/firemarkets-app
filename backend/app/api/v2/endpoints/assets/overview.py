@@ -145,7 +145,7 @@ async def get_assets_table_v2(
         
         # 2. Filters
         if type_name:
-            query = query.filter(AssetType.type_name == type_name)
+            query = query.filter(func.lower(AssetType.type_name) == type_name.lower())
             
         if search:
             pattern = f"%{search}%"
@@ -191,20 +191,26 @@ async def get_assets_table_v2(
         price_map = {}
         if user_asset_ids:
             price_stmt = text("""
-                WITH latest_prices AS (
-                    SELECT asset_id, price as close_price, timestamp_utc, change_percent, 'realtime' as source FROM realtime_quotes WHERE asset_id = ANY(:asset_ids)
-                    UNION ALL
-                    SELECT asset_id, close_price, timestamp_utc, change_percent, 'bar' as source FROM realtime_quotes_time_bar WHERE asset_id = ANY(:asset_ids)
-                    UNION ALL
-                    SELECT asset_id, price as close_price, timestamp_utc, change_percent, 'delay' as source FROM realtime_quotes_time_delay WHERE asset_id = ANY(:asset_ids)
-                    UNION ALL
-                    SELECT DISTINCT ON (asset_id) asset_id, close_price, timestamp_utc, change_percent, 'intraday' as source 
-                    FROM ohlcv_intraday_data 
-                    WHERE asset_id = ANY(:asset_ids) 
-                      AND timestamp_utc > (now() AT TIME ZONE 'UTC' - INTERVAL '7 days')
-                    ORDER BY asset_id, timestamp_utc DESC
-                )
-                SELECT DISTINCT ON (asset_id) * FROM latest_prices ORDER BY asset_id, timestamp_utc DESC
+                SELECT u.aid as asset_id, latest.close_price, latest.timestamp_utc, latest.change_percent, latest.source
+                FROM unnest(CAST(:asset_ids AS int[])) as u(aid)
+                CROSS JOIN LATERAL (
+                    SELECT * FROM (
+                        (SELECT price as close_price, timestamp_utc, change_percent, 'realtime' as source 
+                        FROM realtime_quotes WHERE asset_id = u.aid ORDER BY timestamp_utc DESC LIMIT 1)
+                        UNION ALL
+                        (SELECT close_price, timestamp_utc, change_percent, 'bar' as source 
+                        FROM realtime_quotes_time_bar WHERE asset_id = u.aid ORDER BY timestamp_utc DESC LIMIT 1)
+                        UNION ALL
+                        (SELECT price as close_price, timestamp_utc, change_percent, 'delay' as source 
+                        FROM realtime_quotes_time_delay WHERE asset_id = u.aid ORDER BY timestamp_utc DESC LIMIT 1)
+                        UNION ALL
+                        (SELECT close_price, timestamp_utc, change_percent, 'intraday' as source 
+                        FROM ohlcv_intraday_data WHERE asset_id = u.aid 
+                          AND timestamp_utc > (now() AT TIME ZONE 'UTC' - INTERVAL '7 days')
+                        ORDER BY timestamp_utc DESC LIMIT 1)
+                    ) sub
+                    ORDER BY timestamp_utc DESC LIMIT 1
+                ) latest
             """)
             price_rows = db.execute(price_stmt, {"asset_ids": user_asset_ids}).fetchall()
             price_map = {row._mapping['asset_id']: row._mapping for row in price_rows}

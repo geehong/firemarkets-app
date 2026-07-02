@@ -45,7 +45,7 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
     stmt = text("""
         WITH latest_prices AS (
             -- 0. Realtime Quotes (Finnhub/Alpaca)
-            SELECT 
+            (SELECT 
                 'realtime' as data_interval,
                 price as close_price,
                 price as open_price,
@@ -58,11 +58,12 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
                 NULL as data_source
             FROM realtime_quotes
             WHERE asset_id = :asset_id
+            ORDER BY timestamp_utc DESC LIMIT 1)
 
             UNION ALL
 
             -- 1. Realtime Quotes (15m delay)
-            SELECT
+            (SELECT
                 data_interval,
                 price as close_price,
                 price as open_price,
@@ -75,11 +76,12 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
                 data_source
             FROM realtime_quotes_time_delay
             WHERE asset_id = :asset_id
+            ORDER BY timestamp_utc DESC LIMIT 1)
 
             UNION ALL
 
             -- 2. Realtime Bar Data (1m, 5m etc)
-            SELECT
+            (SELECT
                 data_interval,
                 close_price,
                 open_price,
@@ -92,11 +94,12 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
                 data_source
             FROM realtime_quotes_time_bar
             WHERE asset_id = :asset_id
+            ORDER BY timestamp_utc DESC LIMIT 1)
 
             UNION ALL
 
             -- 3. Intraday Data
-            SELECT
+            (SELECT
                 data_interval,
                 close_price,
                 open_price,
@@ -110,11 +113,12 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
             FROM ohlcv_intraday_data
             WHERE asset_id = :asset_id
               AND timestamp_utc > (now() AT TIME ZONE 'UTC' - INTERVAL '7 days')
+            ORDER BY timestamp_utc DESC LIMIT 1)
 
             UNION ALL
 
             -- 4. Daily Data
-            SELECT
+            (SELECT
                 COALESCE(data_interval, '1d'),
                 close_price,
                 open_price,
@@ -128,11 +132,12 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
             FROM ohlcv_day_data
             WHERE asset_id = :asset_id
             AND (data_interval = '1d' OR data_interval = '1day' OR data_interval IS NULL)
+            ORDER BY timestamp_utc DESC LIMIT 1)
 
             UNION ALL
 
             -- 5. Ranking Data
-            SELECT
+            (SELECT
                 '1d' as data_interval,
                 price_usd as close_price,
                 price_usd as open_price,
@@ -145,6 +150,7 @@ def get_latest_unified_data(db: Session, asset_id: int) -> Optional[Dict]:
                 NULL as data_source
             FROM world_assets_ranking
             WHERE asset_id = :asset_id
+            ORDER BY ranking_date DESC LIMIT 1)
         )
         SELECT *
         FROM latest_prices
