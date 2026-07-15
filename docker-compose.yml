@@ -419,26 +419,6 @@ services:
         max-size: "50m"
         max-file: "5"
 
-  portainer:
-    image: portainer/portainer-ce:latest
-    container_name: portainer
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-      - "9000:9000"
-      - "9443:9443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - portainer_data:/data
-    mem_limit: 512m
-    memswap_limit: 512m
-    networks:
-      - shared-network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "10"
 
   nginx-proxy-manager:
     image: jc21/nginx-proxy-manager:latest
@@ -463,7 +443,6 @@ services:
 
 volumes:
   pg_data: # PostgreSQL 데이터 볼륨
-  portainer_data:
   npm_data:
   npm_letsencrypt:
   frontend_node_modules:
