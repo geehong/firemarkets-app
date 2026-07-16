@@ -128,6 +128,7 @@ const AppSidebar: React.FC = () => {
             { name: t('onchainQuant'), path: "/onchain/analysis/quant-analysis", icon: dotIcon },
             { name: "Fundamental", path: "/onchain/analysis/fundamental", icon: dotIcon },
             { name: "Speculative", path: "/onchain/analysis/speculative", icon: dotIcon },
+            { name: "MSTR", path: "/onchain/analysis/mstr", icon: dotIcon },
           ],
         },
         {
