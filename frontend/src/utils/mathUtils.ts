@@ -53,6 +53,29 @@ export function calculateAgreementRate(base: number[], fractal: number[]): numbe
 }
 
 /**
+ * Ordinary least-squares fit: y ~ slope * x + intercept
+ */
+export function linearRegression(x: number[], y: number[]): { slope: number; intercept: number } {
+  const n = x.length;
+  if (n === 0) return { slope: 1, intercept: 0 };
+
+  let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+  for (let i = 0; i < n; i++) {
+    sumX += x[i];
+    sumY += y[i];
+    sumXY += x[i] * y[i];
+    sumX2 += x[i] * x[i];
+  }
+
+  const denominator = n * sumX2 - sumX * sumX;
+  if (denominator === 0) return { slope: 1, intercept: sumY / n - sumX / n };
+
+  const slope = (n * sumXY - sumX * sumY) / denominator;
+  const intercept = (sumY - slope * sumX) / n;
+  return { slope, intercept };
+}
+
+/**
  * Linearly interpolates a value inside an array
  * Used for dynamic time warping / rubber banding
  */

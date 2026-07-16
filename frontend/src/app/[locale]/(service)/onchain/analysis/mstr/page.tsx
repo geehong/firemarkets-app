@@ -1,15 +1,49 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import FractalChart from '@/components/analysis/FractalChart';
+import React, { useState, useEffect, useRef } from 'react';
+import FractalChart, { FractalChartHandle } from '@/components/analysis/FractalChart';
 import MetricsDashboard from '@/components/analysis/MetricsDashboard';
-import { currentMockData, fractalMockData } from './mockData';
-import { calculateCorrelation, calculateAgreementRate } from '@/utils/mathUtils';
+import { calculateCorrelation, calculateAgreementRate, linearRegression } from '@/utils/mathUtils';
+import PredictionTable from '@/components/analysis/PredictionTable';
+import TrendBetWinRate from '@/components/analysis/TrendBetWinRate';
+import { useOhlcvV2 } from '@/hooks/assets/useAssetV2';
 
 export default function MSTRAnalysisPage() {
   const [currentData, setCurrentData] = useState<any[]>([]);
   const [fractalRawData, setFractalRawData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  // Fetch real data using hooks
+  const { data: mstrRes, loading: mstrLoading } = useOhlcvV2('MSTR', { start_date: '2023-01-01' });
+  const { data: btcRes, loading: btcLoading } = useOhlcvV2('BTC', { start_date: '2020-01-01', end_date: '2022-12-31' });
+
+  const loading = mstrLoading || btcLoading;
+
+  // Process data when it arrives
+  useEffect(() => {
+    if (mstrRes?.data) {
+      setCurrentData(mstrRes.data.map((d: any) => ({
+        time: d.timestamp_utc.split('T')[0],
+        open: d.open_price,
+        high: d.high_price,
+        low: d.low_price,
+        close: d.close_price,
+      })));
+    }
+  }, [mstrRes]);
+
+  useEffect(() => {
+    if (btcRes?.data) {
+      setFractalRawData(btcRes.data.map((d: any) => ({
+        time: d.timestamp_utc.split('T')[0],
+        open: d.open_price,
+        high: d.high_price,
+        low: d.low_price,
+        close: d.close_price,
+      })));
+    }
+  }, [btcRes]);
+
+
 
   // Interaction State (Transformations)
   // Default values to center the fractal on the screen
@@ -17,6 +51,11 @@ export default function MSTRAnalysisPage() {
   const [timeScale, setTimeScale] = useState<number>(1.0);
   const [priceOffset, setPriceOffset] = useState<number>(0);
   const [priceScale, setPriceScale] = useState<number>(1.0);
+
+  // Chart y-axis log/linear toggle, rendered next to the chart title (not
+  // overlapping the price axis labels the way an in-chart button would).
+  const fractalChartRef = useRef<FractalChartHandle>(null);
+  const [isLogScale, setIsLogScale] = useState(false);
 
   // Initial centering logic once data is loaded
   useEffect(() => {
@@ -34,18 +73,39 @@ export default function MSTRAnalysisPage() {
     }
   }, [currentData, fractalRawData]);
 
+  // The raw fractal (e.g. one BTC cycle) ends at "today" by default, so on its
+  // own it never shows a future projection. Repeat the cycle once, offset so
+  // it continues seamlessly from where the first cycle left off, giving a
+  // second leg that naturally lands in the future once mapped.
+  const extendedFractalRawData = React.useMemo(() => {
+    if (!fractalRawData.length) return [];
+    const continuityOffset = fractalRawData[fractalRawData.length - 1].close - fractalRawData[0].close;
+    const secondCycle = fractalRawData.map((d) => ({
+      ...d,
+      open: d.open + continuityOffset,
+      high: d.high + continuityOffset,
+      low: d.low + continuityOffset,
+      close: d.close + continuityOffset,
+    }));
+    return [...fractalRawData, ...secondCycle];
+  }, [fractalRawData]);
+
   // Dynamically map fractal data onto current data's time axis, extending into the future
   const fractalData = React.useMemo(() => {
-    if (!currentData.length || !fractalRawData.length) return [];
+    if (!currentData.length || !extendedFractalRawData.length) return [];
 
     const mapped = [];
     const lastCurrentDate = new Date(currentData[currentData.length - 1].time);
+    // Pivot scaling around "today" (the boundary between the first cycle and
+    // its repeated continuation) so growing/shrinking the pattern extends
+    // equally into the past and into the future from the present.
+    const pivotIdx = fractalRawData.length;
 
-    for (let i = 0; i < fractalRawData.length; i++) {
-      const pastPoint = fractalRawData[i];
-      
+    for (let i = 0; i < extendedFractalRawData.length; i++) {
+      const pastPoint = extendedFractalRawData[i];
+
       // Target index in current time axis
-      const targetIndex = Math.round(i * timeScale + timeOffset);
+      const targetIndex = Math.round(pivotIdx + (i - pivotIdx) * timeScale + timeOffset);
       
       let targetTimeStr = '';
       if (targetIndex >= 0 && targetIndex < currentData.length) {
@@ -62,7 +122,7 @@ export default function MSTRAnalysisPage() {
         continue;
       }
 
-      mapped.push({
+      const mappedPoint = {
         ...pastPoint,
         open: pastPoint.open * priceScale + priceOffset,
         high: pastPoint.high * priceScale + priceOffset,
@@ -71,10 +131,18 @@ export default function MSTRAnalysisPage() {
         time: targetTimeStr,
         originalTime: pastPoint.time,
         logicalIndex: targetIndex, // pass down for easy anchor positioning
-      });
+      };
+
+      // Ensure strictly increasing unique times for Lightweight Charts
+      if (mapped.length > 0 && mapped[mapped.length - 1].time === targetTimeStr) {
+        // Duplicate time (timeScale < 1), overwrite with the latest point
+        mapped[mapped.length - 1] = mappedPoint;
+      } else {
+        mapped.push(mappedPoint);
+      }
     }
     return mapped;
-  }, [currentData, fractalRawData, timeOffset, timeScale, priceOffset, priceScale]);
+  }, [currentData, extendedFractalRawData, fractalRawData.length, timeOffset, timeScale, priceOffset, priceScale]);
 
   const handleTransformUpdate = React.useCallback((dt: number, dp: number, dScaleT: number, dScaleP: number) => {
     setTimeOffset(prev => prev + dt);
@@ -83,25 +151,83 @@ export default function MSTRAnalysisPage() {
     setPriceScale(prev => Math.max(0.1, prev + dScaleP));
   }, []);
 
-  const minLength = Math.min(currentData.length, fractalData.length);
-  const currentPrices = currentData.slice(0, minLength).map(d => d.close);
-  const fractalPrices = fractalData.slice(0, minLength).map(d => d.close);
+  // Searches (timeOffset, timeScale) combinations against the single historical
+  // fractal cycle (the future-projected repeat has no ground truth to correlate
+  // against) and picks whichever alignment maximizes Pearson correlation with
+  // the real price series. Price scale/offset don't affect correlation (it's
+  // affine-invariant), so those are fit separately via OLS on the winning window.
+  const handleAutoAlign = React.useCallback(() => {
+    if (!currentData.length || !fractalRawData.length) return;
 
-  const correlation = minLength > 0 ? calculateCorrelation(currentPrices, fractalPrices) : 0;
-  const agreementRate = minLength > 0 ? calculateAgreementRate(currentPrices, fractalPrices) : 0;
+    const pivotIdx = fractalRawData.length;
+    const scaleCandidates = [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4];
+    let best = { corr: -Infinity, scale: 1, offset: 0 };
+
+    for (const scale of scaleCandidates) {
+      for (let offset = -currentData.length; offset <= currentData.length; offset += 2) {
+        let n = 0, sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
+        for (let i = 0; i < fractalRawData.length; i++) {
+          const targetIndex = Math.round(pivotIdx + (i - pivotIdx) * scale + offset);
+          if (targetIndex < 0 || targetIndex >= currentData.length) continue;
+          const x = currentData[targetIndex].close;
+          const y = fractalRawData[i].close;
+          n++;
+          sumX += x; sumY += y; sumXY += x * y; sumX2 += x * x; sumY2 += y * y;
+        }
+        if (n < 30) continue;
+        const numerator = n * sumXY - sumX * sumY;
+        const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
+        if (denominator === 0) continue;
+        const corr = numerator / denominator;
+        if (corr > best.corr) {
+          best = { corr, scale, offset };
+        }
+      }
+    }
+
+    if (best.corr === -Infinity) return;
+
+    const fractalWindow: number[] = [];
+    const currentWindow: number[] = [];
+    for (let i = 0; i < fractalRawData.length; i++) {
+      const targetIndex = Math.round(pivotIdx + (i - pivotIdx) * best.scale + best.offset);
+      if (targetIndex < 0 || targetIndex >= currentData.length) continue;
+      fractalWindow.push(fractalRawData[i].close);
+      currentWindow.push(currentData[targetIndex].close);
+    }
+    const { slope, intercept } = linearRegression(fractalWindow, currentWindow);
+
+    setTimeScale(best.scale);
+    setTimeOffset(best.offset);
+    setPriceScale(slope);
+    setPriceOffset(intercept);
+  }, [currentData, fractalRawData]);
+
+  // Pair series by the date they're actually drawn on (fractalData's
+  // logicalIndex), not by raw array position — fractalData isn't guaranteed
+  // to start at currentData[0], so a positional slice compares the wrong days.
+  const overlapPoints = React.useMemo(
+    () => fractalData.filter(p => p.logicalIndex >= 0 && p.logicalIndex < currentData.length),
+    [fractalData, currentData]
+  );
+  const currentPrices = overlapPoints.map(p => currentData[p.logicalIndex].close);
+  const fractalPrices = overlapPoints.map(p => p.close);
+
+  const correlation = overlapPoints.length > 0 ? calculateCorrelation(currentPrices, fractalPrices) : 0;
+  const agreementRate = overlapPoints.length > 0 ? calculateAgreementRate(currentPrices, fractalPrices) : 0;
 
   const currentMax = currentData.length > 0 ? Math.max(...currentData.map(d => d.high)) : 0;
   const currentCurrent = currentData.length > 0 ? currentData[currentData.length - 1].close : 0;
   const currentDrawdown = currentMax > 0 ? ((currentCurrent - currentMax) / currentMax) * 100 : 0;
 
-  const fractalMax = fractalData.length > 0 ? Math.max(...fractalData.map(d => d.high)) : 0;
   const fractalDrawdown = -85.10; // Hardcoded or calculate dynamically if needed
 
   // Get date ranges for display
-  const currentStartDate = minLength > 0 ? currentData[0].time : '';
-  const currentEndDate = minLength > 0 ? currentData[minLength - 1].time : '';
-  const pastStartDate = minLength > 0 ? fractalData[0].originalTime : '';
-  const pastEndDate = minLength > 0 ? fractalData[minLength - 1].originalTime : '';
+  const minLength = overlapPoints.length;
+  const currentStartDate = minLength > 0 ? currentData[overlapPoints[0].logicalIndex].time : '';
+  const currentEndDate = minLength > 0 ? currentData[overlapPoints[minLength - 1].logicalIndex].time : '';
+  const pastStartDate = minLength > 0 ? overlapPoints[0].originalTime : '';
+  const pastEndDate = minLength > 0 ? overlapPoints[minLength - 1].originalTime : '';
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -123,26 +249,46 @@ export default function MSTRAnalysisPage() {
         )}
       </div>
 
-      <MetricsDashboard 
+      <MetricsDashboard
         correlation={correlation}
         agreementRate={agreementRate}
         currentDrawdown={currentDrawdown}
         fractalDrawdown={fractalDrawdown}
+        onAutoAlign={handleAutoAlign}
       />
 
       <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          인터랙티브 프랙탈 오버레이 차트
-        </h2>
-        <FractalChart 
+        <div className="flex items-center gap-2 mb-4">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            인터랙티브 프랙탈 오버레이 차트
+          </h2>
+          <button
+            type="button"
+            onClick={() => fractalChartRef.current?.toggleLogScale()}
+            className={`text-xs font-medium px-2 py-1 rounded-md border transition-colors
+              ${isLogScale
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700'}`}
+            title="가격축을 로그/일반 스케일로 전환합니다"
+          >
+            {isLogScale ? '로그' : '일반'}
+          </button>
+        </div>
+        <FractalChart
+          ref={fractalChartRef}
           currentData={currentData}
           fractalData={fractalData}
           onTransformUpdate={handleTransformUpdate}
+          onLogScaleChange={setIsLogScale}
         />
         <p className="text-xs text-gray-400 mt-4 text-right">
           * 캔들 차트: 현재 사이클 / 회색 선: 과거 프랙탈 사이클
         </p>
       </div>
+
+      <TrendBetWinRate currentData={currentData} fractalData={fractalData} />
+
+      <PredictionTable currentData={currentData} fractalData={fractalData} />
     </div>
   );
 }

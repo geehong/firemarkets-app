@@ -16,43 +16,38 @@ function generateSyntheticData(
   peakMultiplier: number
 ): CandlestickData[] {
   const data: CandlestickData[] = [];
-  let currentPrice = basePrice;
   const start = new Date(startDate);
 
   for (let i = 0; i < days; i++) {
-    // Phase 1: Accumulation (Slow rise)
-    // Phase 2: Parabolic advance
-    // Phase 3: Sharp drop
-    // Phase 4: Bear market consolidation
-    
-    let trend = 0;
     const progress = i / trendPhaseLength;
     
-    if (progress < 0.3) {
-      trend = 0.005; // Accumulation
+    // Deterministic curve for a bubble cycle
+    let curve = 0;
+    if (progress < 0.4) {
+      curve = Math.pow(progress / 0.4, 2); // slow start
     } else if (progress < 0.6) {
-      trend = 0.03 * (progress * 2); // Parabolic
+      curve = 1 + 5 * Math.pow((progress - 0.4) / 0.2, 3); // parabolic
     } else if (progress < 0.7) {
-      trend = -0.05; // Sharp drop
+      curve = 6 - 5 * ((progress - 0.6) / 0.1); // crash
     } else {
-      trend = -0.005; // Bear market bleeding
+      curve = 1 + 0.5 * Math.sin(progress * 10); // bear market chop
     }
 
-    // Add noise
-    const noise = (Math.random() - 0.5) * volatility;
-    currentPrice = currentPrice * (1 + trend + noise);
+    // Deterministic pseudo-random noise based on index (offset by peakMultiplier)
+    const noise = (Math.sin(i * 13.7 + peakMultiplier) + Math.cos(i * 29.3 + peakMultiplier)) * volatility * 0.5;
     
-    if (currentPrice < 1) currentPrice = 1; // Floor
+    let currentPrice = basePrice * (1 + curve + noise);
+    if (currentPrice < 1) currentPrice = 1;
 
     const open = currentPrice;
-    const close = currentPrice * (1 + (Math.random() - 0.5) * volatility * 0.5);
-    const high = Math.max(open, close) * (1 + Math.random() * volatility * 0.2);
-    const low = Math.min(open, close) * (1 - Math.random() * volatility * 0.2);
+    const close = currentPrice * (1 + (Math.sin(i * 3.14) * volatility * 0.2));
+    const high = Math.max(open, close) * (1 + Math.abs(Math.cos(i * 7.1)) * volatility * 0.1);
+    const low = Math.min(open, close) * (1 - Math.abs(Math.sin(i * 5.3)) * volatility * 0.1);
 
     const date = new Date(start);
     date.setDate(date.getDate() + i);
     
-    // Skip weekends to make it realistic for stock data
+    // Skip weekends
     if (date.getDay() === 0 || date.getDay() === 6) {
         continue;
     }
@@ -84,6 +79,6 @@ export const currentMockData: CandlestickData[] = generateSyntheticData(
   500, // Shorter duration to simulate being "in the middle" of the cycle
   200,
   0.07,
-  800,
+  700, // Slightly different cycle length so they don't perfectly overlap!
   8
 );

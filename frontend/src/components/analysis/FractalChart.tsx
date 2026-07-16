@@ -1,19 +1,28 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { createChart, IChartApi, ISeriesApi, Time, CandlestickSeries, LineSeries } from 'lightweight-charts';
+import React, { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
+import { createChart, IChartApi, ISeriesApi, Time, CandlestickSeries, LineSeries, PriceScaleMode } from 'lightweight-charts';
 
 interface FractalChartProps {
   currentData: any[];
   fractalData: any[];
   onTransformUpdate?: (dt: number, dp: number, dScaleT: number, dScaleP: number) => void;
+  onLogScaleChange?: (isLogScale: boolean) => void;
 }
 
-export default function FractalChart({ currentData, fractalData, onTransformUpdate }: FractalChartProps) {
+export interface FractalChartHandle {
+  toggleLogScale: () => void;
+}
+
+function FractalChart({ currentData, fractalData, onTransformUpdate, onLogScaleChange }: FractalChartProps, ref: React.Ref<FractalChartHandle>) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const currentSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const fractalSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
 
   const [anchors, setAnchors] = useState<{ x: number, y: number, type: 'move' | 'scale', index: number }[]>([]);
+  // Purely a rendering toggle for the y-axis (log vs linear price scale).
+  // Doesn't touch the underlying data or any of the drag/scale/offset state,
+  // so every existing setting/interaction keeps working the same way.
+  const [isLogScale, setIsLogScale] = useState(false);
 
   // Initialize chart
   useEffect(() => {
@@ -49,9 +58,15 @@ export default function FractalChart({ currentData, fractalData, onTransformUpda
       color: 'rgba(128, 128, 128, 0.8)', // Gray overlay
       lineWidth: 2,
       crosshairMarkerVisible: false,
-      // Shared right price scale so it overlays directly on price
+      // Independent overlay price scale so scaling/moving the fractal line
+      // never rescales the candlestick series' price axis.
+      priceScaleId: 'fractal-overlay',
     });
     fractalSeriesRef.current = fractalSeries;
+    chart.priceScale('fractal-overlay').applyOptions({
+      visible: false,
+      scaleMargins: { top: 0.05, bottom: 0.05 },
+    });
 
     const handleTimeRangeChange = () => {
       updateAnchorsPosition();
@@ -101,16 +116,29 @@ export default function FractalChart({ currentData, fractalData, onTransformUpda
     setAnchors(pts);
   }, [fractalData]);
 
+  // Helper to remove duplicate dates which crash Lightweight Charts
+  const filterUniqueTimes = (arr: any[]) => {
+    const unique = [];
+    let lastTime = '';
+    for (const item of arr) {
+      if (item.time !== lastTime) {
+        unique.push(item);
+        lastTime = item.time;
+      }
+    }
+    return unique;
+  };
+
   // Update data when props change
   useEffect(() => {
     if (currentSeriesRef.current && currentData.length > 0) {
       const sortedCurrent = [...currentData].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
-      currentSeriesRef.current.setData(sortedCurrent as any);
+      currentSeriesRef.current.setData(filterUniqueTimes(sortedCurrent) as any);
     }
     if (fractalSeriesRef.current && fractalData.length > 0) {
       const sortedFractal = [...fractalData].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
       const lineData = sortedFractal.map(d => ({ time: d.time as Time, value: d.close }));
-      fractalSeriesRef.current.setData(lineData as any);
+      fractalSeriesRef.current.setData(filterUniqueTimes(lineData) as any);
     }
     
     // Ensure all data is visible so anchors aren't rendered off-screen
@@ -124,29 +152,48 @@ export default function FractalChart({ currentData, fractalData, onTransformUpda
 
   const handleDrag = (e: React.MouseEvent, type: 'move' | 'scale') => {
     e.preventDefault();
+    e.stopPropagation();
     if (!chartContainerRef.current || !chartRef.current || !fractalSeriesRef.current || !onTransformUpdate) return;
-    
+
     const chart = chartRef.current;
     const fSeries = fractalSeriesRef.current;
+    const fPriceScale = chart.priceScale('fractal-overlay');
     const rect = chartContainerRef.current.getBoundingClientRect();
-    
+
+    // Freeze the fractal's own price scale only while translating (move).
+    // A pure move doesn't change the data's value range, so freezing avoids
+    // the autoScale-refit feedback loop that made vertical drags feel
+    // erratic. A scale drag DOES change the range on purpose, so autoScale
+    // must stay live there or the newly grown/shrunk data clips out of the
+    // frozen (stale) bounds and looks like it "disappears".
+    if (type === 'move') {
+      fPriceScale.applyOptions({ autoScale: false });
+    }
+
+    // Dampen move sensitivity: a raw 1px-mouse-move = 1 price-unit mapping
+    // feels far too fast once the fractal's price range is wide (e.g. after
+    // extending it into a projected future leg), since each pixel then
+    // covers a large price span. Scale drags already have their own fixed
+    // 0.005 sensitivity below for the same reason.
+    const MOVE_SENSITIVITY = 0.35;
+
     let lastX = e.clientX - rect.left;
     let lastY = e.clientY - rect.top;
-    
+
     let lastLogical = chart.timeScale().coordinateToLogical(lastX);
     let lastPrice = fSeries.coordinateToPrice(lastY);
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const x = moveEvent.clientX - rect.left;
       const y = moveEvent.clientY - rect.top;
-      
+
       const logical = chart.timeScale().coordinateToLogical(x);
       const price = fSeries.coordinateToPrice(y);
 
       if (type === 'move') {
         if (logical !== null && price !== null && lastLogical !== null && lastPrice !== null) {
-          const dt = logical - lastLogical;
-          const dp = price - lastPrice;
+          const dt = (logical - lastLogical) * MOVE_SENSITIVITY;
+          const dp = (price - lastPrice) * MOVE_SENSITIVITY;
           onTransformUpdate(dt, dp, 0, 0);
           lastLogical = logical;
           lastPrice = price;
@@ -166,16 +213,49 @@ export default function FractalChart({ currentData, fractalData, onTransformUpda
     const handleMouseUp = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      if (type === 'move') {
+        fPriceScale.applyOptions({ autoScale: true });
+      }
     };
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   };
 
+  // Right-click-and-drag anywhere on the chart pans the fractal overlay only
+  // (same 'move' transform as the blue handle) without disturbing the
+  // candlestick series or its price scale.
+  const handleContainerMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 2) return; // right mouse button only
+    handleDrag(e, 'move');
+  };
+
+  // Switch both price scales (candlestick 'right' and the fractal overlay)
+  // between log and linear together, so the two series stay visually
+  // consistent. This only changes how the existing values are plotted on the
+  // y-axis; timeOffset/timeScale/priceOffset/priceScale and all the drag
+  // interactions are untouched.
+  const toggleLogScale = useCallback(() => {
+    if (!chartRef.current) return;
+    const next = !isLogScale;
+    const nextMode = next ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal;
+    chartRef.current.priceScale('right').applyOptions({ mode: nextMode });
+    chartRef.current.priceScale('fractal-overlay').applyOptions({ mode: nextMode });
+    setIsLogScale(next);
+    onLogScaleChange?.(next);
+    setTimeout(updateAnchorsPosition, 50);
+  }, [isLogScale, onLogScaleChange, updateAnchorsPosition]);
+
+  useImperativeHandle(ref, () => ({ toggleLogScale }), [toggleLogScale]);
+
   return (
-    <div className="relative w-full h-[800px] border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden bg-white dark:bg-gray-900">
+    <div
+      className="relative w-full h-[520px] border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden bg-white dark:bg-gray-900"
+      onMouseDown={handleContainerMouseDown}
+      onContextMenu={(e) => e.preventDefault()}
+    >
       <div ref={chartContainerRef} className="absolute inset-0" />
-      
+
       {/* Anchor Point Handles */}
       {anchors.map((anchor, i) => (
         <div
@@ -199,3 +279,5 @@ export default function FractalChart({ currentData, fractalData, onTransformUpda
     </div>
   );
 }
+
+export default forwardRef(FractalChart);
