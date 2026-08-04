@@ -86,6 +86,16 @@ function FractalChart({ currentData, fractalData, onTransformUpdate, onLogScaleC
     const fSeries = fractalSeriesRef.current;
     const pts: { x: number, y: number, type: 'move' | 'scale', index: number }[] = [];
 
+    // The container clips overflow, so a handle dragged past its edge would
+    // otherwise become invisible instead of staying reachable. Clamp to the
+    // container bounds (minus the handle's own half-size, ~16px, plus a
+    // little breathing room) so it's always visible and grabbable.
+    const containerWidth = chartContainerRef.current?.clientWidth || 800;
+    const containerHeight = chartContainerRef.current?.clientHeight || 520;
+    const ANCHOR_MARGIN = 20;
+    const clampX = (val: number) => Math.min(Math.max(val, ANCHOR_MARGIN), containerWidth - ANCHOR_MARGIN);
+    const clampY = (val: number) => Math.min(Math.max(val, ANCHOR_MARGIN), containerHeight - ANCHOR_MARGIN);
+
     // Find center and end points of the fractal data
     const centerIdx = Math.floor(fractalData.length / 2);
     const endIdx = fractalData.length - 1;
@@ -97,20 +107,20 @@ function FractalChart({ currentData, fractalData, onTransformUpdate, onLogScaleC
       const logical = centerPoint.logicalIndex;
       const x = chart.timeScale().logicalToCoordinate(logical as any);
       const y = fSeries.priceToCoordinate(centerPoint.close);
-      
-      const safeX = x !== null ? x : (chartContainerRef.current?.clientWidth || 800) / 2;
+
+      const safeX = x !== null ? x : containerWidth / 2;
       const safeY = y !== null ? y : 200;
-      pts.push({ x: safeX, y: safeY, type: 'move', index: 0 });
+      pts.push({ x: clampX(safeX), y: clampY(safeY), type: 'move', index: 0 });
     }
 
     if (endPoint) {
       const logical = endPoint.logicalIndex;
       const x = chart.timeScale().logicalToCoordinate(logical as any);
       const y = fSeries.priceToCoordinate(endPoint.close);
-      
-      const safeX = x !== null ? x : (chartContainerRef.current?.clientWidth || 800) - 100;
+
+      const safeX = x !== null ? x : containerWidth - 100;
       const safeY = y !== null ? y : 200;
-      pts.push({ x: safeX, y: safeY, type: 'scale', index: 1 });
+      pts.push({ x: clampX(safeX), y: clampY(safeY), type: 'scale', index: 1 });
     }
 
     setAnchors(pts);
@@ -141,11 +151,25 @@ function FractalChart({ currentData, fractalData, onTransformUpdate, onLogScaleC
       fractalSeriesRef.current.setData(filterUniqueTimes(lineData) as any);
     }
     
-    // Ensure all data is visible so anchors aren't rendered off-screen
-    if (chartRef.current && currentData.length > 0 && fractalData.length > 0) {
-      chartRef.current.timeScale().fitContent();
+    // Frame the real (current) data plus a bounded future window, rather
+    // than fitContent()-ing to the full fractal range. The fractal overlay
+    // can span years further into the future than the real series (e.g.
+    // once it's dragged/scaled out), and fitContent() zooms out to fit ALL
+    // of it — which shrinks the real candlesticks down to near-invisible
+    // and makes the overlay look "detached". Scroll/zoom still reaches the
+    // rest of the projection; this only sets the default view.
+    if (chartRef.current && currentData.length > 0) {
+      const DEFAULT_FUTURE_VIEW_DAYS = 400;
+      const firstTime = currentData[0].time as Time;
+      const lastRealDate = new Date(currentData[currentData.length - 1].time);
+      const futureDate = new Date(lastRealDate);
+      futureDate.setDate(futureDate.getDate() + DEFAULT_FUTURE_VIEW_DAYS);
+      chartRef.current.timeScale().setVisibleRange({
+        from: firstTime,
+        to: futureDate.toISOString().split('T')[0] as Time,
+      });
     }
-    
+
     const timer = setTimeout(updateAnchorsPosition, 200);
     return () => clearTimeout(timer);
   }, [currentData, fractalData, updateAnchorsPosition]);

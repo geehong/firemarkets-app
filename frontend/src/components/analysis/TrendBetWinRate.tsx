@@ -60,9 +60,11 @@ const THRESHOLD_OPTIONS = Array.from({ length: 20 }, (_, i) => (i + 1) * 0.05)
 const DEFAULT_THRESHOLD = 0.15
 const DEFAULT_WINDOW_DAYS = 7 // "7일동안 30%이상 변동"
 
-// Auto-search space: period 1~30 days, threshold 10%~30% (5-point steps).
-const AUTO_SEARCH_DAYS = Array.from({ length: 30 }, (_, i) => i + 1)
-const AUTO_SEARCH_THRESHOLDS = [0.10, 0.15, 0.20, 0.25, 0.30]
+// Auto-search space: mirrors what the manual controls allow (period 1~90
+// days, threshold the full 5%~100% THRESHOLD_OPTIONS list) so the auto
+// search can find combos the manual controls could also reach.
+const AUTO_SEARCH_DAYS = Array.from({ length: 90 }, (_, i) => i + 1)
+const AUTO_SEARCH_THRESHOLDS = THRESHOLD_OPTIONS
 const AUTO_SEARCH_MIN_TRADES = 3
 // 50%~100% in 5-point steps
 const TARGET_WIN_RATE_OPTIONS = Array.from({ length: 11 }, (_, i) => 50 + i * 5)

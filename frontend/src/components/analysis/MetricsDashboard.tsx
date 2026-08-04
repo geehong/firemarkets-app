@@ -25,7 +25,7 @@ export default function MetricsDashboard({
               type="button"
               onClick={onAutoAlign}
               className="shrink-0 text-xs font-medium px-2 py-1 rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50 transition-colors"
-              title="가장 높은 상관계수를 갖는 정렬을 자동으로 찾습니다"
+              title="상관계수가 높은 정렬 후보 5개를 찾아 차트 위에 보여줍니다"
             >
               자동 정렬
             </button>

@@ -8,6 +8,14 @@ import PredictionTable from '@/components/analysis/PredictionTable';
 import TrendBetWinRate from '@/components/analysis/TrendBetWinRate';
 import { useOhlcvV2 } from '@/hooks/assets/useAssetV2';
 
+interface AlignCandidate {
+  scale: number;
+  offset: number;
+  corr: number;
+  priceScale: number;
+  priceOffset: number;
+}
+
 export default function MSTRAnalysisPage() {
   const [currentData, setCurrentData] = useState<any[]>([]);
   const [fractalRawData, setFractalRawData] = useState<any[]>([]);
@@ -57,6 +65,11 @@ export default function MSTRAnalysisPage() {
   const fractalChartRef = useRef<FractalChartHandle>(null);
   const [isLogScale, setIsLogScale] = useState(false);
 
+  // Auto-align presents a shortlist instead of silently jumping to the single
+  // best match, since near-identical correlation scores can come from very
+  // different-looking overlay positions.
+  const [alignCandidates, setAlignCandidates] = useState<AlignCandidate[]>([]);
+
   // Initial centering logic once data is loaded
   useEffect(() => {
     if (currentData.length > 0 && fractalRawData.length > 0 && timeOffset === 0) {
@@ -77,6 +90,12 @@ export default function MSTRAnalysisPage() {
   // own it never shows a future projection. Repeat the cycle once, offset so
   // it continues seamlessly from where the first cycle left off, giving a
   // second leg that naturally lands in the future once mapped.
+  //
+  // A second repeat (2 copies chained) was tried, but the resulting data
+  // range stretched years past any reasonable view (into the 2030s), which
+  // made fitContent() zoom out so far the real candlestick series became
+  // invisible and the overlay looked "detached" from it. One copy is enough
+  // for a useful projection without breaking the default view.
   const extendedFractalRawData = React.useMemo(() => {
     if (!fractalRawData.length) return [];
     const continuityOffset = fractalRawData[fractalRawData.length - 1].close - fractalRawData[0].close;
@@ -156,13 +175,43 @@ export default function MSTRAnalysisPage() {
   // against) and picks whichever alignment maximizes Pearson correlation with
   // the real price series. Price scale/offset don't affect correlation (it's
   // affine-invariant), so those are fit separately via OLS on the winning window.
+  //
+  // Both searches are bounded to a modest range around the CURRENT
+  // time/price scale (not searched from scratch) so "auto" fine-tunes the
+  // existing overlay instead of jumping to a wildly different ratio: width
+  // (time) stays within +-15%, height (price) within +-10%.
+  const TIME_SCALE_SEARCH_RANGE = 0.15;
+  const PRICE_SCALE_SEARCH_RANGE = 0.10;
+
+  const MIN_CANDIDATE_OFFSET_GAP = 20; // days apart, so the 5 shown aren't near-duplicates
+  const CANDIDATE_COUNT = 5;
+
   const handleAutoAlign = React.useCallback(() => {
-    if (!currentData.length || !fractalRawData.length) return;
+    if (!currentData.length || !fractalRawData.length) {
+      setAlignCandidates([]);
+      return;
+    }
 
     const pivotIdx = fractalRawData.length;
-    const scaleCandidates = [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4];
-    let best = { corr: -Infinity, scale: 1, offset: 0 };
+    const minScale = timeScale * (1 - TIME_SCALE_SEARCH_RANGE);
+    const maxScale = timeScale * (1 + TIME_SCALE_SEARCH_RANGE);
+    const SCALE_STEPS = 30;
+    const scaleCandidates = Array.from(
+      { length: SCALE_STEPS + 1 },
+      (_, i) => minScale + (i * (maxScale - minScale)) / SCALE_STEPS
+    );
 
+    // A short overlap window (the old floor was just 30 days) can score a
+    // spuriously high correlation on a coincidental sliver, while most of
+    // the fractal pattern lands outside the real data entirely — that's
+    // what "detaches" the overlay from the candlesticks once applied.
+    // Requiring most of the historical cycle to actually overlap keeps
+    // candidates to alignments that are substantively, not just locally,
+    // similar.
+    const MIN_OVERLAP_RATIO = 0.5;
+    const minOverlapDays = Math.floor(fractalRawData.length * MIN_OVERLAP_RATIO);
+
+    const scored: { scale: number; offset: number; corr: number }[] = [];
     for (const scale of scaleCandidates) {
       for (let offset = -currentData.length; offset <= currentData.length; offset += 2) {
         let n = 0, sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
@@ -174,34 +223,67 @@ export default function MSTRAnalysisPage() {
           n++;
           sumX += x; sumY += y; sumXY += x * y; sumX2 += x * x; sumY2 += y * y;
         }
-        if (n < 30) continue;
+        if (n < minOverlapDays) continue;
         const numerator = n * sumXY - sumX * sumY;
         const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
         if (denominator === 0) continue;
-        const corr = numerator / denominator;
-        if (corr > best.corr) {
-          best = { corr, scale, offset };
-        }
+        scored.push({ scale, offset, corr: numerator / denominator });
       }
     }
 
-    if (best.corr === -Infinity) return;
-
-    const fractalWindow: number[] = [];
-    const currentWindow: number[] = [];
-    for (let i = 0; i < fractalRawData.length; i++) {
-      const targetIndex = Math.round(pivotIdx + (i - pivotIdx) * best.scale + best.offset);
-      if (targetIndex < 0 || targetIndex >= currentData.length) continue;
-      fractalWindow.push(fractalRawData[i].close);
-      currentWindow.push(currentData[targetIndex].close);
+    if (!scored.length) {
+      setAlignCandidates([]);
+      return;
     }
-    const { slope, intercept } = linearRegression(fractalWindow, currentWindow);
+    scored.sort((a, b) => b.corr - a.corr);
 
-    setTimeScale(best.scale);
-    setTimeOffset(best.offset);
-    setPriceScale(slope);
-    setPriceOffset(intercept);
-  }, [currentData, fractalRawData]);
+    // Greedily take the best-scoring candidates, skipping any whose offset is
+    // too close to one already picked — otherwise the top 5 are all the same
+    // alignment shifted by a day or two.
+    const picked: typeof scored = [];
+    for (const cand of scored) {
+      if (picked.length >= CANDIDATE_COUNT) break;
+      if (picked.every(p => Math.abs(p.offset - cand.offset) >= MIN_CANDIDATE_OFFSET_GAP)) {
+        picked.push(cand);
+      }
+    }
+
+    // Fit (and clamp, same +-10% rule as before) a price scale/offset for
+    // each picked candidate so every option is ready to apply immediately.
+    const withPriceFit: AlignCandidate[] = picked.map(({ scale, offset, corr }) => {
+      const fractalWindow: number[] = [];
+      const currentWindow: number[] = [];
+      for (let i = 0; i < fractalRawData.length; i++) {
+        const targetIndex = Math.round(pivotIdx + (i - pivotIdx) * scale + offset);
+        if (targetIndex < 0 || targetIndex >= currentData.length) continue;
+        fractalWindow.push(fractalRawData[i].close);
+        currentWindow.push(currentData[targetIndex].close);
+      }
+      const { slope, intercept } = linearRegression(fractalWindow, currentWindow);
+
+      const minPriceScale = priceScale * (1 - PRICE_SCALE_SEARCH_RANGE);
+      const maxPriceScale = priceScale * (1 + PRICE_SCALE_SEARCH_RANGE);
+      const clampedSlope = Math.min(Math.max(slope, minPriceScale), maxPriceScale);
+      let clampedIntercept = intercept;
+      if (clampedSlope !== slope && fractalWindow.length > 0) {
+        const meanX = fractalWindow.reduce((a, b) => a + b, 0) / fractalWindow.length;
+        const meanY = currentWindow.reduce((a, b) => a + b, 0) / currentWindow.length;
+        clampedIntercept = meanY - clampedSlope * meanX;
+      }
+
+      return { scale, offset, corr, priceScale: clampedSlope, priceOffset: clampedIntercept };
+    });
+
+    setAlignCandidates(withPriceFit);
+  }, [currentData, fractalRawData, timeScale, priceScale]);
+
+  const applyAlignCandidate = React.useCallback((candidate: AlignCandidate) => {
+    setTimeScale(candidate.scale);
+    setTimeOffset(candidate.offset);
+    setPriceScale(candidate.priceScale);
+    setPriceOffset(candidate.priceOffset);
+    setAlignCandidates([]);
+  }, []);
 
   // Pair series by the date they're actually drawn on (fractalData's
   // logicalIndex), not by raw array position — fractalData isn't guaranteed
@@ -264,6 +346,14 @@ export default function MSTRAnalysisPage() {
           </h2>
           <button
             type="button"
+            onClick={handleAutoAlign}
+            className="text-xs font-medium px-2 py-1 rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50 transition-colors"
+            title="원본과 가장 유사한 정렬 후보 5개를 찾습니다"
+          >
+            자동 정렬
+          </button>
+          <button
+            type="button"
             onClick={() => fractalChartRef.current?.toggleLogScale()}
             className={`text-xs font-medium px-2 py-1 rounded-md border transition-colors
               ${isLogScale
@@ -274,6 +364,30 @@ export default function MSTRAnalysisPage() {
             {isLogScale ? '로그' : '일반'}
           </button>
         </div>
+
+        {alignCandidates.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 mb-4 p-3 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-700">
+            <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">후보를 선택하세요 (유사도 높은 순):</span>
+            {alignCandidates.map((candidate, idx) => (
+              <button
+                key={`${candidate.scale}-${candidate.offset}`}
+                type="button"
+                onClick={() => applyAlignCandidate(candidate)}
+                className="text-xs font-medium px-2.5 py-1 rounded-md border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
+              >
+                #{idx + 1} 유사도 {(candidate.corr * 100).toFixed(1)}%
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setAlignCandidates([])}
+              className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 ml-1"
+            >
+              닫기
+            </button>
+          </div>
+        )}
+
         <FractalChart
           ref={fractalChartRef}
           currentData={currentData}
