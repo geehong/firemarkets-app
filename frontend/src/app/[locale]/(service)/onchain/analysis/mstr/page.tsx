@@ -16,6 +16,18 @@ interface AlignCandidate {
   priceOffset: number;
 }
 
+// A drag anchor pins one raw fractal point (rawIndex, into
+// extendedFractalRawData) to a target position (targetLogical on the real
+// time axis, targetPrice on the real price axis). The segments between
+// consecutive anchors are mapped with their own affine (scale+offset)
+// transform, so the actual historical price shape is preserved between
+// anchors instead of being flattened into straight lines.
+interface WarpAnchor {
+  rawIndex: number;
+  targetLogical: number;
+  targetPrice: number;
+}
+
 export default function MSTRAnalysisPage() {
   const [currentData, setCurrentData] = useState<any[]>([]);
   const [fractalRawData, setFractalRawData] = useState<any[]>([]);
@@ -54,11 +66,12 @@ export default function MSTRAnalysisPage() {
 
 
   // Interaction State (Transformations)
-  // Default values to center the fractal on the screen
+  // timeOffset/priceOffset: global translation from the blue "move" handle.
+  // anchors: per-pivot-point targets from the green "anchor" handles (see
+  // WarpAnchor above) driving the piecewise-affine shape of the overlay.
   const [timeOffset, setTimeOffset] = useState<number>(0);
-  const [timeScale, setTimeScale] = useState<number>(1.0);
   const [priceOffset, setPriceOffset] = useState<number>(0);
-  const [priceScale, setPriceScale] = useState<number>(1.0);
+  const [anchors, setAnchors] = useState<WarpAnchor[]>([]);
 
   // Chart y-axis log/linear toggle, rendered next to the chart title (not
   // overlapping the price axis labels the way an in-chart button would).
@@ -69,22 +82,6 @@ export default function MSTRAnalysisPage() {
   // best match, since near-identical correlation scores can come from very
   // different-looking overlay positions.
   const [alignCandidates, setAlignCandidates] = useState<AlignCandidate[]>([]);
-
-  // Initial centering logic once data is loaded
-  useEffect(() => {
-    if (currentData.length > 0 && fractalRawData.length > 0 && timeOffset === 0) {
-      // Place it at the end of the current cycle by default
-      const defaultTimeOffset = Math.max(0, currentData.length - fractalRawData.length);
-      
-      // Auto-scale price roughly based on the first few items
-      const currStartPrice = currentData[defaultTimeOffset]?.close || 100;
-      const pastStartPrice = fractalRawData[0]?.close || 10;
-      const initialPriceScale = currStartPrice / pastStartPrice;
-      
-      setTimeOffset(defaultTimeOffset);
-      setPriceScale(initialPriceScale);
-    }
-  }, [currentData, fractalRawData]);
 
   // The raw fractal (e.g. one BTC cycle) ends at "today" by default, so on its
   // own it never shows a future projection. Repeat the cycle once, offset so
@@ -109,23 +106,80 @@ export default function MSTRAnalysisPage() {
     return [...fractalRawData, ...secondCycle];
   }, [fractalRawData]);
 
-  // Dynamically map fractal data onto current data's time axis, extending into the future
+  // Initial anchor placement once data is loaded: exactly 2 fixed anchors —
+  // start / end — placed only on the base cycle (fractalRawData), never on
+  // its repeated continuation (the second half of extendedFractalRawData).
+  // That repeated half is purely a future extrapolation of the base cycle's
+  // shape, not something meant to be independently reshaped, so it has no
+  // anchors of its own: it just inherits the single start-to-end segment's
+  // affine scale (see fractalData below).
+  // Each anchor's initial target reproduces the old single-scale default
+  // view (identity time mapping, i.e. timeScale=1, plus a price scale that
+  // roughly lines up "today" with the real series).
+  useEffect(() => {
+    if (anchors.length === 0 && currentData.length > 0 && extendedFractalRawData.length > 0 && fractalRawData.length > 0) {
+      const baseIndices = [0, fractalRawData.length - 1];
+
+      const defaultTimeOffset = Math.max(0, currentData.length - fractalRawData.length);
+      const currStartPrice = currentData[defaultTimeOffset]?.close || 100;
+      const pastStartPrice = fractalRawData[0]?.close || 10;
+      const initialPriceScale = currStartPrice / pastStartPrice;
+
+      setTimeOffset(defaultTimeOffset);
+      setAnchors(
+        baseIndices.map((rawIndex) => ({
+          rawIndex,
+          targetLogical: rawIndex, // identity time mapping; timeOffset above provides the shift
+          targetPrice: extendedFractalRawData[rawIndex].close * initialPriceScale,
+        }))
+      );
+    }
+  }, [currentData, extendedFractalRawData, fractalRawData, anchors.length]);
+
+  // Dynamically map fractal data onto current data's time axis, extending into the future.
+  // Between consecutive anchors, each segment gets its own affine (scale+offset)
+  // transform solved so both anchor endpoints land exactly on their targets,
+  // while everything in between keeps the real historical wiggle (it's an
+  // affine map of the actual data, not a straight line connecting the pivots).
   const fractalData = React.useMemo(() => {
-    if (!currentData.length || !extendedFractalRawData.length) return [];
+    if (!currentData.length || !extendedFractalRawData.length || anchors.length < 2) return [];
+
+    const sortedAnchors = [...anchors].sort((a, b) => a.rawIndex - b.rawIndex);
+
+    const segments = [];
+    for (let k = 0; k < sortedAnchors.length - 1; k++) {
+      const a = sortedAnchors[k];
+      const b = sortedAnchors[k + 1];
+      const rawSpan = b.rawIndex - a.rawIndex;
+      const segTimeScale = rawSpan !== 0 ? (b.targetLogical - a.targetLogical) / rawSpan : 1;
+
+      const rawCloseA = extendedFractalRawData[a.rawIndex].close;
+      const rawCloseB = extendedFractalRawData[b.rawIndex].close;
+      const rawCloseSpan = rawCloseB - rawCloseA;
+      const segPriceScale = rawCloseSpan !== 0 ? (b.targetPrice - a.targetPrice) / rawCloseSpan : 1;
+      const segPriceOffset = a.targetPrice - rawCloseA * segPriceScale;
+
+      segments.push({ startRaw: a.rawIndex, timeBase: a.targetLogical, segTimeScale, segPriceScale, segPriceOffset });
+    }
 
     const mapped = [];
     const lastCurrentDate = new Date(currentData[currentData.length - 1].time);
-    // Pivot scaling around "today" (the boundary between the first cycle and
-    // its repeated continuation) so growing/shrinking the pattern extends
-    // equally into the past and into the future from the present.
-    const pivotIdx = fractalRawData.length;
 
     for (let i = 0; i < extendedFractalRawData.length; i++) {
       const pastPoint = extendedFractalRawData[i];
 
-      // Target index in current time axis
-      const targetIndex = Math.round(pivotIdx + (i - pivotIdx) * timeScale + timeOffset);
-      
+      // Pick the segment i falls in; for i before the first anchor or past
+      // the last one, this naturally keeps the nearest edge segment, whose
+      // affine formula extrapolates linearly beyond its own anchors.
+      let seg = segments[0];
+      for (const s of segments) {
+        if (i >= s.startRaw) seg = s;
+        else break;
+      }
+
+      const targetLogical = seg.timeBase + (i - seg.startRaw) * seg.segTimeScale;
+      const targetIndex = Math.round(targetLogical + timeOffset);
+
       let targetTimeStr = '';
       if (targetIndex >= 0 && targetIndex < currentData.length) {
         // Map to existing date
@@ -141,33 +195,65 @@ export default function MSTRAnalysisPage() {
         continue;
       }
 
+      const toMapped = (v: number) => v * seg.segPriceScale + seg.segPriceOffset + priceOffset;
       const mappedPoint = {
         ...pastPoint,
-        open: pastPoint.open * priceScale + priceOffset,
-        high: pastPoint.high * priceScale + priceOffset,
-        low: pastPoint.low * priceScale + priceOffset,
-        close: pastPoint.close * priceScale + priceOffset,
+        open: toMapped(pastPoint.open),
+        high: toMapped(pastPoint.high),
+        low: toMapped(pastPoint.low),
+        close: toMapped(pastPoint.close),
         time: targetTimeStr,
         originalTime: pastPoint.time,
         logicalIndex: targetIndex, // pass down for easy anchor positioning
+        rawIndex: i, // pass down so FractalChart can place anchor handles
       };
 
       // Ensure strictly increasing unique times for Lightweight Charts
       if (mapped.length > 0 && mapped[mapped.length - 1].time === targetTimeStr) {
-        // Duplicate time (timeScale < 1), overwrite with the latest point
+        // Duplicate time (a segment compressed below 1 day/point), overwrite with the latest point
         mapped[mapped.length - 1] = mappedPoint;
       } else {
         mapped.push(mappedPoint);
       }
     }
     return mapped;
-  }, [currentData, extendedFractalRawData, fractalRawData.length, timeOffset, timeScale, priceOffset, priceScale]);
+  }, [currentData, extendedFractalRawData, anchors, timeOffset, priceOffset]);
 
-  const handleTransformUpdate = React.useCallback((dt: number, dp: number, dScaleT: number, dScaleP: number) => {
+  const handleMove = React.useCallback((dt: number, dp: number) => {
     setTimeOffset(prev => prev + dt);
     setPriceOffset(prev => prev + dp);
-    setTimeScale(prev => Math.max(0.1, prev + dScaleT));
-    setPriceScale(prev => Math.max(0.1, prev + dScaleP));
+  }, []);
+
+  // Cascading, log-decayed proportional falloff: the dragged anchor gets the
+  // full delta, and every other anchor gets a fraction that shrinks slowly
+  // (logarithmically) with how many anchors away it is — near neighbors move
+  // almost as much, far ones barely move — so the whole curve deforms
+  // smoothly instead of only bending the two segments touching the dragged
+  // point. targetLogical is then clamped to stay strictly increasing so
+  // segments never invert into a negative/zero span.
+  const handleAnchorDrag = React.useCallback((rawIndex: number, dt: number, dp: number) => {
+    setAnchors(prev => {
+      const sorted = [...prev].sort((a, b) => a.rawIndex - b.rawIndex);
+      const k = sorted.findIndex(a => a.rawIndex === rawIndex);
+      if (k === -1) return prev;
+
+      const next = sorted.map((a, j) => {
+        const distance = Math.abs(j - k);
+        const weight = 1 / (1 + Math.log(1 + distance));
+        return {
+          ...a,
+          targetLogical: a.targetLogical + dt * weight,
+          targetPrice: a.targetPrice + dp * weight,
+        };
+      });
+
+      for (let i = 1; i < next.length; i++) {
+        if (next[i].targetLogical <= next[i - 1].targetLogical) {
+          next[i].targetLogical = next[i - 1].targetLogical + 1;
+        }
+      }
+      return next;
+    });
   }, []);
 
   // Searches (timeOffset, timeScale) combinations against the single historical
@@ -187,14 +273,34 @@ export default function MSTRAnalysisPage() {
   const CANDIDATE_COUNT = 5;
 
   const handleAutoAlign = React.useCallback(() => {
-    if (!currentData.length || !fractalRawData.length) {
+    if (!currentData.length || !fractalRawData.length || anchors.length < 2) {
       setAlignCandidates([]);
       return;
     }
 
     const pivotIdx = fractalRawData.length;
-    const minScale = timeScale * (1 - TIME_SCALE_SEARCH_RANGE);
-    const maxScale = timeScale * (1 + TIME_SCALE_SEARCH_RANGE);
+
+    // The search center used to be the single global timeScale/priceScale
+    // state. Anchors replaced that with a piecewise warp, so derive an
+    // equivalent "effective" global scale from the outermost anchors to use
+    // as the search center instead — same idea, just read off the current
+    // shape rather than a dedicated state variable.
+    const sortedAnchors = [...anchors].sort((a, b) => a.rawIndex - b.rawIndex);
+    const firstAnchor = sortedAnchors[0];
+    const lastAnchor = sortedAnchors[sortedAnchors.length - 1];
+    const rawSpan = lastAnchor.rawIndex - firstAnchor.rawIndex;
+    const effectiveTimeScale = rawSpan !== 0
+      ? (lastAnchor.targetLogical - firstAnchor.targetLogical) / rawSpan
+      : 1;
+    const rawCloseFirst = extendedFractalRawData[firstAnchor.rawIndex].close;
+    const rawCloseLast = extendedFractalRawData[lastAnchor.rawIndex].close;
+    const rawCloseSpan = rawCloseLast - rawCloseFirst;
+    const effectivePriceScale = rawCloseSpan !== 0
+      ? (lastAnchor.targetPrice - firstAnchor.targetPrice) / rawCloseSpan
+      : 1;
+
+    const minScale = effectiveTimeScale * (1 - TIME_SCALE_SEARCH_RANGE);
+    const maxScale = effectiveTimeScale * (1 + TIME_SCALE_SEARCH_RANGE);
     const SCALE_STEPS = 30;
     const scaleCandidates = Array.from(
       { length: SCALE_STEPS + 1 },
@@ -261,8 +367,8 @@ export default function MSTRAnalysisPage() {
       }
       const { slope, intercept } = linearRegression(fractalWindow, currentWindow);
 
-      const minPriceScale = priceScale * (1 - PRICE_SCALE_SEARCH_RANGE);
-      const maxPriceScale = priceScale * (1 + PRICE_SCALE_SEARCH_RANGE);
+      const minPriceScale = effectivePriceScale * (1 - PRICE_SCALE_SEARCH_RANGE);
+      const maxPriceScale = effectivePriceScale * (1 + PRICE_SCALE_SEARCH_RANGE);
       const clampedSlope = Math.min(Math.max(slope, minPriceScale), maxPriceScale);
       let clampedIntercept = intercept;
       if (clampedSlope !== slope && fractalWindow.length > 0) {
@@ -275,15 +381,26 @@ export default function MSTRAnalysisPage() {
     });
 
     setAlignCandidates(withPriceFit);
-  }, [currentData, fractalRawData, timeScale, priceScale]);
+  }, [currentData, fractalRawData, extendedFractalRawData, anchors]);
 
+  // Applying a candidate resets every anchor back onto a single global
+  // (scale, offset) affine — i.e. it discards any manual per-anchor cascade
+  // edits and starts fresh from the auto-aligned shape, same as picking a
+  // candidate did under the old single-scale model. timeOffset carries the
+  // candidate's time offset (added on top of each anchor's targetLogical,
+  // same as the drag flow); priceOffset resets to 0 since it's already baked
+  // into each anchor's targetPrice.
   const applyAlignCandidate = React.useCallback((candidate: AlignCandidate) => {
-    setTimeScale(candidate.scale);
+    const pivotIdx = fractalRawData.length;
+    setAnchors(prev => prev.map(a => ({
+      rawIndex: a.rawIndex,
+      targetLogical: pivotIdx + (a.rawIndex - pivotIdx) * candidate.scale,
+      targetPrice: extendedFractalRawData[a.rawIndex].close * candidate.priceScale + candidate.priceOffset,
+    })));
     setTimeOffset(candidate.offset);
-    setPriceScale(candidate.priceScale);
-    setPriceOffset(candidate.priceOffset);
+    setPriceOffset(0);
     setAlignCandidates([]);
-  }, []);
+  }, [fractalRawData, extendedFractalRawData]);
 
   // Pair series by the date they're actually drawn on (fractalData's
   // logicalIndex), not by raw array position — fractalData isn't guaranteed
@@ -318,8 +435,8 @@ export default function MSTRAnalysisPage() {
           MSTR 사이클 프랙탈 분석
         </h1>
         <p className="text-gray-600 dark:text-gray-400">
-          현재 주가 흐름과 과거 비트코인/MSTR 불장 사이클의 패턴을 오버레이하여 비교합니다. 
-          차트의 빨간 포인트를 좌우로 드래그하여 과거 사이클의 시작점과 배율(늘리기/줄이기)을 동기화해 볼 수 있습니다.
+          현재 주가 흐름과 과거 비트코인/MSTR 불장 사이클의 패턴을 오버레이하여 비교합니다.
+          파란 포인트로 전체 위치를 이동하고, 초록 포인트(주요 변곡점)를 드래그하면 인접한 변곡점들도 비율적으로 함께 움직이며 곡선 모양을 조정할 수 있습니다.
         </p>
         
         {minLength > 0 && (
@@ -392,7 +509,9 @@ export default function MSTRAnalysisPage() {
           ref={fractalChartRef}
           currentData={currentData}
           fractalData={fractalData}
-          onTransformUpdate={handleTransformUpdate}
+          anchorRawIndices={anchors.map(a => a.rawIndex)}
+          onMove={handleMove}
+          onAnchorDrag={handleAnchorDrag}
           onLogScaleChange={setIsLogScale}
         />
         <p className="text-xs text-gray-400 mt-4 text-right">

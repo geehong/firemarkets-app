@@ -4,7 +4,12 @@ import { createChart, IChartApi, ISeriesApi, Time, CandlestickSeries, LineSeries
 interface FractalChartProps {
   currentData: any[];
   fractalData: any[];
-  onTransformUpdate?: (dt: number, dp: number, dScaleT: number, dScaleP: number) => void;
+  // rawIndex of each shape-control point (start/middle/end of the base
+  // cycle) the fractal's shape gets pinned to. One drag handle is rendered
+  // per entry.
+  anchorRawIndices?: number[];
+  onMove?: (dt: number, dp: number) => void;
+  onAnchorDrag?: (rawIndex: number, dt: number, dp: number) => void;
   onLogScaleChange?: (isLogScale: boolean) => void;
 }
 
@@ -12,13 +17,13 @@ export interface FractalChartHandle {
   toggleLogScale: () => void;
 }
 
-function FractalChart({ currentData, fractalData, onTransformUpdate, onLogScaleChange }: FractalChartProps, ref: React.Ref<FractalChartHandle>) {
+function FractalChart({ currentData, fractalData, anchorRawIndices, onMove, onAnchorDrag, onLogScaleChange }: FractalChartProps, ref: React.Ref<FractalChartHandle>) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const currentSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const fractalSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
 
-  const [anchors, setAnchors] = useState<{ x: number, y: number, type: 'move' | 'scale', index: number }[]>([]);
+  const [anchors, setAnchors] = useState<{ x: number, y: number, type: 'move' | 'anchor', rawIndex: number }[]>([]);
   // Purely a rendering toggle for the y-axis (log vs linear price scale).
   // Doesn't touch the underlying data or any of the drag/scale/offset state,
   // so every existing setting/interaction keeps working the same way.
@@ -81,10 +86,10 @@ function FractalChart({ currentData, fractalData, onTransformUpdate, onLogScaleC
 
   const updateAnchorsPosition = useCallback(() => {
     if (!chartRef.current || !fractalSeriesRef.current || fractalData.length === 0) return;
-    
+
     const chart = chartRef.current;
     const fSeries = fractalSeriesRef.current;
-    const pts: { x: number, y: number, type: 'move' | 'scale', index: number }[] = [];
+    const pts: { x: number, y: number, type: 'move' | 'anchor', rawIndex: number }[] = [];
 
     // The container clips overflow, so a handle dragged past its edge would
     // otherwise become invisible instead of staying reachable. Clamp to the
@@ -96,35 +101,30 @@ function FractalChart({ currentData, fractalData, onTransformUpdate, onLogScaleC
     const clampX = (val: number) => Math.min(Math.max(val, ANCHOR_MARGIN), containerWidth - ANCHOR_MARGIN);
     const clampY = (val: number) => Math.min(Math.max(val, ANCHOR_MARGIN), containerHeight - ANCHOR_MARGIN);
 
-    // Find center and end points of the fractal data
-    const centerIdx = Math.floor(fractalData.length / 2);
-    const endIdx = fractalData.length - 1;
-
-    const centerPoint = fractalData[centerIdx];
-    const endPoint = fractalData[endIdx];
-
-    if (centerPoint) {
-      const logical = centerPoint.logicalIndex;
+    const toScreenPoint = (point: any) => {
+      const logical = point.logicalIndex;
       const x = chart.timeScale().logicalToCoordinate(logical as any);
-      const y = fSeries.priceToCoordinate(centerPoint.close);
+      const y = fSeries.priceToCoordinate(point.close);
+      return { x: x !== null ? x : containerWidth / 2, y: y !== null ? y : 200 };
+    };
 
-      const safeX = x !== null ? x : containerWidth / 2;
-      const safeY = y !== null ? y : 200;
-      pts.push({ x: clampX(safeX), y: clampY(safeY), type: 'move', index: 0 });
+    // Blue "move" handle: plain translation, pinned to the fractal's center point.
+    const centerPoint = fractalData[Math.floor(fractalData.length / 2)];
+    if (centerPoint) {
+      const { x, y } = toScreenPoint(centerPoint);
+      pts.push({ x: clampX(x), y: clampY(y), type: 'move', rawIndex: -1 });
     }
 
-    if (endPoint) {
-      const logical = endPoint.logicalIndex;
-      const x = chart.timeScale().logicalToCoordinate(logical as any);
-      const y = fSeries.priceToCoordinate(endPoint.close);
-
-      const safeX = x !== null ? x : containerWidth - 100;
-      const safeY = y !== null ? y : 200;
-      pts.push({ x: clampX(safeX), y: clampY(safeY), type: 'scale', index: 1 });
+    // Green "anchor" handles: one per auto-detected pivot (peak/trough).
+    for (const rawIndex of anchorRawIndices || []) {
+      const point = fractalData.find((p) => p.rawIndex === rawIndex);
+      if (!point) continue;
+      const { x, y } = toScreenPoint(point);
+      pts.push({ x: clampX(x), y: clampY(y), type: 'anchor', rawIndex });
     }
 
     setAnchors(pts);
-  }, [fractalData]);
+  }, [fractalData, anchorRawIndices]);
 
   // Helper to remove duplicate dates which crash Lightweight Charts
   const filterUniqueTimes = (arr: any[]) => {
@@ -174,10 +174,12 @@ function FractalChart({ currentData, fractalData, onTransformUpdate, onLogScaleC
     return () => clearTimeout(timer);
   }, [currentData, fractalData, updateAnchorsPosition]);
 
-  const handleDrag = (e: React.MouseEvent, type: 'move' | 'scale') => {
+  const handleDrag = (e: React.MouseEvent, type: 'move' | 'anchor', rawIndex?: number) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!chartContainerRef.current || !chartRef.current || !fractalSeriesRef.current || !onTransformUpdate) return;
+    if (!chartContainerRef.current || !chartRef.current || !fractalSeriesRef.current) return;
+    if (type === 'move' && !onMove) return;
+    if (type === 'anchor' && !onAnchorDrag) return;
 
     const chart = chartRef.current;
     const fSeries = fractalSeriesRef.current;
@@ -187,25 +189,21 @@ function FractalChart({ currentData, fractalData, onTransformUpdate, onLogScaleC
     // Freeze the fractal's own price scale only while translating (move).
     // A pure move doesn't change the data's value range, so freezing avoids
     // the autoScale-refit feedback loop that made vertical drags feel
-    // erratic. A scale drag DOES change the range on purpose, so autoScale
+    // erratic. An anchor drag DOES change the range on purpose, so autoScale
     // must stay live there or the newly grown/shrunk data clips out of the
     // frozen (stale) bounds and looks like it "disappears".
     if (type === 'move') {
       fPriceScale.applyOptions({ autoScale: false });
     }
 
-    // Dampen move sensitivity: a raw 1px-mouse-move = 1 price-unit mapping
-    // feels far too fast once the fractal's price range is wide (e.g. after
+    // Dampen sensitivity: a raw 1px-mouse-move = 1 price-unit mapping feels
+    // far too fast once the fractal's price range is wide (e.g. after
     // extending it into a projected future leg), since each pixel then
-    // covers a large price span. Scale drags already have their own fixed
-    // 0.005 sensitivity below for the same reason.
-    const MOVE_SENSITIVITY = 0.35;
+    // covers a large price span.
+    const DRAG_SENSITIVITY = 0.35;
 
-    let lastX = e.clientX - rect.left;
-    let lastY = e.clientY - rect.top;
-
-    let lastLogical = chart.timeScale().coordinateToLogical(lastX);
-    let lastPrice = fSeries.coordinateToPrice(lastY);
+    let lastLogical = chart.timeScale().coordinateToLogical(e.clientX - rect.left);
+    let lastPrice = fSeries.coordinateToPrice(e.clientY - rect.top);
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const x = moveEvent.clientX - rect.left;
@@ -214,23 +212,16 @@ function FractalChart({ currentData, fractalData, onTransformUpdate, onLogScaleC
       const logical = chart.timeScale().coordinateToLogical(x);
       const price = fSeries.coordinateToPrice(y);
 
-      if (type === 'move') {
-        if (logical !== null && price !== null && lastLogical !== null && lastPrice !== null) {
-          const dt = (logical - lastLogical) * MOVE_SENSITIVITY;
-          const dp = (price - lastPrice) * MOVE_SENSITIVITY;
-          onTransformUpdate(dt, dp, 0, 0);
-          lastLogical = logical;
-          lastPrice = price;
+      if (logical !== null && price !== null && lastLogical !== null && lastPrice !== null) {
+        const dt = (logical - lastLogical) * DRAG_SENSITIVITY;
+        const dp = (price - lastPrice) * DRAG_SENSITIVITY;
+        if (type === 'move') {
+          onMove!(dt, dp);
+        } else if (rawIndex !== undefined) {
+          onAnchorDrag!(rawIndex, dt, dp);
         }
-      } else if (type === 'scale') {
-        const dx = x - lastX;
-        const dy = y - lastY;
-        // Adjust sensitivity for scaling
-        const dScaleT = dx * 0.005;
-        const dScaleP = -dy * 0.005;
-        onTransformUpdate(0, 0, dScaleT, dScaleP);
-        lastX = x;
-        lastY = y;
+        lastLogical = logical;
+        lastPrice = price;
       }
     };
 
@@ -257,8 +248,7 @@ function FractalChart({ currentData, fractalData, onTransformUpdate, onLogScaleC
   // Switch both price scales (candlestick 'right' and the fractal overlay)
   // between log and linear together, so the two series stay visually
   // consistent. This only changes how the existing values are plotted on the
-  // y-axis; timeOffset/timeScale/priceOffset/priceScale and all the drag
-  // interactions are untouched.
+  // y-axis; the anchor transform state and all drag interactions are untouched.
   const toggleLogScale = useCallback(() => {
     if (!chartRef.current) return;
     const next = !isLogScale;
@@ -281,17 +271,17 @@ function FractalChart({ currentData, fractalData, onTransformUpdate, onLogScaleC
       <div ref={chartContainerRef} className="absolute inset-0" />
 
       {/* Anchor Point Handles */}
-      {anchors.map((anchor, i) => (
+      {anchors.map((anchor) => (
         <div
-          key={`anchor-${anchor.index}`}
-          onMouseDown={(e) => handleDrag(e, anchor.type)}
+          key={anchor.type === 'move' ? 'anchor-move' : `anchor-${anchor.rawIndex}`}
+          onMouseDown={(e) => handleDrag(e, anchor.type, anchor.type === 'anchor' ? anchor.rawIndex : undefined)}
           className={`absolute w-8 h-8 rounded-full cursor-grab active:cursor-grabbing shadow-[0_0_15px_rgba(0,0,0,0.5)] border-2 border-white hover:scale-110 transition-transform z-50 flex items-center justify-center -ml-4 -mt-4
             ${anchor.type === 'move' ? 'bg-blue-600' : 'bg-green-600'}`}
           style={{
             left: `${anchor.x}px`,
             top: `${anchor.y}px`,
           }}
-          title={anchor.type === 'move' ? "이동 (상하좌우)" : "크기 조절 (상하좌우 확대/축소)"}
+          title={anchor.type === 'move' ? "이동 (상하좌우)" : "변곡점 조정 (드래그하면 인접 포인트도 비율적으로 함께 움직임)"}
         >
           {anchor.type === 'move' ? (
             <span className="text-white text-lg leading-none font-bold">✥</span>
