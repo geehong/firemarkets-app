@@ -126,10 +126,16 @@ function FractalChart({ currentData, fractalData, scaleHandleRawIndices, onMove,
     const clampY = (val: number) => Math.min(Math.max(val, ANCHOR_MARGIN), containerHeight - ANCHOR_MARGIN);
 
     const toScreenPoint = (point: any) => {
+      if (!point || point.close === undefined || point.close === null || !Number.isFinite(point.close)) {
+        return { x: containerWidth / 2, y: containerHeight / 2 };
+      }
       const logical = point.logicalIndex;
-      const x = chart.timeScale().logicalToCoordinate(logical as any);
-      const y = fSeries.priceToCoordinate(point.close);
-      return { x: x !== null ? x : containerWidth / 2, y: y !== null ? y : 200 };
+      const rawX = (logical !== undefined && logical !== null) ? chart.timeScale().logicalToCoordinate(logical as any) : null;
+      const rawY = fSeries.priceToCoordinate(point.close);
+
+      const x = (rawX !== null && Number.isFinite(rawX)) ? rawX : containerWidth / 2;
+      const y = (rawY !== null && Number.isFinite(rawY)) ? rawY : containerHeight / 2;
+      return { x, y };
     };
 
     // Blue "move" handle: plain translation. Pinned halfway between the two
@@ -172,6 +178,18 @@ function FractalChart({ currentData, fractalData, scaleHandleRawIndices, onMove,
     }
     return unique;
   };
+
+  // Keep frozen price range synced with fractalData bounds when updated
+  useEffect(() => {
+    if (fractalData.length > 0) {
+      const closes = fractalData.map((p: any) => p.close).filter((v: number) => Number.isFinite(v));
+      if (closes.length > 0) {
+        const minValue = Math.min(...closes);
+        const maxValue = Math.max(...closes);
+        frozenPriceRangeRef.current = { minValue, maxValue: maxValue > minValue ? maxValue : minValue + 1 };
+      }
+    }
+  }, [fractalData]);
 
   // Update data when props change
   useEffect(() => {
@@ -219,10 +237,6 @@ function FractalChart({ currentData, fractalData, scaleHandleRawIndices, onMove,
     const fSeries = fractalSeriesRef.current;
     const rect = chartContainerRef.current.getBoundingClientRect();
 
-    // Freeze the overlay's price range (see frozenPriceRangeRef above) the
-    // first time any drag starts, computed directly from the currently
-    // displayed fractalData — i.e. whatever's on screen right now, which by
-    // this point already reflects the settled, correctly-centered view.
     if (!frozenPriceRangeRef.current) {
       const closes = fractalData.map((p: any) => p.close).filter((v: number) => Number.isFinite(v));
       if (closes.length > 0) {
@@ -232,13 +246,8 @@ function FractalChart({ currentData, fractalData, scaleHandleRawIndices, onMove,
       }
     }
 
-    // Dampen move sensitivity: a raw 1px-mouse-move = 1 price-unit mapping
-    // feels far too fast once the fractal's price range is wide (e.g. after
-    // extending it into a projected future leg), since each pixel then
-    // covers a large price span. Scale drags use their own fixed 0.005
-    // sensitivity below for the same reason, decoupled per axis: horizontal
-    // -> time-axis (period) ratio, vertical -> price-axis ratio.
-    const MOVE_SENSITIVITY = 0.35;
+    // Direct 1:1 move tracking so the handle stays locked directly under the cursor
+    const MOVE_SENSITIVITY = 1.0;
 
     let lastX = e.clientX - rect.left;
     let lastY = e.clientY - rect.top;
@@ -259,6 +268,9 @@ function FractalChart({ currentData, fractalData, scaleHandleRawIndices, onMove,
           onMove!(dt, dp);
           lastLogical = logical;
           lastPrice = price;
+        } else {
+          lastLogical = logical !== null ? logical : lastLogical;
+          lastPrice = price !== null ? price : lastPrice;
         }
       } else {
         const dx = x - lastX;
@@ -274,6 +286,15 @@ function FractalChart({ currentData, fractalData, scaleHandleRawIndices, onMove,
     const handleMouseUp = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      // Sync frozen price range after drag finishes
+      if (fractalData.length > 0) {
+        const closes = fractalData.map((p: any) => p.close).filter((v: number) => Number.isFinite(v));
+        if (closes.length > 0) {
+          const minValue = Math.min(...closes);
+          const maxValue = Math.max(...closes);
+          frozenPriceRangeRef.current = { minValue, maxValue: maxValue > minValue ? maxValue : minValue + 1 };
+        }
+      }
     };
 
     document.addEventListener('mousemove', handleMouseMove);

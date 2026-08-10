@@ -124,6 +124,11 @@ export default function MSTRAnalysisPage() {
     // equally into the past and into the future from the present.
     const pivotIdx = fractalRawData.length;
 
+    // Pivot price scaling around the fractal's average price so growing/shrinking
+    // the vertical amplitude expands/contracts around its center rather than $0.
+    const meanPrice = fractalRawData.reduce((acc, d) => acc + d.close, 0) / (fractalRawData.length || 1);
+    const scalePrice = (val: number) => meanPrice + (val - meanPrice) * priceScale + priceOffset;
+
     for (let i = 0; i < extendedFractalRawData.length; i++) {
       const pastPoint = extendedFractalRawData[i];
 
@@ -147,10 +152,10 @@ export default function MSTRAnalysisPage() {
 
       const mappedPoint = {
         ...pastPoint,
-        open: pastPoint.open * priceScale + priceOffset,
-        high: pastPoint.high * priceScale + priceOffset,
-        low: pastPoint.low * priceScale + priceOffset,
-        close: pastPoint.close * priceScale + priceOffset,
+        open: scalePrice(pastPoint.open),
+        high: scalePrice(pastPoint.high),
+        low: scalePrice(pastPoint.low),
+        close: scalePrice(pastPoint.close),
         time: targetTimeStr,
         originalTime: pastPoint.time,
         logicalIndex: targetIndex, // pass down for easy anchor positioning
@@ -166,7 +171,7 @@ export default function MSTRAnalysisPage() {
       }
     }
     return mapped;
-  }, [currentData, extendedFractalRawData, fractalRawData.length, timeOffset, timeScale, priceOffset, priceScale]);
+  }, [currentData, extendedFractalRawData, fractalRawData, timeOffset, timeScale, priceOffset, priceScale]);
 
   const handleMove = React.useCallback((dt: number, dp: number) => {
     setTimeOffset(prev => prev + dt);
