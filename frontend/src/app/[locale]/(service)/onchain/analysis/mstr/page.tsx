@@ -124,11 +124,6 @@ export default function MSTRAnalysisPage() {
     // equally into the past and into the future from the present.
     const pivotIdx = fractalRawData.length;
 
-    // Pivot price scaling around the fractal's average price so growing/shrinking
-    // the vertical amplitude expands/contracts around its center rather than $0.
-    const meanPrice = fractalRawData.reduce((acc, d) => acc + d.close, 0) / (fractalRawData.length || 1);
-    const scalePrice = (val: number) => meanPrice + (val - meanPrice) * priceScale + priceOffset;
-
     for (let i = 0; i < extendedFractalRawData.length; i++) {
       const pastPoint = extendedFractalRawData[i];
 
@@ -152,10 +147,10 @@ export default function MSTRAnalysisPage() {
 
       const mappedPoint = {
         ...pastPoint,
-        open: scalePrice(pastPoint.open),
-        high: scalePrice(pastPoint.high),
-        low: scalePrice(pastPoint.low),
-        close: scalePrice(pastPoint.close),
+        open: pastPoint.open * priceScale + priceOffset,
+        high: pastPoint.high * priceScale + priceOffset,
+        low: pastPoint.low * priceScale + priceOffset,
+        close: pastPoint.close * priceScale + priceOffset,
         time: targetTimeStr,
         originalTime: pastPoint.time,
         logicalIndex: targetIndex, // pass down for easy anchor positioning
@@ -171,7 +166,7 @@ export default function MSTRAnalysisPage() {
       }
     }
     return mapped;
-  }, [currentData, extendedFractalRawData, fractalRawData, timeOffset, timeScale, priceOffset, priceScale]);
+  }, [currentData, extendedFractalRawData, fractalRawData.length, timeOffset, timeScale, priceOffset, priceScale]);
 
   const handleMove = React.useCallback((dt: number, dp: number) => {
     setTimeOffset(prev => prev + dt);
@@ -184,8 +179,18 @@ export default function MSTRAnalysisPage() {
   // pinned to the curve's actual start/end instead of drifting apart.
   const handleScale = React.useCallback((dScaleT: number, dScaleP: number) => {
     setTimeScale(prev => Math.max(0.1, prev + dScaleT));
-    setPriceScale(prev => Math.max(0.1, prev + dScaleP));
-  }, []);
+
+    const meanPrice = fractalRawData.length > 0
+      ? fractalRawData.reduce((sum, p) => sum + p.close, 0) / fractalRawData.length
+      : 0;
+
+    setPriceScale(prev => {
+      const nextScale = Math.max(0.01, prev + dScaleP);
+      const actualDScaleP = nextScale - prev;
+      setPriceOffset(offPrev => offPrev - meanPrice * actualDScaleP);
+      return nextScale;
+    });
+  }, [fractalRawData]);
 
   // Searches (timeOffset, timeScale) combinations against the single historical
   // fractal cycle (the future-projected repeat has no ground truth to correlate
