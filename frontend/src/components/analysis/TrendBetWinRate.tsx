@@ -72,13 +72,19 @@ const DEFAULT_TARGET_WIN_RATE = 70
 
 // Runs the same swing-detection + backtest as the main view for every
 // (days, threshold) combo in the search space, tracking long and short win
-// rates separately. A combo qualifies if EITHER side individually clears the
-// target win rate (each with its own minimum sample size) — long=80%/
-// short=20% is a valid match as long as long alone hits the target; the two
-// sides don't both have to hit it. Among qualifying combos we pick the one
-// backed by the most total trades (the most statistically meaningful one),
-// not just whichever happens to score highest.
-function findBestWinRate(points: Point[], currentData: any[], targetWinRate: number) {
+// rates separately. `direction` restricts which side must clear the target:
+// 'long' or 'short' only cares about that side's win rate (the other side's
+// result is ignored entirely, so e.g. "숏 90%+" can match even if long is
+// nowhere near 90%); 'either' keeps the old behavior where either side
+// individually clearing the target counts. Among qualifying combos we pick
+// the one backed by the most trades on the targeted side (the most
+// statistically meaningful one), not just whichever happens to score highest.
+function findBestWinRate(
+  points: Point[],
+  currentData: any[],
+  targetWinRate: number,
+  direction: 'long' | 'short' | 'either'
+) {
   let best: {
     days: number
     threshold: number
@@ -86,6 +92,7 @@ function findBestWinRate(points: Point[], currentData: any[], targetWinRate: num
     longWinRate: number | null
     shortWinRate: number | null
     bestSideWinRate: number
+    bestSideTotal: number
   } | null = null
 
   for (const days of AUTO_SEARCH_DAYS) {
@@ -114,17 +121,27 @@ function findBestWinRate(points: Point[], currentData: any[], targetWinRate: num
 
       const longWinRate = longTotal > 0 ? (longWins / longTotal) * 100 : null
       const shortWinRate = shortTotal > 0 ? (shortWins / shortTotal) * 100 : null
-      const longQualifies = longTotal >= AUTO_SEARCH_MIN_TRADES && longWinRate !== null && longWinRate >= targetWinRate
-      const shortQualifies = shortTotal >= AUTO_SEARCH_MIN_TRADES && shortWinRate !== null && shortWinRate >= targetWinRate
+      const longQualifies = direction !== 'short' &&
+        longTotal >= AUTO_SEARCH_MIN_TRADES && longWinRate !== null && longWinRate >= targetWinRate
+      const shortQualifies = direction !== 'long' &&
+        shortTotal >= AUTO_SEARCH_MIN_TRADES && shortWinRate !== null && shortWinRate >= targetWinRate
       if (!longQualifies && !shortQualifies) continue
 
+      // When a single side is targeted, rank by that side's own trade count
+      // (not total) so the pick is the most statistically meaningful for the
+      // side that actually matters here.
       const bestSideWinRate = Math.max(
         longQualifies ? (longWinRate as number) : -Infinity,
         shortQualifies ? (shortWinRate as number) : -Infinity
       )
+      const bestSideTotal = direction === 'long' ? longTotal : direction === 'short' ? shortTotal : total
 
-      if (!best || total > best.total || (total === best.total && bestSideWinRate > best.bestSideWinRate)) {
-        best = { days, threshold, total, longWinRate, shortWinRate, bestSideWinRate }
+      if (
+        !best ||
+        bestSideTotal > best.bestSideTotal ||
+        (bestSideTotal === best.bestSideTotal && bestSideWinRate > best.bestSideWinRate)
+      ) {
+        best = { days, threshold, total, longWinRate, shortWinRate, bestSideWinRate, bestSideTotal }
       }
     }
   }
@@ -144,19 +161,20 @@ export default function TrendBetWinRate({ currentData, fractalData }: TrendBetWi
     setAutoSearchMessage(null)
   }
 
-  const handleAutoSearch = () => {
+  const handleAutoSearch = (direction: 'long' | 'short') => {
     if (!fractalData.length || !currentData.length) return
     const points: Point[] = [...fractalData]
       .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
       .map((p) => ({ time: p.time, close: p.close, logicalIndex: p.logicalIndex }))
 
-    const best = findBestWinRate(points, currentData, targetWinRate)
+    const best = findBestWinRate(points, currentData, targetWinRate, direction)
     if (best) {
       setWindowDays(best.days)
       setThreshold(best.threshold)
       setAutoSearchMessage(null)
     } else {
-      setAutoSearchMessage(`목표 승률 ${targetWinRate}%를 만족하는 조합을 찾지 못했습니다. 목표를 낮춰보세요.`)
+      const dirLabel = direction === 'long' ? '롱' : '숏'
+      setAutoSearchMessage(`${dirLabel} 목표 승률 ${targetWinRate}%를 만족하는 조합을 찾지 못했습니다. 목표를 낮춰보세요.`)
     }
   }
 
@@ -291,11 +309,19 @@ export default function TrendBetWinRate({ currentData, fractalData }: TrendBetWi
           </div>
           <button
             type="button"
-            onClick={handleAutoSearch}
+            onClick={() => handleAutoSearch('long')}
             className="rounded border px-3 py-1 text-sm bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700"
-            title="기간 1~30일, 변동률 10~30% 범위에서 롱 또는 숏 중 한쪽이라도 목표 승률 이상을 만족하는 조합 중 표본(거래건수)이 가장 많은 조합을 찾습니다"
+            title="롱 승률만 목표 승률 이상을 만족하는 조합 중, 롱 거래건수가 가장 많은 조합을 찾습니다 (숏 승률은 무관)"
           >
-            자동
+            롱 자동
+          </button>
+          <button
+            type="button"
+            onClick={() => handleAutoSearch('short')}
+            className="rounded border px-3 py-1 text-sm bg-red-500 text-white border-red-500 hover:bg-red-600"
+            title="숏 승률만 목표 승률 이상을 만족하는 조합 중, 숏 거래건수가 가장 많은 조합을 찾습니다 (롱 승률은 무관)"
+          >
+            숏 자동
           </button>
           <button
             type="button"

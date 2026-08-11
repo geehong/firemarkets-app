@@ -15,8 +15,12 @@ fi
 BACKUP_DATE=$(date +"%Y_%m_%d")
 BACKUP_TIME=$(date +"%Y_%m_%d_%H_%M")
 
+# 백업 보존 기간 설정 (일 단위)
+# 512GB 용량 기준, 1회 백업 시 약 15GB 소요되므로 15일(총 30회 백업) 보존이 적절합니다 (총 약 450GB)
+RETENTION_DAYS=15
+
 # USB 드라이브 설정 (UUID를 사용하여 장치 이름이 sda/sdb로 바뀌어도 대응 가능하도록 함)
-USB_DEV="/dev/disk/by-uuid/c25491da-c894-4a0a-a045-6fdf98d57030"
+USB_DEV="/dev/disk/by-uuid/cd498e87-5f0b-4b13-a8f6-0e78d1817614"
 MOUNT_POINT="/home/geehong/firemarkets-app/usb-backup-drive"
 
 # 0. USB 포맷 (FORMAT_USB=true 일 때만 실행)
@@ -57,40 +61,49 @@ if [ "$FORMAT_USB" = "true" ]; then
 fi
 
 # 마운트 확인 및 수행
-# 기존에 마운트된 곳이 있는지 확인 (공백 처리 포함)
-findmnt -n -o TARGET -S "$USB_DEV" | while read -r path; do
-    if [ -n "$path" ] && [ "$path" != "$MOUNT_POINT" ]; then
-        echo "USB가 다른 경로에 마운트되어 있습니다: $path"
-        echo "해당 경로를 언마운트합니다."
-        sudo umount "$path"
-    fi
-done
+if mountpoint -q "$MOUNT_POINT"; then
+    echo "✓ USB가 이미 지정된 경로에 마운트되어 있습니다: $MOUNT_POINT"
+else
+    # 기존에 다른 곳에 마운트되었는지 확인 (공백 처리 포함)
+    findmnt -n -o TARGET -S "$USB_DEV" | while read -r path; do
+        if [ -n "$path" ] && [ "$path" != "$MOUNT_POINT" ]; then
+            echo "USB가 다른 경로에 마운트되어 있습니다: $path"
+            MOUNT_POINT="$path"
+            echo "마운트 경로를 기존 마운트 위치로 변경합니다: $MOUNT_POINT"
+        fi
+    done
 
-if ! mountpoint -q "$MOUNT_POINT"; then
-    echo "USB 마운트 시도: $USB_DEV -> $MOUNT_POINT"
-    sudo mkdir -p "$MOUNT_POINT"
-    
-    # 마운트 실행
-    if sudo mount "$USB_DEV" "$MOUNT_POINT"; then
-        echo "✓ USB 마운트 성공"
-    else
-        echo "✗ USB 마운트 실패. 장치를 확인해주세요."
-        exit 1
+    # 여전히 마운트가 안 되어 있다면 마운트 시도
+    if ! mountpoint -q "$MOUNT_POINT"; then
+        echo "USB 마운트 시도: $USB_DEV -> $MOUNT_POINT"
+        mkdir -p "$MOUNT_POINT" || sudo mkdir -p "$MOUNT_POINT"
+        
+        # 마운트 실행
+        if sudo mount "$USB_DEV" "$MOUNT_POINT"; then
+            echo "✓ USB 마운트 성공"
+            # 권한 설정 (현재 사용자가 쓰기 가능하도록)
+            echo "권한 설정 중..."
+            sudo chown -R $(whoami):$(whoami) "$MOUNT_POINT" || true
+            sudo chmod 755 "$MOUNT_POINT" || true
+        else
+            # sudo mount 실패 시 쓰기 권한이 있는 디렉토리인지 최종 체크
+            if [ -w "$MOUNT_POINT" ]; then
+                echo "⚠️ 마운트 명령은 실패했으나, $MOUNT_POINT 디렉토리에 쓰기 권한이 있으므로 계속 진행합니다."
+            else
+                echo "✗ USB 마운트 실패. 장치를 확인해주세요."
+                exit 1
+            fi
+        fi
     fi
-    
-    # 권한 설정 (현재 사용자가 쓰기 가능하도록)
-    echo "권한 설정 중..."
-    sudo chown -R $(whoami):$(whoami) "$MOUNT_POINT"
-    sudo chmod 755 "$MOUNT_POINT"
 fi
 
 # 백업 경로 설정 (/backup/firemarkets)
 BACKUP_ROOT="${MOUNT_POINT}/backup/firemarkets"
 BACKUP_DIR="${BACKUP_ROOT}/${BACKUP_DATE}"
 
-# 오래된 백업 먼저 정리하여 디스크 공간 확보 (5일 이상 된 백업 삭제)
+# 오래된 백업 먼저 정리하여 디스크 공간 확보 (${RETENTION_DAYS}일 이상 된 백업 삭제)
 echo "오래된 백업 정리 중 (디스크 공간 확보)..."
-find "$BACKUP_ROOT" -name "20*_*" -type d -mtime +5 -exec rm -rf {} \;
+find "$BACKUP_ROOT" -name "20*_*" -type d -mtime +$RETENTION_DAYS -exec rm -rf {} \;
 echo "✓ 오래된 백업 정리 완료"
 
 # 백업 디렉토리 생성 및 확인

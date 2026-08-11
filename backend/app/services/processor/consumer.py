@@ -33,6 +33,7 @@ class StreamConsumer:
         }
         self.last_heartbeat = 0
         self.last_lag_check = 0
+        self.last_pending_check = 0
         self.consecutive_errors = 0
 
     async def connect(self) -> bool:
@@ -56,6 +57,19 @@ class StreamConsumer:
             await self.redis_client.ping()
             logger.info(f"✅ Redis 연결 성공: {self.redis_url}")
             self.consecutive_errors = 0
+
+            # Consumer Group 생성 (연결 시 한 번만 실행하여 CPU 부하 및 예외 발생 제거)
+            for stream_name, group_name in self.realtime_streams.items():
+                try:
+                    # mkstream=True ensures stream exists
+                    await self.redis_client.xgroup_create(
+                        name=stream_name, groupname=group_name, id="0", mkstream=True
+                    )
+                    logger.info(f"✅ Consumer Group 생성 완료: {stream_name} -> {group_name}")
+                except Exception as e:
+                    if "BUSYGROUP" not in str(e):
+                        logger.warning(f"xgroup_create error {stream_name}: {e}")
+
             return True
         except Exception as e:
             logger.error(f"❌ Redis 연결 실패: {e}")
@@ -95,83 +109,79 @@ class StreamConsumer:
                 logger.info(f"💓 StreamConsumer Heartbeat - Connected: {bool(self.redis_client)}")
                 self.last_heartbeat = now
 
-            # Consumer Group 생성
-            for stream_name, group_name in self.realtime_streams.items():
-                try:
-                    # mkstream=True ensures stream exists
-                    await self.redis_client.xgroup_create(
-                        name=stream_name, groupname=group_name, id="0", mkstream=True
-                    )
-                except Exception as e:
-                    if "BUSYGROUP" not in str(e):
-                        logger.warning(f"xgroup_create error {stream_name}: {e}")
+            # Pending 메시지는 30초마다 한 번씩만 확인하여 CPU 및 Redis 부하 방지
+            if now - self.last_pending_check > 30:
+                self.last_pending_check = now
+                for stream_name, group_name in self.realtime_streams.items():
+                    try:
+                        pending_info = await self.redis_client.xpending(stream_name, group_name)
+                        if pending_info and pending_info.get('pending', 0) > 0:
+                            pending_data = await self.redis_client.xreadgroup(
+                                groupname=group_name,
+                                consumername="processor_worker",
+                                streams={stream_name: "0"},
+                                count=min(self.batch_size, pending_info['pending']),
+                                block=0 
+                            )
+                            if pending_data:
+                                await self._process_messages(pending_data, records_to_save, ack_items)
+                    except Exception as e:
+                        # Connection errors should propagate to trigger reconnect
+                        if "Connection" in str(e) or "reset by peer" in str(e):
+                            raise e
+                        logger.debug(f"Pending 처리 실패 {stream_name}: {e}")
 
-            # Pending 메시지 먼저 처리
-            for stream_name, group_name in self.realtime_streams.items():
-                try:
-                    pending_info = await self.redis_client.xpending(stream_name, group_name)
-                    if pending_info and pending_info.get('pending', 0) > 0:
-                        pending_data = await self.redis_client.xreadgroup(
-                            groupname=group_name,
-                            consumername="processor_worker",
-                            streams={stream_name: "0"},
-                            count=min(self.batch_size, pending_info['pending']),
-                            block=0 
-                        )
-                        if pending_data:
-                            await self._process_messages(pending_data, records_to_save, ack_items)
-                except Exception as e:
-                    # Connection errors should propagate to trigger reconnect
-                    if "Connection" in str(e) or "reset by peer" in str(e):
-                        raise e
-                    logger.debug(f"Pending 처리 실패 {stream_name}: {e}")
+            # 🚀 Lag 모니터링 및 자동 리셋 (실시간성 유지) - 15분(900초)마다 체크
+            if now - self.last_lag_check > 900:
+                self.last_lag_check = now
+                for stream_name, group_name in self.realtime_streams.items():
+                    try:
+                        groups_info = await self.redis_client.xinfo_groups(stream_name)
+                        for g in groups_info:
+                            if g.get('name') == group_name.encode('utf-8') or g.get('name') == group_name:
+                                lag = g.get('lag')
+                                # 사용자 요청 공식: (수집 수 * 시간 * 0.5)
+                                # 예: 200개 자산 * 15분 * (분당 10개 틱 예상) * 0.5 = 15,000
+                                asset_count = len(getattr(self, 'ticker_to_asset_id', {})) or 100
+                                # 한도는 넉넉하게 설정 (최소 30,000개 이상 적체 시 실시간성 저하로 판단)
+                                dynamic_threshold = max(30000, int(asset_count * 15 * 10 * 0.5))
+                                
+                                if lag is not None and lag > dynamic_threshold:
+                                    logger.warning(f"🚨 [StreamConsumer] {stream_name} Lag {lag} (임계치 {dynamic_threshold}) 초과! 최신 지점으로 리셋합니다.")
+                                    await self.redis_client.xgroup_setid(stream_name, group_name, "$")
+                    except Exception as xinfo_error:
+                        logger.debug(f"XINFO check failed for {stream_name}: {xinfo_error}")
 
-            # 각 스트림별로 개별 처리 및 Lag 모니터링
-            for stream_name, group_name in self.realtime_streams.items():
-                try:
-                    # 🚀 Lag 모니터링 및 자동 리셋 (실시간성 유지)
-                    # 15분(900초)마다 체크하도록 주기를 조정
-                    if now - self.last_lag_check > 900:
-                        try:
-                            self.last_lag_check = now
-                            groups_info = await self.redis_client.xinfo_groups(stream_name)
-                            for g in groups_info:
-                                if g.get('name') == group_name.encode('utf-8') or g.get('name') == group_name:
-                                    lag = g.get('lag')
-                                    # 사용자 요청 공식: (수집 수 * 시간 * 0.5)
-                                    # 예: 200개 자산 * 15분 * (분당 10개 틱 예상) * 0.5 = 15,000
-                                    asset_count = len(getattr(self, 'ticker_to_asset_id', {})) or 100
-                                    # 한도는 넉넉하게 설정 (최소 30,000개 이상 적체 시 실시간성 저하로 판단)
-                                    dynamic_threshold = max(30000, int(asset_count * 15 * 10 * 0.5))
-                                    
-                                    if lag is not None and lag > dynamic_threshold:
-                                        logger.warning(f"🚨 [StreamConsumer] {stream_name} Lag {lag} (임계치 {dynamic_threshold}) 초과! 최신 지점으로 리셋합니다.")
-                                        await self.redis_client.xgroup_setid(stream_name, group_name, "$")
-                        except Exception as xinfo_error:
-                            logger.debug(f"XINFO check failed for {stream_name}: {xinfo_error}")
+            # 각 스트림별 xreadgroup 호출을 asyncio.gather로 병렬 처리하여 대기 시간 단축
+            tasks = []
+            stream_names = list(self.realtime_streams.keys())
+            for stream_name in stream_names:
+                group_name = self.realtime_streams[stream_name]
+                tasks.append(self.redis_client.xreadgroup(
+                    groupname=group_name,
+                    consumername="processor_worker",
+                    streams={stream_name: ">"},
+                    count=self.batch_size,
+                    block=10  # 대기 시간을 10ms로 줄여서 응답성과 CPU 효율 극대화
+                ))
 
-                    block_time = 100 
-                    
-                    new_data = await self.redis_client.xreadgroup(
-                        groupname=group_name,
-                        consumername="processor_worker",
-                        streams={stream_name: ">"},
-                        count=self.batch_size,
-                        block=block_time
-                    )
-                    
-                    if new_data:
-                        total_messages = sum(len(msgs) for _, msgs in new_data)
-                        if total_messages > 0:
-                            # logger.info(f"📨 스트림 {stream_name}에서 {total_messages}개 메시지 읽음")
-                            pass
-                        await self._process_messages(new_data, records_to_save, ack_items)
-                        
-                except Exception as stream_error:
-                    if "Connection" in str(stream_error) or "reset by peer" in str(stream_error):
-                        raise stream_error
-                    logger.debug(f"스트림 {stream_name} 읽기 실패: {stream_error}")
-            
+            # 병렬로 스트림에서 데이터 읽기
+            new_data_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            for stream_idx, new_data in enumerate(new_data_results):
+                stream_name = stream_names[stream_idx]
+                if isinstance(new_data, Exception):
+                    if "Connection" in str(new_data) or "reset by peer" in str(new_data):
+                        raise new_data
+                    logger.debug(f"스트림 {stream_name} 읽기 실패: {new_data}")
+                    continue
+
+                if new_data:
+                    total_messages = sum(len(msgs) for _, msgs in new_data)
+                    # if total_messages > 0:
+                    #     logger.debug(f"📨 스트림 {stream_name}에서 {total_messages}개 메시지 읽음")
+                    await self._process_messages(new_data, records_to_save, ack_items)
+
             # 데이터가 없으면 추가 대기로 CPU 부하 완화
             if not records_to_save:
                 await asyncio.sleep(0.1)

@@ -8,6 +8,27 @@ import PredictionTable from '@/components/analysis/PredictionTable';
 import TrendBetWinRate from '@/components/analysis/TrendBetWinRate';
 import { useOhlcvV2 } from '@/hooks/assets/useAssetV2';
 
+// Steps forward by n trading days (skipping Sat/Sun) instead of n calendar
+// days. currentData only contains trading-day entries, so historical points
+// map 1 raw index -> ~1.4 calendar days on average (weekends excluded).
+// Generating future dates with plain calendar-day arithmetic instead makes
+// the projected (repeated) cycle land in ~5/7 the calendar width of the
+// historical one even though both share the same raw index width -- this
+// is what made the appended copy look like a different ratio.
+// n may be negative to step backward (used to synthesize dates before
+// currentData's first entry, symmetric with the forward/future case).
+const addTradingDays = (start: Date, n: number) => {
+  const d = new Date(start);
+  const step = n >= 0 ? 1 : -1;
+  let added = 0;
+  while (added < Math.abs(n)) {
+    d.setDate(d.getDate() + step);
+    const day = d.getDay();
+    if (day !== 0 && day !== 6) added++;
+  }
+  return d;
+};
+
 interface AlignCandidate {
   scale: number;
   offset: number;
@@ -29,7 +50,8 @@ export default function MSTRAnalysisPage() {
   // Process data when it arrives
   useEffect(() => {
     if (mstrRes?.data) {
-      setCurrentData(mstrRes.data.map((d: any) => ({
+      const sorted = [...mstrRes.data].sort((a: any, b: any) => new Date(a.timestamp_utc).getTime() - new Date(b.timestamp_utc).getTime());
+      setCurrentData(sorted.map((d: any) => ({
         time: d.timestamp_utc.split('T')[0],
         open: d.open_price,
         high: d.high_price,
@@ -41,7 +63,8 @@ export default function MSTRAnalysisPage() {
 
   useEffect(() => {
     if (btcRes?.data) {
-      setFractalRawData(btcRes.data.map((d: any) => ({
+      const sorted = [...btcRes.data].sort((a: any, b: any) => new Date(a.timestamp_utc).getTime() - new Date(b.timestamp_utc).getTime());
+      setFractalRawData(sorted.map((d: any) => ({
         time: d.timestamp_utc.split('T')[0],
         open: d.open_price,
         high: d.high_price,
@@ -74,41 +97,70 @@ export default function MSTRAnalysisPage() {
   // different-looking overlay positions.
   const [alignCandidates, setAlignCandidates] = useState<AlignCandidate[]>([]);
 
-  // Initial centering logic once data is loaded
+  // Initial centering and amplitude fitting logic once data is loaded
   useEffect(() => {
     if (currentData.length > 0 && fractalRawData.length > 0 && timeOffset === 0) {
-      // Place it at the end of the current cycle by default
-      const defaultTimeOffset = Math.max(0, currentData.length - fractalRawData.length);
-
-      // Auto-scale price roughly based on the first few items
-      const currStartPrice = currentData[defaultTimeOffset]?.close || 100;
-      const pastStartPrice = fractalRawData[0]?.close || 10;
-      const initialPriceScale = currStartPrice / pastStartPrice;
-
+      // Place cycle 1 (the base fractal, rawIndex 0..length-1) so it ends
+      // exactly on currentData's last bar -- i.e. right where the repeated
+      // copy (cycle 2) begins. If the raw fractal window is longer than the
+      // available real data (e.g. a 3-year BTC cycle vs ~2.5 years of MSTR
+      // history), shrink timeScale so the whole base cycle still fits inside
+      // the real data instead of overflowing into "future" territory ahead
+      // of the repeated cycle -- that overflow was making the copy (which
+      // absorbs the leftover overflow bars plus its own) render far wider
+      // than the base cycle it's supposed to match 1:1.
+      const rawLen = fractalRawData.length;
+      const defaultTimeScale = rawLen > 0 ? Math.min(1, currentData.length / rawLen) : 1;
+      const defaultTimeOffset = currentData.length - 1 - rawLen + defaultTimeScale;
+      setTimeScale(defaultTimeScale);
       setTimeOffset(defaultTimeOffset);
-      setPriceScale(initialPriceScale);
+
+      // Fit price scale & offset so the fractal pattern's min/max amplitude
+      // naturally fits within the current cycle's price bounds (~$100-$500)
+      const priceFitStartIndex = Math.max(0, Math.round(defaultTimeOffset));
+      const currPrices = currentData.slice(priceFitStartIndex).map((d: any) => d.close);
+      const pastPrices = fractalRawData.map((d: any) => d.close);
+
+      if (currPrices.length > 5 && pastPrices.length > 5) {
+        const currMin = Math.min(...currPrices);
+        const currMax = Math.max(...currPrices);
+        const pastMin = Math.min(...pastPrices);
+        const pastMax = Math.max(...pastPrices);
+
+        const currRange = currMax - currMin;
+        const pastRange = pastMax - pastMin;
+
+        if (pastRange > 0) {
+          const fitScale = currRange / pastRange;
+          const fitOffset = currMin - pastMin * fitScale;
+          setPriceScale(fitScale);
+          setPriceOffset(fitOffset);
+          return;
+        }
+      }
+
+      const currStartPrice = currentData[priceFitStartIndex]?.close || 100;
+      const pastStartPrice = fractalRawData[0]?.close || 10;
+      setPriceScale(currStartPrice / pastStartPrice);
     }
   }, [currentData, fractalRawData]);
 
   // The raw fractal (e.g. one BTC cycle) ends at "today" by default, so on its
-  // own it never shows a future projection. Repeat the cycle once, offset so
+  // own it never shows a future projection. Repeat the cycle once, scaled so
   // it continues seamlessly from where the first cycle left off, giving a
   // second leg that naturally lands in the future once mapped.
-  //
-  // A second repeat (2 copies chained) was tried, but the resulting data
-  // range stretched years past any reasonable view (into the 2030s), which
-  // made fitContent() zoom out so far the real candlestick series became
-  // invisible and the overlay looked "detached" from it. One copy is enough
-  // for a useful projection without breaking the default view.
   const extendedFractalRawData = React.useMemo(() => {
     if (!fractalRawData.length) return [];
-    const continuityOffset = fractalRawData[fractalRawData.length - 1].close - fractalRawData[0].close;
+    const lastClose = fractalRawData[fractalRawData.length - 1].close;
+    const firstClose = fractalRawData[0].close;
+    const ratio = firstClose > 0 ? lastClose / firstClose : 1;
+
     const secondCycle = fractalRawData.map((d) => ({
       ...d,
-      open: d.open + continuityOffset,
-      high: d.high + continuityOffset,
-      low: d.low + continuityOffset,
-      close: d.close + continuityOffset,
+      open: d.open * ratio,
+      high: d.high * ratio,
+      low: d.low * ratio,
+      close: d.close * ratio,
     }));
     return [...fractalRawData, ...secondCycle];
   }, [fractalRawData]);
@@ -118,6 +170,7 @@ export default function MSTRAnalysisPage() {
     if (!currentData.length || !extendedFractalRawData.length) return [];
 
     const mapped = [];
+    const firstCurrentDate = new Date(currentData[0].time);
     const lastCurrentDate = new Date(currentData[currentData.length - 1].time);
     // Pivot scaling around "today" (the boundary between the first cycle and
     // its repeated continuation) so growing/shrinking the pattern extends
@@ -135,14 +188,23 @@ export default function MSTRAnalysisPage() {
         // Map to existing date
         targetTimeStr = currentData[targetIndex].time;
       } else if (targetIndex >= currentData.length) {
-        // Generate future date
-        const daysIntoFuture = targetIndex - currentData.length + 1;
-        const futureDate = new Date(lastCurrentDate);
-        futureDate.setDate(futureDate.getDate() + daysIntoFuture);
+        // Generate future date, stepping by trading days (skipping weekends)
+        // so the projected cycle keeps the same index-to-calendar-time
+        // cadence as the real (weekend-free) data instead of compressing.
+        const tradingDaysIntoFuture = targetIndex - currentData.length + 1;
+        const futureDate = addTradingDays(lastCurrentDate, tradingDaysIntoFuture);
         targetTimeStr = futureDate.toISOString().split('T')[0];
       } else {
-        // Before current data starts (skip or keep?)
-        continue;
+        // Before current data starts: synthesize a past date the same way
+        // future dates are synthesized, instead of dropping the point.
+        // Dropping only on this side (while the future side always
+        // survives via synthesis) made cycle 1 and cycle 2 lose a
+        // different number of points whenever the overlay was dragged
+        // off its default position, which is what broke the 1:1 width
+        // ratio between the base cycle and its repeated copy.
+        const tradingDaysIntoPast = targetIndex;
+        const pastDate = addTradingDays(firstCurrentDate, tradingDaysIntoPast);
+        targetTimeStr = pastDate.toISOString().split('T')[0];
       }
 
       const mappedPoint = {
@@ -177,15 +239,15 @@ export default function MSTRAnalysisPage() {
   // ratio, decoupled per axis. Both scale handles (start & end) call this
   // same handler, so they always share one global ratio and stay visually
   // pinned to the curve's actual start/end instead of drifting apart.
-  const handleScale = React.useCallback((dScaleT: number, dScaleP: number) => {
-    setTimeScale(prev => Math.max(0.1, prev + dScaleT));
+  const handleScale = React.useCallback((factorT: number, factorP: number) => {
+    setTimeScale(prev => Math.min(Math.max(0.05, prev * factorT), 20.0));
 
     const meanPrice = fractalRawData.length > 0
       ? fractalRawData.reduce((sum, p) => sum + p.close, 0) / fractalRawData.length
       : 0;
 
     setPriceScale(prev => {
-      const nextScale = Math.max(0.01, prev + dScaleP);
+      const nextScale = Math.min(Math.max(0.0001, prev * factorP), 10.0);
       const actualDScaleP = nextScale - prev;
       setPriceOffset(offPrev => offPrev - meanPrice * actualDScaleP);
       return nextScale;

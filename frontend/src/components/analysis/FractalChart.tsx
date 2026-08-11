@@ -25,24 +25,7 @@ function FractalChart({ currentData, fractalData, scaleHandleRawIndices, onMove,
 
   const [anchors, setAnchors] = useState<{ x: number, y: number, type: 'move' | 'scale', rawIndex: number }[]>([]);
   // Purely a rendering toggle for the y-axis (log vs linear price scale).
-  // Doesn't touch the underlying data or any of the drag/scale/offset state,
-  // so every existing setting/interaction keeps working the same way.
   const [isLogScale, setIsLogScale] = useState(false);
-  // Toggling the fractal-overlay price scale's autoScale on/off was tried
-  // (both "freeze on load" and "freeze on first drag") and both left the
-  // axis in a broken state — the library doesn't appear to reliably keep
-  // "whatever range was last computed" when autoScale flips to false;
-  // depending on exact timing it can pin the range to a stale or degenerate
-  // value, dragging every handle to one edge and hiding the line entirely.
-  //
-  // The robust fix is to stop fighting autoScale and instead take over what
-  // range it computes via autoscaleInfoProvider (a supported hook: it can
-  // return a fixed price range instead of the library's own live
-  // min/max-of-visible-data calculation). Once frozenPriceRangeRef holds a
-  // value, the axis uses exactly that range — computed by us, in plain JS,
-  // directly from fractalData — forever, so priceScale/priceOffset edits
-  // reliably shift the line instead of being auto-normalized away.
-  const frozenPriceRangeRef = useRef<{ minValue: number; maxValue: number } | null>(null);
 
   // Initialize chart
   useEffect(() => {
@@ -74,28 +57,18 @@ function FractalChart({ currentData, fractalData, scaleHandleRawIndices, onMove,
     });
     currentSeriesRef.current = currentSeries;
 
+    // Both candlesticks and fractal line share the primary 'right' price scale.
+    // Setting autoscaleInfoProvider: () => null ensures the fractal line overlay
+    // never rescales or distorts the main y-axis, allowing priceOffset (up/down)
+    // and priceScale (vertical stretch) to move seamlessly on screen.
     const fractalSeries = chart.addSeries(LineSeries, {
       color: 'rgba(128, 128, 128, 0.8)', // Gray overlay
       lineWidth: 2,
       crosshairMarkerVisible: false,
-      // Independent overlay price scale so scaling/moving the fractal line
-      // never rescales the candlestick series' price axis.
-      priceScaleId: 'fractal-overlay',
-      // Once frozenPriceRangeRef is set (see handleDrag), always report that
-      // fixed range instead of the library's own live computation — see the
-      // comment on frozenPriceRangeRef above for why.
-      autoscaleInfoProvider: (original: () => any) => {
-        if (frozenPriceRangeRef.current) {
-          return { priceRange: frozenPriceRangeRef.current };
-        }
-        return original();
-      },
+      priceScaleId: 'right',
+      autoscaleInfoProvider: () => null,
     } as any);
     fractalSeriesRef.current = fractalSeries;
-    chart.priceScale('fractal-overlay').applyOptions({
-      visible: false,
-      scaleMargins: { top: 0.05, bottom: 0.05 },
-    });
 
     const handleTimeRangeChange = () => {
       updateAnchorsPosition();
@@ -115,10 +88,6 @@ function FractalChart({ currentData, fractalData, scaleHandleRawIndices, onMove,
     const fSeries = fractalSeriesRef.current;
     const pts: { x: number, y: number, type: 'move' | 'scale', rawIndex: number }[] = [];
 
-    // The container clips overflow, so a handle dragged past its edge would
-    // otherwise become invisible instead of staying reachable. Clamp to the
-    // container bounds (minus the handle's own half-size, ~16px, plus a
-    // little breathing room) so it's always visible and grabbable.
     const containerWidth = chartContainerRef.current?.clientWidth || 800;
     const containerHeight = chartContainerRef.current?.clientHeight || 520;
     const ANCHOR_MARGIN = 20;
@@ -138,10 +107,7 @@ function FractalChart({ currentData, fractalData, scaleHandleRawIndices, onMove,
       return { x, y };
     };
 
-    // Blue "move" handle: plain translation. Pinned halfway between the two
-    // scale handles (not the full mapped array's midpoint, which — since the
-    // array covers the base cycle plus its repeated future half — sits right
-    // on top of the "end" scale handle and hides it).
+    // Blue "move" handle: plain translation. Pinned halfway between scale handles
     let centerPoint = fractalData[Math.floor(fractalData.length / 2)];
     if (scaleHandleRawIndices && scaleHandleRawIndices.length === 2) {
       const midRaw = Math.floor((scaleHandleRawIndices[0] + scaleHandleRawIndices[1]) / 2);
@@ -171,25 +137,13 @@ function FractalChart({ currentData, fractalData, scaleHandleRawIndices, onMove,
     const unique = [];
     let lastTime = '';
     for (const item of arr) {
-      if (item.time !== lastTime) {
+      if (item.time && item.time !== lastTime) {
         unique.push(item);
         lastTime = item.time;
       }
     }
     return unique;
   };
-
-  // Keep frozen price range synced with fractalData bounds when updated
-  useEffect(() => {
-    if (fractalData.length > 0) {
-      const closes = fractalData.map((p: any) => p.close).filter((v: number) => Number.isFinite(v));
-      if (closes.length > 0) {
-        const minValue = Math.min(...closes);
-        const maxValue = Math.max(...closes);
-        frozenPriceRangeRef.current = { minValue, maxValue: maxValue > minValue ? maxValue : minValue + 1 };
-      }
-    }
-  }, [fractalData]);
 
   // Update data when props change
   useEffect(() => {
@@ -203,13 +157,6 @@ function FractalChart({ currentData, fractalData, scaleHandleRawIndices, onMove,
       fractalSeriesRef.current.setData(filterUniqueTimes(lineData) as any);
     }
 
-    // Frame the real (current) data plus a bounded future window, rather
-    // than fitContent()-ing to the full fractal range. The fractal overlay
-    // can span years further into the future than the real series (e.g.
-    // once it's dragged/scaled out), and fitContent() zooms out to fit ALL
-    // of it — which shrinks the real candlesticks down to near-invisible
-    // and makes the overlay look "detached". Scroll/zoom still reaches the
-    // rest of the projection; this only sets the default view.
     if (chartRef.current && currentData.length > 0) {
       const DEFAULT_FUTURE_VIEW_DAYS = 400;
       const firstTime = currentData[0].time as Time;
@@ -237,18 +184,6 @@ function FractalChart({ currentData, fractalData, scaleHandleRawIndices, onMove,
     const fSeries = fractalSeriesRef.current;
     const rect = chartContainerRef.current.getBoundingClientRect();
 
-    if (!frozenPriceRangeRef.current) {
-      const closes = fractalData.map((p: any) => p.close).filter((v: number) => Number.isFinite(v));
-      if (closes.length > 0) {
-        const minValue = Math.min(...closes);
-        const maxValue = Math.max(...closes);
-        frozenPriceRangeRef.current = { minValue, maxValue: maxValue > minValue ? maxValue : minValue + 1 };
-      }
-    }
-
-    // Direct 1:1 move tracking so the handle stays locked directly under the cursor
-    const MOVE_SENSITIVITY = 1.0;
-
     let lastX = e.clientX - rect.left;
     let lastY = e.clientY - rect.top;
 
@@ -263,8 +198,8 @@ function FractalChart({ currentData, fractalData, scaleHandleRawIndices, onMove,
         const logical = chart.timeScale().coordinateToLogical(x);
         const price = fSeries.coordinateToPrice(y);
         if (logical !== null && price !== null && lastLogical !== null && lastPrice !== null) {
-          const dt = (logical - lastLogical) * MOVE_SENSITIVITY;
-          const dp = (price - lastPrice) * MOVE_SENSITIVITY;
+          const dt = logical - lastLogical;
+          const dp = price - lastPrice;
           onMove!(dt, dp);
           lastLogical = logical;
           lastPrice = price;
@@ -275,9 +210,14 @@ function FractalChart({ currentData, fractalData, scaleHandleRawIndices, onMove,
       } else {
         const dx = x - lastX;
         const dy = y - lastY;
-        const dScaleT = dx * 0.005;
-        const dScaleP = -dy * 0.005;
-        onScale!(dScaleT, dScaleP);
+
+        // Multiplicative (relative) scaling factors for symmetric grow & shrink:
+        // factorT: horizontal drag factor (dx > 0 expands duration, dx < 0 shrinks)
+        // factorP: vertical drag factor (-dy > 0 expands price height, -dy < 0 shrinks)
+        const factorT = Math.exp(dx * 0.002);
+        const factorP = Math.exp(-dy * 0.002);
+
+        onScale!(factorT, factorP);
         lastX = x;
         lastY = y;
       }
@@ -286,39 +226,23 @@ function FractalChart({ currentData, fractalData, scaleHandleRawIndices, onMove,
     const handleMouseUp = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
-      // Sync frozen price range after drag finishes
-      if (fractalData.length > 0) {
-        const closes = fractalData.map((p: any) => p.close).filter((v: number) => Number.isFinite(v));
-        if (closes.length > 0) {
-          const minValue = Math.min(...closes);
-          const maxValue = Math.max(...closes);
-          frozenPriceRangeRef.current = { minValue, maxValue: maxValue > minValue ? maxValue : minValue + 1 };
-        }
-      }
+      updateAnchorsPosition();
     };
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   };
 
-  // Right-click-and-drag anywhere on the chart pans the fractal overlay only
-  // (same 'move' transform as the blue handle) without disturbing the
-  // candlestick series or its price scale.
   const handleContainerMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 2) return; // right mouse button only
     handleDrag(e, 'move');
   };
 
-  // Switch both price scales (candlestick 'right' and the fractal overlay)
-  // between log and linear together, so the two series stay visually
-  // consistent. This only changes how the existing values are plotted on the
-  // y-axis; the anchor transform state and all drag interactions are untouched.
   const toggleLogScale = useCallback(() => {
     if (!chartRef.current) return;
     const next = !isLogScale;
     const nextMode = next ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal;
     chartRef.current.priceScale('right').applyOptions({ mode: nextMode });
-    chartRef.current.priceScale('fractal-overlay').applyOptions({ mode: nextMode });
     setIsLogScale(next);
     onLogScaleChange?.(next);
     setTimeout(updateAnchorsPosition, 50);

@@ -178,10 +178,9 @@ class DataProcessor:
                     # log every 100th success to reduce spam
                     if self.stats["processed_count"] % 100 == 0:
                          logger.info(f"📈 실시간 데이터 처리: {stream_count}개 레코드 (총 {self.stats['processed_count']})")
-                    # Don't sleep if we processed data!
-                else:
-                    # 스트림 처리 간격 (process_streams 내부에서 이미 대기하므로 짧게)
-                    await asyncio.sleep(0.01)
+                
+                # 데이터 처리 여부와 관계없이 100ms 대기하여 CPU 점유율을 방지하고 벌크(Bulk) 저장을 유도
+                await asyncio.sleep(0.1)
             except asyncio.CancelledError:
                 logger.info("📡 실시간 스트림 처리 루프 종료")
                 break
