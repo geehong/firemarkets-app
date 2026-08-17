@@ -1,5 +1,6 @@
 import { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
+import { getCanonicalUrl, getLanguageAlternates } from '@/lib/seo'
 
 interface PageProps {
     params: Promise<{ locale: string }>
@@ -12,6 +13,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     return {
         title: t('termsOfService.title'),
         description: t('termsOfService.metaDescription'),
+        alternates: {
+            canonical: getCanonicalUrl(locale, '/terms-of-service'),
+            languages: getLanguageAlternates('/terms-of-service'),
+        },
     }
 }
 

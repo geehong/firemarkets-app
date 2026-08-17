@@ -2,6 +2,7 @@ import { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
 import { Mail, MessageSquare, Headphones, Share2 } from 'lucide-react';
 import Link from 'next/link';
+import { getCanonicalUrl, getLanguageAlternates } from '@/lib/seo';
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
     const { locale } = await params;
@@ -9,6 +10,10 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
     return {
         title: `${t('title')} | FireMarkets`,
         description: t('metaDescription'),
+        alternates: {
+            canonical: getCanonicalUrl(locale, '/contact'),
+            languages: getLanguageAlternates('/contact'),
+        },
     };
 }
 

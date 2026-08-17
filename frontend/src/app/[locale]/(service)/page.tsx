@@ -2,6 +2,7 @@
 import { apiClient } from '@/lib/api'
 import { notFound } from 'next/navigation'
 import { Metadata } from 'next'
+import { getCanonicalUrl, getLanguageAlternates } from '@/lib/seo'
 import DashBoardHomeMainView from '@/components/dashboard/DashBoardHomeMainView';
 
 interface PageProps {
@@ -13,6 +14,13 @@ interface PageProps {
 export const dynamic = 'force-dynamic'
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+    const resolvedParams = await params;
+    const locale = resolvedParams.locale;
+    const alternates = {
+        canonical: getCanonicalUrl(locale, '/'),
+        languages: getLanguageAlternates('/'),
+    }
+
     try {
         // Fetch home post specifically
         const post = await apiClient.getHomePost()
@@ -20,11 +28,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
         if (!post || post.post_type !== 'page') {
             return {
                 title: 'FireMarkets',
+                alternates,
             }
         }
-
-        const resolvedParams = await params;
-        const locale = resolvedParams.locale;
 
         // @ts-ignore
         let title = typeof post.title === 'string' ? post.title : (post.title?.[locale] || post.title?.en || 'FireMarkets')
@@ -39,6 +45,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
         return {
             title: `${title} - Realtime Crypto & Financial Data Platform`,
             description: description,
+            alternates,
             openGraph: {
                 title: `${title} - FireMarkets`,
                 description: description,
@@ -50,6 +57,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
         return {
             title: 'FireMarkets - Realtime Financial Data',
             description: 'FireMarkets provides professional-grade financial data, real-time charts, and on-chain analytics for crypto and traditional assets.',
+            alternates,
         }
     }
 }

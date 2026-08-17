@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { Metadata } from 'next'
 import { apiClient } from '@/lib/api'
+import { getCanonicalUrl, getLanguageAlternates } from '@/lib/seo'
 import BriefNewsDetailView from '@/components/template/BriefNewsDetailView'
 
 async function getBriefNewsData(slug: string) {
@@ -28,10 +29,15 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
     const title = typeof post.title === 'string' ? post.title : (post.title?.[locale] || post.title?.en || post.title?.ko || slug)
     const desc = typeof post.description === 'string' ? post.description : (post.description?.[locale] || post.description?.en || post.description?.ko || '')
+    const path = `/news/briefnews/${slug}`
 
     return {
         title: `${title} | FireMarkets 단신`,
         description: desc,
+        alternates: {
+            canonical: getCanonicalUrl(locale, path),
+            languages: getLanguageAlternates(path),
+        },
     }
 }
 

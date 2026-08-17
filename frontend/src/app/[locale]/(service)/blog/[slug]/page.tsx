@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { Metadata } from 'next'
 import { apiClient } from '@/lib/api'
+import { getCanonicalUrl, getLanguageAlternates } from '@/lib/seo'
 import PostDetailedView from '@/components/template/PostDetailedView'
 
 async function getBlogData(slug: string) {
@@ -34,10 +35,15 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     // Assuming title is object or string
     const title = typeof blog.title === 'string' ? blog.title : (blog.title?.[locale] || blog.title?.en || blog.title?.ko || slug)
     const desc = typeof blog.description === 'string' ? blog.description : (blog.description?.[locale] || blog.description?.en || blog.description?.ko || '')
+    const path = `/blog/${slug}`
 
     return {
         title: `${title} | FireMarkets Blog`,
         description: desc,
+        alternates: {
+            canonical: getCanonicalUrl(locale, path),
+            languages: getLanguageAlternates(path),
+        },
     }
 }
 

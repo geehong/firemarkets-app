@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { Metadata } from 'next'
 import { apiClient } from '@/lib/api'
+import { getCanonicalUrl, getLanguageAlternates } from '@/lib/seo'
 import AssetHeader from '@/components/assets/AssetHeader'
 import AssetDetailedView from '@/components/template/AssetDetailedView'
 
@@ -27,8 +28,8 @@ async function getAssetData(slug: string) {
     }
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
-    const { slug } = await params
+export async function generateMetadata({ params }: { params: Promise<{ slug: string; locale: string }> }): Promise<Metadata> {
+    const { slug, locale } = await params
     const asset = await getAssetData(slug)
 
     if (!asset) {
@@ -40,10 +41,15 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
     const name = asset.name || slug
     const ticker = asset.ticker || slug
+    const path = `/assets/${slug}`
 
     return {
         title: `${name} (${ticker}) - Price, Data | FireMarkets`,
         description: asset.description || `Live price and analysis for ${name} (${ticker}).`,
+        alternates: {
+            canonical: getCanonicalUrl(locale, path),
+            languages: getLanguageAlternates(path),
+        },
     }
 }
 

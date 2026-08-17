@@ -2,6 +2,7 @@
 import { apiClient } from '@/lib/api'
 import { notFound } from 'next/navigation'
 import { Metadata } from 'next'
+import { getCanonicalUrl, getLanguageAlternates } from '@/lib/seo'
 
 interface PageProps {
     params: Promise<{
@@ -26,10 +27,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
         const locale = resolvedParams.locale || 'ko'
         let title = typeof post.title === 'string' ? post.title : (post.title?.[locale] || post.title?.ko || post.title?.en || 'Untitled')
         let description = typeof post.description === 'string' ? post.description : (post.description?.[locale] || post.description?.ko || post.description?.en || '')
+        const path = `/${resolvedParams.slug}`
 
         return {
             title: title,
             description: description,
+            alternates: {
+                canonical: getCanonicalUrl(locale, path),
+                languages: getLanguageAlternates(path),
+            },
         }
     } catch (error) {
         return {

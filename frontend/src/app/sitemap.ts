@@ -1,35 +1,60 @@
 import { MetadataRoute } from 'next'
 import { apiClient } from '@/lib/api'
 
-export const revalidate = 3600 // revalidate every hour
+// force-dynamic: the previous ISR (revalidate=3600) build cached an empty
+// post list whenever the build ran without backend access (e.g. build-time
+// network isolation), and that empty sitemap could persist indefinitely if
+// revalidation never got triggered by a real request. Always fetch live data
+// instead - Google's crawler explicitly reported this sitemap as undetected
+// for real post URLs, confirming stale/empty output reached production.
+export const dynamic = 'force-dynamic'
 
-// Google limits sitemaps to 50,000 URLs.
-// Each post generates 2 URLs (en, ko).
-// So 10,000 posts = 20,000 URLs, which is safely within the limit.
-const PER_SITEMAP_POSTS = 1000;
+// The backend API itself caps page_size at 1000 regardless of what's
+// requested, so covering more posts than that means paging through multiple
+// requests rather than asking for a bigger page.
+const API_PAGE_SIZE = 1000;
+
+// Google limits a single sitemap to 50,000 URLs. Each post generates 2 URLs
+// (en, ko), so this caps total posts fetched per type at Google's actual
+// limit rather than an arbitrary lower number that silently dropped most
+// published content.
+const MAX_POSTS_PER_TYPE = 50000;
 
 // generateSitemaps removed to force single sitemap.xml generation
 
+async function fetchAllPublishedPosts(postType: string): Promise<any[]> {
+    const results: any[] = [];
+    for (let page = 1; results.length < MAX_POSTS_PER_TYPE; page++) {
+        const data: any = await apiClient.getPosts({
+            page,
+            page_size: API_PAGE_SIZE,
+            status: 'published',
+            post_type: postType
+        });
+        const batch = data?.posts || [];
+        results.push(...batch);
+        if (batch.length < API_PAGE_SIZE) break; // last page reached
+    }
+    return results;
+}
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const baseUrl = 'https://firemarkets.net'
-    
-    // Single sitemap mode
-    const pageIndex = 0;
 
-    // 1. Fetch posts for this specific range (pageIndex + 1)
+    // 1. Fetch all published posts.
+    // brief_news is fetched separately from the rest: it dominates
+    // publishing volume, so a single fetch across all types would be
+    // crowded out almost entirely by brief_news, starving news/blog/page
+    // of coverage within the same page-size budget.
     let posts: any[] = [];
     try {
-        const data: any = await apiClient.getPosts({
-            page: pageIndex + 1, // API uses 1-based indexing
-            page_size: PER_SITEMAP_POSTS,
-            status: 'published'
-        });
-        if (data && data.posts) {
-            posts = data.posts;
-        }
+        const [otherPosts, briefNewsPosts] = await Promise.all([
+            fetchAllPublishedPosts('news,post,raw_news,ai_draft_news,page'),
+            fetchAllPublishedPosts('brief_news'),
+        ]);
+        posts = [...otherPosts, ...briefNewsPosts];
     } catch (e) {
-        console.error(`Sitemap: Failed to fetch posts for index ${pageIndex}`, e);
+        console.error('Sitemap: Failed to fetch posts', e);
     }
 
     // 2. Build Post Entries
@@ -72,18 +97,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         }
     });
 
-    // 3. Static Routes & Tags (Include ONLY in the first sitemap map)
-    if (pageIndex === 0) {
-        // Fetch Tags
-        let tags: any[] = [];
-        try {
-            const tagData: any = await apiClient.getBlogTags();
-            if (tagData && Array.isArray(tagData)) {
-                tags = tagData;
-            }
-        } catch (e) {
-            console.error('Sitemap: Failed to fetch tags', e);
+    // 3. Static Routes & Tags
+    // Fetch Tags
+    let tags: any[] = [];
+    try {
+        const tagData: any = await apiClient.getBlogTags();
+        if (tagData && Array.isArray(tagData)) {
+            tags = tagData;
         }
+    } catch (e) {
+        console.error('Sitemap: Failed to fetch tags', e);
+    }
 
         const locales = ['ko', 'en']
         const mainRoutes = [
@@ -181,10 +205,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
             }
         });
 
-        // Return combined entries for the first page
-        return [...staticEntries, ...tagEntries, ...postEntries];
-    }
-
-    // For subsequent pages, return only post entries
-    return postEntries;
+    return [...staticEntries, ...tagEntries, ...postEntries];
 }

@@ -445,7 +445,7 @@ def get_post_stats(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{post_id}")
+@router.get("/{post_id:int}")
 
 def get_post(
     post_id: int = Path(..., description="포스트 ID"),

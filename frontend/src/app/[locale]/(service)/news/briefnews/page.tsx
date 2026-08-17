@@ -1,11 +1,17 @@
 import PostList from '@/components/post/PostList'
 import { Metadata } from 'next'
+import { getCanonicalUrl, getLanguageAlternates } from '@/lib/seo'
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }) {
     const { locale } = await params
+    const path = '/news/briefnews'
     return {
         title: locale === 'ko' ? '마켓 시그널 (AI Briefs) | FireMarkets' : 'Market Signals (AI Briefs) | FireMarkets',
         description: locale === 'ko' ? '실시간 AI 분석 시장 신호 및 단신 업데이트' : 'Real-time AI-generated market signals and brief news updates.',
+        alternates: {
+            canonical: getCanonicalUrl(locale, path),
+            languages: getLanguageAlternates(path),
+        },
     }
 }
 
