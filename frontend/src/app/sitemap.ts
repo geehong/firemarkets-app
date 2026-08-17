@@ -39,16 +39,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         const updatedAt = new Date(post.updated_at || post.created_at);
         const type = post.post_type;
 
+        // ko is the default locale (localePrefix: 'as-needed'), so its canonical
+        // URLs carry no /ko prefix - only /en gets prefixed.
         let pathPrefixes: string[] = [];
 
         if (type === 'news') {
-            pathPrefixes = ['/en/news', '/ko/news'];
+            pathPrefixes = ['/en/news', '/news'];
         } else if (type === 'brief_news') {
-            pathPrefixes = ['/en/news/briefnews', '/ko/news/briefnews'];
+            pathPrefixes = ['/en/news/briefnews', '/news/briefnews'];
         } else if (type === 'post' || type === 'raw_news' || type === 'ai_draft_news') {
-            pathPrefixes = ['/en/blog', '/ko/blog'];
+            pathPrefixes = ['/en/blog', '/blog'];
         } else if (type === 'page') {
-            pathPrefixes = ['/en', '/ko'];
+            pathPrefixes = ['/en', ''];
         }
 
         if (pathPrefixes.length > 0) {
@@ -132,22 +134,28 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
         const staticRoutes: string[] = []
 
+        // ko is the default locale (localePrefix: 'as-needed'), so its canonical
+        // URLs carry no /ko prefix - only /en gets prefixed.
+        const localePrefix = (locale: string) => locale === 'ko' ? '' : `/${locale}`
+
         // Root translations
-        staticRoutes.push('', '/en', '/ko')
+        staticRoutes.push('', '/en')
 
         // Main routes
         locales.forEach(locale => {
+            const prefix = localePrefix(locale)
             mainRoutes.forEach(route => {
                 if (route !== '') {
-                    staticRoutes.push(`/${locale}${route}`)
+                    staticRoutes.push(`${prefix}${route}`)
                 }
             })
         })
 
         // On-chain metric routes
         locales.forEach(locale => {
+            const prefix = localePrefix(locale)
             onchainMetrics.forEach(metric => {
-                staticRoutes.push(`/${locale}/onchain/${metric}`)
+                staticRoutes.push(`${prefix}/onchain/${metric}`)
             })
         })
 
@@ -155,15 +163,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
             url: `${baseUrl}${route}`,
             lastModified: new Date(),
             changeFrequency: 'daily',
-            priority: route === '' || route === '/en' || route === '/ko' ? 1 : 0.8,
+            priority: route === '' || route === '/en' ? 1 : 0.8,
         }));
 
         const tagEntries: MetadataRoute.Sitemap = [];
         tags.forEach(tag => {
             if (tag.slug && tag.usage_count > 0) {
                 locales.forEach(locale => {
+                    const prefix = localePrefix(locale)
                     tagEntries.push({
-                        url: `${baseUrl}/${locale}/tag/${tag.slug}`,
+                        url: `${baseUrl}${prefix}/tag/${tag.slug}`,
                         lastModified: new Date(),
                         changeFrequency: 'weekly',
                         priority: 0.5
