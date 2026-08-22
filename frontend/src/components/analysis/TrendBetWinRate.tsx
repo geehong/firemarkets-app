@@ -65,7 +65,10 @@ const DEFAULT_WINDOW_DAYS = 7 // "7일동안 30%이상 변동"
 // search can find combos the manual controls could also reach.
 const AUTO_SEARCH_DAYS = Array.from({ length: 90 }, (_, i) => i + 1)
 const AUTO_SEARCH_THRESHOLDS = THRESHOLD_OPTIONS
-const AUTO_SEARCH_MIN_TRADES = 3
+// Combos backed by fewer trades than this are excluded from auto-search
+// entirely, since ranking by win rate on a tiny sample (e.g. 3-4 trades)
+// risks picking a combo that scored well by chance rather than a real edge.
+const AUTO_SEARCH_MIN_TRADES = 10
 // 50%~100% in 5-point steps
 const TARGET_WIN_RATE_OPTIONS = Array.from({ length: 11 }, (_, i) => 50 + i * 5)
 const DEFAULT_TARGET_WIN_RATE = 70
@@ -76,9 +79,10 @@ const DEFAULT_TARGET_WIN_RATE = 70
 // 'long' or 'short' only cares about that side's win rate (the other side's
 // result is ignored entirely, so e.g. "숏 90%+" can match even if long is
 // nowhere near 90%); 'either' keeps the old behavior where either side
-// individually clearing the target counts. Among qualifying combos we pick
-// the one backed by the most trades on the targeted side (the most
-// statistically meaningful one), not just whichever happens to score highest.
+// individually clearing the target counts. Among qualifying combos (all of
+// which already clear AUTO_SEARCH_MIN_TRADES, see above), the best is picked
+// by: 1) highest win rate on the targeted side, 2) highest overall win rate
+// as a tiebreaker, 3) most trades as a final tiebreaker.
 function findBestWinRate(
   points: Point[],
   currentData: any[],
@@ -92,6 +96,7 @@ function findBestWinRate(
     longWinRate: number | null
     shortWinRate: number | null
     bestSideWinRate: number
+    overallWinRate: number
     bestSideTotal: number
   } | null = null
 
@@ -127,21 +132,20 @@ function findBestWinRate(
         shortTotal >= AUTO_SEARCH_MIN_TRADES && shortWinRate !== null && shortWinRate >= targetWinRate
       if (!longQualifies && !shortQualifies) continue
 
-      // When a single side is targeted, rank by that side's own trade count
-      // (not total) so the pick is the most statistically meaningful for the
-      // side that actually matters here.
       const bestSideWinRate = Math.max(
         longQualifies ? (longWinRate as number) : -Infinity,
         shortQualifies ? (shortWinRate as number) : -Infinity
       )
       const bestSideTotal = direction === 'long' ? longTotal : direction === 'short' ? shortTotal : total
+      const overallWinRate = total > 0 ? ((longWins + shortWins) / total) * 100 : 0
 
       if (
         !best ||
-        bestSideTotal > best.bestSideTotal ||
-        (bestSideTotal === best.bestSideTotal && bestSideWinRate > best.bestSideWinRate)
+        bestSideWinRate > best.bestSideWinRate ||
+        (bestSideWinRate === best.bestSideWinRate && overallWinRate > best.overallWinRate) ||
+        (bestSideWinRate === best.bestSideWinRate && overallWinRate === best.overallWinRate && bestSideTotal > best.bestSideTotal)
       ) {
-        best = { days, threshold, total, longWinRate, shortWinRate, bestSideWinRate, bestSideTotal }
+        best = { days, threshold, total, longWinRate, shortWinRate, bestSideWinRate, overallWinRate, bestSideTotal }
       }
     }
   }
