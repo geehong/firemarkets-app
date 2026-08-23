@@ -91,6 +91,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: firemarkets-app-backend:latest
     container_name: fire_markets_backend
     user: root # Run as root to access docker socket
     restart: unless-stopped
@@ -162,9 +163,7 @@ services:
   # --- 독립 스케줄러 서비스 추가 ---
   scheduler:
     profiles: ["processing"]
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: firemarkets-app-backend:latest
     container_name: fire_markets_scheduler
     restart: unless-stopped
     env_file:
@@ -225,9 +224,7 @@ services:
   # --- 데이터 프로세서 (Processing 프로필) ---
   data_processor:
     profiles: ["processing"]
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: firemarkets-app-backend:latest
     container_name: fire_markets_data_processor
     restart: unless-stopped
     env_file:
@@ -270,9 +267,7 @@ services:
   # --- WebSocket 오케스트레이터 (Processing 프로필) ---
   websocket_orchestrator:
     profiles: ["processing"]
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: firemarkets-app-backend:latest
     container_name: fire_markets_websocket_orchestrator
     restart: unless-stopped
     env_file:
@@ -334,9 +329,7 @@ services:
   # --- (신규) WebSocket 브로드캐스터 ---
   websocket_broadcaster:
     profiles: ["processing"]
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: firemarkets-app-backend:latest
     container_name: fire_markets_websocket_broadcaster
     restart: unless-stopped
     env_file:
