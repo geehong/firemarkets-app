@@ -71,16 +71,45 @@ export default async function BriefNewsDetailPage({ params }: { params: Promise<
     const description = typeof post.description === 'string' ? post.description : (post.description?.[locale] || post.description?.en || post.description?.ko || '')
     const content = locale === 'ko' ? (post.content_ko || post.content) : (post.content || post.content_ko)
 
+    const jsonLd = {
+        '@context': 'https://schema.org',
+        '@type': 'NewsArticle',
+        headline: title,
+        description: description,
+        image: imageUrl ? [imageUrl] : undefined,
+        datePublished: post.created_at,
+        dateModified: post.updated_at || post.created_at,
+        author: [{
+            '@type': 'Organization',
+            name: source || 'FireMarkets',
+        }],
+        publisher: {
+            '@type': 'Organization',
+            name: 'FireMarkets',
+            url: 'https://firemarkets.net'
+        },
+        mainEntityOfPage: {
+            '@type': 'WebPage',
+            '@id': `https://firemarkets.net${locale === 'en' ? '/en' : ''}/news/briefnews/${slug}`
+        }
+    }
+
     return (
-        <BriefNewsDetailView
-            post={post}
-            locale={locale}
-            title={title}
-            description={description}
-            content={content}
-            imageUrl={imageUrl}
-            source={source}
-            originalUrl={originalUrl}
-        />
+        <>
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+            />
+            <BriefNewsDetailView
+                post={post}
+                locale={locale}
+                title={title}
+                description={description}
+                content={content}
+                imageUrl={imageUrl}
+                source={source}
+                originalUrl={originalUrl}
+            />
+        </>
     )
 }

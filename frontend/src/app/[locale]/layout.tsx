@@ -10,9 +10,15 @@ import { notFound } from 'next/navigation';
 import ScrollToTop from '@/components/common/ScrollToTop';
 import Script from 'next/script';
 
+import { Metadata } from 'next';
+
 const outfit = Outfit({
   subsets: ["latin"],
 });
+
+export const metadata: Metadata = {
+  metadataBase: new URL('https://firemarkets.net'),
+};
 
 export default async function LocaleLayout({
   children,

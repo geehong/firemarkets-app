@@ -7,7 +7,7 @@ import { apiClient } from '@/lib/api'
 // revalidation never got triggered by a real request. Always fetch live data
 // instead - Google's crawler explicitly reported this sitemap as undetected
 // for real post URLs, confirming stale/empty output reached production.
-export const dynamic = 'force-dynamic'
+export const revalidate = 3600;
 
 // The backend API itself caps page_size at 1000 regardless of what's
 // requested, so covering more posts than that means paging through multiple
@@ -42,10 +42,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const baseUrl = 'https://firemarkets.net'
 
     // 1. Fetch all published posts.
-    // brief_news is fetched separately from the rest: it dominates
-    // publishing volume, so a single fetch across all types would be
-    // crowded out almost entirely by brief_news, starving news/blog/page
-    // of coverage within the same page-size budget.
     let posts: any[] = [];
     try {
         const [otherPosts, briefNewsPosts] = await Promise.all([
@@ -64,37 +60,42 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         const updatedAt = new Date(post.updated_at || post.created_at);
         const type = post.post_type;
 
-        // ko is the default locale (localePrefix: 'as-needed'), so its canonical
-        // URLs carry no /ko prefix - only /en gets prefixed.
-        let pathPrefixes: string[] = [];
-
+        let basePath = '/blog';
         if (type === 'news') {
-            pathPrefixes = ['/en/news', '/news'];
+            basePath = '/news';
         } else if (type === 'brief_news') {
-            pathPrefixes = ['/en/news/briefnews', '/news/briefnews'];
-        } else if (type === 'post' || type === 'raw_news' || type === 'ai_draft_news') {
-            pathPrefixes = ['/en/blog', '/blog'];
+            basePath = '/news/briefnews';
         } else if (type === 'page') {
-            pathPrefixes = ['/en', ''];
+            basePath = '';
         }
 
-        if (pathPrefixes.length > 0) {
-            pathPrefixes.forEach(prefix => {
-                const urlPath = `${prefix}/${slug}`;
-                // Exclude any paths that should be noindexed
-                const restrictedPaths = ['/admin', '/profile', '/calendar', '/widgets', '/tables', '/chart'];
-                const isRestricted = restrictedPaths.some(p => urlPath.includes(p));
-                
-                if (!isRestricted) {
-                    postEntries.push({
-                        url: `${baseUrl}${urlPath}`,
-                        lastModified: updatedAt,
-                        changeFrequency: 'weekly',
-                        priority: type === 'news' ? 0.7 : 0.6
-                    });
-                }
-            });
-        }
+        const koUrl = `${baseUrl}${basePath}/${slug}`;
+        const enUrl = `${baseUrl}/en${basePath}/${slug}`;
+
+        const pathPrefixes = [
+            { prefix: '', url: koUrl },
+            { prefix: '/en', url: enUrl }
+        ];
+
+        pathPrefixes.forEach(({ url }) => {
+            const restrictedPaths = ['/admin', '/profile', '/calendar', '/widgets', '/tables', '/chart'];
+            const isRestricted = restrictedPaths.some(p => url.includes(p));
+
+            if (!isRestricted) {
+                postEntries.push({
+                    url,
+                    lastModified: updatedAt,
+                    changeFrequency: 'weekly',
+                    priority: type === 'news' ? 0.7 : 0.6,
+                    alternates: {
+                        languages: {
+                            ko: koUrl,
+                            en: enUrl
+                        }
+                    }
+                });
+            }
+        });
     });
 
     // 3. Static Routes & Tags
