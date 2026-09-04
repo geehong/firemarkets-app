@@ -33,17 +33,24 @@ else
     DOCKER_COMPOSE_CMD="docker compose"
 fi
 
-# 서비스 재시작 함수
+# 서비스 재시작 및 헬스 체크 함수
 restart_services() {
-    log_message "Docker 서비스 재시작을 시작합니다..."
-    log_message "대상 서비스: scheduler, websocket_broadcaster"
+    log_message "Docker 서비스 상태 점검 및 재시작을 시작합니다..."
     
     cd "$PROJECT_DIR" || {
         log_message "ERROR: 프로젝트 디렉토리로 이동할 수 없습니다: $PROJECT_DIR"
         exit 1
     }
     
-    # scheduler 재시작
+    # 1. 전체 컨테이너 가동 상태 보장 (중지/미생성된 서비스 복구)
+    log_message "전체 Docker 컨테이너 상태 보장 (up -d)..."
+    if $DOCKER_COMPOSE_CMD --profile processing up -d 2>&1 | tee -a <(sudo tee -a "$LOG_FILE"); then
+        log_message "SUCCESS: 전체 서비스 up -d 완료"
+    else
+        log_message "WARNING: 일부 서비스 up -d 실행 시 경고가 발생하였습니다."
+    fi
+
+    # 2. scheduler 재시작
     log_message "scheduler 서비스를 재시작합니다..."
     if $DOCKER_COMPOSE_CMD --profile processing restart scheduler 2>&1 | tee -a <(sudo tee -a "$LOG_FILE"); then
         log_message "SUCCESS: scheduler 서비스가 재시작되었습니다"
@@ -52,7 +59,7 @@ restart_services() {
         return 1
     fi
     
-    # websocket_broadcaster 재시작
+    # 3. websocket_broadcaster 재시작
     log_message "websocket_broadcaster 서비스를 재시작합니다..."
     if $DOCKER_COMPOSE_CMD --profile processing restart websocket_broadcaster 2>&1 | tee -a <(sudo tee -a "$LOG_FILE"); then
         log_message "SUCCESS: websocket_broadcaster 서비스가 재시작되었습니다"
@@ -61,7 +68,7 @@ restart_services() {
         return 1
     fi
     
-    log_message "모든 서비스 재시작이 완료되었습니다"
+    log_message "모든 서비스 점검 및 재시작이 완료되었습니다"
     return 0
 }
 

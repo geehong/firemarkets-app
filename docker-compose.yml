@@ -28,8 +28,8 @@ services:
       options:
         max-size: "100m"
         max-file: "10"
-    mem_limit: 1g
-    memswap_limit: 1g
+    mem_limit: 1.5g
+    memswap_limit: 1.5g
     networks:
       - app_network
       - shared-network
@@ -253,8 +253,8 @@ services:
     command: ["python", "-m", "app.services.run_data_processor"]
     healthcheck:
       disable: true
-    mem_limit: 512m
-    memswap_limit: 512m
+    mem_limit: 1.2g
+    memswap_limit: 1.5g
     networks:
       - app_network
       - shared-network
@@ -315,8 +315,8 @@ services:
       ]
     healthcheck:
       disable: true
-    mem_limit: 512m
-    memswap_limit: 512m
+    mem_limit: 768m
+    memswap_limit: 1g
     networks:
       - app_network
       - shared-network
@@ -359,8 +359,8 @@ services:
     command: ["python", "-m", "app.services.run_websocket_broadcaster"]
     healthcheck:
       disable: true
-    mem_limit: 512m
-    memswap_limit: 512m
+    mem_limit: 768m
+    memswap_limit: 1g
     networks:
       - app_network
       - shared-network
@@ -396,8 +396,8 @@ services:
       - ./.env:/app/.env:ro
       - ./frontend/public/images:/app/public/images # Persistent Image Storage
     # No command override to use Dockerfile CMD [node server.js]
-    mem_limit: 1.5g
-    memswap_limit: 1.5g
+    mem_limit: 2g
+    memswap_limit: 2g
 
     depends_on:
       - backend
@@ -424,8 +424,8 @@ services:
     volumes:
       - npm_data:/data
       - npm_letsencrypt:/etc/letsencrypt
-    mem_limit: 512m
-    memswap_limit: 512m
+    mem_limit: 768m
+    memswap_limit: 1g
     networks:
       - shared-network
     logging:

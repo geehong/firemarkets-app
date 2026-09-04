@@ -55,6 +55,10 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
+        source: '/sitemap-briefnews-:id.xml',
+        destination: '/sitemap-briefnews/:id',
+      },
+      {
         source: '/api/v1/:path*',
         destination: 'http://backend:8000/api/v1/:path*',
       },
