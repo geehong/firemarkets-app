@@ -18,32 +18,54 @@ export async function GET() {
         'thermo_cap', 'etf_btc_total', 'etf_btc_flow'
     ];
 
-    const staticUrls: string[] = [];
-    const localePrefix = (locale: string) => locale === 'ko' ? '' : `/${locale}`;
+    const urlBlocks: string[] = [];
 
-    locales.forEach(locale => {
-        const prefix = localePrefix(locale);
-        mainRoutes.forEach(route => {
-            const url = `${baseUrl}${prefix}${route}`;
-            const prio = route === '' || route === '/en' ? '1.0' : '0.8';
-            staticUrls.push(`
+    mainRoutes.forEach(route => {
+        const koUrl = `${baseUrl}${route}`;
+        const enUrl = `${baseUrl}/en${route}`;
+        const prioKo = route === '' ? '1.0' : '0.8';
+        const prioEn = route === '' ? '1.0' : '0.8';
+
+        urlBlocks.push(`
   <url>
-    <loc>${url}</loc>
+    <loc>${koUrl}</loc>
     <lastmod>${now}</lastmod>
     <changefreq>daily</changefreq>
-    <priority>${prio}</priority>
-  </url>`);
-        });
-        onchainMetrics.forEach(metric => {
-            const url = `${baseUrl}${prefix}/onchain/${metric}`;
-            staticUrls.push(`
+    <priority>${prioKo}</priority>
+    <xhtml:link rel="alternate" hreflang="ko" href="${koUrl}"/>
+    <xhtml:link rel="alternate" hreflang="en" href="${enUrl}"/>
+  </url>
   <url>
-    <loc>${url}</loc>
+    <loc>${enUrl}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>${prioEn}</priority>
+    <xhtml:link rel="alternate" hreflang="ko" href="${koUrl}"/>
+    <xhtml:link rel="alternate" hreflang="en" href="${enUrl}"/>
+  </url>`);
+    });
+
+    onchainMetrics.forEach(metric => {
+        const koUrl = `${baseUrl}/onchain/${metric}`;
+        const enUrl = `${baseUrl}/en/onchain/${metric}`;
+
+        urlBlocks.push(`
+  <url>
+    <loc>${koUrl}</loc>
     <lastmod>${now}</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="ko" href="${koUrl}"/>
+    <xhtml:link rel="alternate" hreflang="en" href="${enUrl}"/>
+  </url>
+  <url>
+    <loc>${enUrl}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="ko" href="${koUrl}"/>
+    <xhtml:link rel="alternate" hreflang="en" href="${enUrl}"/>
   </url>`);
-        });
     });
 
     let tags: any[] = [];
@@ -54,50 +76,68 @@ export async function GET() {
         }
     } catch (e) {}
 
-    const tagUrls: string[] = [];
     tags.forEach(tag => {
         if (tag.slug && tag.usage_count > 0) {
-            locales.forEach(locale => {
-                const prefix = localePrefix(locale);
-                tagUrls.push(`
+            const koUrl = `${baseUrl}/tag/${tag.slug}`;
+            const enUrl = `${baseUrl}/en/tag/${tag.slug}`;
+
+            urlBlocks.push(`
   <url>
-    <loc>${baseUrl}${prefix}/tag/${tag.slug}</loc>
+    <loc>${koUrl}</loc>
     <lastmod>${now}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
+    <xhtml:link rel="alternate" hreflang="ko" href="${koUrl}"/>
+    <xhtml:link rel="alternate" hreflang="en" href="${enUrl}"/>
+  </url>
+  <url>
+    <loc>${enUrl}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+    <xhtml:link rel="alternate" hreflang="ko" href="${koUrl}"/>
+    <xhtml:link rel="alternate" hreflang="en" href="${enUrl}"/>
   </url>`);
-            });
         }
     });
 
-    let assetUrls: string[] = [];
+    let assetsList: any[] = [];
     try {
         const assetData: any = await apiClient.v2GetAssets({ limit: 1000 });
-        const assetsList = assetData?.data || (Array.isArray(assetData) ? assetData : []);
-        assetsList.forEach((asset: any) => {
-            const ticker = asset.ticker || asset.symbol || asset.slug;
-            if (ticker && ticker !== 'USDC' && ticker !== 'USDT') {
-                locales.forEach(locale => {
-                    const prefix = localePrefix(locale);
-                    assetUrls.push(`
-  <url>
-    <loc>${baseUrl}${prefix}/assets/${ticker}</loc>
-    <lastmod>${now}</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.7</priority>
-  </url>`);
-                });
-            }
-        });
+        assetsList = assetData?.data || (Array.isArray(assetData) ? assetData : []);
     } catch (e) {
         console.error('Sitemap Static: Failed to fetch assets', e);
     }
 
+    assetsList.forEach((asset: any) => {
+        const ticker = asset.ticker || asset.symbol || asset.slug;
+        if (ticker && ticker !== 'USDC' && ticker !== 'USDT') {
+            const koUrl = `${baseUrl}/assets/${ticker}`;
+            const enUrl = `${baseUrl}/en/assets/${ticker}`;
+
+            urlBlocks.push(`
+  <url>
+    <loc>${koUrl}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="ko" href="${koUrl}"/>
+    <xhtml:link rel="alternate" hreflang="en" href="${enUrl}"/>
+  </url>
+  <url>
+    <loc>${enUrl}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="ko" href="${koUrl}"/>
+    <xhtml:link rel="alternate" hreflang="en" href="${enUrl}"/>
+  </url>`);
+        }
+    });
+
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${staticUrls.join('')}
-${tagUrls.join('')}
-${assetUrls.join('')}
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+${urlBlocks.join('')}
 </urlset>`;
 
     return new Response(xml, {
